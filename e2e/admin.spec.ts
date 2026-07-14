@@ -5,13 +5,20 @@ async function signIn(page: import('@playwright/test').Page, email: string) {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill('password123')
   await page.getByRole('button', { name: 'Sign in' }).click()
+  // The click only dispatches the DOM event — it does not wait for the async
+  // login request (bcrypt compare + cookie set) that follows. Without this,
+  // an immediate page.goto() elsewhere in a test can race ahead of the
+  // cookie actually being set. Wait for the real signal: we've left /login.
+  await page.waitForURL(/\/(dashboard|portal)/)
 }
 
 test('admin sees the dashboard with real figures', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
 
   await expect(page).toHaveURL(/\/dashboard/)
-  await expect(page.getByText('Net revenue')).toBeVisible()
+  // "Net revenue" legitimately appears twice (KPI card label AND a table column
+  // header) — .first() takes the KPI card, which is what this is checking for.
+  await expect(page.getByText('Net revenue').first()).toBeVisible()
   await expect(page.getByText('Compare shops')).toBeVisible()
 
   // The total row must show actual money, not a dash or a zero.
