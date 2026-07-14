@@ -100,7 +100,7 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
             <strong className="font-semibold">
               {missing} product{missing > 1 ? 's' : ''} without a cost.
             </strong>{' '}
-            Their profit is overstated until you enter one — we never guess a cost.
+            Their profit is overstated until you enter one. We never guess a cost.
           </div>
         )}
 

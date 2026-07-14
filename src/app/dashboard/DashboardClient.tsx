@@ -76,7 +76,7 @@ export function DashboardClient({ email, shops }: { email: string; shops: Shop[]
         title="Dashboard"
         subtitle={
           shops.length > 1 && currency === 'USD'
-            ? 'Shops trade in different currencies — totals are consolidated to USD at each order’s own rate.'
+            ? 'Shops trade in different currencies, so totals are consolidated to USD at each order’s own rate.'
             : undefined
         }
       >

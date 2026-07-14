@@ -73,7 +73,9 @@ export function PortalClient({ email }: { email: string }) {
       <PageHeader
         title={firstName ? `Hi ${firstName}` : 'Your performance'}
         subtitle={
-          data ? `Everything earned with your code ${data.codes.join(', ') || '—'}.` : undefined
+          data
+            ? `Everything earned with your code ${data.codes.join(', ') || 'not set yet'}.`
+            : undefined
         }
       >
         <DateFilter
@@ -117,7 +119,7 @@ export function PortalClient({ email }: { email: string }) {
                       </span>
                     </span>
                   ) : (
-                    '—'
+                    'No sales yet'
                   )
                 }
               />

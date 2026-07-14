@@ -18,7 +18,7 @@ function Delta({ current, previous, hint }: { current: number; previous: number;
   if (change === null) {
     return (
       <span className="text-[12px] text-faint" title={`No ${hint} to compare with`}>
-        —
+        No prior data
       </span>
     )
   }

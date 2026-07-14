@@ -13,7 +13,7 @@ const TILES = [
   {
     href: '/settings/expenses',
     title: 'Operational expenses',
-    blurb: 'Rent, payroll, subscriptions — spread across the days they cover',
+    blurb: 'Rent, payroll and subscriptions, spread across the days they cover',
   },
   {
     href: '/settings/shops',
@@ -46,7 +46,7 @@ export default async function SettingsPage() {
         </div>
 
         <p className="mt-4 text-[12px] text-muted">
-          Marketing platforms, processing fees and returns arrive in the next phases — they will
+          Marketing platforms, processing fees and returns arrive in the next phases. They will
           appear here.
         </p>
       </PageBody>

@@ -86,7 +86,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-muted">
-                    {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : '—'}
+                    {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : 'Never'}
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <button onClick={() => setEditing(s)} className="font-semibold text-accent hover:underline">

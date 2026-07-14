@@ -173,13 +173,27 @@ export function AppShell({
           </nav>
         )}
 
+        {/* Your own account is reachable from every screen, ambassadors included. */}
         <div className="hidden border-t border-line p-3 lg:block">
-          <p className="truncate px-2.5 text-[12px] text-muted" title={email}>
+          <p className="truncate px-2.5 pb-1 text-[12px] text-muted" title={email}>
             {email}
           </p>
+
+          <Link
+            href="/account"
+            aria-current={pathname.startsWith('/account') ? 'page' : undefined}
+            className={`block rounded-[var(--radius-control)] px-2.5 py-1.5 text-[12px] transition-colors duration-150 ${
+              pathname.startsWith('/account')
+                ? 'bg-accent-soft font-semibold text-accent-ink'
+                : 'text-muted hover:bg-surface hover:text-ink'
+            }`}
+          >
+            Your account
+          </Link>
+
           <button
             onClick={signOut}
-            className="mt-1.5 w-full rounded-[var(--radius-control)] px-2.5 py-1.5 text-left text-[12px] text-muted transition-colors duration-150 hover:bg-surface hover:text-ink"
+            className="mt-0.5 w-full rounded-[var(--radius-control)] px-2.5 py-1.5 text-left text-[12px] text-muted transition-colors duration-150 hover:bg-surface hover:text-ink"
           >
             Sign out
           </button>
@@ -190,6 +204,9 @@ export function AppShell({
         {/* On small screens the account controls need a home. */}
         <div className="flex items-center justify-end gap-3 border-b border-line px-4 py-2 text-[12px] text-muted lg:hidden">
           <span className="truncate">{email}</span>
+          <Link href="/account" className="text-ink underline-offset-2 hover:underline">
+            Account
+          </Link>
           <button onClick={signOut} className="text-ink underline-offset-2 hover:underline">
             Sign out
           </button>

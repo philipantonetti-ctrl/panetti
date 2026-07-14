@@ -428,7 +428,7 @@ function ExpenseModal({
               </label>
               <p className="text-[11px] text-muted">
                 {status === 'ENDED'
-                  ? 'The expense stops here — the months it ran still count.'
+                  ? 'The expense stops here. The months it ran still count.'
                   : 'The expense keeps running until this date.'}
               </p>
               <input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}

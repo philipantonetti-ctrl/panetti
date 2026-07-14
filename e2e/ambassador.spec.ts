@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 async function signIn(page: import('@playwright/test').Page, email: string) {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill('password123')
+  await page.getByLabel('Password', { exact: true }).fill('password123')
   await page.getByRole('button', { name: 'Sign in' }).click()
   // The click only dispatches the DOM event — it does not wait for the async
   // login request (bcrypt compare + cookie set) that follows. Without this,
