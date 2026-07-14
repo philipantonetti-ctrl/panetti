@@ -12,6 +12,8 @@ import {
   type ExpenseStatus,
 } from '@/lib/expense-status'
 import { recurrenceDetail, finalPayment, formatDay } from '@/lib/expense-format'
+import { SearchableSelect, type SelectOption } from '@/components/SearchableSelect'
+import { allCurrencies, isConvertible } from '@/lib/currencies'
 
 type Expense = {
   id: string
@@ -30,6 +32,12 @@ const RECURRENCES = ['ONE_TIME', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']
 const RECURRENCE_LABEL: Record<string, string> = {
   ONE_TIME: 'One time', DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly', YEARLY: 'Yearly',
 }
+
+/** Every currency, once — the list never changes. */
+const CURRENCY_OPTIONS: SelectOption[] = allCurrencies().map((c) => ({
+  value: c.code,
+  label: c.label, // "USD - $"
+}))
 
 const STATUS_TONE: Record<ExpenseStatus, string> = {
   ACTIVE: 'bg-emerald-50 text-emerald-700',
@@ -354,11 +362,18 @@ function ExpenseModal({
   onSaved: () => void
   onAdded: () => void // saved, but the modal stays open for the next one
 }) {
-  const first = categoryGroups[0]
-  const [label, setLabel] = useState('')
-  const [category, setCategory] = useState(
-    first ? `${first.group} > ${first.options[0]}` : 'Other > Other',
+  // Flatten the category tree into searchable options, keeping the group headings.
+  const categoryOptions: SelectOption[] = categoryGroups.flatMap((g) =>
+    g.options.map((option) => ({
+      value: `${g.group} > ${option}`,
+      label: option,
+      group: g.group,
+    })),
   )
+
+  const [label, setLabel] = useState('')
+  // No default: an expense must never be filed under a category nobody chose.
+  const [category, setCategory] = useState('')
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState(shop.currency)
   const [recurrence, setRecurrence] = useState('MONTHLY')
@@ -437,19 +452,17 @@ function ExpenseModal({
 
           <div>
             <label htmlFor="category" className="block text-xs font-medium text-slate-700">Category</label>
-            {/* Grouped exactly like BeProfit: Overhead, Financing, Marketing, Operations,
+            {/* Searchable, and grouped: Overhead, Financing, Marketing, Operations,
                 Fulfillment, Other, Transaction fees. */}
-            <select id="category" value={category} onChange={(e) => setCategory(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black">
-              {categoryGroups.map((g) => (
-                <optgroup key={g.group} label={g.group}>
-                  {g.options.map((option) => {
-                    const value = `${g.group} > ${option}`
-                    return <option key={value} value={value}>{option}</option>
-                  })}
-                </optgroup>
-              ))}
-            </select>
+            <div className="mt-1">
+              <SearchableSelect
+                id="category"
+                ariaLabel="Category"
+                value={category}
+                onChange={setCategory}
+                options={categoryOptions}
+              />
+            </div>
           </div>
 
           <div className="col-span-2">
@@ -467,15 +480,29 @@ function ExpenseModal({
 
           <div className="col-span-2">
             <label htmlFor="amount" className="block text-xs font-medium text-slate-700">Expense Amount</label>
-            <div className="mt-1 flex">
-              <select value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency"
-                className="rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-2 py-2 text-sm text-black">
-                {['NOK', 'SEK', 'DKK', 'EUR', 'USD'].map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+            <div className="mt-1 flex items-start gap-2">
+              <div className="w-40 shrink-0">
+                <SearchableSelect
+                  ariaLabel="Currency"
+                  value={currency}
+                  onChange={setCurrency}
+                  options={CURRENCY_OPTIONS}
+                />
+              </div>
               <input id="amount" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
                 placeholder="Enter amount here"
-                className="w-full rounded-r-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black placeholder:text-slate-400" />
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black placeholder:text-slate-400" />
             </div>
+
+            {/* Be honest: we only hold exchange rates for the ECB's list. Without one we
+                cannot fold this expense into the USD totals correctly. */}
+            {!isConvertible(currency) && (
+              <p className="mt-1.5 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                ⚠️ We have no exchange rate for <strong>{currency}</strong>, so this expense cannot be
+                converted for the multi-shop USD totals. It will still be exact on {shop.name}&apos;s own
+                figures.
+              </p>
+            )}
           </div>
 
           <div className="col-span-2">
@@ -488,11 +515,11 @@ function ExpenseModal({
 
         <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
           <button onClick={onClose} className="px-3 py-2 text-xs text-slate-700 hover:text-black">Cancel</button>
-          <button onClick={() => save(true)} disabled={busy || !label}
+          <button onClick={() => save(true)} disabled={busy || !label || !category}
             className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
             Save and add another
           </button>
-          <button onClick={() => save(false)} disabled={busy || !label}
+          <button onClick={() => save(false)} disabled={busy || !label || !category}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
             {busy ? 'Saving…' : 'Save and close'}
           </button>
