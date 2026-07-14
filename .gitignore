@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+out/
+dist/
+build/
+
+# Environment / secrets
+.env
+.env.local
+.env*.local
+
+# Database (local SQLite)
+*.db
+*.db-journal
+prisma/dev.db*
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Brainstorming visual companion (local only)
+.superpowers/
