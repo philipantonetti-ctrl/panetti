@@ -67,10 +67,10 @@ export function SearchableSelect({
         aria-label={ariaLabel}
         aria-expanded={open}
         onClick={() => (open ? close() : setOpen(true))}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm text-black ${buttonClassName}`}
+        className={`flex w-full items-center justify-between gap-2 rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-left text-sm text-ink ${buttonClassName}`}
       >
-        <span className={selected ? '' : 'text-slate-400'}>{selected?.label ?? placeholder}</span>
-        <span className="text-slate-400">▾</span>
+        <span className={selected ? '' : 'text-faint'}>{selected?.label ?? placeholder}</span>
+        <span className="text-faint">▾</span>
       </button>
 
       {open && (
@@ -78,8 +78,8 @@ export function SearchableSelect({
           {/* Click anywhere else to close. */}
           <div className="fixed inset-0 z-20" onClick={close} />
 
-          <div className="absolute z-30 mt-1 w-full min-w-[240px] rounded-lg border border-slate-200 bg-white shadow-lg">
-            <div className="border-b border-slate-100 p-2">
+          <div className="absolute z-30 mt-1 w-full min-w-[240px] rounded-[var(--radius-control)] border border-line bg-surface shadow-lg">
+            <div className="border-b border-line p-2">
               <input
                 autoFocus
                 value={query}
@@ -87,20 +87,20 @@ export function SearchableSelect({
                 onKeyDown={(e) => e.key === 'Escape' && close()}
                 placeholder="Search…"
                 aria-label={`Search ${ariaLabel}`}
-                className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-black placeholder:text-slate-400"
+                className="w-full rounded-md border border-line bg-surface px-2.5 py-1.5 text-sm text-ink placeholder:text-faint"
               />
             </div>
 
             <div className="max-h-56 overflow-y-auto py-1">
               {groups.length === 0 ? (
-                <p className="px-3 py-4 text-center text-xs text-slate-400">
+                <p className="px-3 py-4 text-center text-xs text-faint">
                   Nothing matches “{query}”.
                 </p>
               ) : (
                 groups.map((group, i) => (
                   <div key={`${group.name ?? ''}-${i}`}>
                     {group.name && (
-                      <div className="px-3 pb-1 pt-2 text-[11px] font-bold text-slate-500">
+                      <div className="px-3 pb-1 pt-2 text-[11px] font-bold text-muted">
                         {group.name}
                       </div>
                     )}
@@ -115,13 +115,13 @@ export function SearchableSelect({
                             onChange(option.value)
                             close()
                           }}
-                          className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm hover:bg-violet-50 ${
-                            isSelected ? 'font-semibold text-violet-700' : 'text-black'
+                          className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm hover:bg-accent-soft ${
+                            isSelected ? 'font-semibold text-accent' : 'text-ink'
                           }`}
                         >
                           <span
                             className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
-                              isSelected ? 'border-violet-600 bg-violet-600' : 'border-slate-300'
+                              isSelected ? 'border-violet-600 bg-violet-600' : 'border-line'
                             }`}
                           />
                           {option.label}

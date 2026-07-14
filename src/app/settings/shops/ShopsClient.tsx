@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { TopBar } from '@/components/TopBar'
+import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 
 type Row = {
   id: string
@@ -38,34 +38,30 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <TopBar email={email} />
+    <AppShell email={email}>
+      <PageHeader
+        title="Shops"
+        subtitle="Connect each WooCommerce store. Until a store is connected it shows sample data."
+      >
+        <button
+          onClick={syncAll}
+          disabled={syncing}
+          className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-[13px] font-semibold text-white transition-opacity duration-150 hover:opacity-90 disabled:opacity-60"
+        >
+          {syncing ? 'Syncing…' : 'Sync all'}
+        </button>
+      </PageHeader>
 
-      <main className="mx-auto max-w-4xl p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold text-slate-900">Shops</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Connect each WooCommerce store. Until a store is connected it shows seeded sample data.
-            </p>
-          </div>
-          <button
-            onClick={syncAll}
-            disabled={syncing}
-            className="rounded-lg bg-violet-700 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-800 disabled:opacity-60"
-          >
-            {syncing ? 'Syncing…' : '⟳ Sync all'}
-          </button>
-        </div>
+      <PageBody>
 
         {message && (
-          <div className="mt-4 rounded-lg bg-slate-100 px-4 py-3 text-xs text-slate-700">{message}</div>
+          <div className="mt-4 rounded-[var(--radius-control)] bg-panel px-4 py-3 text-xs text-ink">{message}</div>
         )}
 
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="mt-4 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-slate-50 text-left text-slate-500">
+              <tr className="bg-panel text-left text-muted">
                 <th className="px-3 py-2.5 font-medium">Shop</th>
                 <th className="px-3 py-2.5 font-medium">Currency</th>
                 <th className="px-3 py-2.5 font-medium">Connection</th>
@@ -73,27 +69,27 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                 <th className="px-3 py-2.5" />
               </tr>
             </thead>
-            <tbody className="text-slate-700">
+            <tbody className="text-ink">
               {shops.map((s) => (
-                <tr key={s.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2.5 font-medium text-slate-900">{s.name}</td>
+                <tr key={s.id} className="border-t border-line">
+                  <td className="px-3 py-2.5 font-medium text-ink">{s.name}</td>
                   <td className="px-3 py-2.5">{s.currency}</td>
                   <td className="px-3 py-2.5">
                     {s.connected ? (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      <span className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-gain">
                         Connected
                       </span>
                     ) : (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                      <span className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-muted">
                         Sample data
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-slate-500">
+                  <td className="px-3 py-2.5 text-muted">
                     {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : '—'}
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    <button onClick={() => setEditing(s)} className="font-semibold text-violet-700 hover:underline">
+                    <button onClick={() => setEditing(s)} className="font-semibold text-accent hover:underline">
                       {s.connected ? 'Edit' : 'Connect'}
                     </button>
                   </td>
@@ -102,7 +98,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
             </tbody>
           </table>
         </div>
-      </main>
+      </PageBody>
 
       {editing && (
         <ConnectModal
@@ -114,7 +110,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
           }}
         />
       )}
-    </div>
+    </AppShell>
   )
 }
 
@@ -136,29 +132,29 @@ function ConnectModal({ shop, onClose, onSaved }: { shop: Row; onClose: () => vo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-base font-bold text-slate-900">Connect {shop.name}</h2>
-        <p className="mt-1 text-xs text-slate-500">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-[var(--radius-card)] bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-base font-bold text-ink">Connect {shop.name}</h2>
+        <p className="mt-1 text-xs text-muted">
           In WordPress: WooCommerce → Settings → Advanced → REST API → Add key (Read access).
         </p>
 
-        <label className="mt-4 block text-xs font-medium text-slate-600">Store URL</label>
+        <label className="mt-4 block text-xs font-medium text-muted">Store URL</label>
         <input value={wooUrl} onChange={(e) => setWooUrl(e.target.value)} placeholder="https://mazzetti.no"
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          className="mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-sm" />
 
-        <label className="mt-3 block text-xs font-medium text-slate-600">Consumer key</label>
+        <label className="mt-3 block text-xs font-medium text-muted">Consumer key</label>
         <input value={wooKey} onChange={(e) => setWooKey(e.target.value)} placeholder="ck_…"
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          className="mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-sm" />
 
-        <label className="mt-3 block text-xs font-medium text-slate-600">Consumer secret</label>
+        <label className="mt-3 block text-xs font-medium text-muted">Consumer secret</label>
         <input type="password" value={wooSecret} onChange={(e) => setWooSecret(e.target.value)} placeholder="cs_…"
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          className="mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-sm" />
 
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-xs text-slate-600">Cancel</button>
+          <button onClick={onClose} className="px-3 py-2 text-xs text-muted">Cancel</button>
           <button onClick={save} disabled={busy}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
+            className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60">
             {busy ? 'Saving…' : 'Save'}
           </button>
         </div>

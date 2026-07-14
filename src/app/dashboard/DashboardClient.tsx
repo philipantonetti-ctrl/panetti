@@ -1,24 +1,41 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { TopBar } from '@/components/TopBar'
-import { KpiCard } from '@/components/KpiCard'
-import { Money, Percent } from '@/components/Money'
-import { CompareTable } from '@/components/CompareTable'
-import { Leaderboard } from '@/components/Leaderboard'
-import { DateRangePicker } from '@/components/DateRangePicker'
-import { ShopSelector, type Shop } from '@/components/ShopSelector'
-import type { EngineResult } from '@/lib/metrics/types'
+import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { ShopFilter, type Shop } from '@/components/filters/ShopFilter'
+import { DateFilter } from '@/components/filters/DateFilter'
+import { StatStrip } from '@/components/dashboard/StatStrip'
+import { TrendChart } from '@/components/dashboard/TrendChart'
+import { CompareTable } from '@/components/dashboard/CompareTable'
+import { Leaderboard } from '@/components/dashboard/Leaderboard'
+import { PRESET_LABELS, type Preset } from '@/lib/dates'
+import type { EngineResult, Figures } from '@/lib/metrics/types'
 import type { LeaderboardRow } from '@/lib/metrics/ambassadors'
-import type { Preset } from '@/lib/dates'
+import type { SeriesPoint } from '@/lib/metrics/trend'
 
-type Payload = { metrics: EngineResult; leaderboard: LeaderboardRow[] }
+type Payload = {
+  metrics: EngineResult
+  previous: Figures
+  series: SeriesPoint[]
+  leaderboard: LeaderboardRow[]
+}
+
+/** Skeletons in the shape of the content — never a spinner in the middle of a table. */
+function Skeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="skeleton h-[104px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
+      <div className="skeleton h-[318px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
+      <div className="skeleton h-[280px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
+    </div>
+  )
+}
 
 export function DashboardClient({ email, shops }: { email: string; shops: Shop[] }) {
   const [preset, setPreset] = useState<Preset | 'custom'>('this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [selected, setSelected] = useState<string[]>([]) // empty = all
+  const [selected, setSelected] = useState<string[]>([])
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -48,13 +65,24 @@ export function DashboardClient({ email, shops }: { email: string; shops: Shop[]
   }, [preset, from, to, selected])
 
   const currency = data?.metrics.displayCurrency ?? 'USD'
-  const t = data?.metrics.total
+  const periodLabel =
+    preset === 'custom'
+      ? 'the period before'
+      : `the previous ${PRESET_LABELS[preset].toLowerCase()}`
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <TopBar email={email}>
-        <ShopSelector shops={shops} selected={selected} onChange={setSelected} />
-        <DateRangePicker
+    <AppShell email={email}>
+      <PageHeader
+        title="Dashboard"
+        subtitle={
+          shops.length > 1 && currency === 'USD'
+            ? 'Shops trade in different currencies — totals are consolidated to USD at each order’s own rate.'
+            : undefined
+        }
+      >
+        {/* Filters belong to the page, with the numbers they change. */}
+        <ShopFilter shops={shops} selected={selected} onChange={setSelected} />
+        <DateFilter
           preset={preset}
           from={from}
           to={to}
@@ -64,40 +92,34 @@ export function DashboardClient({ email, shops }: { email: string; shops: Shop[]
             if (next.to !== undefined) setTo(next.to)
           }}
         />
-      </TopBar>
+      </PageHeader>
 
-      <main className="mx-auto max-w-7xl p-5">
-        {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      <PageBody>
+        {error && (
+          <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-loss">
+            {error}
+          </div>
+        )}
 
         {loading && !data ? (
-          <div className="py-20 text-center text-sm text-slate-400">Loading…</div>
-        ) : t ? (
-          <>
-            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-              <KpiCard label="Net revenue" value={<Money minor={t.netRevenue} currency={currency} />} />
-              <KpiCard label="Orders" value={t.orders} />
-              <KpiCard label="Avg order value" value={<Money minor={t.avgOrderValue} currency={currency} />} />
-              <KpiCard label="Net profit" value={<Money minor={t.netProfit} currency={currency} />} tone="good" />
-              <KpiCard label="Net margin" value={<Percent value={t.netMargin} />} tone="good" />
-              <KpiCard label="Ambassador sales" value={<Money minor={t.ambassadorSales} currency={currency} />} tone="accent" />
-            </div>
+          <Skeleton />
+        ) : data ? (
+          <div className="space-y-4">
+            <StatStrip
+              total={data.metrics.total}
+              previous={data.previous}
+              currency={currency}
+              hint={periodLabel}
+            />
 
-            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Compare shops</h2>
-            <div className="mb-6">
-              <CompareTable result={data!.metrics} />
-            </div>
+            <TrendChart series={data.series} currency={currency} />
 
-            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">🏆 Top ambassadors</h2>
-            <Leaderboard rows={data!.leaderboard} currency={currency} />
+            <CompareTable result={data.metrics} />
 
-            {currency === 'USD' && shops.length > 1 && (
-              <p className="mt-4 text-[11px] text-slate-400">
-                Shops use different currencies, so figures are consolidated to USD at each order&apos;s own exchange rate.
-              </p>
-            )}
-          </>
+            <Leaderboard rows={data.leaderboard} currency={currency} />
+          </div>
         ) : null}
-      </main>
-    </div>
+      </PageBody>
+    </AppShell>
   )
 }

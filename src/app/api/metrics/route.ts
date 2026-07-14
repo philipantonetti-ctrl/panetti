@@ -4,6 +4,7 @@ import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { loadMetricsInput } from '@/lib/data/load'
 import { computeMetrics } from '@/lib/metrics'
 import { leaderboard } from '@/lib/metrics/ambassadors'
+import { dailySeries, previousRange } from '@/lib/metrics/trend'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { db } from '@/lib/db'
 
@@ -33,8 +34,16 @@ export async function GET(req: Request) {
       to,
     })
 
+    // The equally-long period before this one, so every figure can say which way it moved.
+    const before = previousRange(from, to)
+    const previous = computeMetrics(
+      await loadMetricsInput({ shopIds, from: before.from, to: before.to }),
+    ).total
+
     return NextResponse.json({
       metrics,
+      previous,
+      series: dailySeries(input), // revenue and profit per day, for the chart
       leaderboard: top.filter((r) => r.orders > 0).slice(0, 10),
       range: { from: from.toISOString(), to: to.toISOString() },
     })

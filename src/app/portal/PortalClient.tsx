@@ -1,12 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { TopBar } from '@/components/TopBar'
-import { KpiCard } from '@/components/KpiCard'
-import { Money } from '@/components/Money'
-import { DateRangePicker } from '@/components/DateRangePicker'
+import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { DateFilter } from '@/components/filters/DateFilter'
 import { formatMoney } from '@/lib/money'
-import type { Preset } from '@/lib/dates'
+import { PRESET_LABELS, type Preset } from '@/lib/dates'
 
 type Portal = {
   name: string
@@ -19,6 +17,30 @@ type Portal = {
   rank: number | null
   totalAmbassadors: number
   recent: { id: string; date: string; shop: string; sales: number; commission: number }[]
+}
+
+/** The same stat vocabulary as the admin dashboard — one system, two audiences. */
+function Stat({
+  label,
+  value,
+  hero = false,
+}: {
+  label: string
+  value: React.ReactNode
+  hero?: boolean
+}) {
+  return (
+    <div className="px-5 py-4">
+      <p className="text-[11px] font-semibold tracking-wide text-faint">{label}</p>
+      <p
+        className={`num mt-1 font-semibold text-ink ${
+          hero ? 'text-[32px] leading-none tracking-tight' : 'text-[17px]'
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  )
 }
 
 export function PortalClient({ email }: { email: string }) {
@@ -44,10 +66,17 @@ export function PortalClient({ email }: { email: string }) {
       .finally(() => setLoading(false))
   }, [preset, from, to])
 
+  const firstName = data?.name.split(' ')[0] ?? ''
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <TopBar email={email} hideNav>
-        <DateRangePicker
+    <AppShell email={email} nav={false}>
+      <PageHeader
+        title={firstName ? `Hi ${firstName}` : 'Your performance'}
+        subtitle={
+          data ? `Everything earned with your code ${data.codes.join(', ') || '—'}.` : undefined
+        }
+      >
+        <DateFilter
           preset={preset}
           from={from}
           to={to}
@@ -57,66 +86,87 @@ export function PortalClient({ email }: { email: string }) {
             if (next.to !== undefined) setTo(next.to)
           }}
         />
-      </TopBar>
+      </PageHeader>
 
-      <main className="mx-auto max-w-4xl p-5">
+      <PageBody>
         {loading && !data ? (
-          <div className="py-20 text-center text-sm text-slate-400">Loading…</div>
+          <div className="space-y-4">
+            <div className="skeleton h-[104px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
+            <div className="skeleton h-[280px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
+          </div>
         ) : data ? (
-          <>
-            <h1 className="text-lg font-bold text-slate-900">Hi {data.name.split(' ')[0]} 👋</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Here is how your code{' '}
-              <strong className="text-violet-700">{data.codes.join(', ') || '—'}</strong> is performing.
-            </p>
-
-            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-              <KpiCard label="Your sales" value={<Money minor={data.sales} currency={data.currency} />} />
-              <KpiCard label="Orders" value={data.orders} />
-              <KpiCard
-                label="Your commission"
-                value={<Money minor={data.commission} currency={data.currency} />}
-                tone="good"
-              />
-              <KpiCard
-                label="Your rank"
+          <div className="space-y-4">
+            <section className="grid grid-cols-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface sm:grid-cols-2 lg:grid-cols-[minmax(240px,1.1fr)_repeat(3,1fr)]">
+              <div className="border-b border-line lg:border-b-0 lg:border-r">
+                <Stat label="YOUR SALES" value={formatMoney(data.sales, data.currency)} hero />
+              </div>
+              <div className="border-b border-line lg:border-b-0 lg:border-r">
+                <Stat label="ORDERS" value={data.orders} />
+              </div>
+              <div className="border-b border-line lg:border-b-0 lg:border-r">
+                <Stat label="YOUR COMMISSION" value={formatMoney(data.commission, data.currency)} />
+              </div>
+              <Stat
+                label="YOUR RANK"
                 value={
                   data.rank ? (
-                    <span>#{data.rank} <span className="text-xs font-medium text-slate-400">of {data.totalAmbassadors}</span></span>
-                  ) : '—'
+                    <span>
+                      #{data.rank}{' '}
+                      <span className="text-[12px] font-medium text-muted">
+                        of {data.totalAmbassadors}
+                      </span>
+                    </span>
+                  ) : (
+                    '—'
+                  )
                 }
-                tone="accent"
               />
-            </div>
+            </section>
 
-            <h2 className="mb-2 mt-6 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Recent orders with your code
-            </h2>
+            <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+              <div className="flex items-center justify-between px-5 py-3.5">
+                <h2 className="text-[13px] font-semibold text-ink">Orders with your code</h2>
+                <p className="text-[12px] text-muted">
+                  {preset === 'custom' ? 'Selected period' : PRESET_LABELS[preset]}
+                </p>
+              </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="w-full text-xs">
+              <table className="w-full border-collapse text-[13px]">
                 <thead>
-                  <tr className="bg-slate-50 text-right text-slate-500">
-                    <th className="px-3 py-2.5 text-left font-medium">Date</th>
-                    <th className="px-3 py-2.5 text-left font-medium">Shop</th>
-                    <th className="px-3 py-2.5 font-medium">Sale</th>
-                    <th className="px-3 py-2.5 font-medium">Your commission</th>
+                  <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                    <th className="px-5 py-2 text-left">Date</th>
+                    <th className="px-4 py-2 text-left">Shop</th>
+                    <th className="px-4 py-2 text-right">Sale</th>
+                    <th className="px-5 py-2 text-right">Your commission</th>
                   </tr>
                 </thead>
-                <tbody className="text-right text-slate-700">
+
+                <tbody>
                   {data.recent.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-10 text-center text-slate-400">
-                        No orders with your code in this period yet.
+                      <td colSpan={4} className="px-5 py-12 text-center text-[13px] text-muted">
+                        No orders with your code in this period yet. Share your code and they will
+                        appear here.
                       </td>
                     </tr>
                   ) : (
                     data.recent.map((o) => (
-                      <tr key={o.id} className="border-t border-slate-100">
-                        <td className="px-3 py-2.5 text-left">{new Date(o.date).toLocaleDateString()}</td>
-                        <td className="px-3 py-2.5 text-left">{o.shop}</td>
-                        <td className="px-3 py-2.5">{formatMoney(o.sales, data.currency)}</td>
-                        <td className="px-3 py-2.5 font-semibold text-emerald-600">
+                      <tr
+                        key={o.id}
+                        className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-panel"
+                      >
+                        <td className="num px-5 py-2.5 text-muted">
+                          {new Date(o.date).toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </td>
+                        <td className="px-4 py-2.5 text-ink">{o.shop}</td>
+                        <td className="num px-4 py-2.5 text-right text-ink">
+                          {formatMoney(o.sales, data.currency)}
+                        </td>
+                        <td className="num px-5 py-2.5 text-right font-semibold text-gain">
                           {formatMoney(o.commission, data.currency)}
                         </td>
                       </tr>
@@ -124,15 +174,15 @@ export function PortalClient({ email }: { email: string }) {
                   )}
                 </tbody>
               </table>
-            </div>
+            </section>
 
-            <p className="mt-4 text-[11px] text-slate-400">
-              You earn {(data.commissionRate * 100).toFixed(0)}% of the net sale value of every order that uses
-              your code. Figures are shown in USD.
+            <p className="text-[12px] text-muted">
+              You earn {(data.commissionRate * 100).toFixed(0)}% of the net sale value of every order
+              placed with your code. Figures shown in {data.currency}.
             </p>
-          </>
+          </div>
         ) : null}
-      </main>
-    </div>
+      </PageBody>
+    </AppShell>
   )
 }

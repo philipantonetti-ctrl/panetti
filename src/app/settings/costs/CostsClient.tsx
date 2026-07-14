@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { TopBar } from '@/components/TopBar'
+import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { formatMoney, toMajor } from '@/lib/money'
-import type { Shop } from '@/components/ShopSelector'
+import type { Shop } from '@/components/filters/ShopFilter'
 
 type Product = {
   id: string
@@ -20,7 +20,7 @@ type Product = {
 function ProductImage({ product }: { product: Product }) {
   if (!product.imageUrl) {
     return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-300">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line bg-panel text-decor">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <circle cx="8.5" cy="8.5" r="1.5" />
@@ -34,7 +34,7 @@ function ProductImage({ product }: { product: Product }) {
     <img
       src={product.imageUrl}
       alt=""
-      className="h-10 w-10 shrink-0 rounded-lg border border-slate-200 object-cover"
+      className="h-10 w-10 shrink-0 rounded-[var(--radius-control)] border border-line object-cover"
     />
   )
 }
@@ -65,76 +65,107 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
   const missing = products.filter((p) => p.missingCost).length
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <TopBar email={email} />
+    <AppShell email={email}>
+      <PageHeader
+        title="Product costs"
+        subtitle="Every product ever sold appears here. Enter a cost and it is used for profit from the date you choose."
+      >
+        <select
+          value={shopId}
+          aria-label="Shop"
+          onChange={(e) => setShopId(e.target.value)}
+          className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-[13px] text-ink"
+        >
+          {shops.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} ({s.currency})
+            </option>
+          ))}
+        </select>
 
-      <main className="mx-auto max-w-6xl p-5">
-        <h1 className="text-lg font-bold text-slate-900">Product costs</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Every product ever sold appears here. Fill in the cost and it will be used for profit from the
-          date you choose.
-        </p>
+        <label className="flex items-center gap-2 rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-[13px] text-ink">
+          <input
+            type="checkbox"
+            checked={onlyMissing}
+            onChange={(e) => setOnlyMissing(e.target.checked)}
+            className="accent-[var(--color-accent)]"
+          />
+          Only missing costs
+        </label>
+      </PageHeader>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <select
-            value={shopId}
-            onChange={(e) => setShopId(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            {shops.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.currency})
-              </option>
-            ))}
-          </select>
+      <PageBody>
+        {missing > 0 && (
+          <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-warn-soft px-4 py-3 text-[13px] text-warn">
+            <strong className="font-semibold">
+              {missing} product{missing > 1 ? 's' : ''} without a cost.
+            </strong>{' '}
+            Their profit is overstated until you enter one — we never guess a cost.
+          </div>
+        )}
 
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} className="accent-violet-700" />
-            Only missing costs
-          </label>
-
-          {missing > 0 && (
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-              ⚠️ {missing} product{missing > 1 ? 's' : ''} without a cost
-            </span>
-          )}
-        </div>
-
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-xs">
+        <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+          <table className="w-full border-collapse text-[13px]">
             <thead>
-              <tr className="bg-slate-50 text-right text-slate-500">
-                <th className="px-3 py-2.5 text-left font-medium">Product</th>
-                <th className="px-3 py-2.5 font-medium">Selling price</th>
-                <th className="px-3 py-2.5 font-medium">Cost per item</th>
-                <th className="px-3 py-2.5 font-medium">Handling</th>
-                <th className="px-3 py-2.5" />
+              <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
+                <th className="px-5 py-2 text-left">Product</th>
+                <th className="px-4 py-2 text-right">Selling price</th>
+                <th className="px-4 py-2 text-right">Cost per item</th>
+                <th className="px-4 py-2 text-right">Handling</th>
+                <th className="px-5 py-2" />
               </tr>
             </thead>
-            <tbody className="text-right text-slate-700">
+
+            <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="px-3 py-10 text-center text-slate-400">Loading…</td></tr>
+                [...Array(4)].map((_, i) => (
+                  <tr key={i} className="border-b border-line last:border-b-0">
+                    <td colSpan={5} className="px-5 py-3">
+                      <div className="skeleton h-9 w-full" />
+                    </td>
+                  </tr>
+                ))
               ) : shown.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-10 text-center text-slate-400">No products.</td></tr>
+                <tr>
+                  <td colSpan={5} className="px-5 py-12 text-center text-[13px] text-muted">
+                    No products yet. They appear here automatically once a customer buys one.
+                  </td>
+                </tr>
               ) : (
                 shown.map((p) => (
-                  <tr key={p.id} className={`border-t border-slate-100 ${p.missingCost ? 'bg-amber-50/60' : ''}`}>
-                    <td className="px-3 py-2.5 text-left">
+                  <tr
+                    key={p.id}
+                    className={`border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-panel ${
+                      p.missingCost ? 'bg-warn-soft' : ''
+                    }`}
+                  >
+                    <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
                         <ProductImage product={p} />
-                        <div>
-                          <div className="font-medium text-slate-900">{p.name}</div>
-                          <div className="text-[11px] text-slate-400">SKU {p.sku}</div>
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-ink">{p.name}</div>
+                          <div className="num text-[11px] text-faint">SKU {p.sku}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5">{formatMoney(p.sellingPrice, currency)}</td>
-                    <td className={`px-3 py-2.5 ${p.missingCost ? 'font-semibold text-amber-700' : ''}`}>
+                    <td className="num px-4 py-3 text-right text-ink">
+                      {formatMoney(p.sellingPrice, currency)}
+                    </td>
+                    <td
+                      className={`num px-4 py-3 text-right ${
+                        p.missingCost ? 'font-semibold text-warn' : 'text-ink'
+                      }`}
+                    >
                       {formatMoney(p.costPerItem, currency)}
                     </td>
-                    <td className="px-3 py-2.5">{formatMoney(p.handlingCost, currency)}</td>
-                    <td className="px-3 py-2.5">
-                      <button onClick={() => setEditing(p)} className="font-semibold text-violet-700 hover:underline">
+                    <td className="num px-4 py-3 text-right text-ink">
+                      {formatMoney(p.handlingCost, currency)}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <button
+                        onClick={() => setEditing(p)}
+                        className="rounded-[var(--radius-control)] border border-line px-2.5 py-1 text-[12px] font-medium text-ink transition-colors duration-150 hover:bg-panel"
+                      >
                         Edit
                       </button>
                     </td>
@@ -143,8 +174,8 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
               )}
             </tbody>
           </table>
-        </div>
-      </main>
+        </section>
+      </PageBody>
 
       {editing && (
         <CostModal
@@ -157,7 +188,7 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
           }}
         />
       )}
-    </div>
+    </AppShell>
   )
 }
 
@@ -181,13 +212,13 @@ function ApplyStep({
   onChange: (c: ApplyChoice) => void
 }) {
   const Option = ({ value, children }: { value: ApplyChoice['apply']; children: React.ReactNode }) => (
-    <label className="flex cursor-pointer items-start gap-3 rounded-lg px-1 py-2.5 text-sm text-black hover:bg-slate-50">
+    <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-control)] px-1 py-2.5 text-sm text-ink hover:bg-panel">
       <input
         type="radio"
         name={`apply-${step}`}
         checked={choice.apply === value}
         onChange={() => onChange({ apply: value, from: choice.from })}
-        className="mt-0.5 accent-violet-700"
+        className="mt-0.5 accent-[var(--color-accent)]"
       />
       <span>{children}</span>
     </label>
@@ -195,7 +226,7 @@ function ApplyStep({
 
   return (
     <>
-      <h2 className="border-b border-slate-100 pb-3 text-base font-bold text-black">
+      <h2 className="border-b border-line pb-3 text-base font-bold text-ink">
         {title} ({step})
       </h2>
 
@@ -219,7 +250,7 @@ function ApplyStep({
               aria-label={`${title} apply from`}
               value={choice.from ?? TODAY()}
               onChange={(e) => onChange({ apply: 'DATE_RANGE', from: e.target.value })}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-black"
+              className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-1.5 text-sm text-ink"
             />
           </div>
         )}
@@ -264,34 +295,34 @@ function CostModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-[var(--radius-card)] bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         {stage === 'costs' && (
           <>
-            <h2 className="text-base font-bold text-black">Update cost</h2>
-            <p className="mt-0.5 text-xs text-slate-500">{product.name}</p>
+            <h2 className="text-base font-bold text-ink">Update cost</h2>
+            <p className="mt-0.5 text-xs text-muted">{product.name}</p>
 
-            <label htmlFor="cogs" className="mt-4 block text-xs font-medium text-slate-700">
+            <label htmlFor="cogs" className="mt-4 block text-xs font-medium text-ink">
               Cost per item ({currency})
             </label>
             <input
               id="cogs" type="number" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black"
+              className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink"
             />
 
-            <label htmlFor="handling" className="mt-3 block text-xs font-medium text-slate-700">
+            <label htmlFor="handling" className="mt-3 block text-xs font-medium text-ink">
               Handling cost ({currency})
             </label>
             <input
               id="handling" type="number" step="0.01" value={handling} onChange={(e) => setHandling(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black"
+              className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink"
             />
 
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={onClose} className="px-3 py-2 text-xs text-slate-700 hover:text-black">Cancel</button>
+              <button onClick={onClose} className="px-3 py-2 text-xs text-ink hover:text-ink">Cancel</button>
               <button
                 onClick={() => setStage('cogs')}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
               >
                 Next
               </button>
@@ -302,11 +333,11 @@ function CostModal({
         {stage === 'cogs' && (
           <>
             <ApplyStep title="Update COGS" step="1/2" choice={costApply} onChange={setCostApply} />
-            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
-              <button onClick={onClose} className="px-3 py-2 text-xs text-slate-700 hover:text-black">Cancel</button>
+            <div className="mt-5 flex justify-end gap-2 border-t border-line pt-4">
+              <button onClick={onClose} className="px-3 py-2 text-xs text-ink hover:text-ink">Cancel</button>
               <button
                 onClick={() => setStage('handling')}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+                className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
               >
                 Save &amp; Next
               </button>
@@ -317,12 +348,12 @@ function CostModal({
         {stage === 'handling' && (
           <>
             <ApplyStep title="Update Handling Cost" step="2/2" choice={handlingApply} onChange={setHandlingApply} />
-            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
-              <button onClick={() => setStage('cogs')} className="px-3 py-2 text-xs text-slate-700 hover:text-black">Back</button>
+            <div className="mt-5 flex justify-end gap-2 border-t border-line pt-4">
+              <button onClick={() => setStage('cogs')} className="px-3 py-2 text-xs text-ink hover:text-ink">Back</button>
               <button
                 onClick={save}
                 disabled={busy}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
               >
                 {busy ? 'Saving…' : 'Save'}
               </button>

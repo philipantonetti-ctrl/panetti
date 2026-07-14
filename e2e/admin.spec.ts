@@ -16,9 +16,9 @@ test('admin sees the dashboard with real figures', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
 
   await expect(page).toHaveURL(/\/dashboard/)
-  // "Net revenue" legitimately appears twice (KPI card label AND a table column
-  // header) — .first() takes the KPI card, which is what this is checking for.
-  await expect(page.getByText('Net revenue').first()).toBeVisible()
+
+  // Profit is the headline figure — the question the page exists to answer.
+  await expect(page.getByText('NET PROFIT', { exact: true })).toBeVisible()
   await expect(page.getByText('Compare shops')).toBeVisible()
 
   // The total row must show actual money, not a dash or a zero.
@@ -27,13 +27,30 @@ test('admin sees the dashboard with real figures', async ({ page }) => {
   await expect(total).toContainText('$')
 })
 
+test('the dashboard charts revenue and profit over time', async ({ page }) => {
+  await signIn(page, 'admin@ecom.test')
+
+  await expect(page.getByText('Revenue & profit over time')).toBeVisible()
+  // Two series, so both must be named — identity never rests on colour alone.
+  await expect(page.getByText('Net revenue').first()).toBeVisible()
+  await expect(page.getByText('Net profit').first()).toBeVisible()
+})
+
+test('every headline figure says which way it moved', async ({ page }) => {
+  await signIn(page, 'admin@ecom.test')
+  await expect(page.getByText('NET PROFIT', { exact: true })).toBeVisible()
+
+  // A delta against the previous period, signed so colour never carries it alone.
+  await expect(page.getByText(/[+−]\d+\.\d%/).first()).toBeVisible()
+})
+
 test('changing the date range changes the numbers', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
   await expect(page.getByText('Compare shops')).toBeVisible()
 
   const before = await page.getByRole('row', { name: /Total/ }).innerText()
 
-  await page.getByRole('button', { name: /📅/ }).click()
+  await page.getByRole('button', { name: 'Date range' }).click()
   await page.getByRole('button', { name: 'Today', exact: true }).click()
 
   await expect(async () => {
@@ -50,12 +67,27 @@ test('isolating a single shop switches to that shop own currency', async ({ page
   await expect(page.getByRole('row', { name: /Total/ })).toContainText('$')
 
   // Isolate one Norwegian shop with its "Only" button.
-  await page.getByRole('button', { name: /🏬/ }).click()
+  await page.getByRole('button', { name: 'Shops' }).click()
   await page.getByRole('button', { name: 'Only Mazzetti.no' }).click()
 
   // One NOK shop -> figures are in NOK, not USD.
   await expect(page.getByRole('row', { name: /Total/ })).toContainText('NOK', { timeout: 10_000 })
   await expect(page.getByRole('row', { name: /Total/ })).not.toContainText('$')
+})
+
+test('the compare table sorts by any column', async ({ page }) => {
+  await signIn(page, 'admin@ecom.test')
+  await expect(page.getByText('Compare shops')).toBeVisible()
+
+  const firstShop = () => page.locator('tbody tr td:first-child').first().innerText()
+  const byProfit = await firstShop()
+
+  // Sorting by orders must reorder the table.
+  await page.getByRole('button', { name: 'Sort by Orders' }).click()
+
+  await expect(async () => {
+    expect(await firstShop()).not.toBe(byProfit)
+  }).toPass({ timeout: 5_000 })
 })
 
 test('the leaderboard names the top ambassador', async ({ page }) => {
