@@ -30,6 +30,7 @@ export async function GET(req: Request) {
           id: p.id,
           sku: p.sku,
           name: p.name,
+          imageUrl: p.imageUrl,
           sellingPrice: p.lastPrice,
           costPerItem: current.costPerItem,
           handlingCost: current.handlingCost,

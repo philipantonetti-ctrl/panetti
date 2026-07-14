@@ -29,6 +29,7 @@ export function TopBar({
             <a href="/settings/costs" className="hover:text-white">Product costs</a>
             <a href="/settings/expenses" className="hover:text-white">Expenses</a>
             <a href="/settings/shops" className="hover:text-white">Shops</a>
+            <a href="/settings" className="hover:text-white">Settings</a>
           </nav>
         )}
       </div>

@@ -8,6 +8,7 @@ export type WooLineItem = {
   quantity: number
   subtotal: string // BEFORE discount, excl tax
   total: string // AFTER discount, excl tax  <- this is net
+  image?: { id?: string; src?: string } // WooCommerce sends the product photo here
 }
 
 export type WooOrder = {
@@ -43,6 +44,7 @@ export type MappedOrder = {
     externalProductId: string
     sku: string
     name: string
+    imageUrl: string | null
     quantity: number
     unitPrice: number
     lineNetTotal: number
@@ -85,6 +87,7 @@ export function mapOrder(woo: WooOrder): MappedOrder {
       externalProductId: String(li.product_id),
       sku: li.sku || String(li.product_id),
       name: li.name,
+      imageUrl: li.image?.src ?? null,
       quantity: li.quantity,
       unitPrice: li.quantity ? Math.round(num(li.subtotal) / li.quantity) : 0,
       lineNetTotal: num(li.total),

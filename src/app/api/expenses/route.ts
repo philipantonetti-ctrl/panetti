@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { toMinor } from '@/lib/money'
 import { utcDay } from '@/lib/dates'
 import { CATEGORIES, CATEGORY_GROUPS } from '@/lib/expense-categories'
+import { EXPENSE_STATUSES, fieldsForStatus } from '@/lib/expense-status'
 
 export { CATEGORIES }
 
@@ -17,8 +18,8 @@ const Body = z.object({
   currency: z.string().length(3),
   recurrence: z.enum(['ONE_TIME', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']),
   startDate: z.string(),
+  status: z.enum(EXPENSE_STATUSES).default('ACTIVE'),
   endDate: z.string().nullable().optional(),
-  active: z.boolean().default(true),
 })
 
 export async function GET(req: Request) {
@@ -49,6 +50,10 @@ export async function POST(req: Request) {
     if (!parsed.success) return NextResponse.json({ error: 'Invalid expense' }, { status: 400 })
     const d = parsed.data
 
+    // An ENDED expense keeps its end date rather than being switched off, so the
+    // months it actually ran are still charged and past profit never shifts.
+    const { active, endDate } = fieldsForStatus(d.status, d.endDate)
+
     const expense = await db.operationalExpense.create({
       data: {
         shopId: d.shopId,
@@ -58,8 +63,8 @@ export async function POST(req: Request) {
         currency: d.currency.toUpperCase(),
         recurrence: d.recurrence,
         startDate: utcDay(new Date(d.startDate)),
-        endDate: d.endDate ? utcDay(new Date(d.endDate)) : null,
-        active: d.active,
+        endDate,
+        active,
       },
     })
 

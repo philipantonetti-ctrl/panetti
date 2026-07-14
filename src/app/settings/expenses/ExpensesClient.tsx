@@ -5,6 +5,12 @@ import { TopBar } from '@/components/TopBar'
 import { formatMoney } from '@/lib/money'
 import type { Shop } from '@/components/ShopSelector'
 import type { CategoryGroup } from '@/lib/expense-categories'
+import {
+  EXPENSE_STATUSES,
+  EXPENSE_STATUS_LABEL,
+  statusOf,
+  type ExpenseStatus,
+} from '@/lib/expense-status'
 
 type Expense = {
   id: string
@@ -14,6 +20,7 @@ type Expense = {
   currency: string
   recurrence: string
   startDate: string
+  endDate: string | null
   active: boolean
 }
 
@@ -108,11 +115,20 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
                       {e.recurrence !== 'ONE_TIME' && <span className="text-slate-400"> (spread daily)</span>}
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        e.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                      }`}>
-                        {e.active ? 'Active' : 'Paused'}
-                      </span>
+                      {(() => {
+                        const s = statusOf({ endDate: e.endDate ? new Date(e.endDate) : null })
+                        const tone =
+                          s === 'ACTIVE'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : s === 'ENDED'
+                              ? 'bg-slate-100 text-slate-500'
+                              : 'bg-amber-50 text-amber-700'
+                        return (
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>
+                            {EXPENSE_STATUS_LABEL[s]}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       <button onClick={() => remove(e.id)} className="text-slate-400 hover:text-red-600">Delete</button>
@@ -131,6 +147,7 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
           categoryGroups={categoryGroups}
           onClose={() => setAdding(false)}
           onSaved={() => { setAdding(false); load() }}
+          onAdded={load}
         />
       )}
     </div>
@@ -138,12 +155,13 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
 }
 
 function ExpenseModal({
-  shop, categoryGroups, onClose, onSaved,
+  shop, categoryGroups, onClose, onSaved, onAdded,
 }: {
   shop: Shop
   categoryGroups: CategoryGroup[]
   onClose: () => void
   onSaved: () => void
+  onAdded: () => void // saved, but the modal stays open for the next one
 }) {
   const first = categoryGroups[0]
   const [label, setLabel] = useState('')
@@ -154,9 +172,11 @@ function ExpenseModal({
   const [currency, setCurrency] = useState(shop.currency)
   const [recurrence, setRecurrence] = useState('MONTHLY')
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10))
+  const [status, setStatus] = useState<ExpenseStatus>('ACTIVE')
+  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10))
   const [busy, setBusy] = useState(false)
 
-  async function save() {
+  async function save(andAddAnother = false) {
     setBusy(true)
     await fetch('/api/expenses', {
       method: 'POST',
@@ -169,10 +189,19 @@ function ExpenseModal({
         currency,
         recurrence,
         startDate,
-        active: true,
+        status,
+        endDate: status === 'ACTIVE' ? null : endDate,
       }),
     })
     setBusy(false)
+
+    if (andAddAnother) {
+      // Keep the shop, currency and recurrence; clear what changes each time.
+      setLabel('')
+      setAmount('')
+      onAdded()
+      return
+    }
     onSaved()
   }
 
@@ -189,6 +218,31 @@ function ExpenseModal({
               {RECURRENCES.map((r) => <option key={r} value={r}>{RECURRENCE_LABEL[r]}</option>)}
             </select>
           </div>
+
+          <div>
+            <label htmlFor="status" className="block text-xs font-medium text-slate-700">Expense Status</label>
+            <select id="status" value={status} onChange={(e) => setStatus(e.target.value as ExpenseStatus)}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black">
+              {EXPENSE_STATUSES.map((s) => (
+                <option key={s} value={s}>{EXPENSE_STATUS_LABEL[s]}</option>
+              ))}
+            </select>
+          </div>
+
+          {status !== 'ACTIVE' && (
+            <div className="col-span-2">
+              <label htmlFor="endDate" className="block text-xs font-medium text-slate-700">
+                {status === 'ENDED' ? 'Final payment' : 'End date'}
+              </label>
+              <p className="text-[11px] text-slate-500">
+                {status === 'ENDED'
+                  ? 'The expense stops here — the months it ran still count.'
+                  : 'The expense keeps running until this date.'}
+              </p>
+              <input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black" />
+            </div>
+          )}
 
           <div>
             <label htmlFor="category" className="block text-xs font-medium text-slate-700">Category</label>
@@ -214,6 +268,13 @@ function ExpenseModal({
           </div>
 
           <div className="col-span-2">
+            <label htmlFor="metric" className="block text-xs font-medium text-slate-700">Metric Allocation</label>
+            {/* Locked, as in BeProfit — everything on this screen is an operational expense. */}
+            <input id="metric" value="Operational Expenses" disabled readOnly
+              className="mt-1 w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500" />
+          </div>
+
+          <div className="col-span-2">
             <label htmlFor="amount" className="block text-xs font-medium text-slate-700">Expense Amount</label>
             <div className="mt-1 flex">
               <select value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency"
@@ -236,7 +297,11 @@ function ExpenseModal({
 
         <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
           <button onClick={onClose} className="px-3 py-2 text-xs text-slate-700 hover:text-black">Cancel</button>
-          <button onClick={save} disabled={busy || !label}
+          <button onClick={() => save(true)} disabled={busy || !label}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+            Save and add another
+          </button>
+          <button onClick={() => save(false)} disabled={busy || !label}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
             {busy ? 'Saving…' : 'Save and close'}
           </button>

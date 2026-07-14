@@ -33,6 +33,7 @@ model Product {
   externalId   String   // WooCommerce product id
   sku          String
   name         String
+  imageUrl     String?  // product photo, from WooCommerce
   lastPrice    Int      @default(0) // last seen selling price, minor units
 
   shop  Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)

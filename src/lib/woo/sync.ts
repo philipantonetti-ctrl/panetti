@@ -63,9 +63,16 @@ export async function syncShop(shopId: string): Promise<SyncResult> {
             externalId: item.externalProductId,
             sku: item.sku,
             name: item.name,
+            imageUrl: item.imageUrl,
             lastPrice: item.unitPrice,
           },
-          update: { name: item.name, sku: item.sku, lastPrice: item.unitPrice },
+          update: {
+            name: item.name,
+            sku: item.sku,
+            lastPrice: item.unitPrice,
+            // Keep the photo we already have if this order didn't carry one.
+            ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
+          },
         })
         productIds.set(item.externalProductId, product.id)
       }

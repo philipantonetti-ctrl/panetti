@@ -57,6 +57,18 @@ describe('mapOrder', () => {
     expect(o.items[0].externalProductId).toBe('9001')
   })
 
+  it('picks up the product photo WooCommerce sends with the line item', () => {
+    const o = mapOrder({
+      ...woo,
+      line_items: [{ ...woo.line_items[0], image: { id: '55', src: 'https://shop.no/pro-x.jpg' } }],
+    })
+    expect(o.items[0].imageUrl).toBe('https://shop.no/pro-x.jpg')
+  })
+
+  it('has no photo when WooCommerce sends none, rather than crashing', () => {
+    expect(mapOrder(woo).items[0].imageUrl).toBeNull()
+  })
+
   it('carries the status through so refunds can be excluded downstream', () => {
     expect(mapOrder({ ...woo, status: 'refunded' }).status).toBe('refunded')
   })

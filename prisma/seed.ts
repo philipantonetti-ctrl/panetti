@@ -26,13 +26,29 @@ const SHOPS = [
   { name: 'Bellino.no', currency: 'NOK' },
 ]
 
+/**
+ * Sample product thumbnails.
+ *
+ * These are tiny inline SVGs, so the sample data looks right with no network and no
+ * image files to ship. When a real WooCommerce shop is connected, the sync overwrites
+ * these with the shop's real product photos.
+ */
+function thumb(label: string, bg: string, fg: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80">` +
+    `<rect width="80" height="80" rx="12" fill="${bg}"/>` +
+    `<text x="40" y="50" font-family="Arial" font-size="26" font-weight="bold" text-anchor="middle" fill="${fg}">${label}</text>` +
+    `</svg>`
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
+}
+
 const CATALOGUE = [
-  { sku: 'MACBL661', name: 'Mazzetti Advanced Comfort - Massasjestol (Svart)', price: 4499900, cost: 1599000, handling: 2400 },
-  { sku: 'MACBE661', name: 'Mazzetti Advanced Comfort - Massasjestol (Beige)', price: 4499900, cost: 1599000, handling: 2400 },
-  { sku: 'MLCBL510', name: 'Mazzetti Lite Comfort - Massasjestol (Svart)', price: 2999900, cost: 821000, handling: 2400 },
-  { sku: 'MLCBE510', name: 'Mazzetti Lite Comfort - Massasjestol (Beige)', price: 2999900, cost: 821000, handling: 2500 },
-  { sku: 'MPX-001', name: 'Massasjepistol Pro X', price: 249900, cost: 78000, handling: 1200 },
-  { sku: 'MPM-002', name: 'Massasjepistol Mini', price: 129900, cost: 41000, handling: 900 },
+  { sku: 'MACBL661', name: 'Mazzetti Advanced Comfort - Massasjestol (Svart)', price: 4499900, cost: 1599000, handling: 2400, image: thumb('AC', '#2e1a47', '#ffffff') },
+  { sku: 'MACBE661', name: 'Mazzetti Advanced Comfort - Massasjestol (Beige)', price: 4499900, cost: 1599000, handling: 2400, image: thumb('AC', '#d8cfc0', '#5b4636') },
+  { sku: 'MLCBL510', name: 'Mazzetti Lite Comfort - Massasjestol (Svart)', price: 2999900, cost: 821000, handling: 2400, image: thumb('LC', '#3f3f46', '#ffffff') },
+  { sku: 'MLCBE510', name: 'Mazzetti Lite Comfort - Massasjestol (Beige)', price: 2999900, cost: 821000, handling: 2500, image: thumb('LC', '#e5ddd0', '#5b4636') },
+  { sku: 'MPX-001', name: 'Massasjepistol Pro X', price: 249900, cost: 78000, handling: 1200, image: thumb('PX', '#6b4fc0', '#ffffff') },
+  { sku: 'MPM-002', name: 'Massasjepistol Mini', price: 129900, cost: 41000, handling: 900, image: thumb('MI', '#0ea5e9', '#ffffff') },
 ]
 
 const AMBASSADORS = [
@@ -111,6 +127,7 @@ async function main() {
           externalId: String(1000 + i),
           sku: item.sku,
           name: item.name,
+          imageUrl: item.image,
           lastPrice: item.price,
         },
       })
