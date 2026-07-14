@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { TopBar } from '@/components/TopBar'
 import { formatMoney } from '@/lib/money'
 import type { Shop } from '@/components/ShopSelector'
+import type { CategoryGroup } from '@/lib/expense-categories'
 
 type Expense = {
   id: string
@@ -24,7 +25,7 @@ const RECURRENCE_LABEL: Record<string, string> = {
 export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] }) {
   const [shopId, setShopId] = useState(shops[0]?.id ?? '')
   const [expenses, setExpenses] = useState<Expense[]>([])
-  const [categories, setCategories] = useState<string[]>([])
+  const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([])
   const [adding, setAdding] = useState(false)
   const [loading, setLoading] = useState(true)
 
@@ -35,7 +36,7 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
       .then((r) => r.json())
       .then((d) => {
         setExpenses(d.expenses ?? [])
-        setCategories(d.categories ?? [])
+        setCategoryGroups(d.categoryGroups ?? [])
       })
       .finally(() => setLoading(false))
   }
@@ -127,7 +128,7 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
       {adding && shop && (
         <ExpenseModal
           shop={shop}
-          categories={categories}
+          categoryGroups={categoryGroups}
           onClose={() => setAdding(false)}
           onSaved={() => { setAdding(false); load() }}
         />
@@ -137,15 +138,18 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
 }
 
 function ExpenseModal({
-  shop, categories, onClose, onSaved,
+  shop, categoryGroups, onClose, onSaved,
 }: {
   shop: Shop
-  categories: string[]
+  categoryGroups: CategoryGroup[]
   onClose: () => void
   onSaved: () => void
 }) {
+  const first = categoryGroups[0]
   const [label, setLabel] = useState('')
-  const [category, setCategory] = useState(categories[0] ?? 'Other')
+  const [category, setCategory] = useState(
+    first ? `${first.group} > ${first.options[0]}` : 'Other > Other',
+  )
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState(shop.currency)
   const [recurrence, setRecurrence] = useState('MONTHLY')
@@ -179,49 +183,59 @@ function ExpenseModal({
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-slate-600">Recurrence</label>
-            <select value={recurrence} onChange={(e) => setRecurrence(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <label htmlFor="recurrence" className="block text-xs font-medium text-slate-700">Recurrence</label>
+            <select id="recurrence" value={recurrence} onChange={(e) => setRecurrence(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black">
               {RECURRENCES.map((r) => <option key={r} value={r}>{RECURRENCE_LABEL[r]}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600">Category</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            <label htmlFor="category" className="block text-xs font-medium text-slate-700">Category</label>
+            {/* Grouped exactly like BeProfit: Overhead, Financing, Marketing, Operations,
+                Fulfillment, Other, Transaction fees. */}
+            <select id="category" value={category} onChange={(e) => setCategory(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black">
+              {categoryGroups.map((g) => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.options.map((option) => {
+                    const value = `${g.group} > ${option}`
+                    return <option key={value} value={value}>{option}</option>
+                  })}
+                </optgroup>
+              ))}
             </select>
           </div>
 
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600">Label</label>
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="E.g. subscriptions, payroll"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <label htmlFor="label" className="block text-xs font-medium text-slate-700">Expense Label</label>
+            <input id="label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="E.g. subscriptions, payroll"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black placeholder:text-slate-400" />
           </div>
 
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600">Amount</label>
+            <label htmlFor="amount" className="block text-xs font-medium text-slate-700">Expense Amount</label>
             <div className="mt-1 flex">
-              <select value={currency} onChange={(e) => setCurrency(e.target.value)}
-                className="rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-2 py-2 text-sm">
+              <select value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency"
+                className="rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-2 py-2 text-sm text-black">
                 {['NOK', 'SEK', 'DKK', 'EUR', 'USD'].map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-              <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
-                placeholder="Enter amount"
-                className="w-full rounded-r-lg border border-slate-300 px-3 py-2 text-sm" />
+              <input id="amount" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+                placeholder="Enter amount here"
+                className="w-full rounded-r-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black placeholder:text-slate-400" />
             </div>
           </div>
 
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-slate-600">First payment</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+            <label htmlFor="firstPayment" className="block text-xs font-medium text-slate-700">First payment</label>
+            <p className="text-[11px] text-slate-500">1st time you paid for this expense</p>
+            <input id="firstPayment" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black" />
           </div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
-          <button onClick={onClose} className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900">Cancel</button>
+          <button onClick={onClose} className="px-3 py-2 text-xs text-slate-700 hover:text-black">Cancel</button>
           <button onClick={save} disabled={busy || !label}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
             {busy ? 'Saving…' : 'Save and close'}

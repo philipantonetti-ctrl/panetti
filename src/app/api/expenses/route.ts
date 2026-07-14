@@ -5,25 +5,9 @@ import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { toMinor } from '@/lib/money'
 import { utcDay } from '@/lib/dates'
+import { CATEGORIES, CATEGORY_GROUPS } from '@/lib/expense-categories'
 
-export const CATEGORIES = [
-  'Overhead > Office',
-  'Overhead > Employees',
-  'Overhead > Subscriptions',
-  'Overhead > Equipment',
-  'Marketing > Digital Marketing',
-  'Marketing > Design',
-  'Marketing > Website Expenses',
-  'Marketing > Content',
-  'Operations > COGS',
-  'Operations > Product Samples',
-  'Operations > Importing Fees',
-  'Fulfillment > Fulfillment',
-  'Fulfillment > Warehouse',
-  'Fulfillment > Handling',
-  'Transaction fees',
-  'Other',
-] as const
+export { CATEGORIES }
 
 const Body = z.object({
   shopId: z.string().min(1),
@@ -49,7 +33,8 @@ export async function GET(req: Request) {
       orderBy: { label: 'asc' },
     })
 
-    return NextResponse.json({ expenses, categories: CATEGORIES })
+    // Send the grouped shape so the picker can show headings (Overhead, Marketing, …).
+    return NextResponse.json({ expenses, categories: CATEGORIES, categoryGroups: CATEGORY_GROUPS })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
     return NextResponse.json({ error: 'Could not load expenses' }, { status: 500 })

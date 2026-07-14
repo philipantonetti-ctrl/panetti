@@ -12,11 +12,14 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/*
+ * This dashboard is a LIGHT interface — every screen is dark text on white cards.
+ * We deliberately do NOT follow the OS dark-mode preference: doing so flipped the
+ * text to a near-white foreground on those white cards and made it unreadable.
+ * Pinning the scheme to light keeps every screen legible, whatever the OS is set to.
+ */
+:root {
+  color-scheme: light;
 }
 
 body {
