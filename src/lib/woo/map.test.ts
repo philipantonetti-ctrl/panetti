@@ -74,4 +74,10 @@ describe('mapOrder', () => {
     expect(o.discountTotal).toBe(0)
     expect(o.shippingCharged).toBe(0)
   })
+
+  it('produces a stable external id, so syncing twice updates rather than duplicates', () => {
+    const a = mapOrder(woo)
+    const b = mapOrder({ ...woo, status: 'processing' }) // same order, changed status
+    expect(a.externalId).toBe(b.externalId)
+  })
 })
