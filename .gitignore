@@ -6,6 +6,7 @@ node_modules/
 out/
 dist/
 build/
+*.tsbuildinfo
 
 # Environment / secrets
 .env
