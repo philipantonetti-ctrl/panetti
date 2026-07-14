@@ -46,7 +46,7 @@ export function PortalClient({ email }: { email: string }) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <TopBar email={email}>
+      <TopBar email={email} hideNav>
         <DateRangePicker
           preset={preset}
           from={from}
