@@ -8,6 +8,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     globals: true,
-    env: { DATABASE_URL: 'file:./dev.db' },
+    env: {
+      DATABASE_URL: 'file:./dev.db',
+      AUTH_SECRET: 'test-secret-change-me-in-production-0123456789abcdef',
+    },
   },
 })
