@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// All money fields are INTEGER MINOR UNITS (øre/cents) in the SHOP'S OWN currency.
+// Conversion to USD happens at read time only — never stored converted.
+
+model Shop {
+  id         String   @id @default(cuid())
+  name       String
+  currency   String   // "NOK" | "SEK" | "DKK" | "EUR" | "USD"
+  wooUrl     String?
+  wooKey     String?
+  wooSecret  String?
+  active     Boolean  @default(true)
+  lastSyncAt DateTime?
+  createdAt  DateTime @default(now())
+
+  orders    Order[]
+  products  Product[]
+  expenses  OperationalExpense[]
+  codes     AmbassadorCode[]
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  shopId       String
+  externalId   String   // WooCommerce product id
+  sku          String
+  name         String
+  lastPrice    Int      @default(0) // last seen selling price, minor units
+
+  shop  Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  costs ProductCost[]
+  items OrderItem[]
+
+  @@unique([shopId, externalId])
+}
+
+// A product's cost is a TIMELINE, not a single number.
+// The cost of an order line is the row with the latest effectiveFrom <= order date.
+model ProductCost {
+  id            String   @id @default(cuid())
+  productId     String
+  costPerItem   Int      @default(0) // minor units, shop currency
+  handlingCost  Int      @default(0) // minor units, shop currency
+  effectiveFrom DateTime
+  createdAt     DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, effectiveFrom])
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  shopId          String
+  externalId      String   // WooCommerce order id
+  number          String
+  placedAt        DateTime
+  status          String   // "completed" | "processing" | "refunded" | "cancelled" | ...
+  currency        String   // shop's currency at time of order
+
+  grossSales      Int      // line value BEFORE discount, excl VAT
+  discountTotal   Int      // excl VAT
+  netSales        Int      // grossSales - discountTotal. THE COMMISSION BASE. Stored for audit.
+  shippingCharged Int      // excl VAT
+  taxTotal        Int      // VAT — recorded, never counted as revenue
+  total           Int      // what the customer actually paid, incl VAT
+
+  couponCode      String?
+  ambassadorId    String?  // resolved AT SYNC TIME and frozen — changing codes never rewrites history
+
+  shop       Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  ambassador Ambassador? @relation(fields: [ambassadorId], references: [id], onDelete: SetNull)
+  items      OrderItem[]
+
+  @@unique([shopId, externalId])
+  @@index([shopId, placedAt])
+  @@index([ambassadorId, placedAt])
+}
+
+model OrderItem {
+  id           String @id @default(cuid())
+  orderId      String
+  productId    String
+  sku          String
+  name         String
+  quantity     Int
+  unitPrice    Int    // minor units, excl VAT
+  lineNetTotal Int    // after discount, excl VAT
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model OperationalExpense {
+  id         String    @id @default(cuid())
+  shopId     String
+  label      String
+  category   String    // "Overhead > Employees", "Fulfillment > Warehouse", ...
+  amount     Int       // minor units, in `currency`
+  currency   String
+  recurrence String    // "ONE_TIME" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
+  startDate  DateTime  // first payment
+  endDate    DateTime?
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, startDate])
+}
+
+model Ambassador {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  commissionRate Float    @default(0.10) // 10%
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  codes  AmbassadorCode[]
+  orders Order[]
+  user   User?
+}
+
+model AmbassadorCode {
+  id           String  @id @default(cuid())
+  ambassadorId String
+  shopId       String? // null = valid on all shops
+  code         String  @unique // stored UPPERCASE; matching is case-insensitive
+
+  ambassador Ambassador @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+  shop       Shop?      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  passwordHash String
+  role         String  // "ADMIN" | "AMBASSADOR"
+  ambassadorId String? @unique
+
+  ambassador Ambassador? @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+}
+
+model FxRate {
+  id    String   @id @default(cuid())
+  date  DateTime // the day this rate applies to (UTC midnight)
+  base  String   // e.g. "NOK"
+  quote String   // e.g. "USD"
+  rate  Float    // 1 base = `rate` quote
+
+  @@unique([date, base, quote])
+  @@index([base, quote, date])
+}
