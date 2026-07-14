@@ -49,7 +49,7 @@ export default function LoginPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500"
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-violet-500"
         />
 
         <label htmlFor="password" className="mt-4 block text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -62,7 +62,7 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500"
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-black outline-none focus:border-violet-500"
         />
 
         {error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
