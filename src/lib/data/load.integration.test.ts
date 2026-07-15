@@ -3,7 +3,7 @@ import { loadMetricsInput } from './load'
 import { computeMetrics } from '../metrics'
 import { db } from '../db'
 
-// These run against the seeded dev.db. Run `npm run db:seed` first.
+// These run against the seeded database. Run `npm run db:seed` first.
 describe('engine against the seeded database', () => {
   it('produces figures for every shop over the last 6 months', async () => {
     const from = new Date('2026-01-01')
