@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { useToast } from '@/components/toast/useToast'
 
 type Code = { id: string; code: string }
 
@@ -31,17 +32,6 @@ const INPUT =
 async function errorFrom(res: Response, fallback: string): Promise<string> {
   const data = (await res.json().catch(() => null)) as { error?: string } | null
   return data?.error ?? fallback
-}
-
-function ErrorNote({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      className="rounded-[var(--radius-control)] border border-line bg-warn-soft px-4 py-3 text-xs text-warn"
-    >
-      {message}
-    </div>
-  )
 }
 
 /** A percent field that says so — 10 means 10%, never 0.1. */
@@ -101,10 +91,10 @@ function StatusPill({ row }: { row: Row }) {
 }
 
 export function AmbassadorsClient({ email }: { email: string }) {
+  const toast = useToast()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
 
@@ -120,17 +110,17 @@ export function AmbassadorsClient({ email }: { email: string }) {
     try {
       const res = await fetch('/api/ambassadors')
       if (!res.ok) {
-        setError(await errorFrom(res, 'Could not load ambassadors'))
+        toast.error(await errorFrom(res, 'Could not load ambassadors'))
         return
       }
       const data = (await res.json()) as { ambassadors?: Row[] }
       setRows(data.ambassadors ?? [])
     } catch {
-      setError('Could not reach the server')
+      toast.error('Could not reach the server')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [toast])
 
   useEffect(() => {
     void load()
@@ -142,7 +132,6 @@ export function AmbassadorsClient({ email }: { email: string }) {
    */
   const send: Send = async (key, url, method, body) => {
     setPending(key)
-    setError(null)
     try {
       const res = await fetch(url, {
         method,
@@ -150,13 +139,13 @@ export function AmbassadorsClient({ email }: { email: string }) {
         body: JSON.stringify(body),
       })
       if (!res.ok) {
-        setError(await errorFrom(res, 'That did not work'))
+        toast.error(await errorFrom(res, 'That did not work'))
         return false
       }
       await load()
       return true
     } catch {
-      setError('Could not reach the server')
+      toast.error('Could not reach the server')
       return false
     } finally {
       setPending(null)
@@ -189,10 +178,9 @@ export function AmbassadorsClient({ email }: { email: string }) {
     if (!window.confirm(`Delete ${row.name}? This cannot be undone.`)) return
     const ok = await send(`delete-${row.id}`, `/api/ambassadors/${row.id}`, 'DELETE', {})
 
-    // The refusal renders above the table, and this button is per-row — press it far
-    // enough down a long list and the reason lands off-screen, reading as "nothing
-    // happened". A refusal nobody sees is the same as no refusal at all.
-    if (!ok) window.scrollTo({ top: 0, behavior: 'smooth' })
+    // A destructive act deserves confirmation; send() already toasts a refusal,
+    // and the toast is visible regardless of scroll position.
+    if (ok) toast.success(`${row.name} deleted`)
   }
 
   async function copyInvite(row: Row) {
@@ -201,14 +189,15 @@ export function AmbassadorsClient({ email }: { email: string }) {
     // Built here, not on the server: whatever host the admin is on is the host the
     // ambassador must land on. Nothing to configure, nothing to get wrong.
     const link = `${window.location.origin}${row.invitePath}`
-    setError(null)
     try {
       await navigator.clipboard.writeText(link)
+      // The button label itself flips to "Copied" for 2s — that confirmation is
+      // already co-located with the click. A toast here would only repeat it.
       setCopied(row.id)
       setTimeout(() => setCopied(null), 2000)
     } catch {
       // No clipboard (old browser, insecure origin) — show the link rather than lose it.
-      setError(`Could not reach the clipboard. The invite link is ${link}`)
+      toast.error(`Could not reach the clipboard. The invite link is ${link}`)
     }
   }
 
@@ -222,13 +211,6 @@ export function AmbassadorsClient({ email }: { email: string }) {
       />
 
       <PageBody>
-        {/* While the modal is open it carries the error — this one would sit behind it. */}
-        {!editing && error && (
-          <div className="mb-4">
-            <ErrorNote message={error} />
-          </div>
-        )}
-
         <form
           data-testid="add-ambassador"
           onSubmit={add}
@@ -378,13 +360,9 @@ export function AmbassadorsClient({ email }: { email: string }) {
         <EditModal
           key={editing.id}
           row={editing}
-          error={error}
           pending={pending}
           send={send}
-          onClose={() => {
-            setEditingId(null)
-            setError(null)
-          }}
+          onClose={() => setEditingId(null)}
         />
       )}
     </AppShell>
@@ -397,13 +375,11 @@ export function AmbassadorsClient({ email }: { email: string }) {
  */
 function EditModal({
   row,
-  error,
   pending,
   send,
   onClose,
 }: {
   row: Row
-  error: string | null
   pending: string | null
   send: Send
   onClose: () => void
@@ -491,12 +467,6 @@ function EditModal({
             {pending === 'add-code' ? 'Adding…' : 'Add code'}
           </button>
         </div>
-
-        {error && (
-          <div className="mt-3">
-            <ErrorNote message={error} />
-          </div>
-        )}
 
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-2 text-xs text-muted">
