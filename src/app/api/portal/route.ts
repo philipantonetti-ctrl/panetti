@@ -78,7 +78,12 @@ export async function GET(req: Request) {
     // Note: ranking compares raw netSales across currencies. Good enough for a rank,
     // and it never exposes another ambassador's figures — only a position.
     const better = everyone.filter((row) => (row._sum.netSales ?? 0) > (everyone.find((r) => r.ambassadorId === me.id)?._sum.netSales ?? 0)).length
-    const totalAmbassadors = await db.ambassador.count({ where: { active: true } })
+    // rank and total must come from the SAME population, or you get "#9 of 8".
+    // The population is everyone with an attributed order in range; `active` plays no
+    // part, because a deactivated ambassador's past sales genuinely happened.
+    // If I have no orders in range I am absent from `everyone`, so count me in myself.
+    const iAmInPopulation = everyone.some((row) => row.ambassadorId === me.id)
+    const totalAmbassadors = iAmInPopulation ? everyone.length : everyone.length + 1
 
     return NextResponse.json({
       name: me.name,
