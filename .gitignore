@@ -13,11 +13,6 @@ build/
 .env.local
 .env*.local
 
-# Database (local SQLite)
-*.db
-*.db-journal
-prisma/dev.db*
-
 # Logs
 *.log
 npm-debug.log*
