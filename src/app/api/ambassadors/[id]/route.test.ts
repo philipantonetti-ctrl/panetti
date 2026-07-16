@@ -20,14 +20,14 @@ const asAdmin = async () => {
   })
 }
 
-const patch = (body: unknown) =>
+const patch = (body: unknown, target = id) =>
   PATCH(
     new Request('http://localhost/api/ambassadors/x', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
-    { params: Promise.resolve({ id }) },
+    { params: Promise.resolve({ id: target }) },
   )
 
 beforeEach(async () => {
@@ -107,6 +107,15 @@ describe('PATCH /api/ambassadors/[id]', () => {
     expect((await patch({ commissionPercent: -5 })).status).toBe(400)
   })
 
+  // 0% is a valid setting the schema allows: zeroing a commission is not the
+  // same as deactivating. A truthiness guard would silently drop it.
+  it('sets a zero percent', async () => {
+    await asAdmin()
+    expect((await patch({ commissionPercent: 0 })).status).toBe(200)
+    const after = await db.ambassador.findUniqueOrThrow({ where: { id } })
+    expect(after.commissionRate).toBe(0)
+  })
+
   // The column name must not be usable as a request field.
   it('ignores a commissionRate field — the API speaks percent only', async () => {
     await asAdmin()
@@ -117,14 +126,6 @@ describe('PATCH /api/ambassadors/[id]', () => {
 
   it('404s for an unknown ambassador', async () => {
     await asAdmin()
-    const res = await PATCH(
-      new Request('http://localhost/api/ambassadors/nope', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'X' }),
-      }),
-      { params: Promise.resolve({ id: 'does-not-exist' }) },
-    )
-    expect(res.status).toBe(404)
+    expect((await patch({ name: 'X' }, 'does-not-exist')).status).toBe(404)
   })
 })
