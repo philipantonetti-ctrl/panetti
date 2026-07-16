@@ -49,6 +49,7 @@ export function PortalClient({ email }: { email: string }) {
   const [to, setTo] = useState('')
   const [data, setData] = useState<Portal | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -60,9 +61,24 @@ export function PortalClient({ email }: { email: string }) {
     }
 
     setLoading(true)
+    setError('')
     fetch(`/api/portal?${params}`)
-      .then((r) => r.json())
-      .then(setData)
+      .then(async (r) => {
+        // Without this check a 403 pipes {error: "..."} straight into `data`
+        // as though it were figures.
+        if (!r.ok) {
+          const body = await r.json().catch(() => null)
+          setError(body?.error ?? 'Could not load your figures')
+          return null
+        }
+        return r.json()
+      })
+      .then((json) => {
+        if (json) setData(json)
+      })
+      // A load failure stays on the page: a toast that faded would leave an
+      // ambassador staring at a blank portal with no explanation.
+      .catch(() => setError('Could not reach the server'))
       .finally(() => setLoading(false))
   }, [preset, from, to])
 
@@ -91,6 +107,12 @@ export function PortalClient({ email }: { email: string }) {
       </PageHeader>
 
       <PageBody>
+        {error && (
+          <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-loss">
+            {error}
+          </div>
+        )}
+
         {loading && !data ? (
           <div className="space-y-4">
             <div className="skeleton h-[104px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />

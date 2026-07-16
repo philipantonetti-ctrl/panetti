@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { PasswordField } from '@/components/PasswordField'
 import { checkNewPassword, checkProfile } from '@/lib/auth/account-rules'
+import { useToast } from '@/components/toast/useToast'
 
 type Account = {
   email: string
@@ -53,6 +54,7 @@ function Field({
 }
 
 export function AccountClient({ email, isAmbassador }: { email: string; isAmbassador: boolean }) {
+  const toast = useToast()
   const [account, setAccount] = useState<Account | null>(null)
 
   // Basic info
@@ -93,11 +95,11 @@ export function AccountClient({ email, isAmbassador }: { email: string; isAmbass
     const data = await res.json()
     setSavingInfo(false)
 
-    setInfoNote(
-      res.ok
-        ? { tone: 'ok', text: 'Saved.' }
-        : { tone: 'bad', text: data.error ?? 'Could not save your details.' },
-    )
+    // An action result, not form state: the toast reports it and the form is
+    // left alone. `infoNote` stays for validation, which must persist while
+    // they fix the field.
+    if (res.ok) toast.success('Saved.')
+    else toast.error(data.error ?? 'Could not save your details.')
   }
 
   async function savePassword(e: React.FormEvent) {
@@ -120,11 +122,13 @@ export function AccountClient({ email, isAmbassador }: { email: string; isAmbass
     setSavingPassword(false)
 
     if (res.ok) {
-      setPasswordNote({ tone: 'ok', text: 'Your password has been changed.' })
+      toast.success('Your password has been changed.')
       setCurrent('')
       setNext('')
       setConfirm('')
     } else {
+      // "Your current password is wrong" is about a field they must retype, so
+      // it stays inline where they are looking.
       setPasswordNote({ tone: 'bad', text: data.error ?? 'Could not change your password.' })
     }
   }

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { useToast } from '@/components/toast/useToast'
 
 type Row = {
   id: string
@@ -119,16 +120,29 @@ function ConnectModal({ shop, onClose, onSaved }: { shop: Row; onClose: () => vo
   const [wooKey, setWooKey] = useState('')
   const [wooSecret, setWooSecret] = useState('')
   const [busy, setBusy] = useState(false)
+  const toast = useToast()
 
   async function save() {
     setBusy(true)
-    await fetch(`/api/shops/${shop.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wooUrl, wooKey, wooSecret }),
-    })
-    setBusy(false)
-    onSaved()
+    try {
+      const res = await fetch(`/api/shops/${shop.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wooUrl, wooKey, wooSecret }),
+      })
+      if (!res.ok) {
+        // Keep the modal open: the keys they just pasted are still in it, and
+        // closing would tell them the store is connected when it is not.
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the connection')
+        return
+      }
+      toast.success(`${shop.name} connected`)
+      onSaved()
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(false) // always — the button must never stick on "Saving…"
+    }
   }
 
   return (
