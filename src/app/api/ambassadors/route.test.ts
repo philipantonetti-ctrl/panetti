@@ -25,10 +25,10 @@ const post = (body: unknown) =>
   }))
 
 const EMAIL = 'plan-test-amb@example.local'
+const OTHER_EMAIL = 'plan-test-amb-2@example.local'
 
 async function cleanup() {
-  const existing = await db.ambassador.findUnique({ where: { email: EMAIL } })
-  if (existing) await db.ambassador.delete({ where: { id: existing.id } })
+  await db.ambassador.deleteMany({ where: { email: { in: [EMAIL, OTHER_EMAIL] } } })
 }
 
 beforeEach(cleanup)
@@ -92,6 +92,13 @@ describe('POST /api/ambassadors', () => {
     expect(again.status).toBe(409)
   })
 
+  it('rejects a duplicate code with 409, even in a different case', async () => {
+    await asAdmin()
+    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, code: 'PLANTEST10' })
+    const again = await post({ name: 'Other', email: OTHER_EMAIL, commissionPercent: 10, code: 'plantest10' })
+    expect(again.status).toBe(409)
+  })
+
   it('gives a new ambassador an invite link, since they have no login yet', async () => {
     await asAdmin()
     await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, code: 'INVITE10' })
@@ -101,5 +108,15 @@ describe('POST /api/ambassadors', () => {
     expect(row.onboarded).toBe(false)
     expect(row.invitePath).toMatch(/^\/invite\/.+/)
     expect(row.commissionPercent).toBeCloseTo(10)
+  })
+
+  it('returns a clean percent, with no float artifacts', async () => {
+    await asAdmin()
+    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 7, code: 'SEVEN7' })
+
+    const body = await (await GET()).json()
+    const row = body.ambassadors.find((a: { email: string }) => a.email === EMAIL)
+    expect(row.commissionPercent).toBe(7)        // exactly, not 7.000000000000001
+    expect(String(row.commissionPercent)).toBe('7')
   })
 })

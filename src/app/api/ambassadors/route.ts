@@ -31,7 +31,7 @@ export async function GET() {
         id: a.id,
         name: a.name,
         email: a.email,
-        commissionPercent: a.commissionRate * 100,
+        commissionPercent: Math.round(a.commissionRate * 10000) / 100,
         active: a.active,
         codes: a.codes.map((c) => ({ id: c.id, code: c.code })),
         onboarded: a.user !== null,
