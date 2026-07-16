@@ -163,8 +163,9 @@ convention, and it must be pinned by a test asserting that posting `10` yields a
   It deliberately does **not** remove them from the admin leaderboard: `ambassadors.ts` never reads
   `active`, and that is correct — sales they made in a past period genuinely happened, and a
   historical report must not rewrite itself when someone leaves.
-- **Partial updates.** `PATCH` accepts any subset of `{ name, commissionRate, active }`. Absent
-  fields are left untouched; it is never a full replace.
+- **Partial updates.** `PATCH` accepts any subset of `{ name, commissionPercent, active }` — the
+  percent-named field from 6.4, never `commissionRate`. Absent fields are left untouched; it is
+  never a full replace. Sending `commissionRate` is stripped by `zod` and has no effect.
 - **Codes** — `POST { code }` adds one; `DELETE { codeId }` (id in the JSON body, matching how the
   other routes take their payload) removes one. Removing a code never alters past orders, because
   `Order.ambassadorId` was frozen at sync. An ambassador must keep **at least one** code: the API
