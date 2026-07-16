@@ -60,9 +60,16 @@ export async function DELETE(req: Request, { params }: Ctx) {
       )
     }
 
-    // Scoped by ambassadorId as well as id: a code may never be deleted via
-    // someone else's ambassador.
-    await db.ambassadorCode.deleteMany({ where: { id: parsed.data.codeId, ambassadorId: id } })
+    // Scoped by ambassadorId as well as id: a code may never be deleted via someone
+    // else's ambassador. deleteMany reports how many rows it matched — zero means the
+    // code does not exist, or belongs to another ambassador. Both are a 404 here, and
+    // saying so is what stops a no-op being reported as success.
+    const removed = await db.ambassadorCode.deleteMany({
+      where: { id: parsed.data.codeId, ambassadorId: id },
+    })
+    if (removed.count === 0) {
+      return NextResponse.json({ error: 'No such code for this ambassador' }, { status: 404 })
+    }
     return NextResponse.json({ ok: true })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })

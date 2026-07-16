@@ -31,7 +31,9 @@ const call = (fn: typeof POST | typeof DELETE, body: unknown, target = id) =>
   )
 
 beforeEach(async () => {
-  await db.ambassador.deleteMany({ where: { email: EMAIL } })
+  await db.ambassador.deleteMany({
+    where: { email: { in: [EMAIL, 'plan-codes-other@example.local'] } },
+  })
   const a = await db.ambassador.create({
     data: { name: 'Codes', email: EMAIL, commissionRate: 0.1, codes: { create: { code: 'FIRST10' } } },
   })
@@ -39,7 +41,9 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-  await db.ambassador.deleteMany({ where: { email: EMAIL } })
+  await db.ambassador.deleteMany({
+    where: { email: { in: [EMAIL, 'plan-codes-other@example.local'] } },
+  })
 })
 
 describe('POST — add a code', () => {
@@ -111,6 +115,12 @@ describe('DELETE — remove a code', () => {
   // Codes must never be deletable across ambassadors.
   it("refuses to delete another ambassador's code", async () => {
     await asAdmin()
+    // Give the caller a SECOND code first, so the "keep at least one" guard cannot
+    // intercept and mask what this test is actually for. Without this the test
+    // passes off the wrong guard and proves nothing.
+    await call(POST, { code: 'MINE20' })
+    expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(2)
+
     const other = await db.ambassador.create({
       data: {
         name: 'Other', email: 'plan-codes-other@example.local', commissionRate: 0.1,
@@ -120,12 +130,17 @@ describe('DELETE — remove a code', () => {
     })
     try {
       const victim = other.codes[0]
-      // `id` (our ambassador) must not be able to delete a code belonging to `other`.
       const res = await call(DELETE, { codeId: victim.id })
-      expect(res.status).not.toBe(200)
+      expect(res.status).toBe(404) // the RIGHT status, not merely "not 200"
       expect(await db.ambassadorCode.count({ where: { ambassadorId: other.id } })).toBe(2)
     } finally {
       await db.ambassador.delete({ where: { id: other.id } })
     }
+  })
+
+  it('404s for a codeId that does not exist at all', async () => {
+    await asAdmin()
+    await call(POST, { code: 'MINE20' }) // clear the "keep at least one" guard
+    expect((await call(DELETE, { codeId: 'no-such-code-id' })).status).toBe(404)
   })
 })
