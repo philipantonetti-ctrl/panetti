@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { formatMoney, toMajor } from '@/lib/money'
 import type { Shop } from '@/components/filters/ShopFilter'
+import { useToast } from '@/components/toast/useToast'
 
 type Product = {
   id: string
@@ -297,21 +298,34 @@ function CostModal({
   const [costApply, setCostApply] = useState<ApplyChoice>({ apply: 'FUTURE' })
   const [handlingApply, setHandlingApply] = useState<ApplyChoice>({ apply: 'FUTURE' })
   const [busy, setBusy] = useState(false)
+  const toast = useToast()
 
   async function save() {
     setBusy(true)
-    await fetch(`/api/products/${product.id}/cost`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        costPerItem: parseFloat(cost) || 0,
-        costApply,
-        handlingCost: parseFloat(handling) || 0,
-        handlingApply,
-      }),
-    })
-    setBusy(false)
-    onSaved()
+    try {
+      const res = await fetch(`/api/products/${product.id}/cost`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          costPerItem: parseFloat(cost) || 0,
+          costApply,
+          handlingCost: parseFloat(handling) || 0,
+          handlingApply,
+        }),
+      })
+      if (!res.ok) {
+        // Keep the modal open: their numbers are still in it, and closing would
+        // silently discard the edit while showing the old value.
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the cost')
+        return
+      }
+      toast.success('Cost saved')
+      onSaved()
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(false) // always — the button must never stick on "Saving…"
+    }
   }
 
   return (
