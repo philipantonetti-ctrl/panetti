@@ -20,6 +20,11 @@ const TILES = [
     title: 'Shops',
     blurb: 'Connect your WooCommerce stores and sync their orders',
   },
+  {
+    href: '/settings/ambassadors',
+    title: 'Ambassadors',
+    blurb: 'Add ambassadors, send invite links and set what they earn',
+  },
 ]
 
 export default async function SettingsPage() {
