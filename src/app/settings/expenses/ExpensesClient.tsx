@@ -15,6 +15,7 @@ import {
 import { recurrenceDetail, finalPayment, formatDay } from '@/lib/expense-format'
 import { SearchableSelect, type SelectOption } from '@/components/SearchableSelect'
 import { allCurrencies, isConvertible } from '@/lib/currencies'
+import { useToast } from '@/components/toast/useToast'
 
 type Expense = {
   id: string
@@ -59,11 +60,15 @@ function SourceIcon() {
 }
 
 export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] }) {
+  const toast = useToast()
   const [shopId, setShopId] = useState(shops[0]?.id ?? '')
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([])
   const [adding, setAdding] = useState(false)
   const [loading, setLoading] = useState(true)
+  // A page-load failure, not an action: a toast fades and would leave an empty
+  // table reading as "you have no expenses" — a lie. Say so in the table itself.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // Table controls
   const [statusFilter, setStatusFilter] = useState<'ALL' | ExpenseStatus>('ALL')
@@ -78,16 +83,23 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
       // No shop to load for. Say so rather than spinning forever — expenses
       // belong to a shop, so there is genuinely nothing to fetch.
       setLoading(false)
+      setLoadError(null)
       return
     }
     setLoading(true)
+    setLoadError(null)
     fetch(`/api/expenses?shopId=${shopId}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setExpenses(d.expenses ?? [])
-        setCategoryGroups(d.categoryGroups ?? [])
+      .then(async (r) => {
+        const d = await r.json().catch(() => null)
+        if (!r.ok) {
+          setLoadError(d?.error ?? 'Could not load expenses')
+          return
+        }
+        setExpenses(d?.expenses ?? [])
+        setCategoryGroups(d?.categoryGroups ?? [])
         setSelected([])
       })
+      .catch(() => setLoadError('Could not reach the server'))
       .finally(() => setLoading(false))
   }
 
@@ -100,9 +112,33 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
   const noShops = shops.length === 0
 
   async function remove(ids: string[]) {
-    await Promise.all(ids.map((id) => fetch(`/api/expenses/${id}`, { method: 'DELETE' })))
-    setMenuFor(null)
-    load()
+    try {
+      const results = await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/expenses/${id}`, { method: 'DELETE' })
+            .then((res) => res.ok)
+            .catch(() => false),
+        ),
+      )
+      const failed = results.filter((ok) => !ok).length
+      if (failed === 0) return
+      if (failed === ids.length) {
+        // Every delete failed — say so plainly rather than leaving the rows
+        // there with no explanation.
+        toast.error(
+          ids.length === 1 ? 'Could not delete that expense.' : `Could not delete any of the ${ids.length} expenses.`,
+        )
+      } else {
+        // Some succeeded and some did not: report the truth, not a blanket
+        // success — Promise.all does not mean all-or-nothing.
+        toast.error(`Deleted ${ids.length - failed} of ${ids.length}. ${failed} could not be deleted.`)
+      }
+    } finally {
+      // Always close the menu and reload — the reload is what shows the true,
+      // post-delete state, whichever rows actually went.
+      setMenuFor(null)
+      load()
+    }
   }
 
   const filtered = expenses.filter((e) => {
@@ -238,6 +274,8 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
                       .
                     </td>
                   </tr>
+                ) : loadError ? (
+                  <tr><td colSpan={10} className="px-3 py-10 text-center text-faint">{loadError}</td></tr>
                 ) : shown.length === 0 ? (
                   <tr><td colSpan={10} className="px-3 py-10 text-center text-faint">No expenses.</td></tr>
                 ) : (
@@ -389,34 +427,47 @@ function ExpenseModal({
   const [status, setStatus] = useState<ExpenseStatus>('ACTIVE')
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10))
   const [busy, setBusy] = useState(false)
+  const toast = useToast()
 
   async function save(andAddAnother = false) {
     setBusy(true)
-    await fetch('/api/expenses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        shopId: shop.id,
-        label,
-        category,
-        amount: parseFloat(amount) || 0,
-        currency,
-        recurrence,
-        startDate,
-        status,
-        endDate: status === 'ACTIVE' ? null : endDate,
-      }),
-    })
-    setBusy(false)
-
-    if (andAddAnother) {
-      // Keep the shop, currency and recurrence; clear what changes each time.
-      setLabel('')
-      setAmount('')
-      onAdded()
-      return
+    try {
+      const res = await fetch('/api/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopId: shop.id,
+          label,
+          category,
+          amount: parseFloat(amount) || 0,
+          currency,
+          recurrence,
+          startDate,
+          status,
+          endDate: status === 'ACTIVE' ? null : endDate,
+        }),
+      })
+      if (!res.ok) {
+        // Keep the modal open: what they typed is still in it, and closing
+        // would silently discard the entry while the list shows nothing added.
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the expense')
+        return
+      }
+      if (andAddAnother) {
+        // Keep the shop, currency and recurrence; clear what changes each time.
+        setLabel('')
+        setAmount('')
+        toast.success('Expense added')
+        onAdded()
+        return
+      }
+      toast.success('Expense saved')
+      onSaved()
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(false)
     }
-    onSaved()
   }
 
   return (
