@@ -101,9 +101,13 @@ Attribution begins at the next sync. No login required.
 
 ### 6.2 The invite link
 
-`GET /api/ambassadors` returns each ambassador with an `inviteUrl` **only when they have no login
-yet**. "Copy invite link" therefore copies data already on the page — no extra endpoint, no extra
-round-trip, and no link is ever minted for someone already onboarded.
+`GET /api/ambassadors` returns each ambassador with an `invitePath` (e.g. `/invite/<token>`) **only
+when they have no login yet** — `null` otherwise. "Copy invite link" therefore copies data already on
+the page: no extra endpoint, no extra round-trip, and no link is ever minted for someone already
+onboarded.
+
+It is a **path**, not a full URL. The browser prepends `window.location.origin` when copying, so no
+base-URL environment variable has to be configured or kept in step across environments.
 
 The admin sends the link over whatever channel they already use. No email service is added.
 
@@ -137,13 +141,18 @@ happens **once, at the API boundary**, mirroring how `toMinor()` converts money 
 way in:
 
 ```
-UI input "10"  ->  POST { commissionRate: 10 }  ->  stored 0.1
+UI input "10"  ->  POST { commissionPercent: 10 }  ->  column commissionRate = 0.1
 ```
 
-`zod` validates `0 <= commissionRate <= 100` on the way in and the route divides by 100. Storing a
-percent by mistake would make commission **1000% of net sales** — the same class of defect as the
-minor-units convention, and it must be pinned by a test asserting that posting `10` yields a stored
-`0.1`.
+**The API field is named `commissionPercent`, never `commissionRate`.** The column is
+`commissionRate` and holds a fraction; giving the request field the same name while it carries a
+percent would put two meanings on one word, one boundary apart — which is exactly how this bug gets
+written. The name change is the guardrail. Responses convert back the same way, returning
+`commissionPercent: 10`.
+
+`zod` validates `0 <= commissionPercent <= 100` and the route divides by 100. Storing a percent by
+mistake would make commission **1000% of net sales** — the same class of defect as the minor-units
+convention, and it must be pinned by a test asserting that posting `10` yields a stored `0.1`.
 
 ### 6.5 Management
 
@@ -207,8 +216,9 @@ information:
 - **Security** (`api/invite/security.test.ts`): each of the four guards rejects. Specifically: a
   redeemed token cannot be reused; a token for ambassador A cannot create a login for B; a
   deactivated ambassador's token is refused.
-- **Percent/fraction** (`api/ambassadors/rate.test.ts`): posting `commissionRate: 10` stores `0.1`,
-  and a stored `0.1` renders as `10%`. Pins the convention in 6.4 against a 100× regression.
+- **Percent/fraction** (`api/ambassadors/route.test.ts`): posting `commissionPercent: 10` stores a
+  `commissionRate` of `0.1`, and the list returns it back as `commissionPercent: 10`. Pins the
+  convention in 6.4 against a 100× regression.
 - **E2E** (`e2e/ambassador-onboarding.spec.ts`): admin creates an ambassador → copies the invite link
   → opens it → sets a password → lands on `/portal` → **sees only their own figures**.
 
