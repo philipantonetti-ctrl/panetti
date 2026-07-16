@@ -1,7 +1,9 @@
 'use client'
 
+import { useContext } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { ToastContext } from '@/components/toast/useToast'
 
 /**
  * The app shell.
@@ -138,11 +140,27 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  // useContext directly, not the useToast() hook: AppShell wraps every page,
+  // including ones a test renders without a ToastProvider ancestor. useToast()
+  // throws in that case; here the toast is a courtesy, and the one thing that
+  // must always hold — never navigate to /login on a failed sign-out — does
+  // not depend on it being present.
+  const toast = useContext(ToastContext)
 
   async function signOut() {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
-    router.refresh()
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' })
+      if (!res.ok) {
+        // Do NOT navigate. Landing on /login while the cookie is still valid
+        // tells the user they are signed out when they are not.
+        toast?.error('Could not sign you out. Please try again.')
+        return
+      }
+      router.push('/login')
+      router.refresh()
+    } catch {
+      toast?.error('Could not reach the server. You are still signed in.')
+    }
   }
 
   const isActive = (href: string) =>
