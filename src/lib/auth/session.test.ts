@@ -22,6 +22,12 @@ describe('session', () => {
     expect(await verifySession('not-a-token')).toBeNull()
     expect(await verifySession('')).toBeNull()
   })
+
+  // An invite link is a bearer token in someone's inbox. It must never work as a login.
+  it('refuses an INVITE token, even though it is signed with the same secret', async () => {
+    const { signInvite } = await import('./invite')
+    expect(await verifySession(await signInvite('amb-123'))).toBeNull()
+  })
 })
 
 describe('password', () => {
