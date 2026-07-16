@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { formatMoney, toMajor } from '@/lib/money'
 import type { Shop } from '@/components/filters/ShopFilter'
@@ -48,7 +49,12 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
   const [loading, setLoading] = useState(true)
 
   function load() {
-    if (!shopId) return
+    if (!shopId) {
+      // No shop to load for. Say so rather than spinning forever — products
+      // belong to a shop, so there is genuinely nothing to fetch.
+      setLoading(false)
+      return
+    }
     setLoading(true)
     fetch(`/api/products?shopId=${shopId}`)
       .then((r) => r.json())
@@ -63,6 +69,9 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
 
   const shown = onlyMissing ? products.filter((p) => p.missingCost) : products
   const missing = products.filter((p) => p.missingCost).length
+  // Products arrive from a shop's orders. With no shop connected there is
+  // nothing to cost, so say that rather than blaming an empty catalogue.
+  const noShops = shops.length === 0
 
   return (
     <AppShell email={email}>
@@ -125,6 +134,17 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
                     </td>
                   </tr>
                 ))
+              ) : noShops ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-12 text-center text-[13px] text-muted">
+                    <span className="font-semibold text-ink">No shops connected yet.</span>{' '}
+                    Product costs belong to a shop —{' '}
+                    <Link href="/settings/shops" className="text-accent hover:underline">
+                      connect one first
+                    </Link>
+                    .
+                  </td>
+                </tr>
               ) : shown.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-12 text-center text-[13px] text-muted">

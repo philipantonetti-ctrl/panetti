@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { formatMoney } from '@/lib/money'
 import type { Shop } from '@/components/filters/ShopFilter'
@@ -73,7 +74,12 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
   const [menuFor, setMenuFor] = useState<string | null>(null)
 
   function load() {
-    if (!shopId) return
+    if (!shopId) {
+      // No shop to load for. Say so rather than spinning forever — expenses
+      // belong to a shop, so there is genuinely nothing to fetch.
+      setLoading(false)
+      return
+    }
     setLoading(true)
     fetch(`/api/expenses?shopId=${shopId}`)
       .then((r) => r.json())
@@ -89,6 +95,9 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
   useEffect(() => setPage(1), [statusFilter, search, perPage, shopId])
 
   const shop = shops.find((s) => s.id === shopId)
+  // An expense needs a shop to belong to, and its categories come from the shop's
+  // own fetch. With no shop there is nothing to show and nothing that could save.
+  const noShops = shops.length === 0
 
   async function remove(ids: string[]) {
     await Promise.all(ids.map((id) => fetch(`/api/expenses/${id}`, { method: 'DELETE' })))
@@ -156,12 +165,14 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
                   Delete {selected.length}
                 </button>
               )}
-              <button
-                onClick={() => setAdding(true)}
-                className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
-              >
-                + Add expense
-              </button>
+              {!noShops && (
+                <button
+                  onClick={() => setAdding(true)}
+                  className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
+                >
+                  + Add expense
+                </button>
+              )}
             </div>
           </div>
 
@@ -216,6 +227,17 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
               <tbody className="text-ink">
                 {loading ? (
                   <tr><td colSpan={10} className="px-3 py-10 text-center text-faint">Loading…</td></tr>
+                ) : noShops ? (
+                  <tr>
+                    <td colSpan={10} className="px-3 py-10 text-center text-faint">
+                      <span className="font-semibold text-ink">No shops connected yet.</span>{' '}
+                      Operational expenses belong to a shop —{' '}
+                      <Link href="/settings/shops" className="text-accent hover:underline">
+                        connect one first
+                      </Link>
+                      .
+                    </td>
+                  </tr>
                 ) : shown.length === 0 ? (
                   <tr><td colSpan={10} className="px-3 py-10 text-center text-faint">No expenses.</td></tr>
                 ) : (
