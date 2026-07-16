@@ -179,6 +179,22 @@ export function AmbassadorsClient({ email }: { email: string }) {
     setNewCode('')
   }
 
+  /**
+   * Delete is for mistakes and test entries only. It takes their codes and login with
+   * it and cannot be undone, so ask first — and the server refuses outright for anyone
+   * who has actually sold, whose history must survive them. That refusal is worth
+   * reading, so it goes through `send` like every other write.
+   */
+  async function remove(row: Row) {
+    if (!window.confirm(`Delete ${row.name}? This cannot be undone.`)) return
+    const ok = await send(`delete-${row.id}`, `/api/ambassadors/${row.id}`, 'DELETE', {})
+
+    // The refusal renders above the table, and this button is per-row — press it far
+    // enough down a long list and the reason lands off-screen, reading as "nothing
+    // happened". A refusal nobody sees is the same as no refusal at all.
+    if (!ok) window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   async function copyInvite(row: Row) {
     if (!row.invitePath) return
 
@@ -272,7 +288,7 @@ export function AmbassadorsClient({ email }: { email: string }) {
                 <th className="px-3 py-2.5 font-medium">Commission</th>
                 <th className="px-3 py-2.5 font-medium">Codes</th>
                 <th className="px-3 py-2.5 font-medium">Status</th>
-                <th className="px-3 py-2.5" />
+                <th className="px-3 py-2.5 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="text-ink">
@@ -339,6 +355,14 @@ export function AmbassadorsClient({ email }: { email: string }) {
                           className="font-semibold text-muted transition-colors duration-150 hover:text-ink hover:underline disabled:opacity-60"
                         >
                           {row.active ? 'Deactivate' : 'Reactivate'}
+                        </button>
+                        {/* Never disabled for someone who has sold: the server's reason is worth reading. */}
+                        <button
+                          onClick={() => void remove(row)}
+                          disabled={busy}
+                          className="font-semibold text-loss hover:underline disabled:opacity-60"
+                        >
+                          {pending === `delete-${row.id}` ? 'Deleting…' : 'Delete'}
                         </button>
                       </div>
                     </td>

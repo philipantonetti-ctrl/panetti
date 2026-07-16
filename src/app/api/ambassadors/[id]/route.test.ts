@@ -7,11 +7,12 @@ vi.mock('next/headers', () => ({
   }),
 }))
 
-const { PATCH } = await import('./route')
+const { PATCH, DELETE } = await import('./route')
 const { signSession } = await import('@/lib/auth/session')
 const { db } = await import('@/lib/db')
 
 const EMAIL = 'plan-patch-amb@example.local'
+const DEL_USER_EMAIL = 'plan-del-user@example.local'
 let id = ''
 
 const asAdmin = async () => {
@@ -30,7 +31,14 @@ const patch = (body: unknown, target = id) =>
     { params: Promise.resolve({ id: target }) },
   )
 
+const del = (target = id) =>
+  DELETE(
+    new Request('http://localhost/api/ambassadors/x', { method: 'DELETE' }),
+    { params: Promise.resolve({ id: target }) },
+  )
+
 beforeEach(async () => {
+  await db.user.deleteMany({ where: { email: DEL_USER_EMAIL } })
   await db.ambassador.deleteMany({ where: { email: EMAIL } })
   const a = await db.ambassador.create({
     data: { name: 'Before', email: EMAIL, commissionRate: 0.1 },
@@ -38,7 +46,10 @@ beforeEach(async () => {
   id = a.id
 })
 
+// The user is cascaded away with its ambassador, but say so explicitly: cleanup
+// should not depend on a schema rule a later migration could change.
 afterEach(async () => {
+  await db.user.deleteMany({ where: { email: DEL_USER_EMAIL } })
   await db.ambassador.deleteMany({ where: { email: EMAIL } })
 })
 
@@ -127,5 +138,71 @@ describe('PATCH /api/ambassadors/[id]', () => {
   it('404s for an unknown ambassador', async () => {
     await asAdmin()
     expect((await patch({ name: 'X' }, 'does-not-exist')).status).toBe(404)
+  })
+})
+
+describe('DELETE /api/ambassadors/[id]', () => {
+  it('refuses an anonymous caller', async () => {
+    cookieValue.current = undefined
+    expect((await del()).status).toBe(403)
+    expect(await db.ambassador.findUnique({ where: { id } })).not.toBeNull()
+  })
+
+  it('refuses an ambassador', async () => {
+    cookieValue.current = await signSession({
+      userId: 'u', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'x',
+    })
+    expect((await del()).status).toBe(403)
+    expect(await db.ambassador.findUnique({ where: { id } })).not.toBeNull()
+  })
+
+  it('deletes an ambassador who has never sold', async () => {
+    await asAdmin()
+    expect((await del()).status).toBe(200)
+    expect(await db.ambassador.findUnique({ where: { id } })).toBeNull()
+  })
+
+  it('takes their codes and login with them', async () => {
+    await asAdmin()
+    await db.ambassadorCode.create({ data: { ambassadorId: id, code: 'DELME10' } })
+    await db.user.create({
+      data: { email: DEL_USER_EMAIL, passwordHash: 'x', role: 'AMBASSADOR', ambassadorId: id },
+    })
+    await del()
+    expect(await db.ambassadorCode.count({ where: { code: 'DELME10' } })).toBe(0)
+    expect(await db.user.findUnique({ where: { email: DEL_USER_EMAIL } })).toBeNull()
+  })
+
+  // The guarantee: attribution is frozen at sync time and history is NEVER rewritten.
+  // onDelete: SetNull would silently orphan every past order, so refuse instead.
+  it('REFUSES to delete an ambassador who has attributed orders', async () => {
+    await asAdmin()
+    const shop = await db.shop.create({ data: { name: 'del-test-shop', currency: 'NOK' } })
+    try {
+      await db.order.create({
+        data: {
+          shopId: shop.id, externalId: 'del-test-1', number: 'del-test-1',
+          placedAt: new Date(), status: 'completed',
+          currency: 'NOK', grossSales: 10000, discountTotal: 0, netSales: 10000,
+          shippingCharged: 0, taxTotal: 0, total: 10000, ambassadorId: id,
+        },
+      })
+
+      const res = await del()
+      expect(res.status).toBe(409)
+
+      // Still there, and their history is intact.
+      expect(await db.ambassador.findUnique({ where: { id } })).not.toBeNull()
+      const order = await db.order.findFirstOrThrow({ where: { externalId: 'del-test-1' } })
+      expect(order.ambassadorId).toBe(id) // NOT nulled
+    } finally {
+      await db.order.deleteMany({ where: { externalId: 'del-test-1' } })
+      await db.shop.delete({ where: { id: shop.id } })
+    }
+  })
+
+  it('404s for an unknown ambassador', async () => {
+    await asAdmin()
+    expect((await del('does-not-exist')).status).toBe(404)
   })
 })
