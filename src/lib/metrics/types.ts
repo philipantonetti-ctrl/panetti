@@ -67,6 +67,7 @@ export type Figures = {
   discounts: number
   netSales: number
   shippingCharged: number
+  taxes: number // VAT collected — reported, never revenue and never a cost
   netRevenue: number
   cogs: number // product cost + handling combined
   operationalExpenses: number
@@ -91,6 +92,7 @@ export const ZERO_FIGURES: Figures = {
   discounts: 0,
   netSales: 0,
   shippingCharged: 0,
+  taxes: 0,
   netRevenue: 0,
   cogs: 0,
   operationalExpenses: 0,

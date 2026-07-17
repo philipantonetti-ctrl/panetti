@@ -66,6 +66,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const discounts = sum(shopOrders.map((o) => conv(o.discountTotal, o)))
     const netSales = sum(shopOrders.map((o) => conv(o.netSales, o)))
     const shippingCharged = sum(shopOrders.map((o) => conv(o.shippingCharged, o)))
+    const taxes = sum(shopOrders.map((o) => conv(o.taxTotal, o)))
     const netRevenue = netSales + shippingCharged
 
     const cogs = sum(
@@ -103,6 +104,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       discounts,
       netSales,
       shippingCharged,
+      taxes,
       netRevenue,
       cogs,
       operationalExpenses,
@@ -133,6 +135,7 @@ function totalOf(rows: ShopFigures[]): Figures {
     discounts: add((r) => r.discounts),
     netSales: add((r) => r.netSales),
     shippingCharged: add((r) => r.shippingCharged),
+    taxes: add((r) => r.taxes),
     netRevenue,
     cogs: add((r) => r.cogs),
     operationalExpenses: add((r) => r.operationalExpenses),

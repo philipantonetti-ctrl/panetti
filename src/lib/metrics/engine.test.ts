@@ -174,4 +174,27 @@ describe('computeMetrics', () => {
     })
     expect(res.total.orders).toBe(1)
   })
+
+  it('reports VAT for the period without letting it touch profit', () => {
+    const res = computeMetrics({
+      shops: [shops[0]],
+      orders: [
+        order(),
+        order({ id: 'refunded', status: 'refunded' }), // contributes no tax either
+      ],
+      expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    expect(res.total.taxes).toBe(22500) // the one live order's VAT
+    expect(res.total.netProfit).toBe(73000) // unchanged — VAT is not a cost
+    expect(res.byShop[0].taxes).toBe(22500)
+  })
+
+  it('converts VAT at each order own-date rate like every other figure', () => {
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [order()], expenses: [], costs, rates,
+      displayCurrency: 'USD', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    expect(res.total.taxes).toBe(2250) // 22 500 øre x 0.10
+  })
 })
