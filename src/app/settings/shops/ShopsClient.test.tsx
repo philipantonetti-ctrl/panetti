@@ -65,6 +65,30 @@ describe('ShopsClient', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('a first sync with more history left says to press again', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [
+            { shopName: 'Panetti Norway', ok: true, ordersSynced: 4000, more: true },
+            { shopName: 'Panetti Sweden', ok: true, ordersSynced: 2 },
+          ],
+        }),
+        { status: 200 },
+      ),
+    ))
+    renderShops()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync all' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Panetti Norway has more history to fetch\. Press Sync all again to continue\./),
+      ).toBeTruthy()
+    })
+    expect(screen.getByText(/Synced 4002 orders from 2 shop\(s\)\./)).toBeTruthy()
+  })
+
   it('names the last column Action and offers Delete on every row', () => {
     renderShops()
     expect(screen.getByRole('columnheader', { name: 'Action' })).toBeTruthy()

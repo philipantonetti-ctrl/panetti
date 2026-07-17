@@ -59,13 +59,22 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
       }
       const data = await res.json()
 
-      const results: { shopName: string; ok: boolean; ordersSynced: number; error?: string }[] =
-        data.results ?? []
+      const results: {
+        shopName: string
+        ok: boolean
+        ordersSynced: number
+        more?: boolean
+        error?: string
+      }[] = data.results ?? []
       const good = results.filter((r) => r.ok)
       const bad = results.filter((r) => !r.ok)
+      const partial = good.filter((r) => r.more)
 
       setMessage(
         `Synced ${good.reduce((n, r) => n + r.ordersSynced, 0)} orders from ${good.length} shop(s).` +
+          (partial.length
+            ? ` ${partial.map((r) => `${r.shopName} has more history to fetch.`).join(' ')} Press Sync all again to continue.`
+            : '') +
           (bad.length ? ` Failed: ${bad.map((r) => `${r.shopName} (${r.error})`).join(', ')}` : ''),
       )
       router.refresh()

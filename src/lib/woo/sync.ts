@@ -1,28 +1,49 @@
 import { db } from '../db'
+import { decryptSecret } from '../secrets'
 import { fetchOrders } from './client'
 import { mapOrder } from './map'
-import { decryptSecret } from '../secrets'
 
 export type SyncResult = {
   shopId: string
   shopName: string
   ok: boolean
   ordersSynced: number
+  /** First sync only: this chunk landed, but older history is still behind it. */
+  more?: boolean
   error?: string
 }
+
+/** One press pulls up to this many pages (x100 orders) of history per shop. */
+const BACKFILL_PAGES = 40
+
+const DAY = 24 * 60 * 60 * 1000
 
 /**
  * Pull a shop's orders and store them.
  *
- * - Only orders changed since the last successful sync are requested.
+ * Two phases, decided by `lastSyncAt`:
+ *
+ * FIRST SYNC (lastSyncAt unset) — history arrives oldest-first in chunks of
+ * BACKFILL_PAGES pages. Each press stores its chunk and resumes one second
+ * behind the newest stored order, so a store of any size gets in without ever
+ * exceeding one serverless invocation. Only when the last chunk lands does
+ * lastSyncAt get set — a day in the past, so anything edited while the
+ * backfill ran is caught by the first incremental sync.
+ *
+ * INCREMENTAL (lastSyncAt set) — only orders changed since the last completed
+ * sync. If that somehow exceeds 5,000 orders, the sync refuses loudly rather
+ * than silently skipping; on any failure lastSyncAt is left untouched so the
+ * next run retries the same window.
+ *
  * - Products are discovered from the orders themselves — anything ever sold appears
  *   in Product Costs automatically, with no cost until someone enters one.
  * - Ambassador attribution is resolved HERE and frozen on the order, so renaming or
  *   reassigning a code later can never rewrite past commissions.
- * - On failure, lastSyncAt is left untouched, so the next run picks up the same
- *   window again and nothing is silently skipped.
  */
-export async function syncShop(shopId: string): Promise<SyncResult> {
+export async function syncShop(
+  shopId: string,
+  opts: { backfillPages?: number } = {},
+): Promise<SyncResult> {
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } })
   const base = { shopId: shop.id, shopName: shop.name }
 
@@ -41,7 +62,37 @@ export async function syncShop(shopId: string): Promise<SyncResult> {
   }
 
   try {
-    const orders = await fetchOrders({ url: shop.wooUrl, key, secret }, shop.lastSyncAt)
+    const firstSync = !shop.lastSyncAt
+
+    // Mid-backfill, resume one second behind the newest stored order — the
+    // boundary order is re-fetched, which the upserts make harmless.
+    let createdAfter: Date | undefined
+    if (firstSync) {
+      const newest = await db.order.findFirst({
+        where: { shopId: shop.id },
+        orderBy: { placedAt: 'desc' },
+        select: { placedAt: true },
+      })
+      if (newest) createdAfter = new Date(newest.placedAt.getTime() - 1000)
+    }
+
+    const { orders, hasMore } = await fetchOrders(
+      { url: shop.wooUrl, key, secret },
+      firstSync
+        ? { createdAfter, maxPages: opts.backfillPages ?? BACKFILL_PAGES }
+        : { modifiedAfter: shop.lastSyncAt },
+    )
+
+    if (!firstSync && hasMore) {
+      // lastSyncAt is deliberately NOT updated, so the next run retries this window.
+      return {
+        ...base,
+        ok: false,
+        ordersSynced: 0,
+        error:
+          'This store returned over 5,000 changed orders in one pull. Sync stopped so nothing is skipped silently.',
+      }
+    }
 
     // Load the code -> ambassador map once, rather than per order.
     const codes = await db.ambassadorCode.findMany()
@@ -125,8 +176,18 @@ export async function syncShop(shopId: string): Promise<SyncResult> {
       synced++
     }
 
-    // Only now — after everything landed — do we move the watermark forward.
-    await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: new Date() } })
+    if (firstSync && hasMore) {
+      // The chunk landed, but older history is still behind it. The watermark
+      // stays unset so the next press resumes instead of going incremental.
+      return { ...base, ok: true, ordersSynced: synced, more: true }
+    }
+
+    // Only now — after everything landed — does the watermark move. A completed
+    // backfill starts a day back so edits made during it are re-checked.
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: firstSync ? new Date(Date.now() - DAY) : new Date() },
+    })
 
     return { ...base, ok: true, ordersSynced: synced }
   } catch (e) {

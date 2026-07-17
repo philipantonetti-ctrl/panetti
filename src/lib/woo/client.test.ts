@@ -19,18 +19,43 @@ describe('fetchOrders', () => {
       .mockResolvedValueOnce(page(37))
     vi.stubGlobal('fetch', fetchMock)
 
-    const orders = await fetchOrders(CREDS, null)
+    const { orders, hasMore } = await fetchOrders(CREDS, {})
     expect(orders).toHaveLength(137)
+    expect(hasMore).toBe(false)
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('throws instead of silently truncating a 5,000+ order store', async () => {
-    // 50 full pages and still more coming: stopping quietly would mark the
-    // sync done while orders are missing. Refuse loudly instead.
+  it('stops at maxPages and says more is behind', async () => {
     // A fresh Response per call — a Response body can only be read once, and
     // mockResolvedValue would replay the exact same (already-consumed) instance.
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => page(100)))
+    const fetchMock = vi.fn().mockImplementation(async () => page(100))
+    vi.stubGlobal('fetch', fetchMock)
 
-    await expect(fetchOrders(CREDS, null)).rejects.toThrow(/over 5,000 orders/)
+    const { orders, hasMore } = await fetchOrders(CREDS, { maxPages: 3 })
+    expect(orders).toHaveLength(300)
+    expect(hasMore).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(3) // never a 4th request
+  })
+
+  it('filters by modified date for incremental syncs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchOrders(CREDS, { modifiedAfter: new Date('2026-07-01T10:00:00Z') })
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('modified_after=2026-07-01T10%3A00%3A00')
+    expect(url).not.toContain('after=2026-07-01T10%3A00%3A00&') // no created filter
+  })
+
+  it('filters by created date for first-sync chunks', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchOrders(CREDS, { createdAfter: new Date('2024-01-29T00:00:00Z') })
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('after=2024-01-29T00%3A00%3A00')
+    expect(url).not.toContain('modified_after')
   })
 })
