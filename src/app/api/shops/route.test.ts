@@ -25,7 +25,7 @@ const post = (body: unknown) =>
   }))
 
 async function cleanup() {
-  await db.shop.deleteMany({ where: { name: { contains: '[test]' } } })
+  await db.shop.deleteMany({ where: { name: { contains: '[post-test]' } } })
 }
 beforeEach(cleanup)
 afterEach(cleanup)
@@ -33,15 +33,15 @@ afterEach(cleanup)
 describe('POST /api/shops', () => {
   it('refuses a non-admin', async () => {
     cookieValue.current = undefined
-    expect((await post({ name: 'Nope [test]', currency: 'NOK' })).status).toBe(403)
+    expect((await post({ name: 'Nope [post-test]', currency: 'NOK' })).status).toBe(403)
   })
 
   it('creates a shop with no credentials, ready to connect', async () => {
     await asAdmin()
-    const res = await post({ name: 'Panetti Norway [test]', currency: 'nok' })
+    const res = await post({ name: 'Panetti Norway [post-test]', currency: 'nok' })
     expect(res.status).toBe(200)
 
-    const saved = await db.shop.findFirstOrThrow({ where: { name: 'Panetti Norway [test]' } })
+    const saved = await db.shop.findFirstOrThrow({ where: { name: 'Panetti Norway [post-test]' } })
     expect(saved.currency).toBe('NOK') // uppercased
     expect(saved.wooUrl).toBeNull()
     expect(saved.active).toBe(true)
@@ -54,6 +54,6 @@ describe('POST /api/shops', () => {
 
   it('rejects a made-up currency code', async () => {
     await asAdmin()
-    expect((await post({ name: 'Bad Currency [test]', currency: 'KRONER' })).status).toBe(400)
+    expect((await post({ name: 'Bad Currency [post-test]', currency: 'KRONER' })).status).toBe(400)
   })
 })

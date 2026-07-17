@@ -29,7 +29,7 @@ const patch = (id: string, body: unknown) =>
   )
 
 async function cleanup() {
-  await db.shop.deleteMany({ where: { name: { contains: '[test]' } } })
+  await db.shop.deleteMany({ where: { name: { contains: '[patch-test]' } } })
 }
 beforeEach(cleanup)
 afterEach(cleanup)
@@ -37,13 +37,13 @@ afterEach(cleanup)
 describe('PATCH /api/shops/[id]', () => {
   it('refuses an anonymous caller', async () => {
     cookieValue.current = undefined
-    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    const shop = await db.shop.create({ data: { name: 'Patch [patch-test]', currency: 'NOK' } })
     expect((await patch(shop.id, { wooUrl: '', wooKey: '', wooSecret: '' })).status).toBe(403)
   })
 
   it('stores keys encrypted, never as pasted', async () => {
     await asAdmin()
-    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    const shop = await db.shop.create({ data: { name: 'Patch [patch-test]', currency: 'NOK' } })
 
     const res = await patch(shop.id, {
       wooUrl: 'https://mazzetti.no', wooKey: 'ck_live_1', wooSecret: 'cs_live_1',
@@ -60,7 +60,7 @@ describe('PATCH /api/shops/[id]', () => {
 
   it('a blank field keeps the stored value — saving must never wipe keys', async () => {
     await asAdmin()
-    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    const shop = await db.shop.create({ data: { name: 'Patch [patch-test]', currency: 'NOK' } })
     await patch(shop.id, { wooUrl: 'https://mazzetti.no', wooKey: 'ck_1', wooSecret: 'cs_1' })
 
     // The day-one bug: the edit form posts blank key fields and the old code
@@ -83,13 +83,13 @@ describe('PATCH /api/shops/[id]', () => {
     cookieValue.current = await signSession({
       userId: 'u', email: 'amb@test.local', role: 'AMBASSADOR', ambassadorId: 'x',
     })
-    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    const shop = await db.shop.create({ data: { name: 'Patch [patch-test]', currency: 'NOK' } })
     expect((await patch(shop.id, { wooUrl: '', wooKey: '', wooSecret: '' })).status).toBe(403)
   })
 
   it('a bad URL is a 400 and leaves the row completely untouched', async () => {
     await asAdmin()
-    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    const shop = await db.shop.create({ data: { name: 'Patch [patch-test]', currency: 'NOK' } })
     await patch(shop.id, { wooUrl: 'https://mazzetti.no', wooKey: 'ck_1', wooSecret: 'cs_1' })
 
     const res = await patch(shop.id, { wooUrl: 'not-a-url', wooKey: 'ck_NEW', wooSecret: '' })
@@ -102,7 +102,7 @@ describe('PATCH /api/shops/[id]', () => {
 
   it('a whitespace-only key counts as blank and keeps the stored value', async () => {
     await asAdmin()
-    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    const shop = await db.shop.create({ data: { name: 'Patch [patch-test]', currency: 'NOK' } })
     await patch(shop.id, { wooUrl: 'https://mazzetti.no', wooKey: 'ck_1', wooSecret: 'cs_1' })
 
     const res = await patch(shop.id, { wooUrl: '', wooKey: '   ', wooSecret: '' })
