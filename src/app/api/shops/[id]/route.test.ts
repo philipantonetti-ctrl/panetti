@@ -73,4 +73,42 @@ describe('PATCH /api/shops/[id]', () => {
     expect(decryptSecret(saved.wooKey!)).toBe('ck_1') // the blanks kept
     expect(decryptSecret(saved.wooSecret!)).toBe('cs_1')
   })
+
+  it('returns 404 for a shop that does not exist', async () => {
+    await asAdmin()
+    expect((await patch('nope-no-such-id', { wooUrl: '', wooKey: '', wooSecret: '' })).status).toBe(404)
+  })
+
+  it('refuses an ambassador, not just an anonymous caller', async () => {
+    cookieValue.current = await signSession({
+      userId: 'u', email: 'amb@test.local', role: 'AMBASSADOR', ambassadorId: 'x',
+    })
+    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    expect((await patch(shop.id, { wooUrl: '', wooKey: '', wooSecret: '' })).status).toBe(403)
+  })
+
+  it('a bad URL is a 400 and leaves the row completely untouched', async () => {
+    await asAdmin()
+    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    await patch(shop.id, { wooUrl: 'https://mazzetti.no', wooKey: 'ck_1', wooSecret: 'cs_1' })
+
+    const res = await patch(shop.id, { wooUrl: 'not-a-url', wooKey: 'ck_NEW', wooSecret: '' })
+    expect(res.status).toBe(400)
+
+    const saved = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(saved.wooUrl).toBe('https://mazzetti.no')
+    expect(decryptSecret(saved.wooKey!)).toBe('ck_1') // the new key was NOT written
+  })
+
+  it('a whitespace-only key counts as blank and keeps the stored value', async () => {
+    await asAdmin()
+    const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
+    await patch(shop.id, { wooUrl: 'https://mazzetti.no', wooKey: 'ck_1', wooSecret: 'cs_1' })
+
+    const res = await patch(shop.id, { wooUrl: '', wooKey: '   ', wooSecret: '' })
+    expect(res.status).toBe(200)
+
+    const saved = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(decryptSecret(saved.wooKey!)).toBe('ck_1')
+  })
 })

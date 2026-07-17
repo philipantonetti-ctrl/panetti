@@ -19,9 +19,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const parsed = Body.safeParse(await req.json())
     if (!parsed.success) return NextResponse.json({ error: 'Invalid details' }, { status: 400 })
 
+    const existing = await db.shop.findUnique({ where: { id } })
+    if (!existing) return NextResponse.json({ error: 'No such shop' }, { status: 404 })
+
     // An empty field means "leave what is saved". The form posts blank key
     // fields on every edit, so writing them through would wipe the connection.
-    const { wooUrl, wooKey, wooSecret } = parsed.data
+    // Trimmed, because a key pasted with a stray space or newline would fail
+    // WooCommerce auth later with no clue why.
+    const wooUrl = parsed.data.wooUrl.trim()
+    const wooKey = parsed.data.wooKey.trim()
+    const wooSecret = parsed.data.wooSecret.trim()
     await db.shop.update({
       where: { id },
       data: {
