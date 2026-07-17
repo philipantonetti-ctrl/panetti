@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
+import { encryptSecret } from '@/lib/secrets'
 
 const Body = z.object({
   wooUrl: z.string().url().or(z.literal('')),
@@ -18,12 +19,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const parsed = Body.safeParse(await req.json())
     if (!parsed.success) return NextResponse.json({ error: 'Invalid details' }, { status: 400 })
 
+    // An empty field means "leave what is saved". The form posts blank key
+    // fields on every edit, so writing them through would wipe the connection.
+    const { wooUrl, wooKey, wooSecret } = parsed.data
     await db.shop.update({
       where: { id },
       data: {
-        wooUrl: parsed.data.wooUrl || null,
-        wooKey: parsed.data.wooKey || null,
-        wooSecret: parsed.data.wooSecret || null,
+        ...(wooUrl ? { wooUrl } : {}),
+        ...(wooKey ? { wooKey: encryptSecret(wooKey) } : {}),
+        ...(wooSecret ? { wooSecret: encryptSecret(wooSecret) } : {}),
       },
     })
 
