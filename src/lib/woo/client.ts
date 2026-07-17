@@ -40,7 +40,7 @@ export async function fetchOrders(creds: WooCredentials, since: Date | null): Pr
       // the sync watermark past orders we never fetched — refuse instead.
       throw new Error(
         'This store returned over 5,000 orders in one pull. Sync stopped so nothing ' +
-          'is skipped silently — this store needs a staged first sync.',
+          'is skipped silently. This store needs a staged first sync.',
       )
     }
   }

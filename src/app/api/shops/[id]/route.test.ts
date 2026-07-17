@@ -7,7 +7,7 @@ vi.mock('next/headers', () => ({
   }),
 }))
 
-const { PATCH } = await import('./route')
+const { PATCH, DELETE } = await import('./route')
 const { signSession } = await import('@/lib/auth/session')
 const { decryptSecret } = await import('@/lib/secrets')
 const { db } = await import('@/lib/db')
@@ -110,5 +110,77 @@ describe('PATCH /api/shops/[id]', () => {
 
     const saved = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
     expect(decryptSecret(saved.wooKey!)).toBe('ck_1')
+  })
+})
+
+describe('DELETE /api/shops/[id]', () => {
+  const del = (id: string) =>
+    DELETE(new Request(`http://localhost/api/shops/${id}`, { method: 'DELETE' }), {
+      params: Promise.resolve({ id }),
+    })
+
+  it('refuses an anonymous caller', async () => {
+    cookieValue.current = undefined
+    const shop = await db.shop.create({ data: { name: 'Del [patch-test]', currency: 'NOK' } })
+    expect((await del(shop.id)).status).toBe(403)
+  })
+
+  it('returns 404 for a shop that does not exist', async () => {
+    await asAdmin()
+    expect((await del('nope-no-such-id')).status).toBe(404)
+  })
+
+  it('refuses to delete a shop with orders on record', async () => {
+    await asAdmin()
+    const shop = await db.shop.create({ data: { name: 'Del orders [patch-test]', currency: 'NOK' } })
+    await db.order.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'del-test-1',
+        number: '1',
+        placedAt: new Date('2026-07-01'),
+        status: 'completed',
+        currency: 'NOK',
+        grossSales: 10000,
+        discountTotal: 0,
+        netSales: 10000,
+        shippingCharged: 0,
+        taxTotal: 2500,
+        total: 12500,
+      },
+    })
+
+    const res = await del(shop.id)
+    expect(res.status).toBe(409)
+
+    // The refusal must actually protect the row, not just complain.
+    expect(await db.shop.findUnique({ where: { id: shop.id } })).not.toBeNull()
+  })
+
+  it('refuses to delete a shop with expenses on record', async () => {
+    await asAdmin()
+    const shop = await db.shop.create({ data: { name: 'Del expenses [patch-test]', currency: 'NOK' } })
+    await db.operationalExpense.create({
+      data: {
+        shopId: shop.id,
+        label: 'Rent [patch-test]',
+        category: 'Overhead > Office',
+        amount: 500000,
+        currency: 'NOK',
+        recurrence: 'MONTHLY',
+        startDate: new Date('2026-01-01'),
+      },
+    })
+
+    expect((await del(shop.id)).status).toBe(409)
+    expect(await db.shop.findUnique({ where: { id: shop.id } })).not.toBeNull()
+  })
+
+  it('deletes an empty shop', async () => {
+    await asAdmin()
+    const shop = await db.shop.create({ data: { name: 'Del empty [patch-test]', currency: 'NOK' } })
+
+    expect((await del(shop.id)).status).toBe(200)
+    expect(await db.shop.findUnique({ where: { id: shop.id } })).toBeNull()
   })
 })

@@ -21,8 +21,31 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
   const [editing, setEditing] = useState<Row | null>(null)
   const [adding, setAdding] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const toast = useToast()
+
+  /**
+   * Delete is for mistakes and empty rows: the server refuses outright for a shop
+   * with sales or expenses on record, and that refusal is worth reading.
+   */
+  async function remove(shop: Row) {
+    if (!window.confirm(`Delete ${shop.name}? This cannot be undone.`)) return
+    setDeleting(shop.id)
+    try {
+      const res = await fetch(`/api/shops/${shop.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not delete the shop')
+        return
+      }
+      toast.success(`${shop.name} deleted`)
+      router.refresh()
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setDeleting(null)
+    }
+  }
 
   async function syncAll() {
     setSyncing(true)
@@ -57,7 +80,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
     <AppShell email={email}>
       <PageHeader
         title="Shops"
-        subtitle="Connect each WooCommerce store with its API keys — synced orders update every screen."
+        subtitle="Connect each WooCommerce store with its API keys. Synced orders update every screen."
       >
         <div className="flex items-center gap-2">
           <button
@@ -90,7 +113,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                 <th className="px-3 py-2.5 font-medium">Currency</th>
                 <th className="px-3 py-2.5 font-medium">Connection</th>
                 <th className="px-3 py-2.5 font-medium">Last sync</th>
-                <th className="px-3 py-2.5" />
+                <th className="px-3 py-2.5 text-right font-medium">Action</th>
               </tr>
             </thead>
             <tbody className="text-ink">
@@ -112,10 +135,20 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                   <td className="px-3 py-2.5 text-muted">
                     {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : 'Never'}
                   </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <button onClick={() => setEditing(s)} className="font-semibold text-accent hover:underline">
-                      {s.connected ? 'Edit' : 'Connect'}
-                    </button>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-3">
+                      <button onClick={() => setEditing(s)} className="font-semibold text-accent hover:underline">
+                        {s.connected ? 'Edit' : 'Connect'}
+                      </button>
+                      {/* Never disabled for a shop with history: the server's reason is worth reading. */}
+                      <button
+                        onClick={() => void remove(s)}
+                        disabled={deleting !== null}
+                        className="font-semibold text-loss hover:underline disabled:opacity-60"
+                      >
+                        {deleting === s.id ? 'Deleting…' : 'Delete'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -197,12 +230,12 @@ function ConnectModal({ shop, onClose, onSaved }: { shop: Row; onClose: () => vo
 
         <label className="mt-3 block text-xs font-medium text-muted">Consumer key</label>
         <input value={wooKey} onChange={(e) => setWooKey(e.target.value)}
-          placeholder={canKeepBlank ? 'saved — leave blank to keep' : 'ck_…'}
+          placeholder={canKeepBlank ? 'saved, leave blank to keep' : 'ck_…'}
           className="mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-sm" />
 
         <label className="mt-3 block text-xs font-medium text-muted">Consumer secret</label>
         <input type="password" value={wooSecret} onChange={(e) => setWooSecret(e.target.value)}
-          placeholder={canKeepBlank ? 'saved — leave blank to keep' : 'cs_…'}
+          placeholder={canKeepBlank ? 'saved, leave blank to keep' : 'cs_…'}
           className="mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-sm" />
 
         <div className="mt-5 flex justify-end gap-2">
@@ -244,7 +277,7 @@ function AddShopModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not add the shop')
         return
       }
-      toast.success(`${name.trim()} added — now connect it`)
+      toast.success(`${name.trim()} added. Now connect it.`)
       onSaved()
     } catch {
       toast.error('Could not reach the server')
@@ -258,7 +291,7 @@ function AddShopModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       <div className="w-full max-w-md rounded-[var(--radius-card)] bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-base font-bold text-ink">Add shop</h2>
         <p className="mt-1 text-xs text-muted">
-          Name it the way you say it — “Panetti Norway” — and pick the currency it trades in.
+          Name it the way you say it, like “Panetti Norway”, and pick the currency it trades in.
         </p>
 
         <label className="mt-4 block text-xs font-medium text-muted">Name</label>

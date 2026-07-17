@@ -37,7 +37,7 @@ export async function syncShop(shopId: string): Promise<SyncResult> {
     secret = decryptSecret(shop.wooSecret)
   } catch {
     // Only possible if AUTH_SECRET changed after the shop was connected.
-    return { ...base, ok: false, ordersSynced: 0, error: "Saved keys can't be read — reconnect this shop." }
+    return { ...base, ok: false, ordersSynced: 0, error: "Saved keys can't be read. Reconnect this shop." }
   }
 
   try {

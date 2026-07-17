@@ -44,3 +44,35 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'Could not save' }, { status: 500 })
   }
 }
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    assertAdmin(await currentUser())
+
+    const { id } = await params
+    const existing = await db.shop.findUnique({
+      where: { id },
+      include: { _count: { select: { orders: true, expenses: true } } },
+    })
+    if (!existing) return NextResponse.json({ error: 'No such shop' }, { status: 404 })
+
+    // Deleting a shop cascades: its orders, products, costs and expenses all go
+    // with it, and re-synced orders would re-attribute against TODAY'S codes,
+    // rewriting commission history. Delete is for mistakes and empty rows only.
+    if (existing._count.orders > 0 || existing._count.expenses > 0) {
+      return NextResponse.json(
+        {
+          error:
+            'This shop has sales or expenses on record, so deleting it would erase that history.',
+        },
+        { status: 409 },
+      )
+    }
+
+    await db.shop.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
+    return NextResponse.json({ error: 'Could not delete the shop' }, { status: 500 })
+  }
+}

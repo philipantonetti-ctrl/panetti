@@ -65,6 +65,63 @@ describe('ShopsClient', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('names the last column Action and offers Delete on every row', () => {
+    renderShops()
+    expect(screen.getByRole('columnheader', { name: 'Action' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy()
+  })
+
+  it('a cancelled confirm deletes nothing', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
+    renderShops()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('deletes a shop and says so', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    renderShops()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Panetti Norway deleted')).toBeTruthy()
+    })
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/shops/s1')
+    expect(init.method).toBe('DELETE')
+  })
+
+  it('shows the server refusal when history protects a shop', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 'This shop has sales or expenses on record, so deleting it would erase that history.',
+        }),
+        { status: 409 },
+      ),
+    ))
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    renderShops()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'This shop has sales or expenses on record, so deleting it would erase that history.',
+        ),
+      ).toBeTruthy()
+    })
+  })
+
   it('adds a shop: fills the form, saves, and posts the trimmed name with the chosen currency', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

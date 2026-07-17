@@ -56,7 +56,7 @@ describe('syncShop', () => {
 
     const result = await syncShop(shop.id)
     expect(result.ok).toBe(false)
-    expect(result.error).toMatch(/reconnect this shop/)
+    expect(result.error).toMatch(/Reconnect this shop/)
     expect(fetchMock).not.toHaveBeenCalled()
 
     const saved = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
