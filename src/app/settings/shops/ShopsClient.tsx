@@ -258,11 +258,12 @@ function AddShopModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       <div className="w-full max-w-md rounded-[var(--radius-card)] bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-base font-bold text-ink">Add shop</h2>
         <p className="mt-1 text-xs text-muted">
-          Name it the way you say it — "Panetti Norway" — and pick the currency it trades in.
+          Name it the way you say it — “Panetti Norway” — and pick the currency it trades in.
         </p>
 
         <label className="mt-4 block text-xs font-medium text-muted">Name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Panetti Norway"
+          aria-label="Name"
           className="mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-sm" />
 
         <label className="mt-3 block text-xs font-medium text-muted">Currency</label>

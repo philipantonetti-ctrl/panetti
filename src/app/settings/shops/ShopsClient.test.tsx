@@ -39,14 +39,14 @@ describe('ShopsClient', () => {
 
   it('a failed sync says so — never "Synced 0 orders"', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: 'Sync failed' }), { status: 500 }),
+      new Response(JSON.stringify({ error: 'Woo is down' }), { status: 500 }),
     ))
     renderShops()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sync all' }))
 
     await waitFor(() => {
-      expect(screen.getByText('Sync failed')).toBeTruthy()
+      expect(screen.getByText('Woo is down')).toBeTruthy()
     })
     expect(screen.queryByText(/Synced 0 orders/)).toBeNull()
   })
@@ -63,5 +63,38 @@ describe('ShopsClient', () => {
       expect(screen.getByText('Give the shop a name and pick its currency')).toBeTruthy()
     })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('adds a shop: fills the form, saves, and posts the trimmed name with the chosen currency', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ shop: { id: 's2', name: 'Panetti Norway', currency: 'NOK' } }),
+        { status: 200 },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    renderShops([])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add shop' }))
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  Panetti Norway  ' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Currency' }))
+    fireEvent.click(screen.getByRole('button', { name: 'NOK - Nkr' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    // The name reached the server TRIMMED — not with the surrounding spaces typed in.
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/shops')
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'Panetti Norway', currency: 'NOK' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Add shop' })).toBeNull()
+    })
   })
 })
