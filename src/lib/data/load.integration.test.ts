@@ -12,9 +12,12 @@ describe('engine against the seeded database', () => {
     const input = await loadMetricsInput({ from, to })
     const res = computeMetrics(input)
 
-    expect(input.shops.length).toBe(11)
+    // Concurrent test files create their own '[x-test]' fixture shops in the
+    // shared DB; this test cares only about the seeded eleven.
+    const fixture = (name: string) => /\[[\w-]*test\]/.test(name)
+    expect(input.shops.filter((s) => !fixture(s.name)).length).toBe(11)
     expect(res.displayCurrency).toBe('USD') // several shops -> USD
-    expect(res.byShop).toHaveLength(11)
+    expect(res.byShop.filter((r) => !fixture(r.shopName)).length).toBe(11)
     expect(res.total.orders).toBeGreaterThan(0)
     expect(res.total.netRevenue).toBeGreaterThan(0)
     expect(res.total.cogs).toBeGreaterThan(0) // costs were seeded, so COGS must be real
