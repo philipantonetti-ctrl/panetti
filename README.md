@@ -1,4 +1,4 @@
-# ecom-analytics
+# panetti-analytics
 
 Analytics for our WooCommerce shops: sales, true net profit, and ambassador tracking.
 

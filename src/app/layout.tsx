@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ecom-analytics",
+  title: "panetti-analytics",
   description: "Sales, profit and ambassador analytics for your webshops",
 };
 

@@ -67,9 +67,9 @@ export function InviteClient({ token, name }: { token: string; name: string }) {
       <div className="w-full max-w-[380px]">
         <div className="mb-5 flex items-center gap-2.5">
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-ink text-[12px] font-bold text-white">
-            e
+            p
           </span>
-          <span className="text-[15px] font-semibold tracking-tight text-ink">ecom-analytics</span>
+          <span className="text-[15px] font-semibold tracking-tight text-ink">panetti-analytics</span>
         </div>
 
         <div className="rounded-[var(--radius-card)] border border-line bg-surface p-6">

@@ -80,7 +80,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
     <AppShell email={email}>
       <PageHeader
         title="Shops"
-        subtitle="Connect each WooCommerce store with its API keys. Synced orders update every screen."
+        subtitle="Add your store, Connect it with its WooCommerce API keys, then press Sync all. Your orders flow in and update every screen."
       >
         <div className="flex items-center gap-2">
           <button
