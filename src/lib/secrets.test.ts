@@ -42,4 +42,15 @@ describe('secrets', () => {
       process.env.AUTH_SECRET = orig
     }
   })
+
+  it('throws on structurally malformed enc:v1: values', () => {
+    // The sync path's safety rests on "malformed -> throws"; lock it in.
+    for (const bad of ['enc:v1:', 'enc:v1:notbase64', 'enc:v1:AAAAAAAAAAAAAAAA:AAAA']) {
+      expect(() => decryptSecret(bad)).toThrow()
+    }
+  })
+
+  it('refuses an unknown version instead of passing it through as plaintext', () => {
+    expect(() => decryptSecret('enc:v2:AAAA:BBBB')).toThrow(/nknown secret version/)
+  })
 })

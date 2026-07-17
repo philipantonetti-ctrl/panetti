@@ -28,11 +28,16 @@ export function encryptSecret(plain: string): string {
 }
 
 export function decryptSecret(stored: string): string {
+  if (stored.startsWith('enc:') && !stored.startsWith(PREFIX)) {
+    // A versioned value we don't understand must never be returned as plaintext.
+    throw new Error('Unknown secret version')
+  }
   if (!stored.startsWith(PREFIX)) return stored
 
   const [ivPart, taggedPart] = stored.slice(PREFIX.length).split(':')
   const iv = Buffer.from(ivPart, 'base64')
   const tagged = Buffer.from(taggedPart ?? '', 'base64')
+  if (tagged.length < TAG_LENGTH) throw new Error('Malformed encrypted secret')
 
   const decipher = createDecipheriv('aes-256-gcm', key(), iv)
   decipher.setAuthTag(tagged.subarray(tagged.length - TAG_LENGTH))
