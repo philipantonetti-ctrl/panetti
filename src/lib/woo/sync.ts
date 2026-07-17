@@ -1,6 +1,7 @@
 import { db } from '../db'
 import { fetchOrders } from './client'
 import { mapOrder } from './map'
+import { decryptSecret } from '../secrets'
 
 export type SyncResult = {
   shopId: string
@@ -29,11 +30,18 @@ export async function syncShop(shopId: string): Promise<SyncResult> {
     return { ...base, ok: false, ordersSynced: 0, error: 'No WooCommerce credentials for this shop' }
   }
 
+  let key: string
+  let secret: string
   try {
-    const orders = await fetchOrders(
-      { url: shop.wooUrl, key: shop.wooKey, secret: shop.wooSecret },
-      shop.lastSyncAt,
-    )
+    key = decryptSecret(shop.wooKey)
+    secret = decryptSecret(shop.wooSecret)
+  } catch {
+    // Only possible if AUTH_SECRET changed after the shop was connected.
+    return { ...base, ok: false, ordersSynced: 0, error: "Saved keys can't be read — reconnect this shop." }
+  }
+
+  try {
+    const orders = await fetchOrders({ url: shop.wooUrl, key, secret }, shop.lastSyncAt)
 
     // Load the code -> ambassador map once, rather than per order.
     const codes = await db.ambassadorCode.findMany()

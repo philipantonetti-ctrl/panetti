@@ -33,7 +33,16 @@ export async function fetchOrders(creds: WooCredentials, since: Date | null): Pr
 
     const batch = (await res.json()) as WooOrder[]
     all.push(...batch)
-    if (batch.length < 100) break // last page
+    if (batch.length < 100) return all // last page
+
+    if (page === 50) {
+      // 50 full pages and more behind them. Stopping here quietly would move
+      // the sync watermark past orders we never fetched — refuse instead.
+      throw new Error(
+        'This store returned over 5,000 orders in one pull. Sync stopped so nothing ' +
+          'is skipped silently — this store needs a staged first sync.',
+      )
+    }
   }
 
   return all
