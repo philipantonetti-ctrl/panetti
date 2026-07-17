@@ -23,12 +23,17 @@ type Column = {
 
 const COLUMNS: Column[] = [
   { key: 'orders', label: 'Orders' },
-  { key: 'netRevenue', label: 'Net revenue', money: true },
+  { key: 'grossSales', label: 'Gross sales', money: true, hint: 'Before discounts, excl. VAT' },
+  { key: 'discounts', label: 'Discounts', money: true, hint: 'Coupon and code discounts, excl. VAT' },
+  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base' },
+  { key: 'shippingCharged', label: 'Shipping', money: true, hint: 'Shipping charged to customers, excl. VAT' },
+  { key: 'netRevenue', label: 'Net revenue', money: true, hint: 'Net sales + shipping' },
   { key: 'cogs', label: 'COGS', money: true, hint: 'Product cost + handling' },
   { key: 'operationalExpenses', label: 'Op. expenses', money: true },
   { key: 'commission', label: 'Commission', money: true },
   { key: 'netProfit', label: 'Net profit', money: true, tone: true },
   { key: 'netMargin', label: 'Margin', percent: true, tone: true },
+  { key: 'taxes', label: 'Taxes', money: true, hint: 'VAT collected — passed on to the tax office, not income or cost' },
 ]
 
 function Cell({ column, row, currency }: { column: Column; row: ShopFigures; currency: string }) {
