@@ -36,6 +36,14 @@ export async function POST(req: Request) {
       )
     }
 
+    // No rename or delete exists yet, so a double-add would be permanent clutter.
+    const duplicate = await db.shop.findFirst({
+      where: { name: { equals: parsed.data.name, mode: 'insensitive' } },
+    })
+    if (duplicate) {
+      return NextResponse.json({ error: 'A shop with this name already exists.' }, { status: 409 })
+    }
+
     const shop = await db.shop.create({
       data: { name: parsed.data.name, currency: parsed.data.currency },
     })
