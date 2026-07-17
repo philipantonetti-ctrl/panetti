@@ -3,10 +3,6 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { syncAllShops, syncShop } from '@/lib/woo/sync'
 
-// A backfill chunk fetches up to 40 pages from WooCommerce and stores up to
-// 4,000 orders; the platform default budget is too small for that.
-export const maxDuration = 60
-
 export async function POST(req: Request) {
   try {
     assertAdmin(await currentUser())

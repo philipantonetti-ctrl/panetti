@@ -13,8 +13,12 @@ export type SyncResult = {
   error?: string
 }
 
-/** One press pulls up to this many pages (x100 orders) of history per shop. */
-const BACKFILL_PAGES = 40
+/**
+ * One press pulls up to this many pages (x100 orders) of history per shop.
+ * Sized so one chunk (fetching from a real WordPress at ~1s a page, then
+ * storing) always finishes well inside one serverless invocation.
+ */
+const BACKFILL_PAGES = 25
 
 const DAY = 24 * 60 * 60 * 1000
 
