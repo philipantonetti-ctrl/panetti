@@ -8,7 +8,10 @@ export default async function ShopsPage() {
   if (!user) redirect('/login')
   if (user.role !== 'ADMIN') redirect('/portal')
 
-  const shops = await db.shop.findMany({ orderBy: { name: 'asc' } })
+  const shops = await db.shop.findMany({
+    orderBy: { name: 'asc' },
+    include: { _count: { select: { orders: true } } },
+  })
 
   return (
     <ShopsClient
@@ -20,6 +23,7 @@ export default async function ShopsPage() {
         wooUrl: s.wooUrl ?? '',
         connected: Boolean(s.wooUrl && s.wooKey && s.wooSecret),
         lastSyncAt: s.lastSyncAt?.toISOString() ?? null,
+        hasOrders: s._count.orders > 0,
       }))}
     />
   )

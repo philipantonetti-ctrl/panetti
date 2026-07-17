@@ -14,6 +14,8 @@ type Row = {
   wooUrl: string
   connected: boolean
   lastSyncAt: string | null
+  /** Orders stored while lastSyncAt is still unset = a history import mid-way. */
+  hasOrders: boolean
 }
 
 export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
@@ -142,7 +144,11 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-muted">
-                    {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : 'Never'}
+                    {s.lastSyncAt
+                      ? new Date(s.lastSyncAt).toLocaleString()
+                      : s.hasOrders
+                        ? 'Importing history…'
+                        : 'Never'}
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-3">

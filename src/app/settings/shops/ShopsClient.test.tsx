@@ -20,6 +20,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 const SHOP = {
   id: 's1', name: 'Panetti Norway', currency: 'NOK', wooUrl: '', connected: false, lastSyncAt: null,
+  hasOrders: false,
 }
 
 function renderShops(shops = [SHOP]) {
@@ -63,6 +64,12 @@ describe('ShopsClient', () => {
       expect(screen.getByText('Give the shop a name and pick its currency')).toBeTruthy()
     })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('a shop mid-import says so instead of "Never"', () => {
+    renderShops([{ ...SHOP, connected: true, hasOrders: true }])
+    expect(screen.getByText('Importing history…')).toBeTruthy()
+    expect(screen.queryByText('Never')).toBeNull()
   })
 
   it('a first sync with more history left says to press again', async () => {
