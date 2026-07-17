@@ -84,12 +84,19 @@ export function CompareTable({ result }: { result: EngineResult }) {
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="border-y border-line bg-panel">
-              <th className="px-5 py-2 text-left text-[11px] font-semibold text-faint">Shop</th>
+              <th className="sticky left-0 z-10 bg-panel px-5 py-2 text-left text-[11px] font-semibold text-faint">
+                Shop
+              </th>
 
               {COLUMNS.map((column) => {
                 const active = sortBy === column.key
                 return (
-                  <th key={column.key} className="px-4 py-2 text-right" title={column.hint}>
+                  <th
+                    key={column.key}
+                    className="px-4 py-2 text-right"
+                    title={column.hint}
+                    aria-sort={active ? (desc ? 'descending' : 'ascending') : undefined}
+                  >
                     <button
                       onClick={() => sort(column.key)}
                       aria-label={`Sort by ${column.label}`}
@@ -112,9 +119,9 @@ export function CompareTable({ result }: { result: EngineResult }) {
             {rows.map((row) => (
               <tr
                 key={row.shopId}
-                className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-panel"
+                className="border-b border-line bg-surface transition-colors duration-150 last:border-b-0 hover:bg-panel"
               >
-                <td className="px-5 py-2.5 font-medium text-ink">{row.shopName}</td>
+                <td className="sticky left-0 z-10 bg-inherit px-5 py-2.5 font-medium text-ink">{row.shopName}</td>
                 {COLUMNS.map((column) => (
                   <Cell key={column.key} column={column} row={row} currency={currency} />
                 ))}
@@ -124,7 +131,7 @@ export function CompareTable({ result }: { result: EngineResult }) {
 
           <tfoot>
             <tr className="border-t border-line bg-panel font-semibold">
-              <td className="px-5 py-3 text-ink">Total</td>
+              <td className="sticky left-0 z-10 bg-inherit px-5 py-3 text-ink">Total</td>
               {COLUMNS.map((column) => (
                 <Cell
                   key={column.key}

@@ -29,5 +29,13 @@ describe('CompareTable', () => {
     ]) {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
     }
+
+    const headers = screen.getAllByRole('button', { name: /^Sort by / })
+    expect(headers).toHaveLength(12) // a stray 13th column must fail
+    expect(headers[11].textContent).toContain('Taxes') // deliberately last — outside the profit cascade
+
+    // the default sort is exposed to assistive tech too
+    const netProfitHeader = screen.getByRole('button', { name: 'Sort by Net profit' }).closest('th')
+    expect(netProfitHeader?.getAttribute('aria-sort')).toBe('descending')
   })
 })
