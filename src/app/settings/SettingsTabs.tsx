@@ -30,6 +30,17 @@ const TABS: { name: string; items: Item[] }[] = [
       { href: '/account', title: 'Your account', blurb: 'Your details and your password', icon: '👤' },
     ],
   },
+  {
+    name: 'Workspace',
+    items: [
+      {
+        href: '/settings/general',
+        title: 'Workspace defaults',
+        blurb: 'What every new webshop starts with — each shop can override these under Shop',
+        icon: '🌍',
+      },
+    ],
+  },
 ]
 
 export function SettingsTabs() {

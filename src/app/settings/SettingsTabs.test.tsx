@@ -26,10 +26,15 @@ describe('SettingsTabs', () => {
     expect(screen.queryByRole('link', { name: /Product Costs/ })).toBeNull()
   })
 
-  it('has exactly three tabs — no confusing Workspace door', () => {
+  it('has the four BeProfit tabs, and Workspace holds the new-shop defaults', () => {
     render(<SettingsTabs />)
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Costs', 'Shop', 'User'])
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Costs', 'Shop', 'User', 'Workspace',
+    ])
     fireEvent.click(screen.getByRole('tab', { name: 'User' }))
     expect(screen.getByRole('link', { name: /Ambassadors/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'Workspace' }))
+    const defaults = screen.getByRole('link', { name: /Workspace defaults/ })
+    expect(defaults.getAttribute('href')).toBe('/settings/general')
   })
 })

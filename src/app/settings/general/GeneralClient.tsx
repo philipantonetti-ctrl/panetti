@@ -64,8 +64,8 @@ export function GeneralClient({ email, initial }: { email: string; initial: Valu
   return (
     <AppShell email={email}>
       <PageHeader
-        title="General settings"
-        subtitle="Standards and formats for the whole workspace. The timezone decides when each sales day starts and ends."
+        title="Workspace defaults"
+        subtitle="What every webshop starts with. A shop with its own settings (Settings → Shop) keeps them — these apply wherever a shop has not chosen its own."
       />
 
       <PageBody>
