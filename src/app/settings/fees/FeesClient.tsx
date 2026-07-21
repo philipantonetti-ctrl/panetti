@@ -112,7 +112,7 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
               the rate that applied then.
             </p>
 
-            <div className="mt-4 grid items-end gap-3 sm:grid-cols-[minmax(10rem,1fr)_8rem_9.5rem_auto]">
+            <div className="mt-4 grid items-end gap-3 sm:grid-cols-2">
               <div>
                 <label htmlFor="rate-shop" className="block text-[11px] font-medium text-muted">Shop</label>
                 <select id="rate-shop" value={shopId} onChange={(e) => setShopId(e.target.value)} className={`mt-1 w-full ${INPUT}`}>
