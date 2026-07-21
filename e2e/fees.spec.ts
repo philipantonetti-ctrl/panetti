@@ -30,9 +30,11 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   await expect(page.getByText('Fulfillment rate saved')).toBeVisible()
   await expect(card.locator('tbody tr').first()).toBeVisible()
 
-  // The fee card's button must fit too.
-  const feeCard = page.locator('section', { hasText: 'Processing fee' })
+  // The fee lives on its own page now, Dintero only — its button must fit too.
+  await page.goto('/settings/processing-fees')
+  const feeCard = page.locator('section', { hasText: 'Dintero Checkout' })
   const saveFee = feeCard.getByRole('button', { name: 'Save fee' })
+  await saveFee.waitFor()
   const feeBox = (await feeCard.boundingBox())!
   const feeBtnBox = (await saveFee.boundingBox())!
   expect(feeBtnBox.x + feeBtnBox.width).toBeLessThanOrEqual(feeBox.x + feeBox.width)

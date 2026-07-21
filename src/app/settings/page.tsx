@@ -27,8 +27,13 @@ const TILES = [
   },
   {
     href: '/settings/fees',
-    title: 'Fulfillment and fees',
-    blurb: 'Per-order fulfillment rates and the Dintero payment fee',
+    title: 'Fulfillment',
+    blurb: 'Set your shipping and handling cost per order, per shop',
+  },
+  {
+    href: '/settings/processing-fees',
+    title: 'Processing Fees',
+    blurb: 'Add payment gateway charges (Dintero Checkout)',
   },
   {
     href: '/settings/general',

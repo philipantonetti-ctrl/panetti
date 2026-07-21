@@ -38,7 +38,20 @@ const COLUMNS: Column[] = [
   { key: 'taxes', label: 'Taxes', money: true, hint: 'VAT collected — passed on to the tax office, not income or cost' },
 ]
 
-function Cell({ column, row, currency }: { column: Column; row: ShopFigures; currency: string }) {
+/** BeProfit-style vertical banding: every other metric column is lightly tinted. */
+const stripeOf = (index: number) => (index % 2 === 1 ? 'bg-panel/45' : '')
+
+function Cell({
+  column,
+  row,
+  currency,
+  stripe,
+}: {
+  column: Column
+  row: ShopFigures
+  currency: string
+  stripe: string
+}) {
   const value = row[column.key] as number
 
   const text = column.money
@@ -50,7 +63,7 @@ function Cell({ column, row, currency }: { column: Column; row: ShopFigures; cur
   const tone = !column.tone ? 'text-ink' : value < 0 ? 'text-loss' : 'text-gain'
   const weight = column.key === 'netProfit' ? 'font-semibold' : ''
 
-  return <td className={`num px-4 py-2.5 text-right ${tone} ${weight}`}>{text}</td>
+  return <td className={`num px-4 py-2.5 text-right ${tone} ${weight} ${stripe}`}>{text}</td>
 }
 
 export function CompareTable({ result }: { result: EngineResult }) {
@@ -90,12 +103,12 @@ export function CompareTable({ result }: { result: EngineResult }) {
                 Shop
               </th>
 
-              {COLUMNS.map((column) => {
+              {COLUMNS.map((column, i) => {
                 const active = sortBy === column.key
                 return (
                   <th
                     key={column.key}
-                    className="px-4 py-2 text-right"
+                    className={`px-4 py-2 text-right ${stripeOf(i)}`}
                     title={column.hint}
                     aria-sort={active ? (desc ? 'descending' : 'ascending') : undefined}
                   >
@@ -121,11 +134,11 @@ export function CompareTable({ result }: { result: EngineResult }) {
             {rows.map((row) => (
               <tr
                 key={row.shopId}
-                className="border-b border-line bg-surface transition-colors duration-150 even:bg-[color-mix(in_oklab,var(--color-panel)_55%,var(--color-surface))] last:border-b-0 hover:bg-panel"
+                className="border-b border-line bg-surface transition-colors duration-150 last:border-b-0 hover:bg-panel"
               >
                 <td className="sticky left-0 z-10 bg-inherit px-5 py-2.5 font-medium text-ink">{row.shopName}</td>
-                {COLUMNS.map((column) => (
-                  <Cell key={column.key} column={column} row={row} currency={currency} />
+                {COLUMNS.map((column, i) => (
+                  <Cell key={column.key} column={column} row={row} currency={currency} stripe={stripeOf(i)} />
                 ))}
               </tr>
             ))}
@@ -134,12 +147,13 @@ export function CompareTable({ result }: { result: EngineResult }) {
           <tfoot>
             <tr className="border-t border-line bg-panel font-semibold">
               <td className="sticky left-0 z-10 bg-inherit px-5 py-3 text-ink">Total</td>
-              {COLUMNS.map((column) => (
+              {COLUMNS.map((column, i) => (
                 <Cell
                   key={column.key}
                   column={column}
                   row={{ ...result.total, shopId: 'total', shopName: 'Total' }}
                   currency={currency}
+                  stripe={stripeOf(i)}
                 />
               ))}
             </tr>

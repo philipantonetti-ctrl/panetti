@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
@@ -22,25 +22,13 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
   const [amount, setAmount] = useState('')
   const [fromDate, setFromDate] = useState('')
 
-  // Dintero
-  const [percent, setPercent] = useState('')
-  const [fixed, setFixed] = useState('')
-
   const [reload, setReload] = useState(0)
   useEffect(() => {
     let alive = true
-    Promise.all([fetch('/api/fulfillment'), fetch('/api/processing-fee')])
-      .then(async ([r1, r2]) => {
-        const rates = r1.ok ? ((await r1.json()) as { rates: Rate[] }).rates : null
-        const fee = r2.ok
-          ? ((await r2.json()) as { fee: { percent: number; fixed: number } | null }).fee
-          : null
-        if (!alive) return
-        if (rates) setRates(rates)
-        if (fee) {
-          setPercent(String(fee.percent))
-          setFixed(String(fee.fixed))
-        }
+    fetch('/api/fulfillment')
+      .then(async (r) => {
+        const rates = r.ok ? ((await r.json()) as { rates: Rate[] }).rates : null
+        if (alive && rates) setRates(rates)
       })
       .catch(() => {})
     return () => {
@@ -74,37 +62,17 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
     }
   }
 
-  async function saveFee() {
-    setBusy(true)
-    try {
-      const res = await fetch('/api/processing-fee', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ percent: Number(percent) || 0, fixed: Number(fixed) || 0 }),
-      })
-      if (!res.ok) {
-        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the fee')
-        return
-      }
-      toast.success('Processing fee saved. It now applies across all webshops.')
-    } catch {
-      toast.error('Could not reach the server')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const currencyOf = (id: string) => shops.find((s) => s.id === id)?.currency ?? ''
 
   return (
     <AppShell email={email}>
       <PageHeader
-        title="Fulfillment and fees"
-        subtitle="A fixed fulfillment cost per order for each shop, and the payment fee taken on every transaction. Both reduce Net profit."
+        title="Fulfillment"
+        subtitle="A fixed fulfillment cost per order for each shop, from the date you choose. It shows in Compare shops and reduces Net profit."
       />
 
       <PageBody>
-        <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
+        <div className="max-w-2xl">
           <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
             <h2 className="text-[13px] font-semibold text-ink">Fulfillment default rate</h2>
             <p className="mt-0.5 text-[12px] text-muted">
@@ -171,50 +139,6 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
                 )}
               </tbody>
             </table>
-          </section>
-
-          <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
-            <h2 className="text-[13px] font-semibold text-ink">Processing fee (Dintero Checkout)</h2>
-            <p className="mt-0.5 text-[12px] text-muted">
-              Taken on every transaction across all webshops: a percent of the charged amount
-              plus a fixed part in EUR, converted at each order&apos;s own exchange rate.
-            </p>
-
-            <div className="mt-4 grid items-end gap-3 sm:grid-cols-[8rem_8rem_auto]">
-              <div>
-                <label htmlFor="fee-percent" className="block text-[11px] font-medium text-muted">% of transaction</label>
-                <input
-                  id="fee-percent"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.6"
-                  value={percent}
-                  onChange={(e) => setPercent(e.target.value)}
-                  className={`mt-1 w-full ${INPUT}`}
-                />
-              </div>
-              <div>
-                <label htmlFor="fee-fixed" className="block text-[11px] font-medium text-muted">Fixed fee (EUR)</label>
-                <input
-                  id="fee-fixed"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.10"
-                  value={fixed}
-                  onChange={(e) => setFixed(e.target.value)}
-                  className={`mt-1 w-full ${INPUT}`}
-                />
-              </div>
-              <button
-                onClick={saveFee}
-                disabled={busy}
-                className="justify-self-start whitespace-nowrap rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
-              >
-                {busy ? 'Saving…' : 'Save fee'}
-              </button>
-            </div>
           </section>
         </div>
       </PageBody>

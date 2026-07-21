@@ -83,6 +83,26 @@ assumption, same as BeProfit).
 - **P5** processing fee settings + engine + column
 - **P6** timezone/formats/default-range (deepest engine change, DST tests)
 
+## REVISION 2026-07-21 (owner re-reviewed against BeProfit screenshots)
+
+- Compare striping is VERTICAL (alternate metric COLUMNS tinted, bg-panel/45 on odd
+  indexes), not row zebra. SHIPPED.
+- Processing Fees is its OWN settings tile + page styled like BeProfit's gateway
+  card, Dintero Checkout only ("% of Transaction", "Fixed Fee (EUR)"). SHIPPED.
+- REMAINING A: Fulfillment settings restyled as BeProfit's flow — page 1: rules list
+  ("Default rate - <from date>" rows per shop) + green "+ Create New Rule"; page 2:
+  Create Fulfillment Profile (method list Order Weight/Quantity/Price/Carrier/Title/
+  Other shown DISABLED as later-phase, Default Rate row with Edit); page 3: Rates
+  (disabled toggles row, Worldwide + amount + shop + from date, Back/Save). Same
+  default-rate-only functionality and /api/fulfillment API underneath.
+- REMAINING B: per-shop settings (supersedes the one-global-page decision): Settings
+  gains a Shop area — pick a webshop -> Shop Settings page (name/owner/URL header;
+  Standards and formats: Time Zone, Default App Date Range, Date Format, Shop Format
+  country, locked Currency, Currency Format). Schema: nullable per-shop overrides on
+  Shop (timezone, defaultPreset, dateFormat, currencyFormat, formatCountry) falling
+  back to the workspace Setting; engine order-day membership uses each shop's
+  (override ?? workspace) timezone via a shopId->tz map.
+
 ## Out of scope
 
 Fulfillment rules engine; other payment gateways; per-shop timezones/formats;
