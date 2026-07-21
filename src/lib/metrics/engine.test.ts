@@ -227,4 +227,21 @@ describe('computeMetrics', () => {
     expect(res.total.transactionFees).toBe(705 + 120)
     expect(res.total.netProfit).toBe(73000 - 825)
   })
+  it('buckets each shop in its own timezone when overrides exist', () => {
+    const res = computeMetrics({
+      shops,
+      orders: [
+        // 22:30 UTC = 00:30 next day in Oslo.
+        order({ id: 'n1', shopId: 'no', currency: 'NOK', placedAt: new Date('2026-06-30T22:30:00Z') }),
+        order({ id: 's1', shopId: 'se', currency: 'SEK', placedAt: new Date('2026-06-30T22:30:00Z') }),
+      ],
+      expenses: [], costs, rates,
+      displayCurrency: 'USD', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+      shopTimezones: new Map([['no', 'Europe/Oslo']]), // se falls back to UTC
+    })
+    const no = res.byShop.find((s) => s.shopId === 'no')!
+    const se = res.byShop.find((s) => s.shopId === 'se')!
+    expect(no.orders).toBe(1) // counts on 1 July in Oslo
+    expect(se.orders).toBe(0) // still 30 June in UTC
+  })
 })

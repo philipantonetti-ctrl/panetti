@@ -21,6 +21,13 @@ model Shop {
   lastSyncAt DateTime?
   createdAt  DateTime @default(now())
 
+  // Per-shop standards and formats; null falls back to the workspace Setting.
+  timezone       String?
+  defaultPreset  String?
+  dateFormat     String?
+  currencyFormat String?
+  formatCountry  String?
+
   orders           Order[]
   products         Product[]
   expenses         OperationalExpense[]

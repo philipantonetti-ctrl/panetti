@@ -35,15 +35,20 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const displayCurrency = shops.length === 1 ? shops[0].currency : 'USD'
 
   const tz = args.timezone ?? 'UTC'
+
+  // A shop with its own timezone buckets days in ITS zone; the query window
+  // must span the earliest day-start and latest day-end across every zone.
+  const shopTimezones = new Map(shopRows.map((s) => [s.id, s.timezone ?? tz]))
+  const zones = [...new Set([tz, ...shopTimezones.values()])]
+  const fromDay = utcDay(from).toISOString().slice(0, 10)
+  const toDay = utcDay(to).toISOString().slice(0, 10)
+  const starts = zones.map((z) => zoneDayStartUtc(fromDay, z).getTime())
+  const ends = zones.map((z) => zoneDayEndUtc(toDay, z).getTime())
+
   const orderRows = await db.order.findMany({
     where: {
       shopId: { in: shopIds },
-      placedAt: {
-        // The instants when the from-day begins and the to-day ends IN THE
-        // WORKSPACE TIMEZONE — an Oslo midnight order lands on the Oslo day.
-        gte: zoneDayStartUtc(utcDay(from).toISOString().slice(0, 10), tz),
-        lte: zoneDayEndUtc(utcDay(to).toISOString().slice(0, 10), tz),
-      },
+      placedAt: { gte: new Date(Math.min(...starts)), lte: new Date(Math.max(...ends)) },
     },
     include: { items: true, ambassador: true },
   })
@@ -133,5 +138,6 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     fulfillmentRates,
     processingFee,
     timezone: tz,
+    shopTimezones,
   }
 }

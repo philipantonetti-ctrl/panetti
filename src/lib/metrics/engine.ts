@@ -35,6 +35,8 @@ export type MetricsInput = {
   processingFee?: ProcessingFeeRule | null
   /** Workspace timezone for day boundaries. Defaults to UTC. */
   timezone?: string
+  /** Per-shop overrides: a shop's orders bucket days in ITS zone. */
+  shopTimezones?: Map<string, string>
 }
 
 /** The newest rate that was already in force on `date`; 0 before the first one. */
@@ -80,7 +82,8 @@ export function computeMetrics(input: MetricsInput): EngineResult {
   const { shops, orders, expenses, costs, rates, displayCurrency, from, to } = input
 
   const tz = input.timezone ?? 'UTC'
-  const live = orders.filter((o) => counts(o) && inRange(o, from, to, tz))
+  const tzFor = (shopId: string) => input.shopTimezones?.get(shopId) ?? tz
+  const live = orders.filter((o) => counts(o) && inRange(o, from, to, tzFor(o.shopId)))
 
   const byShop: ShopFigures[] = shops.map((shop) => {
     const shopOrders = live.filter((o) => o.shopId === shop.id)

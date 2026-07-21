@@ -36,9 +36,14 @@ const TILES = [
     blurb: 'Add payment gateway charges (Dintero Checkout)',
   },
   {
+    href: '/settings/shop',
+    title: 'Shop',
+    blurb: 'Per-webshop standards and formats, like BeProfit',
+  },
+  {
     href: '/settings/general',
     title: 'General',
-    blurb: 'Time zone, default date range, date and currency formats',
+    blurb: 'Workspace defaults: time zone, date range, date and currency formats',
   },
 ]
 

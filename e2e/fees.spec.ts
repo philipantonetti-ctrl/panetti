@@ -13,9 +13,15 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForURL(/dashboard/)
 
+  // BeProfit-style flow: rules list -> Create New Rule -> profile -> Edit -> rates.
   await page.goto('/settings/fees')
-  const card = page.locator('section', { hasText: 'Fulfillment default rate' })
-  const save = card.getByRole('button', { name: 'Save rate' })
+  await page.getByRole('button', { name: '+ Create New Rule' }).click()
+  await expect(page.getByText('Create Dynamic Fulfillment Rates')).toBeVisible()
+  await expect(page.getByText('Order Weight', { exact: true })).toBeVisible() // later-phase methods listed
+  await page.getByRole('button', { name: 'Edit' }).click()
+
+  const card = page.locator('section', { hasText: 'Rates' }).first()
+  const save = card.getByRole('button', { name: 'Save' })
   await save.waitFor()
 
   // The whole button must sit INSIDE its card — clipped means broken.
@@ -23,12 +29,12 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   const saveBox = (await save.boundingBox())!
   expect(saveBox.x + saveBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width)
 
-  // The form genuinely works: save a rate, see it listed.
-  await card.getByLabel(/Per order/).fill('25')
+  // The form genuinely works: save a Worldwide rate, land back on the list, see it.
+  await card.getByLabel(/Worldwide/).fill('25')
   await card.getByLabel('From date').fill('2020-01-01')
   await save.click()
   await expect(page.getByText('Fulfillment rate saved')).toBeVisible()
-  await expect(card.locator('tbody tr').first()).toBeVisible()
+  await expect(page.getByText(/Default rate - 2020-01-01/).first()).toBeVisible()
 
   // The fee lives on its own page now, Dintero only — its button must fit too.
   await page.goto('/settings/processing-fees')
