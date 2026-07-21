@@ -112,27 +112,38 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
               the rate that applied then.
             </p>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_7rem_9rem_auto]">
-              <select aria-label="Shop" value={shopId} onChange={(e) => setShopId(e.target.value)} className={INPUT}>
-                {shops.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              <input
-                aria-label="Amount per order"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder={`Amount (${currencyOf(shopId)})`}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className={INPUT}
-              />
-              <input aria-label="From date" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={INPUT} />
+            <div className="mt-4 grid items-end gap-3 sm:grid-cols-[minmax(10rem,1fr)_8rem_9.5rem_auto]">
+              <div>
+                <label htmlFor="rate-shop" className="block text-[11px] font-medium text-muted">Shop</label>
+                <select id="rate-shop" value={shopId} onChange={(e) => setShopId(e.target.value)} className={`mt-1 w-full ${INPUT}`}>
+                  {shops.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="rate-amount" className="block text-[11px] font-medium text-muted">
+                  Per order ({currencyOf(shopId)})
+                </label>
+                <input
+                  id="rate-amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className={`mt-1 w-full ${INPUT}`}
+                />
+              </div>
+              <div>
+                <label htmlFor="rate-from" className="block text-[11px] font-medium text-muted">From date</label>
+                <input id="rate-from" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={`mt-1 w-full ${INPUT}`} />
+              </div>
               <button
                 onClick={addRate}
                 disabled={busy}
-                className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                className="whitespace-nowrap rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
               >
                 {busy ? 'Saving…' : 'Save rate'}
               </button>
@@ -169,31 +180,37 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
               plus a fixed part in EUR, converted at each order&apos;s own exchange rate.
             </p>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-[7rem_7rem_auto]">
-              <input
-                aria-label="Percent of transaction"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="% e.g. 0.6"
-                value={percent}
-                onChange={(e) => setPercent(e.target.value)}
-                className={INPUT}
-              />
-              <input
-                aria-label="Fixed fee in EUR"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Fixed € e.g. 0.10"
-                value={fixed}
-                onChange={(e) => setFixed(e.target.value)}
-                className={INPUT}
-              />
+            <div className="mt-4 grid items-end gap-3 sm:grid-cols-[8rem_8rem_auto]">
+              <div>
+                <label htmlFor="fee-percent" className="block text-[11px] font-medium text-muted">% of transaction</label>
+                <input
+                  id="fee-percent"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.6"
+                  value={percent}
+                  onChange={(e) => setPercent(e.target.value)}
+                  className={`mt-1 w-full ${INPUT}`}
+                />
+              </div>
+              <div>
+                <label htmlFor="fee-fixed" className="block text-[11px] font-medium text-muted">Fixed fee (EUR)</label>
+                <input
+                  id="fee-fixed"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.10"
+                  value={fixed}
+                  onChange={(e) => setFixed(e.target.value)}
+                  className={`mt-1 w-full ${INPUT}`}
+                />
+              </div>
               <button
                 onClick={saveFee}
                 disabled={busy}
-                className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                className="justify-self-start whitespace-nowrap rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
               >
                 {busy ? 'Saving…' : 'Save fee'}
               </button>

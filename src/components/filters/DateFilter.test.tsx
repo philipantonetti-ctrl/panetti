@@ -45,6 +45,17 @@ describe('DateFilter calendar', () => {
     expect(onChange).toHaveBeenCalledWith({ preset: 'custom', from: '2026-07-19', to: '2026-07-19' })
   })
 
+  it('Clear wipes the picked range so Apply is disabled again', () => {
+    const onChange = renderPicker()
+
+    fireEvent.click(screen.getByRole('button', { name: '2026-07-12' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect((screen.getByRole('button', { name: 'Apply' }) as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('still offers every preset, including the new ones', () => {
     renderPicker()
     expect(screen.getByRole('button', { name: 'Last month' })).toBeTruthy()

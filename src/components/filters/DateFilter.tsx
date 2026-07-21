@@ -171,6 +171,13 @@ export function DateFilter({
                   {draft.from ?? '…'} → {draft.to ?? draft.from ?? '…'}
                 </span>
                 <button
+                  onClick={() => setDraft({})}
+                  disabled={!draft.from}
+                  className="text-[12px] font-semibold text-muted hover:text-ink hover:underline disabled:opacity-50"
+                >
+                  Clear
+                </button>
+                <button
                   onClick={apply}
                   disabled={!draft.from}
                   className="rounded-[var(--radius-control)] bg-ink px-4 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-60"
