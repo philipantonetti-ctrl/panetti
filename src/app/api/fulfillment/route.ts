@@ -55,3 +55,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Could not save the rate' }, { status: 500 })
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    assertAdmin(await currentUser())
+
+    const id = new URL(req.url).searchParams.get('id') ?? ''
+    const existing = await db.fulfillmentRate.findUnique({ where: { id } })
+    if (!existing) return NextResponse.json({ error: 'No such rate' }, { status: 404 })
+
+    await db.fulfillmentRate.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
+    return NextResponse.json({ error: 'Could not delete the rate' }, { status: 500 })
+  }
+}

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { useToast } from '@/components/toast/useToast'
@@ -79,6 +80,24 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
     }
   }
 
+  async function removeRate(rate: Rate) {
+    if (!window.confirm(`Delete the rate from ${rate.effectiveFrom.slice(0, 10)}? Orders go back to the rate that applied before it.`)) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/fulfillment?id=${rate.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not delete the rate')
+        return
+      }
+      toast.success('Rate deleted')
+      setReload((n) => n + 1)
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const title = step === 'list' ? 'Fulfillment' : 'Create Fulfillment Profile'
 
   return (
@@ -91,7 +110,14 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
             : undefined
         }
       >
-        {step !== 'list' && (
+        {step === 'list' ? (
+          <Link
+            href="/settings/shops"
+            className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-[13px] font-semibold text-ink hover:bg-panel"
+          >
+            🛡 Manage Integrations
+          </Link>
+        ) : (
           <button
             onClick={() => setStep(step === 'rates' ? 'method' : 'list')}
             className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-[13px] font-semibold text-ink hover:bg-panel"
@@ -117,19 +143,28 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
                 </p>
               ) : (
                 rates.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-semibold text-ink">
-                        Default rate - {r.effectiveFrom.slice(0, 10)}
-                      </span>
-                      <span className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-muted">
-                        By Default rate
-                      </span>
-                    </div>
-                    <span className="num text-[12px] text-muted">
+                  <div key={r.id} className="flex items-center gap-2 px-4 py-2.5">
+                    <span aria-hidden="true" className="cursor-default text-[13px] tracking-tighter text-faint">⋮⋮</span>
+                    <span aria-hidden="true" className="text-faint">›</span>
+                    <span className="text-[13px] font-semibold text-ink">
+                      Default rate - {r.effectiveFrom.slice(0, 10)}
+                    </span>
+                    <span className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-muted">
+                      By Default rate
+                    </span>
+                    <span className="num ml-auto text-[12px] text-muted">
                       {shops.find((s) => s.id === r.shopId)?.name ?? r.shopId} ·{' '}
                       {formatMoney(r.perOrder, currencyOf(r.shopId))} per order
                     </span>
+                    <button
+                      onClick={() => void removeRate(r)}
+                      disabled={busy}
+                      aria-label={`Delete rate from ${r.effectiveFrom.slice(0, 10)}`}
+                      title="Delete this rule"
+                      className="px-1.5 text-[16px] font-semibold text-muted hover:text-loss disabled:opacity-50"
+                    >
+                      ⋯
+                    </button>
                   </div>
                 ))
               )}
@@ -144,6 +179,20 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
               </button>
             </div>
           </section>
+        )}
+
+        {step === 'list' && (
+          <Link
+            href="/settings/expenses"
+            className="mt-4 block max-w-3xl rounded-[var(--radius-card)] border border-line bg-surface p-5 transition-colors duration-150 hover:bg-panel"
+          >
+            <p className="flex items-center gap-2 text-[14px] font-semibold text-ink">
+              <span aria-hidden="true" className="text-faint">›</span> 💰 Add Custom or Variable Expenses
+            </p>
+            <p className="mt-0.5 text-[12px] text-muted">
+              Enrich your fulfillment cost control with one-time or recurring operational expenses.
+            </p>
+          </Link>
         )}
 
         {step === 'method' && (

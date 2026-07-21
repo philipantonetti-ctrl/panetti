@@ -36,6 +36,11 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   await expect(page.getByText('Fulfillment rate saved')).toBeVisible()
   await expect(page.getByText(/Default rate - 2020-01-01/).first()).toBeVisible()
 
+  // And a rule can be deleted again (also keeps this test self-cleaning).
+  page.once('dialog', (d) => d.accept())
+  await page.getByRole('button', { name: 'Delete rate from 2020-01-01' }).first().click()
+  await expect(page.getByText('Rate deleted')).toBeVisible()
+
   // The fee lives on its own page now, Dintero only — its button must fit too.
   await page.goto('/settings/processing-fees')
   const feeCard = page.locator('section', { hasText: 'Dintero Checkout' })
