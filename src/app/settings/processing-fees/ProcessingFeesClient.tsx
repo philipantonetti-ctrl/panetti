@@ -24,30 +24,38 @@ const blankRows = () =>
 export function ProcessingFeesClient({ email }: { email: string }) {
   const toast = useToast()
   const [rows, setRows] = useState<Record<string, Row>>(blankRows)
+  const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  // The form stays hidden until saved rates are in, so a late response can
+  // never overwrite something the user already typed or ticked.
   useEffect(() => {
     let alive = true
     fetch('/api/processing-fee')
       .then(async (r) => {
         const fees = r.ok ? ((await r.json()) as { fees: FeeDto[] }).fees : []
-        if (!alive || fees.length === 0) return
-        setRows((prev) => {
-          const next = { ...prev }
-          for (const f of fees) {
-            if (!next[f.gateway]) continue
-            next[f.gateway] = {
-              percent: f.percent ? String(f.percent) : '',
-              fixed: f.fixed ? String(f.fixed) : '',
-              noFees: f.noFeesApply,
-              cross: f.crossBorderPercent != null ? String(f.crossBorderPercent) : '',
-              showCross: f.crossBorderPercent != null,
+        if (!alive) return
+        if (fees.length > 0) {
+          setRows((prev) => {
+            const next = { ...prev }
+            for (const f of fees) {
+              if (!next[f.gateway]) continue
+              next[f.gateway] = {
+                percent: f.percent ? String(f.percent) : '',
+                fixed: f.fixed ? String(f.fixed) : '',
+                noFees: f.noFeesApply,
+                cross: f.crossBorderPercent != null ? String(f.crossBorderPercent) : '',
+                showCross: f.crossBorderPercent != null,
+              }
             }
-          }
-          return next
-        })
+            return next
+          })
+        }
+        setReady(true)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (alive) setReady(true)
+      })
     return () => {
       alive = false
     }
@@ -101,6 +109,10 @@ export function ProcessingFeesClient({ email }: { email: string }) {
             across all webshops.
           </p>
 
+          {!ready ? (
+            <p className="mt-5 text-sm text-muted">Loading saved rates…</p>
+          ) : (
+            <>
           <div className="mt-5 space-y-6">
             {GATEWAYS.map((g) => {
               const row = rows[g]
@@ -187,6 +199,14 @@ export function ProcessingFeesClient({ email }: { email: string }) {
                           onChange={(e) => patch(g, { cross: e.target.value })}
                           className={`mt-1 ${INPUT} sm:w-28`}
                         />
+                        <button
+                          type="button"
+                          aria-label={`${g} remove cross border fee`}
+                          onClick={() => patch(g, { showCross: false, cross: '' })}
+                          className="mt-1.5 text-[12px] font-medium text-muted underline underline-offset-2 hover:text-ink"
+                        >
+                          Remove
+                        </button>
                       </div>
                     ) : (
                       <button
@@ -213,6 +233,8 @@ export function ProcessingFeesClient({ email }: { email: string }) {
               {busy ? 'Saving…' : 'Save fees'}
             </button>
           </div>
+            </>
+          )}
         </section>
       </PageBody>
     </AppShell>

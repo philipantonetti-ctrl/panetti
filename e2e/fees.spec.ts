@@ -79,10 +79,14 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   await expect(page.getByLabel('Credit Card no fees apply').first()).toBeChecked()
   await expect(page.getByLabel('Vorkasse cross border fee %')).toHaveValue('1.5')
 
+  // Remove undoes a cross border fee, and the add link comes back.
+  await page.getByRole('button', { name: 'Vorkasse remove cross border fee' }).click()
+  await expect(page.getByLabel('Vorkasse cross border fee %')).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Vorkasse add cross border fee' })).toBeVisible()
+
   // Clean the scratch edits back off so reruns start fresh.
   await page.getByLabel('PayPal Account % of Transaction').fill('')
   await page.getByLabel('Credit Card no fees apply').first().uncheck()
-  await page.getByLabel('Vorkasse cross border fee %').fill('')
   await feeCard.getByRole('button', { name: 'Save fees' }).click()
   await expect(page.getByText(/applies across all webshops/i).first()).toBeVisible()
 })

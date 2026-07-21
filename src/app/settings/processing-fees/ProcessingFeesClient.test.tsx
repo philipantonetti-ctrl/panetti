@@ -52,8 +52,32 @@ const dinteroLoaded = async () =>
   })
 
 describe('ProcessingFeesClient', () => {
+  it('holds the rows back until saved rates have loaded, so nothing typed gets wiped', async () => {
+    let release: (v: Response) => void = () => {}
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: unknown, init?: RequestInit) => {
+      if (init?.method === 'PUT') return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      return new Promise<Response>((res) => {
+        release = res
+      })
+    }))
+    render(
+      <ToastProvider>
+        <ProcessingFeesClient email="admin@test.local" />
+      </ToastProvider>,
+    )
+
+    // While the GET is in flight there is nothing to clobber.
+    expect(screen.queryByLabelText('Credit Card % of Transaction')).toBeNull()
+
+    release(new Response(JSON.stringify({ fees: [] }), { status: 200 }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Credit Card % of Transaction')).toBeTruthy()
+    })
+  })
+
   it('lists every BeProfit gateway with editable inputs', async () => {
     renderPage()
+    await dinteroLoaded()
     for (const g of ['Credit Card', 'PayPal Account', 'Vorkasse', 'Dintero Checkout']) {
       expect(screen.getByText(g)).toBeTruthy()
     }
@@ -66,6 +90,7 @@ describe('ProcessingFeesClient', () => {
 
   it('No fees apply is a real toggle that disables the row', async () => {
     renderPage()
+    await dinteroLoaded()
     const box = screen.getAllByLabelText('Credit Card no fees apply')[0] as HTMLInputElement
     expect(box.checked).toBe(false)
 
@@ -80,11 +105,32 @@ describe('ProcessingFeesClient', () => {
 
   it('+ Cross border fee reveals a working input', async () => {
     renderPage()
+    await dinteroLoaded()
     fireEvent.click(screen.getByRole('button', { name: 'Credit Card add cross border fee' }))
     const cross = screen.getByLabelText('Credit Card cross border fee %') as HTMLInputElement
     fireEvent.change(cross, { target: { value: '1.5' } })
     expect(cross.value).toBe('1.5')
     await dinteroLoaded()
+  })
+
+  it('cross border fee can be removed again, clearing the value', async () => {
+    const put = renderPage()
+    await dinteroLoaded()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Credit Card add cross border fee' }))
+    fireEvent.change(screen.getByLabelText('Credit Card cross border fee %'), { target: { value: '1.5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Credit Card remove cross border fee' }))
+
+    expect(screen.queryByLabelText('Credit Card cross border fee %')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Credit Card add cross border fee' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save fees' }))
+    await waitFor(() => {
+      expect(screen.getByText(/applies across all webshops/i)).toBeTruthy()
+    })
+    expect(put.body.gateways.find((r) => r.gateway === 'Credit Card')).toMatchObject({
+      crossBorderPercent: null,
+    })
   })
 
   it('prefills Dintero from the API', async () => {
