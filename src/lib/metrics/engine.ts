@@ -1,4 +1,5 @@
 import { utcDay } from '../dates'
+import { zonedDayStr } from '../tz'
 import { pct, sum } from '../money'
 import { costOn } from './costs'
 import { expenseInRange } from './expenses'
@@ -32,6 +33,8 @@ export type MetricsInput = {
   fulfillmentRates?: Map<string, FulfillmentPoint[]>
   /** The one global gateway fee, or null when none is configured. */
   processingFee?: ProcessingFeeRule | null
+  /** Workspace timezone for day boundaries. Defaults to UTC. */
+  timezone?: string
 }
 
 /** The newest rate that was already in force on `date`; 0 before the first one. */
@@ -53,9 +56,10 @@ function counts(order: EngineOrder): boolean {
   return !EXCLUDED_STATUSES.includes(order.status.toLowerCase() as never)
 }
 
-function inRange(order: EngineOrder, from: Date, to: Date): boolean {
-  const t = utcDay(order.placedAt).getTime()
-  return t >= utcDay(from).getTime() && t <= utcDay(to).getTime()
+/** Membership by CALENDAR DAY in the workspace timezone (from/to name calendar days). */
+function inRange(order: EngineOrder, from: Date, to: Date, tz: string): boolean {
+  const day = zonedDayStr(order.placedAt, tz)
+  return day >= utcDay(from).toISOString().slice(0, 10) && day <= utcDay(to).toISOString().slice(0, 10)
 }
 
 /**
@@ -75,7 +79,8 @@ function inRange(order: EngineOrder, from: Date, to: Date): boolean {
 export function computeMetrics(input: MetricsInput): EngineResult {
   const { shops, orders, expenses, costs, rates, displayCurrency, from, to } = input
 
-  const live = orders.filter((o) => counts(o) && inRange(o, from, to))
+  const tz = input.timezone ?? 'UTC'
+  const live = orders.filter((o) => counts(o) && inRange(o, from, to, tz))
 
   const byShop: ShopFigures[] = shops.map((shop) => {
     const shopOrders = live.filter((o) => o.shopId === shop.id)

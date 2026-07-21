@@ -30,6 +30,11 @@ const TILES = [
     title: 'Fulfillment and fees',
     blurb: 'Per-order fulfillment rates and the Dintero payment fee',
   },
+  {
+    href: '/settings/general',
+    title: 'General',
+    blurb: 'Time zone, default date range, date and currency formats',
+  },
 ]
 
 export default async function SettingsPage() {

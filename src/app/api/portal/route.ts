@@ -3,6 +3,8 @@ import { currentUser } from '@/lib/auth/current-user'
 import { AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { rangeFromQuery } from '@/lib/api/range'
+import { getSetting } from '@/lib/settings'
+import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
 import { pct } from '@/lib/money'
 import { buildRateTable, convert } from '@/lib/metrics/fx'
@@ -25,7 +27,8 @@ export async function GET(req: Request) {
       throw new AuthError('This page is for ambassadors')
     }
 
-    const { from, to } = rangeFromQuery(new URL(req.url).searchParams)
+    const { timezone } = await getSetting()
+    const { from, to } = rangeFromQuery(new URL(req.url).searchParams, new Date(), timezone)
 
     const me = await db.ambassador.findUniqueOrThrow({
       where: { id: user.ambassadorId },
@@ -35,7 +38,10 @@ export async function GET(req: Request) {
     const orders = await db.order.findMany({
       where: {
         ambassadorId: me.id, // <- from the session. Not from the request.
-        placedAt: { gte: utcDay(from), lte: new Date(utcDay(to).getTime() + 86_400_000 - 1) },
+        placedAt: {
+          gte: zoneDayStartUtc(utcDay(from).toISOString().slice(0, 10), timezone),
+          lte: zoneDayEndUtc(utcDay(to).toISOString().slice(0, 10), timezone),
+        },
         status: { notIn: [...EXCLUDED_STATUSES] },
       },
       include: { shop: { select: { name: true, currency: true } } },
@@ -69,7 +75,10 @@ export async function GET(req: Request) {
       by: ['ambassadorId'],
       where: {
         ambassadorId: { not: null },
-        placedAt: { gte: utcDay(from), lte: new Date(utcDay(to).getTime() + 86_400_000 - 1) },
+        placedAt: {
+          gte: zoneDayStartUtc(utcDay(from).toISOString().slice(0, 10), timezone),
+          lte: zoneDayEndUtc(utcDay(to).toISOString().slice(0, 10), timezone),
+        },
         status: { notIn: [...EXCLUDED_STATUSES] },
       },
       _sum: { netSales: true },

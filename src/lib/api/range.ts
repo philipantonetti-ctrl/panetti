@@ -1,4 +1,5 @@
 import { resolvePreset, utcDay, type DateRange, type Preset } from '../dates'
+import { todayInZone } from '../tz'
 
 const PRESETS: Preset[] = [
   'today', 'yesterday', 'this_week', 'this_month', 'this_year',
@@ -10,7 +11,11 @@ const PRESETS: Preset[] = [
  * Turn `?preset=this_month` or `?from=2026-07-01&to=2026-07-14` into a range.
  * Anything unrecognised falls back to this month, so a bad URL never crashes a page.
  */
-export function rangeFromQuery(params: URLSearchParams, now: Date = new Date()): DateRange {
+export function rangeFromQuery(
+  params: URLSearchParams,
+  now: Date = new Date(),
+  timezone = 'UTC',
+): DateRange {
   const from = params.get('from')
   const to = params.get('to')
 
@@ -23,10 +28,13 @@ export function rangeFromQuery(params: URLSearchParams, now: Date = new Date()):
     }
   }
 
+  // Presets resolve from "today" in the WORKSPACE timezone, so an Oslo evening
+  // does not still count as yesterday the way plain UTC would.
+  const today = todayInZone(timezone, now)
   const preset = params.get('preset') as Preset | null
-  if (preset && PRESETS.includes(preset)) return resolvePreset(preset, now)
+  if (preset && PRESETS.includes(preset)) return resolvePreset(preset, today)
 
-  return resolvePreset('this_month', now)
+  return resolvePreset('this_month', today)
 }
 
 export function shopIdsFromQuery(params: URLSearchParams): string[] | undefined {

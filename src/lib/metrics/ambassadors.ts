@@ -1,4 +1,5 @@
 import { utcDay } from '../dates'
+import { zonedDayStr } from '../tz'
 import { pct } from '../money'
 import { convert } from './fx'
 import { EXCLUDED_STATUSES, type EngineOrder, type RateTable } from './types'
@@ -19,6 +20,7 @@ export type LeaderboardInput = {
   displayCurrency: string
   from: Date
   to: Date
+  timezone?: string
 }
 
 /**
@@ -31,14 +33,15 @@ export type LeaderboardInput = {
 export function leaderboard(input: LeaderboardInput): LeaderboardRow[] {
   const { ambassadors, orders, rates, displayCurrency, from, to } = input
 
-  const start = utcDay(from).getTime()
-  const end = utcDay(to).getTime()
+  const tz = input.timezone ?? 'UTC'
+  const start = utcDay(from).toISOString().slice(0, 10)
+  const end = utcDay(to).toISOString().slice(0, 10)
 
   const live = orders.filter((o) => {
     if (!o.ambassadorId) return false
     if (EXCLUDED_STATUSES.includes(o.status.toLowerCase() as never)) return false
-    const t = utcDay(o.placedAt).getTime()
-    return t >= start && t <= end
+    const day = zonedDayStr(o.placedAt, tz)
+    return day >= start && day <= end
   })
 
   const rows = ambassadors.map((person) => {

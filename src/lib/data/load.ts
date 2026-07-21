@@ -1,5 +1,6 @@
 import { db } from '../db'
 import { utcDay } from '../dates'
+import { zoneDayEndUtc, zoneDayStartUtc } from '../tz'
 import { buildRateTable } from '../metrics/fx'
 import { ensureRates, loadRates } from '../fx/rates'
 import type { CostBook, EngineExpense, EngineOrder, EngineShop, Recurrence } from '../metrics/types'
@@ -9,6 +10,8 @@ export type LoadArgs = {
   shopIds?: string[] // undefined = every active shop
   from: Date
   to: Date
+  /** Workspace timezone: day boundaries follow it. Defaults to UTC. */
+  timezone?: string
 }
 
 /**
@@ -31,8 +34,17 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
 
   const displayCurrency = shops.length === 1 ? shops[0].currency : 'USD'
 
+  const tz = args.timezone ?? 'UTC'
   const orderRows = await db.order.findMany({
-    where: { shopId: { in: shopIds }, placedAt: { gte: utcDay(from), lte: endOfDay(to) } },
+    where: {
+      shopId: { in: shopIds },
+      placedAt: {
+        // The instants when the from-day begins and the to-day ends IN THE
+        // WORKSPACE TIMEZONE — an Oslo midnight order lands on the Oslo day.
+        gte: zoneDayStartUtc(utcDay(from).toISOString().slice(0, 10), tz),
+        lte: zoneDayEndUtc(utcDay(to).toISOString().slice(0, 10), tz),
+      },
+    },
     include: { items: true, ambassador: true },
   })
 
@@ -120,11 +132,6 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     to,
     fulfillmentRates,
     processingFee,
+    timezone: tz,
   }
-}
-
-/** 23:59:59.999 on `d`, so an order placed in the evening is inside the range. */
-function endOfDay(d: Date): Date {
-  const day = utcDay(d)
-  return new Date(day.getTime() + 24 * 60 * 60 * 1000 - 1)
 }

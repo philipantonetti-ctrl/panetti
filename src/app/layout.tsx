@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/toast/ToastProvider";
+import { FormatBoot } from "@/components/FormatBoot";
+import { getSetting } from "@/lib/settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,17 +20,19 @@ export const metadata: Metadata = {
   description: "Sales, profit and ambassador analytics for your webshops",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const setting = await getSetting();
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <FormatBoot currencyFormat={setting.currencyFormat} />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

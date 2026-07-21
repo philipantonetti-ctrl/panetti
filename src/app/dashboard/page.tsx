@@ -1,7 +1,9 @@
-import { redirect } from 'next/navigation'
+﻿import { redirect } from 'next/navigation'
 import { currentUser } from '@/lib/auth/current-user'
 import { db } from '@/lib/db'
 import { DashboardClient } from './DashboardClient'
+import { getSetting } from '@/lib/settings'
+import type { Preset } from '@/lib/dates'
 
 export default async function DashboardPage() {
   const user = await currentUser()
@@ -14,5 +16,6 @@ export default async function DashboardPage() {
     orderBy: { name: 'asc' },
   })
 
-  return <DashboardClient email={user.email} shops={shops} />
+  const setting = await getSetting()
+  return <DashboardClient email={user.email} shops={shops} initialPreset={setting.defaultPreset as Preset} />
 }

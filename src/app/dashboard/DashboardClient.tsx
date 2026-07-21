@@ -31,8 +31,16 @@ function Skeleton() {
   )
 }
 
-export function DashboardClient({ email, shops }: { email: string; shops: Shop[] }) {
-  const [preset, setPreset] = useState<Preset | 'custom'>('this_month')
+export function DashboardClient({
+  email,
+  shops,
+  initialPreset,
+}: {
+  email: string
+  shops: Shop[]
+  initialPreset?: Preset
+}) {
+  const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [selected, setSelected] = useState<string[]>([])

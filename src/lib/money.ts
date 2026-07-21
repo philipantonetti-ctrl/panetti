@@ -36,11 +36,32 @@ export function sum(values: number[]): number {
 }
 
 /** Format minor units for display, e.g. formatMoney(125050, 'USD') -> "$1,250.50". */
+export type MoneyStyle = 'symbol-before' | 'symbol-after' | 'code-after'
+
+// The workspace's chosen style, set once at boot from Settings. The module
+// default matches the app's original look so tests stay deterministic.
+let moneyStyle: MoneyStyle = 'symbol-before'
+
+export function setMoneyStyle(style: MoneyStyle) {
+  moneyStyle = style
+}
+
 export function formatMoney(minor: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', {
+  const major = toMajor(minor)
+  if (moneyStyle === 'symbol-before') {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(major)
+  }
+  // Nordic style: 1 000,00 € (symbol) or 1 000,00 EUR (code).
+  return new Intl.NumberFormat('nb-NO', {
     style: 'currency',
     currency,
+    currencyDisplay: moneyStyle === 'code-after' ? 'code' : 'symbol',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(toMajor(minor))
+  }).format(major)
 }

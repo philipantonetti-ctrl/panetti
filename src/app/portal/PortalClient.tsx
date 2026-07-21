@@ -43,8 +43,8 @@ function Stat({
   )
 }
 
-export function PortalClient({ email }: { email: string }) {
-  const [preset, setPreset] = useState<Preset | 'custom'>('this_month')
+export function PortalClient({ email, initialPreset }: { email: string; initialPreset?: Preset }) {
+  const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [data, setData] = useState<Portal | null>(null)

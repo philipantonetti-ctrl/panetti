@@ -7,6 +7,7 @@ import { leaderboard } from '@/lib/metrics/ambassadors'
 import { dailySeries, previousRange } from '@/lib/metrics/trend'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { db } from '@/lib/db'
+import { getSetting } from '@/lib/settings'
 
 export async function GET(req: Request) {
   try {
@@ -14,10 +15,11 @@ export async function GET(req: Request) {
     assertAdmin(await currentUser())
 
     const params = new URL(req.url).searchParams
-    const { from, to } = rangeFromQuery(params)
+    const { timezone } = await getSetting()
+    const { from, to } = rangeFromQuery(params, new Date(), timezone)
     const shopIds = shopIdsFromQuery(params)
 
-    const input = await loadMetricsInput({ shopIds, from, to })
+    const input = await loadMetricsInput({ shopIds, from, to, timezone })
     const metrics = computeMetrics(input)
 
     const people = await db.ambassador.findMany({
@@ -32,12 +34,13 @@ export async function GET(req: Request) {
       displayCurrency: input.displayCurrency,
       from,
       to,
+      timezone,
     })
 
     // The equally-long period before this one, so every figure can say which way it moved.
     const before = previousRange(from, to)
     const previous = computeMetrics(
-      await loadMetricsInput({ shopIds, from: before.from, to: before.to }),
+      await loadMetricsInput({ shopIds, from: before.from, to: before.to, timezone }),
     ).total
 
     return NextResponse.json({
