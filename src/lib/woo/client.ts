@@ -1,3 +1,4 @@
+import { toMinor } from '../money'
 import type { WooOrder } from './map'
 
 export type WooCredentials = {
@@ -54,4 +55,32 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
 
   // Every page we were allowed to fetch came back full — more is behind it.
   return { orders: all, hasMore: true }
+}
+
+/**
+ * The store's own listed price per product (incl. VAT in our stores), keyed by
+ * the WooCommerce product id. Products without a price are skipped.
+ */
+export async function fetchCatalogPrices(creds: WooCredentials): Promise<Map<string, number>> {
+  const prices = new Map<string, number>()
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+
+  for (let page = 1; page <= 20; page++) {
+    const params = new URLSearchParams({ per_page: '100', page: String(page) })
+    const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/products?${params}`, {
+      headers: { Authorization: `Basic ${auth}` },
+    })
+    if (!res.ok) {
+      throw new Error(`WooCommerce responded ${res.status}: ${await res.text()}`)
+    }
+
+    const batch = (await res.json()) as { id: number; price?: string }[]
+    for (const p of batch) {
+      const value = p.price ? parseFloat(p.price) : NaN
+      if (!Number.isNaN(value)) prices.set(String(p.id), toMinor(value))
+    }
+    if (batch.length < 100) break
+  }
+
+  return prices
 }

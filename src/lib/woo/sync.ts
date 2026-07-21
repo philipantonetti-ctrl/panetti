@@ -1,6 +1,6 @@
 import { db } from '../db'
 import { decryptSecret } from '../secrets'
-import { fetchOrders } from './client'
+import { fetchCatalogPrices, fetchOrders } from './client'
 import { mapOrder } from './map'
 
 export type SyncResult = {
@@ -184,6 +184,27 @@ export async function syncShop(
       // The chunk landed, but older history is still behind it. The watermark
       // stays unset so the next press resumes instead of going incremental.
       return { ...base, ok: true, ordersSynced: synced, more: true }
+    }
+
+    // Best-effort on a COMPLETED sync only: refresh each known product's own
+    // listed price (incl. VAT). A failure here never fails the sync — order
+    // data is the priority, and the next completed sync simply retries.
+    try {
+      const catalog = await fetchCatalogPrices({ url: shop.wooUrl, key, secret })
+      if (catalog.size) {
+        const known = await db.product.findMany({
+          where: { shopId: shop.id },
+          select: { id: true, externalId: true, catalogPrice: true },
+        })
+        for (const p of known) {
+          const price = catalog.get(p.externalId)
+          if (price !== undefined && price !== p.catalogPrice) {
+            await db.product.update({ where: { id: p.id }, data: { catalogPrice: price } })
+          }
+        }
+      }
+    } catch {
+      // Retried on the next completed sync.
     }
 
     // Only now — after everything landed — does the watermark move. A completed

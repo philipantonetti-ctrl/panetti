@@ -78,7 +78,7 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
     <AppShell email={email}>
       <PageHeader
         title="Product costs"
-        subtitle="Every product ever sold appears here. Enter a cost and it is used for profit from the date you choose."
+        subtitle="Every product ever sold appears here, with its store price incl. VAT. Enter a cost and it is used for profit from the date you choose."
       >
         <select
           value={shopId}

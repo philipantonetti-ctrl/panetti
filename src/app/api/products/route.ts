@@ -31,7 +31,9 @@ export async function GET(req: Request) {
           sku: p.sku,
           name: p.name,
           imageUrl: p.imageUrl,
-          sellingPrice: p.lastPrice,
+          // The store's own listed price (incl. VAT) when we have it; the
+          // ex-VAT order-line price only until the first completed sync.
+          sellingPrice: p.catalogPrice ?? p.lastPrice,
           costPerItem: current.costPerItem,
           handlingCost: current.handlingCost,
           // The flag the UI uses to highlight a product whose cost was never entered.

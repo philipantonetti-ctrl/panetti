@@ -68,7 +68,7 @@ async function connectedShop(name: string) {
 describe('syncShop', () => {
   it('decrypts stored keys and syncs (0 orders is a fine sync)', async () => {
     const shop = await connectedShop('Sync [sync-test]')
-    const fetchMock = vi.fn().mockResolvedValue(emptyPage())
+    const fetchMock = vi.fn().mockImplementation(async () => emptyPage())
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await syncShop(shop.id)
@@ -141,7 +141,7 @@ describe('syncShop', () => {
         total: 12500,
       },
     })
-    const fetchMock = vi.fn().mockResolvedValue(emptyPage())
+    const fetchMock = vi.fn().mockImplementation(async () => emptyPage())
     vi.stubGlobal('fetch', fetchMock)
 
     const before = Date.now()
@@ -161,6 +161,28 @@ describe('syncShop', () => {
     const wm = saved.lastSyncAt!.getTime()
     expect(wm).toBeGreaterThan(before - 25 * 60 * 60 * 1000)
     expect(wm).toBeLessThan(before - 23 * 60 * 60 * 1000)
+  })
+
+  it('a completed sync refreshes catalog prices; a catalog failure never fails the sync', async () => {
+    const shop = await connectedShop('Sync catalog [sync-test]')
+    const prod = await db.product.create({
+      data: { shopId: shop.id, externalId: '900001', sku: 'S', name: 'P [sync-test]', lastPrice: 100000 },
+    })
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown) =>
+      String(url).includes('/products')
+        ? jsonPage([{ id: 900001, price: '3790.00' }, { id: 999999, price: '10.00' }])
+        : emptyPage(),
+    ))
+
+    expect((await syncShop(shop.id)).ok).toBe(true)
+    const saved = await db.product.findUniqueOrThrow({ where: { id: prod.id } })
+    expect(saved.catalogPrice).toBe(379000) // the store's incl-VAT price landed
+
+    // Now the catalog endpoint dies — the sync itself still succeeds.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown) =>
+      String(url).includes('/products') ? new Response('boom', { status: 500 }) : emptyPage(),
+    ))
+    expect((await syncShop(shop.id)).ok).toBe(true)
   })
 
   it('an incremental sync with 5,000+ changed orders stops loudly instead of skipping', async () => {

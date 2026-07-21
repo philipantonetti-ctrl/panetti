@@ -21,10 +21,11 @@ model Shop {
   lastSyncAt DateTime?
   createdAt  DateTime @default(now())
 
-  orders    Order[]
-  products  Product[]
-  expenses  OperationalExpense[]
-  codes     AmbassadorCode[]
+  orders           Order[]
+  products         Product[]
+  expenses         OperationalExpense[]
+  codes            AmbassadorCode[]
+  fulfillmentRates FulfillmentRate[]
 }
 
 model Product {
@@ -34,7 +35,8 @@ model Product {
   sku          String
   name         String
   imageUrl     String?  // product photo, from WooCommerce
-  lastPrice    Int      @default(0) // last seen selling price, minor units
+  lastPrice    Int      @default(0) // last seen selling price from order lines, minor units, ex VAT
+  catalogPrice Int?     // the store's own listed price, minor units, incl VAT
 
   shop  Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   costs ProductCost[]
@@ -151,6 +153,39 @@ model User {
   ambassadorId String? @unique
 
   ambassador Ambassador? @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+}
+
+// One row per shop rate change: the fulfillment cost charged to an order is the
+// newest rate with effectiveFrom <= the order's date (same idea as ProductCost).
+model FulfillmentRate {
+  id            String   @id @default(cuid())
+  shopId        String
+  perOrder      Int      // minor units, shop currency
+  effectiveFrom DateTime
+  createdAt     DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, effectiveFrom])
+}
+
+// The single global payment-gateway fee (Dintero Checkout): percent of the
+// charged total plus a fixed amount converted from `currency` per order.
+model ProcessingFee {
+  id         String  @id @default(cuid())
+  percent    Float   // 0.6 means 0.6%
+  fixedMinor Int     // minor units of `currency`
+  currency   String  @default("EUR")
+  active     Boolean @default(true)
+}
+
+// Workspace-wide preferences. Exactly one row, id "singleton".
+model Setting {
+  id             String @id @default("singleton")
+  timezone       String @default("Europe/Oslo")
+  defaultPreset  String @default("this_month")
+  dateFormat     String @default("MMM-dd-yyyy")
+  currencyFormat String @default("symbol-after") // symbol-after | code-after | symbol-before
 }
 
 model FxRate {
