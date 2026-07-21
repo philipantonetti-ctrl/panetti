@@ -2,7 +2,7 @@ import { utcDay } from '../dates'
 import { pct, sum } from '../money'
 import { costOn } from './costs'
 import { expenseInRange } from './expenses'
-import { convert } from './fx'
+import { convert, crossConvert } from './fx'
 import {
   EXCLUDED_STATUSES,
   ZERO_FIGURES,
@@ -16,6 +16,9 @@ import {
   type ShopFigures,
 } from './types'
 
+export type FulfillmentPoint = { perOrder: number; effectiveFrom: Date }
+export type ProcessingFeeRule = { percent: number; fixedMinor: number; currency: string }
+
 export type MetricsInput = {
   shops: EngineShop[]
   orders: EngineOrder[]
@@ -25,6 +28,24 @@ export type MetricsInput = {
   displayCurrency: string
   from: Date
   to: Date
+  /** shopId -> that shop's fulfillment rate history (any order). */
+  fulfillmentRates?: Map<string, FulfillmentPoint[]>
+  /** The one global gateway fee, or null when none is configured. */
+  processingFee?: ProcessingFeeRule | null
+}
+
+/** The newest rate that was already in force on `date`; 0 before the first one. */
+function fulfillmentOn(points: FulfillmentPoint[], date: Date): number {
+  let chosen = 0
+  let best = -Infinity
+  for (const p of points) {
+    const t = p.effectiveFrom.getTime()
+    if (t <= date.getTime() && t > best) {
+      best = t
+      chosen = p.perOrder
+    }
+  }
+  return chosen
 }
 
 /** An order that contributes nothing — refunded, cancelled, failed. */
@@ -44,7 +65,9 @@ function inRange(order: EngineOrder, from: Date, to: Date): boolean {
  *   net revenue  = net sales + shipping charged
  *   cogs         = qty x (cost + handling), at the cost in effect ON THE ORDER'S DATE
  *   commission   = rate x net sales, for attributed orders only
- *   net profit   = net revenue - cogs - operational expenses - commission
+ *   fulfillment  = fixed per-order cost, at the rate in force on the order's day
+ *   fees         = gateway % of the charged total + fixed part, per order
+ *   net profit   = net revenue - cogs - fulfillment - fees - operational expenses - commission
  *
  * Money arrives in each shop's own currency and is converted to `displayCurrency`
  * using the rate from the order's own date, so history never shifts.
@@ -67,6 +90,25 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const netSales = sum(shopOrders.map((o) => conv(o.netSales, o)))
     const shippingCharged = sum(shopOrders.map((o) => conv(o.shippingCharged, o)))
     const taxes = sum(shopOrders.map((o) => conv(o.taxTotal, o)))
+
+    // Fulfillment: a fixed cost per order, at the rate in force on the order's day.
+    const ratesForShop = input.fulfillmentRates?.get(shop.id) ?? []
+    const fulfillment = sum(
+      shopOrders.map((o) => conv(fulfillmentOn(ratesForShop, o.placedAt), o)),
+    )
+
+    // Gateway fee: % of the CHARGED total (incl. VAT — that is what the gateway
+    // takes its cut of) plus a fixed part crossing from the fee's own currency.
+    const fee = input.processingFee
+    const transactionFees = !fee
+      ? 0
+      : sum(
+          shopOrders.map((o) => {
+            const pctPart = Math.round((o.total * fee.percent) / 100)
+            const fixedPart = crossConvert(fee.fixedMinor, fee.currency, o.currency, o.placedAt, rates)
+            return conv(pctPart + fixedPart, o)
+          }),
+        )
     const netRevenue = netSales + shippingCharged
 
     const cogs = sum(
@@ -94,7 +136,8 @@ export function computeMetrics(input: MetricsInput): EngineResult {
         .map((e) => convert(expenseInRange(e, from, to), e.currency, from, displayCurrency, rates)),
     )
 
-    const netProfit = netRevenue - cogs - operationalExpenses - commission
+    const netProfit =
+      netRevenue - cogs - fulfillment - transactionFees - operationalExpenses - commission
 
     return {
       shopId: shop.id,
@@ -107,6 +150,8 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       taxes,
       netRevenue,
       cogs,
+      fulfillment,
+      transactionFees,
       operationalExpenses,
       commission,
       netProfit,
@@ -136,6 +181,8 @@ function totalOf(rows: ShopFigures[]): Figures {
     netSales: add((r) => r.netSales),
     shippingCharged: add((r) => r.shippingCharged),
     taxes: add((r) => r.taxes),
+    fulfillment: add((r) => r.fulfillment),
+    transactionFees: add((r) => r.transactionFees),
     netRevenue,
     cogs: add((r) => r.cogs),
     operationalExpenses: add((r) => r.operationalExpenses),

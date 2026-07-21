@@ -8,7 +8,7 @@ const rates = buildRateTable([{ date: new Date('2026-07-01'), currency: 'NOK', r
 function order(over: Partial<EngineOrder>): EngineOrder {
   return {
     id: 'o', shopId: 'no', placedAt: new Date('2026-07-01'), status: 'completed', currency: 'NOK',
-    grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0,
+    grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
     ambassadorId: null, commissionRate: 0.1, items: [], ...over,
   }
 }

@@ -26,6 +26,29 @@ export function buildRateTable(rows: RateRow[]): RateTable {
  * currency is returned unchanged rather than zeroed — an unconverted number is
  * honest, a zero would hide real money.
  */
+/** The USD rate for `currency` on `date`: that day's, else the nearest earlier, else the earliest known. */
+function rateOn(currency: string, date: Date, rates: RateTable): number | undefined {
+  const wanted = key(date)
+  const days = [...rates.keys()].sort()
+
+  let chosen: number | undefined
+  for (const day of days) {
+    if (day > wanted) break
+    const r = rates.get(day)?.get(currency)
+    if (r !== undefined) chosen = r
+  }
+  if (chosen === undefined) {
+    for (const day of days) {
+      const r = rates.get(day)?.get(currency)
+      if (r !== undefined) {
+        chosen = r
+        break
+      }
+    }
+  }
+  return chosen
+}
+
 export function convert(
   amount: number,
   from: string,
@@ -34,29 +57,27 @@ export function convert(
   rates: RateTable,
 ): number {
   if (from === display) return amount
-
-  const wanted = key(date)
-  const days = [...rates.keys()].sort()
-
-  // The most recent day at or before `date` that has a rate for this currency.
-  let chosen: number | undefined
-  for (const day of days) {
-    if (day > wanted) break
-    const r = rates.get(day)?.get(from)
-    if (r !== undefined) chosen = r
-  }
-
-  // Nothing at or before it: fall forward to the earliest rate we know.
-  if (chosen === undefined) {
-    for (const day of days) {
-      const r = rates.get(day)?.get(from)
-      if (r !== undefined) {
-        chosen = r
-        break
-      }
-    }
-  }
-
+  const chosen = rateOn(from, date, rates)
   if (chosen === undefined) return amount // unknown currency — never zero it out
   return mulRate(amount, chosen)
+}
+
+/**
+ * Convert between two arbitrary currencies via their USD legs — needed when a
+ * fee fixed in EUR lands on a NOK order shown in NOK. Missing either leg, the
+ * amount passes through unchanged (honest, never zeroed).
+ */
+export function crossConvert(
+  amount: number,
+  from: string,
+  to: string,
+  date: Date,
+  rates: RateTable,
+): number {
+  if (from === to) return amount
+  if (to === 'USD') return convert(amount, from, date, to, rates)
+  const fromUsd = from === 'USD' ? 1 : rateOn(from, date, rates)
+  const toUsd = rateOn(to, date, rates)
+  if (fromUsd === undefined || toUsd === undefined || toUsd === 0) return amount
+  return mulRate(amount, fromUsd / toUsd)
 }

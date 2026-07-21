@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+﻿import { describe, it, expect } from 'vitest'
 import { computeMetrics } from './engine'
 import { buildRateTable } from './fx'
 import type { CostBook, EngineExpense, EngineOrder, EngineShop } from './types'
@@ -31,6 +31,7 @@ function order(over: Partial<EngineOrder> = {}): EngineOrder {
     netSales: 90000, //  900.00 kr  <- commission base
     shippingCharged: 5000, //   50.00 kr
     taxTotal: 22500, //  225.00 kr VAT — never revenue
+    total: 117500, // what the customer was charged, incl VAT
     ambassadorId: null,
     commissionRate: 0,
     items: [{ productId: 'p1', quantity: 2, lineNetTotal: 90000 }],
@@ -196,5 +197,34 @@ describe('computeMetrics', () => {
       displayCurrency: 'USD', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
     })
     expect(res.total.taxes).toBe(2250) // 22 500 øre x 0.10
+  })
+  it('charges fulfillment per order at the rate in force that day', () => {
+    const res = computeMetrics({
+      shops: [shops[0]],
+      orders: [order(), order({ id: 'o2' })],
+      expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+      fulfillmentRates: new Map([['no', [
+        { perOrder: 30000, effectiveFrom: new Date('2026-01-01') },
+        { perOrder: 40000, effectiveFrom: new Date('2026-08-01') }, // future - must not apply
+      ]]]),
+    })
+    expect(res.total.fulfillment).toBe(60000) // 2 orders x 300 kr
+    expect(res.total.netProfit).toBe(2 * 73000 - 60000)
+  })
+
+  it('charges the gateway fee on the charged total, fixed part crossed from EUR', () => {
+    const withEur = buildRateTable([
+      { date: new Date('2026-07-01'), currency: 'NOK', rate: 0.1 },
+      { date: new Date('2026-07-01'), currency: 'EUR', rate: 1.2 },
+    ])
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [order()], expenses: [], costs, rates: withEur,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+      processingFee: { percent: 0.6, fixedMinor: 10, currency: 'EUR' },
+    })
+    // 0.6% of 117500 = 705; fixed 0.10 EUR -> NOK at 1.2/0.1 = x12 -> 120
+    expect(res.total.transactionFees).toBe(705 + 120)
+    expect(res.total.netProfit).toBe(73000 - 825)
   })
 })

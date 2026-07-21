@@ -54,7 +54,7 @@ describe('dailySeries', () => {
   function order(id: string, on: string): EngineOrder {
     return {
       id, shopId: 's1', placedAt: new Date(on), status: 'completed', currency: 'USD',
-      grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0, taxTotal: 2500,
+      grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0, taxTotal: 2500, total: 12500,
       ambassadorId: null, commissionRate: 0,
       items: [{ productId: 'p1', quantity: 1, lineNetTotal: 10000 }],
     }

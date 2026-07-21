@@ -47,6 +47,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     netSales: o.netSales,
     shippingCharged: o.shippingCharged,
     taxTotal: o.taxTotal,
+    total: o.total,
     ambassadorId: o.ambassadorId,
     // The rate is read from the ambassador, so a rate change applies to future
     // reports — but the ATTRIBUTION itself was frozen at sync time.
@@ -84,10 +85,28 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     active: e.active,
   }))
 
-  // Only fetch FX when we actually need to convert something.
+  const rateRows = await db.fulfillmentRate.findMany({ where: { shopId: { in: shopIds } } })
+  const fulfillmentRates = new Map<string, { perOrder: number; effectiveFrom: Date }[]>()
+  for (const r of rateRows) {
+    const list = fulfillmentRates.get(r.shopId) ?? []
+    list.push({ perOrder: r.perOrder, effectiveFrom: r.effectiveFrom })
+    fulfillmentRates.set(r.shopId, list)
+  }
+
+  const feeRow = await db.processingFee.findFirst({ where: { active: true } })
+  const processingFee = feeRow
+    ? { percent: feeRow.percent, fixedMinor: feeRow.fixedMinor, currency: feeRow.currency }
+    : null
+
+  // Only fetch FX when we actually need to convert something: consolidating to
+  // USD, or crossing the gateway fee's currency into the shops' own.
   const currencies = [...new Set([...shops.map((s) => s.currency), ...expenses.map((e) => e.currency)])]
-  if (displayCurrency === 'USD' && currencies.some((c) => c !== 'USD')) {
-    await ensureRates(from, to, currencies)
+  if (processingFee) currencies.push(processingFee.currency)
+  const needsRates =
+    (displayCurrency === 'USD' && currencies.some((c) => c !== 'USD')) ||
+    (processingFee !== null && currencies.some((c) => c !== processingFee.currency))
+  if (needsRates) {
+    await ensureRates(from, to, [...new Set(currencies)])
   }
 
   return {
@@ -99,6 +118,8 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     displayCurrency,
     from,
     to,
+    fulfillmentRates,
+    processingFee,
   }
 }
 

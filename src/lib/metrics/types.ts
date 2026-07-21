@@ -32,6 +32,7 @@ export type EngineOrder = {
   netSales: number // THE commission base
   shippingCharged: number
   taxTotal: number
+  total: number // what the customer was charged, incl VAT — the gateway-fee base
   ambassadorId: string | null
   commissionRate: number // e.g. 0.10; 0 when unattributed
   items: EngineOrderItem[]
@@ -68,6 +69,8 @@ export type Figures = {
   netSales: number
   shippingCharged: number
   taxes: number // VAT collected — reported, never revenue and never a cost
+  fulfillment: number // per-order fulfillment cost at the rate in effect that day
+  transactionFees: number // payment gateway: % of charged total + fixed part
   netRevenue: number
   cogs: number // product cost + handling combined
   operationalExpenses: number
@@ -93,6 +96,8 @@ export const ZERO_FIGURES: Figures = {
   netSales: 0,
   shippingCharged: 0,
   taxes: 0,
+  fulfillment: 0,
+  transactionFees: 0,
   netRevenue: 0,
   cogs: 0,
   operationalExpenses: 0,
