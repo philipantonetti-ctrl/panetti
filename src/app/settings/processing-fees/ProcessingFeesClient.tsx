@@ -87,7 +87,7 @@ export function ProcessingFeesClient({ email }: { email: string }) {
               return (
                 <div key={g} className="grid items-start gap-4 sm:grid-cols-[7.5rem_1fr_1fr]">
                   <div className="flex h-[74px] flex-col items-center justify-center rounded-[var(--radius-card)] border border-line px-2 text-center">
-                    <span aria-hidden="true" className="text-[17px]">👛</span>
+                    <span aria-hidden="true" className="text-[17px]">💳</span>
                     <span className="mt-1 text-[11px] font-semibold leading-tight text-ink">{g}</span>
                   </div>
 
