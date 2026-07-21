@@ -11,9 +11,13 @@ export type Preset =
   | 'this_week'
   | 'this_month'
   | 'this_year'
+  | 'last_week'
+  | 'last_month'
+  | 'last_year'
   | 'last_7_days'
   | 'last_30_days'
   | 'last_90_days'
+  | 'last_12_months'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -68,6 +72,23 @@ export function resolvePreset(preset: Preset, now: Date = new Date()): DateRange
       return { from: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)), to: today }
     case 'this_year':
       return { from: new Date(Date.UTC(today.getUTCFullYear(), 0, 1)), to: today }
+    case 'last_week': {
+      // The whole Monday-to-Sunday week before this one.
+      const dow = (today.getUTCDay() + 6) % 7
+      const monday = shift(-dow - 7)
+      return { from: monday, to: new Date(monday.getTime() + 6 * DAY_MS) }
+    }
+    case 'last_month': {
+      const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1))
+      const last = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0))
+      return { from: first, to: last }
+    }
+    case 'last_year': {
+      const y = today.getUTCFullYear() - 1
+      return { from: new Date(Date.UTC(y, 0, 1)), to: new Date(Date.UTC(y, 11, 31)) }
+    }
+    case 'last_12_months':
+      return { from: shift(-364), to: today } // rolling 365 days incl. today
     case 'last_7_days':
       return { from: shift(-6), to: today } // inclusive of today = 7 days
     case 'last_30_days':
@@ -83,7 +104,11 @@ export const PRESET_LABELS: Record<Preset, string> = {
   this_week: 'This week',
   this_month: 'This month',
   this_year: 'This year',
+  last_week: 'Last week',
+  last_month: 'Last month',
+  last_year: 'Last year',
   last_7_days: 'Last 7 days',
   last_30_days: 'Last 30 days',
   last_90_days: 'Last 90 days',
+  last_12_months: 'Last 12 months',
 }

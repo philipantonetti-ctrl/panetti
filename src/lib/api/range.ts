@@ -2,7 +2,8 @@ import { resolvePreset, utcDay, type DateRange, type Preset } from '../dates'
 
 const PRESETS: Preset[] = [
   'today', 'yesterday', 'this_week', 'this_month', 'this_year',
-  'last_7_days', 'last_30_days', 'last_90_days',
+  'last_week', 'last_month', 'last_year',
+  'last_7_days', 'last_30_days', 'last_90_days', 'last_12_months',
 ]
 
 /**

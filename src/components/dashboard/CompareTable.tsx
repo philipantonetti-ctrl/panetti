@@ -119,7 +119,7 @@ export function CompareTable({ result }: { result: EngineResult }) {
             {rows.map((row) => (
               <tr
                 key={row.shopId}
-                className="border-b border-line bg-surface transition-colors duration-150 last:border-b-0 hover:bg-panel"
+                className="border-b border-line bg-surface transition-colors duration-150 even:bg-panel/50 last:border-b-0 hover:bg-panel"
               >
                 <td className="sticky left-0 z-10 bg-inherit px-5 py-2.5 font-medium text-ink">{row.shopName}</td>
                 {COLUMNS.map((column) => (
