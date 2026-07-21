@@ -12,6 +12,11 @@ export const DATE_FORMATS = ['MMM-dd-yyyy', 'dd-MMM-yyyy', 'MM/dd/yyyy', 'dd/MM/
 export const CURRENCY_FORMATS = ['symbol-after', 'code-after', 'symbol-before']
 
 export async function getSetting() {
-  const row = await db.setting.findUnique({ where: { id: 'singleton' } })
-  return row ?? { id: 'singleton', ...SETTING_DEFAULTS }
+  // Never fatal: build-time prerenders and DB hiccups fall back to defaults.
+  try {
+    const row = await db.setting.findUnique({ where: { id: 'singleton' } })
+    return row ?? { id: 'singleton', ...SETTING_DEFAULTS }
+  } catch {
+    return { id: 'singleton', ...SETTING_DEFAULTS }
+  }
 }
