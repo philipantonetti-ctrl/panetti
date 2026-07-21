@@ -36,7 +36,7 @@ const TABS: { name: string; items: Item[] }[] = [
       {
         href: '/settings/general',
         title: 'Workspace defaults',
-        blurb: 'What every new webshop starts with — each shop can override these under Shop',
+        blurb: 'Timezone, date and currency formats for every webshop. A shop can pick its own under Shop',
         icon: '🌍',
       },
     ],

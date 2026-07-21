@@ -65,7 +65,7 @@ export function GeneralClient({ email, initial }: { email: string; initial: Valu
     <AppShell email={email}>
       <PageHeader
         title="Workspace defaults"
-        subtitle="What every webshop starts with. A shop with its own settings (Settings → Shop) keeps them — these apply wherever a shop has not chosen its own."
+        subtitle="These settings apply to every webshop. A shop that picks its own in the Shop tab keeps its choices."
       />
 
       <PageBody>
