@@ -26,11 +26,10 @@ describe('SettingsTabs', () => {
     expect(screen.queryByRole('link', { name: /Product Costs/ })).toBeNull()
   })
 
-  it('User and Workspace tabs carry ambassadors and workspace defaults', () => {
+  it('has exactly three tabs — no confusing Workspace door', () => {
     render(<SettingsTabs />)
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Costs', 'Shop', 'User'])
     fireEvent.click(screen.getByRole('tab', { name: 'User' }))
     expect(screen.getByRole('link', { name: /Ambassadors/ })).toBeTruthy()
-    fireEvent.click(screen.getByRole('tab', { name: 'Workspace' }))
-    expect(screen.getByRole('link', { name: /Workspace defaults/ })).toBeTruthy()
   })
 })

@@ -72,7 +72,7 @@ function Select({
   )
 }
 
-/** BeProfit-style per-webshop Shop Settings. Blank = use the workspace default. */
+/** BeProfit-style per-webshop Shop Settings — always shows the shop's actual values. */
 export function ShopSettingsClient({
   email,
   shop,
@@ -141,28 +141,24 @@ export function ShopSettingsClient({
 
             <div className="mt-4">
               <Select id="shop-tz" label="Time Zone" value={values.timezone} onChange={set('timezone')}>
-                <option value="">Workspace default</option>
                 {timezones().map((tz) => (
                   <option key={tz} value={tz}>{tz}</option>
                 ))}
               </Select>
 
               <Select id="shop-preset" label="Default App Date Range" value={values.defaultPreset} onChange={set('defaultPreset')}>
-                <option value="">Workspace default</option>
                 {(Object.keys(PRESET_LABELS) as Preset[]).map((p) => (
                   <option key={p} value={p}>{PRESET_LABELS[p]}</option>
                 ))}
               </Select>
 
               <Select id="shop-datefmt" label="Date Format" value={values.dateFormat} onChange={set('dateFormat')}>
-                <option value="">Workspace default</option>
                 {Object.entries(DATE_FORMAT_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}
               </Select>
 
               <Select id="shop-country" label="Shop Format Setting" value={values.formatCountry} onChange={set('formatCountry')}>
-                <option value="">Workspace default</option>
                 {COUNTRIES.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
@@ -180,7 +176,6 @@ export function ShopSettingsClient({
               </div>
 
               <Select id="shop-curfmt" label="Currency Format" value={values.currencyFormat} onChange={set('currencyFormat')}>
-                <option value="">Workspace default</option>
                 {Object.entries(CURRENCY_FORMAT_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { currentUser } from '@/lib/auth/current-user'
 import { db } from '@/lib/db'
+import { getSetting } from '@/lib/settings'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 
 export default async function ShopSettingsIndex() {
@@ -9,11 +10,14 @@ export default async function ShopSettingsIndex() {
   if (!user) redirect('/login')
   if (user.role !== 'ADMIN') redirect('/portal')
 
-  const shops = await db.shop.findMany({
-    where: { active: true },
-    orderBy: { name: 'asc' },
-    select: { id: true, name: true, currency: true, timezone: true },
-  })
+  const [shops, base] = await Promise.all([
+    db.shop.findMany({
+      where: { active: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, currency: true, timezone: true },
+    }),
+    getSetting(),
+  ])
 
   return (
     <AppShell email={user.email}>
@@ -28,7 +32,7 @@ export default async function ShopSettingsIndex() {
             >
               <span className="block text-[13px] font-semibold text-ink">{s.name}</span>
               <span className="mt-1 block text-[12px] text-muted">
-                {s.currency} · {s.timezone ?? 'Workspace timezone'}
+                {s.currency} · {s.timezone ?? base.timezone}
               </span>
             </Link>
           ))}
