@@ -15,13 +15,59 @@ const INPUT =
 
 /** The methods BeProfit offers; only Default Rate is live in this phase. */
 const LATER_METHODS = [
-  { name: 'Order Weight', blurb: 'Shipping rates based on order weight tiers' },
-  { name: 'Order Quantity', blurb: 'Shipping rates based on order quantity tiers' },
-  { name: 'Order Price', blurb: 'Shipping rates based on order price tiers' },
-  { name: 'Shipping Carrier', blurb: 'Rates from keywords in your carrier titles' },
-  { name: 'Shipping Title', blurb: 'Rates from keywords in your shipping method titles' },
-  { name: 'Other', blurb: 'More conditions to calculate your shipping costs by' },
+  {
+    name: 'Order Weight',
+    blurb: 'Shipping rates based on order weight tiers',
+    info: 'Set rate tiers by total order weight, for example 0 to 1 kg costs 49 kr and over 5 kg costs 129 kr. Coming in a later phase.',
+  },
+  {
+    name: 'Order Quantity',
+    blurb: 'Shipping rates based on order quantity tiers',
+    info: 'Set rate tiers by how many items an order holds, for example 1 to 3 items costs 59 kr. Coming in a later phase.',
+  },
+  {
+    name: 'Order Price',
+    blurb: 'Shipping rates based on order price tiers',
+    info: 'Set rate tiers by order value, for example orders over 1 000 kr ship free. Coming in a later phase.',
+  },
+  {
+    name: 'Shipping Carrier',
+    blurb: 'Rates from keywords in your carrier titles',
+    info: 'Match rates by carrier name keywords, for example Posten or Bring. Coming in a later phase.',
+  },
+  {
+    name: 'Shipping Title',
+    blurb: 'Rates from keywords in your shipping method titles',
+    info: 'Match rates by shipping method titles, for example Home delivery. Coming in a later phase.',
+  },
+  {
+    name: 'Other',
+    blurb: 'More conditions to calculate your shipping costs by',
+    info: 'More conditions such as country or product tags. Coming in a later phase.',
+  },
 ]
+
+/** A real tooltip: shows on hover and on keyboard focus, reads aloud its purpose. */
+function Info({ name, text }: { name: string; text: string }) {
+  return (
+    <span className="group relative inline-block align-middle">
+      <button
+        type="button"
+        aria-label={`About ${name}`}
+        onClick={(e) => e.preventDefault()}
+        className="px-0.5 text-[12px] text-faint hover:text-ink focus:text-ink"
+      >
+        ⓘ
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 hidden w-60 -translate-x-1/2 rounded-[var(--radius-control)] bg-ink px-3 py-2 text-left text-[11px] font-normal leading-snug text-white shadow-lg group-focus-within:block group-hover:block"
+      >
+        {text}
+      </span>
+    </span>
+  )
+}
 
 /**
  * BeProfit-shaped flow, default-rate engine underneath:
@@ -220,8 +266,7 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
                   />
                   <div>
                     <p className="text-[13px] font-medium text-ink">
-                      {m.name}{' '}
-                      <span aria-hidden="true" title="Coming in a later phase" className="text-faint">ⓘ</span>
+                      {m.name} <Info name={m.name} text={m.info} />
                     </p>
                     <p className="text-[11px] text-muted">{m.blurb}</p>
                   </div>
@@ -264,12 +309,21 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
           <section className="max-w-3xl rounded-[var(--radius-card)] border border-line bg-surface p-5">
             <h2 className="text-[14px] font-semibold text-ink">Rates</h2>
 
-            <div className="mt-2 flex gap-4 opacity-50">
+            <div className="mt-2 flex gap-4">
               {['% of order price', 'Handling', 'Duties'].map((t) => (
-                <span key={t} className="flex items-center gap-1.5 text-[12px] text-muted">
-                  <span className="inline-block h-4 w-7 rounded-full bg-panel" aria-hidden="true" />
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() =>
+                    toast.error(
+                      `${t} is coming in a later phase. The Worldwide amount below is the full per-order rate for now.`,
+                    )
+                  }
+                  className="flex items-center gap-1.5 text-[12px] text-muted transition-colors duration-150 hover:text-ink"
+                >
+                  <span className="inline-block h-4 w-7 rounded-full border border-line bg-panel" aria-hidden="true" />
                   {t}
-                </span>
+                </button>
               ))}
             </div>
 

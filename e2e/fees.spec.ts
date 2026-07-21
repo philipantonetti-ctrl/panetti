@@ -23,9 +23,17 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   await weight.check()
   await expect(weight).toBeChecked()
   await page.getByRole('button', { name: 'Next', exact: true }).click()
-  await expect(page.getByText(/coming in a later phase/i)).toBeVisible()
+  await expect(page.getByText(/Use Default Rate \(Edit\) for now/i)).toBeVisible()
+
+  // The info mark explains the method on hover.
+  await page.getByRole('button', { name: /About Order Weight/ }).hover()
+  await expect(page.getByText(/rate tiers by total order weight/i)).toBeVisible()
 
   await page.locator('section').getByRole('button', { name: 'Edit' }).click()
+
+  // The rate toggles respond instead of playing dead.
+  await page.getByRole('button', { name: 'Handling' }).click()
+  await expect(page.getByText(/full per-order rate for now/i)).toBeVisible()
 
   const card = page.locator('section', { hasText: 'Rates' }).first()
   const save = card.getByRole('button', { name: 'Save' })
