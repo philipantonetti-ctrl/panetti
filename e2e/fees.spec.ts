@@ -56,12 +56,33 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   await page.getByRole('button', { name: 'Delete rate from 2020-01-01' }).first().click()
   await expect(page.getByText('Rate deleted')).toBeVisible()
 
-  // The fee lives on its own page now, Dintero only — its button must fit too.
+  // The fees live on their own page — the save button must fit its card.
   await page.goto('/settings/processing-fees')
   const feeCard = page.locator('section', { hasText: 'Dintero Checkout' })
-  const saveFee = feeCard.getByRole('button', { name: 'Save fee' })
+  const saveFee = feeCard.getByRole('button', { name: 'Save fees' })
   await saveFee.waitFor()
   const feeBox = (await feeCard.boundingBox())!
   const feeBtnBox = (await saveFee.boundingBox())!
   expect(feeBtnBox.x + feeBtnBox.width).toBeLessThanOrEqual(feeBox.x + feeBox.width)
+
+  // Every gateway row is ALIVE: type a rate, tick a box, add a cross border fee.
+  await page.getByLabel('PayPal Account % of Transaction').fill('2.9')
+  await page.getByLabel('Credit Card no fees apply').first().check()
+  await page.getByRole('button', { name: 'Vorkasse add cross border fee' }).click()
+  await page.getByLabel('Vorkasse cross border fee %').fill('1.5')
+  await saveFee.click()
+  await expect(page.getByText(/applies across all webshops/i)).toBeVisible()
+
+  // Reload: every value came back from the database, not from page state.
+  await page.reload()
+  await expect(page.getByLabel('PayPal Account % of Transaction')).toHaveValue('2.9')
+  await expect(page.getByLabel('Credit Card no fees apply').first()).toBeChecked()
+  await expect(page.getByLabel('Vorkasse cross border fee %')).toHaveValue('1.5')
+
+  // Clean the scratch edits back off so reruns start fresh.
+  await page.getByLabel('PayPal Account % of Transaction').fill('')
+  await page.getByLabel('Credit Card no fees apply').first().uncheck()
+  await page.getByLabel('Vorkasse cross border fee %').fill('')
+  await feeCard.getByRole('button', { name: 'Save fees' }).click()
+  await expect(page.getByText(/applies across all webshops/i).first()).toBeVisible()
 })

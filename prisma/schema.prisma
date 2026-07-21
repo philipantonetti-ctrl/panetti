@@ -176,14 +176,17 @@ model FulfillmentRate {
   @@index([shopId, effectiveFrom])
 }
 
-// The single global payment-gateway fee (Dintero Checkout): percent of the
-// charged total plus a fixed amount converted from `currency` per order.
+// Per-gateway fee rates. Orders are charged the fee of the gateway the stores
+// actually route through (Dintero Checkout); other rows are stored settings.
 model ProcessingFee {
-  id         String  @id @default(cuid())
-  percent    Float   // 0.6 means 0.6%
-  fixedMinor Int     // minor units of `currency`
-  currency   String  @default("EUR")
-  active     Boolean @default(true)
+  id                 String  @id @default(cuid())
+  gateway            String  @unique @default("Dintero Checkout")
+  percent            Float   // 0.6 means 0.6%
+  fixedMinor         Int     // minor units of `currency`
+  currency           String  @default("EUR")
+  noFeesApply        Boolean @default(false)
+  crossBorderPercent Float?  // extra % on cross-border transactions
+  active             Boolean @default(true)
 }
 
 // Workspace-wide preferences. Exactly one row, id "singleton".

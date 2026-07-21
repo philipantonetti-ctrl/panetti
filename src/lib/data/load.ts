@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { ACTIVE_GATEWAY } from '../gateways'
 import { utcDay } from '../dates'
 import { zoneDayEndUtc, zoneDayStartUtc } from '../tz'
 import { buildRateTable } from '../metrics/fx'
@@ -110,7 +111,9 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     fulfillmentRates.set(r.shopId, list)
   }
 
-  const feeRow = await db.processingFee.findFirst({ where: { active: true } })
+  const feeRow = await db.processingFee.findFirst({
+    where: { gateway: ACTIVE_GATEWAY, active: true, noFeesApply: false },
+  })
   const processingFee = feeRow
     ? { percent: feeRow.percent, fixedMinor: feeRow.fixedMinor, currency: feeRow.currency }
     : null
