@@ -25,6 +25,11 @@ const TILES = [
     title: 'Ambassadors',
     blurb: 'Add ambassadors, send invite links and set what they earn',
   },
+  {
+    href: '/settings/fees',
+    title: 'Fulfillment and fees',
+    blurb: 'Per-order fulfillment rates and the Dintero payment fee',
+  },
 ]
 
 export default async function SettingsPage() {
