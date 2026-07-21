@@ -32,6 +32,7 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
   const [step, setStep] = useState<Step>('list')
   const [rates, setRates] = useState<Rate[]>([])
   const [busy, setBusy] = useState(false)
+  const [method, setMethod] = useState<string | null>(null)
 
   const [shopId, setShopId] = useState(shops[0]?.id ?? '')
   const [amount, setAmount] = useState('')
@@ -205,16 +206,26 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
             <p className="mt-4 text-[12px] font-semibold text-ink">Calculate my shipping costs by:</p>
             <div className="mt-2 space-y-1">
               {LATER_METHODS.map((m) => (
-                <div key={m.name} className="flex items-center gap-3 rounded-[var(--radius-control)] px-2 py-2 opacity-50">
-                  <span className="h-4 w-4 shrink-0 rounded-full border border-line" aria-hidden="true" />
+                <label
+                  key={m.name}
+                  className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-control)] px-2 py-2 hover:bg-panel"
+                >
+                  <input
+                    type="radio"
+                    name="fulfillment-method"
+                    checked={method === m.name}
+                    onChange={() => setMethod(m.name)}
+                    aria-label={m.name}
+                    className="h-4 w-4 shrink-0 accent-[var(--color-ink)]"
+                  />
                   <div>
-                    <p className="text-[13px] font-medium text-ink">{m.name}</p>
+                    <p className="text-[13px] font-medium text-ink">
+                      {m.name}{' '}
+                      <span aria-hidden="true" title="Coming in a later phase" className="text-faint">ⓘ</span>
+                    </p>
                     <p className="text-[11px] text-muted">{m.blurb}</p>
                   </div>
-                  <span className="ml-auto rounded-full bg-panel px-2 py-0.5 text-[10px] font-semibold text-faint">
-                    Later phase
-                  </span>
-                </div>
+                </label>
               ))}
             </div>
 
@@ -234,7 +245,15 @@ export function FeesClient({ email, shops }: { email: string; shops: Shop[] }) {
             </div>
 
             <div className="mt-4 flex justify-end">
-              <button disabled className="rounded-[var(--radius-control)] bg-panel px-4 py-2 text-xs font-semibold text-faint">
+              <button
+                onClick={() =>
+                  toast.error(
+                    `${method} rates are coming in a later phase. Use Default Rate (Edit) for now.`,
+                  )
+                }
+                disabled={!method}
+                className="rounded-[var(--radius-control)] bg-gain px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:bg-panel disabled:text-faint"
+              >
                 Next
               </button>
             </div>

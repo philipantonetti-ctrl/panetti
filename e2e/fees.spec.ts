@@ -17,8 +17,15 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   await page.goto('/settings/fees')
   await page.getByRole('button', { name: '+ Create New Rule' }).click()
   await expect(page.getByText('Create Dynamic Fulfillment Rates')).toBeVisible()
-  await expect(page.getByText('Order Weight', { exact: true })).toBeVisible() // later-phase methods listed
-  await page.getByRole('button', { name: 'Edit' }).click()
+
+  // The methods are REAL radios: selectable, and Next answers honestly.
+  const weight = page.getByRole('radio', { name: /Order Weight/ })
+  await weight.check()
+  await expect(weight).toBeChecked()
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await expect(page.getByText(/coming in a later phase/i)).toBeVisible()
+
+  await page.locator('section').getByRole('button', { name: 'Edit' }).click()
 
   const card = page.locator('section', { hasText: 'Rates' }).first()
   const save = card.getByRole('button', { name: 'Save' })
