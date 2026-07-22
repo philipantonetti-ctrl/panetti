@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { DateFilter } from '@/components/filters/DateFilter'
 import { formatMoney } from '@/lib/money'
@@ -50,7 +51,7 @@ export function PortalClient({
 }: {
   email: string
   initialPreset?: Preset
-  /** An admin viewing their own portal keeps the admin nav, to get back. */
+  /** An admin viewing their own portal gets a one-click link back to the dashboard. */
   admin?: boolean
 }) {
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
@@ -94,7 +95,7 @@ export function PortalClient({
   const firstName = data?.name.split(' ')[0] ?? ''
 
   return (
-    <AppShell email={email} nav={admin}>
+    <AppShell email={email} nav={false}>
       <PageHeader
         title={firstName ? `Hi ${firstName}` : 'Your performance'}
         subtitle={
@@ -103,6 +104,14 @@ export function PortalClient({
             : undefined
         }
       >
+        {admin && (
+          <Link
+            href="/dashboard"
+            className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-[13px] text-ink transition-colors duration-150 hover:border-faint"
+          >
+            ← Back to admin dashboard
+          </Link>
+        )}
         <DateFilter
           preset={preset}
           from={from}

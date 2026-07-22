@@ -53,8 +53,8 @@ test('an admin who is also an ambassador can open their own portal from the dash
   await expect(page.getByText('Your sales')).toBeVisible()
   await expect(page.getByText(CODE)).toBeVisible()
 
-  // As an admin they keep the nav, so they can go straight back.
-  await page.getByRole('link', { name: 'Dashboard' }).click()
+  // A one-click link takes them straight back to the admin dashboard.
+  await page.getByRole('link', { name: /Back to admin dashboard/ }).click()
   await page.waitForURL(/\/dashboard/)
 })
 
