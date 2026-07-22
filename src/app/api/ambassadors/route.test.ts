@@ -101,15 +101,15 @@ describe('POST /api/ambassadors', () => {
     expect(again.status).toBe(409)
   })
 
-  it('rejects an email that already has a login, so the ambassador is never un-onboardable', async () => {
+  it('lets an admin be an ambassador too — same email is allowed and tracked', async () => {
     await asAdmin()
-    // The admin's own email, say — creating an ambassador with it would make an
-    // ambassador who can never set a password (the email is already a login).
+    // The admin's own email already has a login. Creating an ambassador on it is
+    // fine: the code is tracked without a separate ambassador login, and the admin
+    // already sees the numbers on their dashboard.
     await db.user.create({ data: { email: EMAIL, passwordHash: 'x', role: 'ADMIN' } })
-    const res = await post({ name: 'Clash', email: EMAIL, commissionPercent: 10, shopId, code: 'CLASH10' })
-    expect(res.status).toBe(409)
-    expect((await res.json()).error).toMatch(/already has a login/i)
-    expect(await db.ambassador.findUnique({ where: { email: EMAIL } })).toBeNull()
+    const res = await post({ name: 'Owner', email: EMAIL, commissionPercent: 10, shopId, code: 'OWNER10' })
+    expect(res.status).toBe(200)
+    expect(await db.ambassador.findUnique({ where: { email: EMAIL } })).not.toBeNull()
   })
 
   it('rejects the same code on the SAME store with 409', async () => {

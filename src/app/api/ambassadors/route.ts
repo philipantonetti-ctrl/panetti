@@ -65,16 +65,11 @@ export async function POST(req: Request) {
     const shop = await db.shop.findUnique({ where: { id: shopId } })
     if (!shop) return NextResponse.json({ error: 'Pick a valid store for the code' }, { status: 400 })
 
-    // The email becomes their login when they onboard, so it must be free. Reject
-    // an email that already has one (e.g. the admin's own) up front, rather than
-    // creating an ambassador who could never set a password.
-    const taken = await db.user.findUnique({ where: { email: email.toLowerCase() }, select: { id: true } })
-    if (taken) {
-      return NextResponse.json(
-        { error: 'That email already has a login. Use a different email for the ambassador.' },
-        { status: 409 },
-      )
-    }
+    // An email that already has a login (e.g. the admin's own) is deliberately
+    // allowed: the same person can be an admin AND an ambassador. The code is
+    // tracked without a separate ambassador login, and they see it on the
+    // dashboard. Only onboarding (setting a second password) is skipped — the
+    // invite route says so plainly if they ever open the link.
 
     const ambassador = await db.ambassador.create({
       data: {

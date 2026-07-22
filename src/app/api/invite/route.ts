@@ -41,17 +41,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'You already have a login. Sign in instead.' }, { status: 409 })
     }
 
-    // 5. The email must be free to become a login. When an ambassador was created
-    // with an email that already has one (typically the admin's own email, used to
-    // test onboarding on themselves), say so plainly rather than letting the unique
-    // constraint blow up into an unreadable 500.
+    // 5. This email already has a login (typically the admin's own — the same
+    // person can be an admin and an ambassador). They do not need a second one:
+    // their ambassador sales already show on the dashboard they sign in to. Say
+    // that plainly rather than letting the unique constraint blow up into an
+    // unreadable 500.
     const taken = await db.user.findUnique({
       where: { email: ambassador.email },
       select: { id: true },
     })
     if (taken) {
       return NextResponse.json(
-        { error: 'That email already has a login. Use a different email for this ambassador.' },
+        { error: 'This email already has a login — sign in with it. Your ambassador sales show on your dashboard.' },
         { status: 409 },
       )
     }
