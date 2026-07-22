@@ -61,4 +61,20 @@ describe('DateFilter calendar', () => {
     expect(screen.getByRole('button', { name: 'Last month' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Last 12 months' })).toBeTruthy()
   })
+
+  it('locks future dates: today and past stay clickable, tomorrow and later do not', () => {
+    renderPicker() // now pinned to 2026-07-21
+    expect((screen.getByRole('button', { name: '2026-07-21' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: '2026-07-20' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: '2026-07-22' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: '2026-08-01' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('a future date cannot be picked, so it never starts a range', () => {
+    const onChange = renderPicker()
+    fireEvent.click(screen.getByRole('button', { name: '2026-07-25' })) // future, disabled
+    expect((screen.getByRole('button', { name: 'Apply' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

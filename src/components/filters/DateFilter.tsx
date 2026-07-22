@@ -14,11 +14,13 @@ function Month({
   year,
   month,
   draft,
+  today,
   onPick,
 }: {
   year: number
   month: number
   draft: Draft
+  today: string
   onPick: (day: string) => void
 }) {
   const { from, to } = draft
@@ -39,17 +41,22 @@ function Month({
             if (!day) return <span key={j} />
             const isEnd = day === from || day === to
             const inRange = from && to && day > from && day < to
+            // Tomorrow onward has no data to show and can't be part of a range.
+            const isFuture = day > today
             return (
               <button
                 key={day}
                 aria-label={day}
+                disabled={isFuture}
                 onClick={() => onPick(day)}
                 className={`num rounded-[var(--radius-control)] py-1 text-[12px] transition-colors duration-150 ${
-                  isEnd
-                    ? 'bg-ink font-semibold text-white'
-                    : inRange
-                      ? 'bg-panel text-ink'
-                      : 'text-muted hover:bg-panel hover:text-ink'
+                  isFuture
+                    ? 'cursor-not-allowed text-faint/60'
+                    : isEnd
+                      ? 'bg-ink font-semibold text-white'
+                      : inRange
+                        ? 'bg-panel text-ink'
+                        : 'text-muted hover:bg-panel hover:text-ink'
                 }`}
               >
                 {Number(day.slice(8))}
@@ -60,6 +67,13 @@ function Month({
       ))}
     </div>
   )
+}
+
+/** Today's calendar date as 'yyyy-mm-dd', the newest day the picker allows. */
+function todayStr(now: Date): string {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    now.getUTCDate(),
+  ).padStart(2, '0')}`
 }
 
 /**
@@ -81,6 +95,7 @@ export function DateFilter({
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<Draft>({})
   const now = new Date()
+  const today = todayStr(now)
   const [view, setView] = useState({ year: now.getUTCFullYear(), month: now.getUTCMonth() })
 
   const label = preset === 'custom' ? `${from || '…'} → ${to || '…'}` : PRESET_LABELS[preset]
@@ -162,8 +177,8 @@ export function DateFilter({
               </div>
 
               <div className="flex gap-4">
-                <Month year={view.year} month={view.month} draft={draft} onPick={(d) => setDraft(nextRange(draft, d))} />
-                <Month year={right.year} month={right.month} draft={draft} onPick={(d) => setDraft(nextRange(draft, d))} />
+                <Month year={view.year} month={view.month} draft={draft} today={today} onPick={(d) => setDraft(nextRange(draft, d))} />
+                <Month year={right.year} month={right.month} draft={draft} today={today} onPick={(d) => setDraft(nextRange(draft, d))} />
               </div>
 
               <div className="mt-2 flex items-center justify-end gap-3 border-t border-line pt-2">
