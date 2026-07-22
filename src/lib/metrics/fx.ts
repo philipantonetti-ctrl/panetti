@@ -18,19 +18,33 @@ export function buildRateTable(rows: RateRow[]): RateTable {
 }
 
 /**
- * The table's day-keys, sorted once and reused. `rateOn` runs for every money
- * conversion — tens of thousands per request — so re-sorting the keys each time
- * (an allocation and an O(n log n) sort) dominated the whole compute. The table
- * is rebuilt per request, so a WeakMap keyed on it caches for exactly that long.
+ * Per-currency, the days we hold a rate for (ascending) and the matching rates.
+ * `rateOn` runs for every money conversion — tens of thousands per request — so
+ * a per-call scan of the whole table dominated the compute. This index is built
+ * once and binary-searched instead. The table is rebuilt per request, so a
+ * WeakMap keyed on it caches for exactly that long.
  */
-const sortedDaysCache = new WeakMap<RateTable, string[]>()
-function sortedDays(rates: RateTable): string[] {
-  let days = sortedDaysCache.get(rates)
-  if (!days) {
-    days = [...rates.keys()].sort()
-    sortedDaysCache.set(rates, days)
+type CurrencyIndex = Map<string, { days: string[]; rates: number[] }>
+const indexCache = new WeakMap<RateTable, CurrencyIndex>()
+
+function currencyIndex(rates: RateTable): CurrencyIndex {
+  const cached = indexCache.get(rates)
+  if (cached) return cached
+
+  const index: CurrencyIndex = new Map()
+  for (const day of [...rates.keys()].sort()) {
+    for (const [currency, rate] of rates.get(day)!) {
+      let entry = index.get(currency)
+      if (!entry) {
+        entry = { days: [], rates: [] }
+        index.set(currency, entry)
+      }
+      entry.days.push(day) // days are visited in ascending order
+      entry.rates.push(rate)
+    }
   }
-  return days
+  indexCache.set(rates, index)
+  return index
 }
 
 /**
@@ -44,25 +58,28 @@ function sortedDays(rates: RateTable): string[] {
  */
 /** The USD rate for `currency` on `date`: that day's, else the nearest earlier, else the earliest known. */
 function rateOn(currency: string, date: Date, rates: RateTable): number | undefined {
-  const wanted = key(date)
-  const days = sortedDays(rates)
+  const entry = currencyIndex(rates).get(currency)
+  if (!entry) return undefined // a currency we hold no rate for at all
 
-  let chosen: number | undefined
-  for (const day of days) {
-    if (day > wanted) break
-    const r = rates.get(day)?.get(currency)
-    if (r !== undefined) chosen = r
-  }
-  if (chosen === undefined) {
-    for (const day of days) {
-      const r = rates.get(day)?.get(currency)
-      if (r !== undefined) {
-        chosen = r
-        break
-      }
+  const wanted = key(date)
+  const { days, rates: values } = entry
+
+  // Binary search for the latest day <= wanted (the nearest earlier rate).
+  let lo = 0
+  let hi = days.length - 1
+  let found = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (days[mid] <= wanted) {
+      found = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
     }
   }
-  return chosen
+
+  // Before every rate we hold: fall back to the earliest one.
+  return found >= 0 ? values[found] : values[0]
 }
 
 export function convert(
