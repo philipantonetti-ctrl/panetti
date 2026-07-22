@@ -46,12 +46,38 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const starts = zones.map((z) => zoneDayStartUtc(fromDay, z).getTime())
   const ends = zones.map((z) => zoneDayEndUtc(toDay, z).getTime())
 
+  // Commission rate per ambassador, looked up in memory. Joining the whole
+  // ambassador row onto every order made the query haul the same handful of
+  // people thousands of times; the map is a few dozen rows fetched once.
+  const rateByAmbassador = new Map(
+    (await db.ambassador.findMany({ select: { id: true, commissionRate: true } })).map((a) => [
+      a.id,
+      a.commissionRate,
+    ]),
+  )
+
+  // Select ONLY the columns the engine reads — a big range is thousands of rows,
+  // so every unused column (SKU, names, prices) is wasted transfer and hydration.
   const orderRows = await db.order.findMany({
     where: {
       shopId: { in: shopIds },
       placedAt: { gte: new Date(Math.min(...starts)), lte: new Date(Math.max(...ends)) },
     },
-    include: { items: true, ambassador: true },
+    select: {
+      id: true,
+      shopId: true,
+      placedAt: true,
+      status: true,
+      currency: true,
+      grossSales: true,
+      discountTotal: true,
+      netSales: true,
+      shippingCharged: true,
+      taxTotal: true,
+      total: true,
+      ambassadorId: true,
+      items: { select: { productId: true, quantity: true, lineNetTotal: true } },
+    },
   })
 
   const orders: EngineOrder[] = orderRows.map((o) => ({
@@ -69,7 +95,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     ambassadorId: o.ambassadorId,
     // The rate is read from the ambassador, so a rate change applies to future
     // reports — but the ATTRIBUTION itself was frozen at sync time.
-    commissionRate: o.ambassador?.commissionRate ?? 0,
+    commissionRate: o.ambassadorId ? rateByAmbassador.get(o.ambassadorId) ?? 0 : 0,
     items: o.items.map((i) => ({
       productId: i.productId,
       quantity: i.quantity,
