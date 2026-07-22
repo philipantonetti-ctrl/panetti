@@ -31,6 +31,7 @@ let shopId = ''
 let otherShopId = ''
 
 async function cleanup() {
+  await db.user.deleteMany({ where: { email: { in: [EMAIL, OTHER_EMAIL] } } })
   await db.ambassador.deleteMany({ where: { email: { in: [EMAIL, OTHER_EMAIL] } } })
   await db.shop.deleteMany({ where: { name: { contains: '[amb-test]' } } })
 }
@@ -98,6 +99,17 @@ describe('POST /api/ambassadors', () => {
     await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, shopId, code: 'DUPE1' })
     const again = await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, shopId, code: 'DUPE2' })
     expect(again.status).toBe(409)
+  })
+
+  it('rejects an email that already has a login, so the ambassador is never un-onboardable', async () => {
+    await asAdmin()
+    // The admin's own email, say — creating an ambassador with it would make an
+    // ambassador who can never set a password (the email is already a login).
+    await db.user.create({ data: { email: EMAIL, passwordHash: 'x', role: 'ADMIN' } })
+    const res = await post({ name: 'Clash', email: EMAIL, commissionPercent: 10, shopId, code: 'CLASH10' })
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/already has a login/i)
+    expect(await db.ambassador.findUnique({ where: { email: EMAIL } })).toBeNull()
   })
 
   it('rejects the same code on the SAME store with 409', async () => {

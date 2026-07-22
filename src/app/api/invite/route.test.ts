@@ -18,6 +18,7 @@ const redeem = (body: unknown) =>
   }))
 
 async function wipe() {
+  await db.user.deleteMany({ where: { email: { in: [EMAIL_A, EMAIL_B] } } })
   await db.ambassador.deleteMany({ where: { email: { in: [EMAIL_A, EMAIL_B] } } })
 }
 
@@ -114,6 +115,25 @@ describe('guard 4 — single use', () => {
     expect(created.ambassadorId).toBe(ambA)
     expect(created.ambassadorId).not.toBe(ambB)
     expect(await db.user.findUnique({ where: { email: EMAIL_B } })).toBeNull()
+  })
+})
+
+describe('guard 5 — the email must be free to become a login', () => {
+  // The exact production bug: an ambassador was created with an email that
+  // already belongs to a login (typically the admin testing on their own email).
+  // Creating the user blew up on the unique constraint, and with no handling the
+  // client saw a cryptic "Could not set your password." It must refuse cleanly.
+  it('refuses with a clear JSON error, never a crash, when the email already has a login', async () => {
+    await db.user.create({ data: { email: EMAIL_A, passwordHash: 'x', role: 'ADMIN' } })
+    const token = await signInvite(ambA) // ambA carries EMAIL_A
+
+    const res = await redeem({ token, password: 'longenough1' })
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.error).toMatch(/already has a login/i)
+
+    // No second user was created for that email.
+    expect(await db.user.count({ where: { email: EMAIL_A } })).toBe(1)
   })
 })
 

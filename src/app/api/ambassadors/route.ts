@@ -65,6 +65,17 @@ export async function POST(req: Request) {
     const shop = await db.shop.findUnique({ where: { id: shopId } })
     if (!shop) return NextResponse.json({ error: 'Pick a valid store for the code' }, { status: 400 })
 
+    // The email becomes their login when they onboard, so it must be free. Reject
+    // an email that already has one (e.g. the admin's own) up front, rather than
+    // creating an ambassador who could never set a password.
+    const taken = await db.user.findUnique({ where: { email: email.toLowerCase() }, select: { id: true } })
+    if (taken) {
+      return NextResponse.json(
+        { error: 'That email already has a login. Use a different email for the ambassador.' },
+        { status: 409 },
+      )
+    }
+
     const ambassador = await db.ambassador.create({
       data: {
         name,
