@@ -51,12 +51,16 @@ export function GeneralClient({ email, initial }: { email: string; initial: Valu
       })
       if (!res.ok) {
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not save settings')
+        setBusy(false)
         return
       }
-      toast.success('Settings saved. New day boundaries apply to every screen.')
+      // The currency and date formats are applied when the page renders (through
+      // the layout), so a full reload is what actually makes them show up. Toast
+      // first so it is seen, then reload — the button stays busy until it does.
+      toast.success('Settings saved. Reloading to apply them everywhere…')
+      setTimeout(() => window.location.reload(), 900)
     } catch {
       toast.error('Could not reach the server')
-    } finally {
       setBusy(false)
     }
   }
