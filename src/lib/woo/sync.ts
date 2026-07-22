@@ -98,8 +98,10 @@ export async function syncShop(
       }
     }
 
-    // Load the code -> ambassador map once, rather than per order.
-    const codes = await db.ambassadorCode.findMany()
+    // Load THIS store's codes only. A code belongs to one store, and the same
+    // text can mean a different ambassador on another store, so an order is only
+    // ever matched against its own store's codes.
+    const codes = await db.ambassadorCode.findMany({ where: { shopId: shop.id } })
     const byCode = new Map(codes.map((c) => [c.code.toUpperCase(), c]))
 
     let synced = 0
@@ -107,13 +109,10 @@ export async function syncShop(
     for (const raw of orders) {
       const o = mapOrder(raw)
 
-      // Attribute — a code scoped to another shop does not count here.
       let ambassadorId: string | null = null
       if (o.couponCode) {
         const match = byCode.get(o.couponCode)
-        if (match && (!match.shopId || match.shopId === shop.id)) {
-          ambassadorId = match.ambassadorId
-        }
+        if (match) ambassadorId = match.ambassadorId
       }
 
       // Make sure every product on the order exists.

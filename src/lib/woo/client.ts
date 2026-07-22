@@ -58,6 +58,32 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
 }
 
 /**
+ * Every discount code defined in the store, uppercased and deduped. Read only,
+ * using the same credentials as orders. Used to populate the code picker so an
+ * admin picks a real coupon instead of retyping it.
+ */
+export async function fetchCoupons(creds: WooCredentials): Promise<string[]> {
+  const codes = new Set<string>()
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+
+  for (let page = 1; page <= 20; page++) {
+    const params = new URLSearchParams({ per_page: '100', page: String(page) })
+    const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/coupons?${params}`, {
+      headers: { Authorization: `Basic ${auth}` },
+    })
+    if (!res.ok) {
+      throw new Error(`WooCommerce responded ${res.status}: ${await res.text()}`)
+    }
+
+    const batch = (await res.json()) as { code?: string }[]
+    for (const c of batch) if (c.code) codes.add(c.code.toUpperCase())
+    if (batch.length < 100) break
+  }
+
+  return [...codes]
+}
+
+/**
  * The store's own listed price per product (incl. VAT in our stores), keyed by
  * the WooCommerce product id. Products without a price are skipped.
  */

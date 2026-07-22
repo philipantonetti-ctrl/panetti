@@ -35,6 +35,8 @@ test('an admin creates an ambassador, who claims a login and sees only their own
   const form = page.getByTestId('add-ambassador')
   await form.getByPlaceholder('Name').fill(NAME)
   await form.getByPlaceholder('Email').fill(EMAIL)
+  // A code belongs to a store: choose one, which unlocks the code field.
+  await form.getByLabel('Store').selectOption({ index: 1 })
   await form.getByPlaceholder('Discount code').fill(CODE)
   await form.getByRole('button', { name: 'Add ambassador' }).click()
 

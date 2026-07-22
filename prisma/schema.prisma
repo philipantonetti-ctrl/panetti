@@ -142,14 +142,19 @@ model Ambassador {
   user   User?
 }
 
+// A discount code belongs to ONE store. The same text may exist on other stores
+// meaning something different (a Swedish JOHN10 and a Norwegian JOHN10 are two
+// separate codes), so an order only ever matches a code from its own store.
 model AmbassadorCode {
-  id           String  @id @default(cuid())
+  id           String @id @default(cuid())
   ambassadorId String
-  shopId       String? // null = valid on all shops
-  code         String  @unique // stored UPPERCASE; matching is case-insensitive
+  shopId       String // the store this code lives on
+  code         String // stored UPPERCASE; matching is case-insensitive
 
   ambassador Ambassador @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
-  shop       Shop?      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shop       Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, code])
 }
 
 model User {

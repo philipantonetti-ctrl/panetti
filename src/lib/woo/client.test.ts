@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchOrders } from './client'
+import { fetchCoupons, fetchOrders } from './client'
 
 const CREDS = { url: 'https://shop.example', key: 'ck', secret: 'cs' }
+
+const couponsPage = (codes: string[]) =>
+  new Response(JSON.stringify(codes.map((code, i) => ({ id: i, code }))), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
 
 function page(n: number) {
   return new Response(JSON.stringify(Array.from({ length: n }, (_, i) => ({ id: i }))), {
@@ -57,5 +63,35 @@ describe('fetchOrders', () => {
     const url = String(fetchMock.mock.calls[0][0])
     expect(url).toContain('after=2024-01-29T00%3A00%3A00')
     expect(url).not.toContain('modified_after')
+  })
+})
+
+describe('fetchCoupons', () => {
+  it('returns the store coupon codes, uppercased and deduped', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => couponsPage(['john10', 'JOHN10', 'summer']))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const codes = await fetchCoupons(CREDS)
+    expect(codes.sort()).toEqual(['JOHN10', 'SUMMER'])
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('/wp-json/wc/v3/coupons')
+  })
+
+  it('pages until a short page and stops', async () => {
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(async () => couponsPage(Array.from({ length: 100 }, (_, i) => `C${i}`)))
+      .mockImplementationOnce(async () => couponsPage(['LAST']))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const codes = await fetchCoupons(CREDS)
+    expect(codes).toContain('LAST')
+    expect(codes).toHaveLength(101)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('throws when the store rejects the request', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 401 })))
+    await expect(fetchCoupons(CREDS)).rejects.toThrow(/401/)
   })
 })

@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { CodeCombobox } from '@/components/CodeCombobox'
 import { useToast } from '@/components/toast/useToast'
 
-type Code = { id: string; code: string }
+type Code = { id: string; code: string; shopId: string; shopName: string }
+type Shop = { id: string; name: string }
 
 type Row = {
   id: string
@@ -17,6 +19,44 @@ type Row = {
   onboarded: boolean
   /** A path, so the link is built against whatever host the admin is on. Null once onboarded. */
   invitePath: string | null
+}
+
+/**
+ * The discount codes defined in one store, for the picker. Fetched only when a
+ * store is chosen, so visiting the page never calls every store at once. A
+ * store that is unconnected or offline simply returns nothing, and the field
+ * falls back to typing.
+ */
+function useShopCoupons(shopId: string) {
+  const [codes, setCodes] = useState<string[]>([])
+  // Which store `codes` reflects. Deriving "loading" from this (rather than a
+  // synchronous setState in the effect) keeps the effect lint-clean.
+  const [loadedFor, setLoadedFor] = useState('')
+
+  useEffect(() => {
+    if (!shopId) return
+    let alive = true
+    fetch(`/api/coupons?shopId=${encodeURIComponent(shopId)}`)
+      .then(async (r) => (r.ok ? ((await r.json()) as { codes: string[] }).codes : []))
+      .then((cs) => {
+        if (alive) {
+          setCodes(cs)
+          setLoadedFor(shopId)
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setCodes([])
+          setLoadedFor(shopId)
+        }
+      })
+    return () => {
+      alive = false
+    }
+  }, [shopId])
+
+  const ready = loadedFor === shopId
+  return { codes: ready ? codes : [], loading: shopId !== '' && !ready }
 }
 
 /** Every write goes through one of these, keyed so only the button you pressed says "Saving…". */
@@ -98,12 +138,30 @@ export function AmbassadorsClient({ email }: { email: string }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
 
+  const [shops, setShops] = useState<Shop[]>([])
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [newPercent, setNewPercent] = useState('10')
+  const [newShopId, setNewShopId] = useState('')
   const [newCode, setNewCode] = useState('')
+  const { codes: newCodes, loading: newCodesLoading } = useShopCoupons(newShopId)
 
   const busy = pending !== null
+
+  // The stores for the code picker. A failure just leaves the select empty; the
+  // field still lets you type a code.
+  useEffect(() => {
+    let live = true
+    fetch('/api/shops')
+      .then(async (r) => (r.ok ? ((await r.json()) as { shops?: Shop[] }).shops ?? [] : []))
+      .then((data) => {
+        if (live) setShops(data)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -122,9 +180,26 @@ export function AmbassadorsClient({ email }: { email: string }) {
     }
   }, [toast])
 
+  // Initial load, inlined so setState stays inside async callbacks (the lint
+  // rule forbids a synchronous setState path out of an effect). Writes reuse the
+  // richer `load` above, which also surfaces errors as toasts.
   useEffect(() => {
-    void load()
-  }, [load])
+    let live = true
+    fetch('/api/ambassadors')
+      .then(async (r) => (r.ok ? ((await r.json()) as { ambassadors?: Row[] }).ambassadors ?? [] : []))
+      .then((data) => {
+        if (live) {
+          setRows(data)
+          setLoading(false)
+        }
+      })
+      .catch(() => {
+        if (live) setLoading(false)
+      })
+    return () => {
+      live = false
+    }
+  }, [])
 
   /**
    * The single door every write goes through, so `res.ok` can never be forgotten and
@@ -158,6 +233,7 @@ export function AmbassadorsClient({ email }: { email: string }) {
       name: newName.trim(),
       email: newEmail.trim(),
       commissionPercent: Number(newPercent),
+      shopId: newShopId,
       code: newCode.trim(),
     })
     if (!ok) return
@@ -165,6 +241,7 @@ export function AmbassadorsClient({ email }: { email: string }) {
     setNewName('')
     setNewEmail('')
     setNewPercent('10')
+    setNewShopId('')
     setNewCode('')
   }
 
@@ -218,11 +295,12 @@ export function AmbassadorsClient({ email }: { email: string }) {
         >
           <h2 className="text-[13px] font-semibold text-ink">Add an ambassador</h2>
           <p className="mt-0.5 text-[12px] text-muted">
-            They set their own password from the invite link. Their discount code is what earns
-            them commission.
+            They set their own password from the invite link. Pick the store their code lives on,
+            then choose or type the code. The same code can exist on other stores meaning a
+            different person, so each is tracked separately.
           </p>
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_7rem_1fr_auto]">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_5.5rem_11rem_1fr_auto]">
             <input
               aria-label="Name"
               placeholder="Name"
@@ -244,17 +322,32 @@ export function AmbassadorsClient({ email }: { email: string }) {
               onChange={setNewPercent}
               disabled={busy}
             />
-            {/* Codes are stored uppercase, so type them that way. */}
-            <input
-              aria-label="Discount code"
-              placeholder="Discount code"
+            <select
+              aria-label="Store"
+              value={newShopId}
+              onChange={(e) => {
+                setNewShopId(e.target.value)
+                setNewCode('')
+              }}
+              className={INPUT}
+            >
+              <option value="">Store</option>
+              {shops.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            {/* Codes are stored uppercase; the combobox uppercases as you type. */}
+            <CodeCombobox
               value={newCode}
-              onChange={(e) => setNewCode(e.target.value)}
-              className={`${INPUT} uppercase placeholder:normal-case`}
+              onChange={setNewCode}
+              codes={newCodes}
+              loading={newCodesLoading}
+              disabled={!newShopId}
+              className={INPUT}
             />
             <button
               type="submit"
-              disabled={busy || !newName.trim() || !newEmail.trim() || !newCode.trim()}
+              disabled={busy || !newName.trim() || !newEmail.trim() || !newShopId || !newCode.trim()}
               className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white transition-opacity duration-150 hover:opacity-90 disabled:opacity-60"
             >
               {pending === 'add' ? 'Saving…' : 'Add ambassador'}
@@ -302,8 +395,10 @@ export function AmbassadorsClient({ email }: { email: string }) {
                             className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-ink"
                           >
                             {c.code}
+                            <span className="ml-1 font-normal text-faint">· {c.shopName}</span>
                           </span>
                         ))}
+                        {row.codes.length === 0 && <span className="text-[11px] text-faint">—</span>}
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
@@ -360,6 +455,7 @@ export function AmbassadorsClient({ email }: { email: string }) {
         <EditModal
           key={editing.id}
           row={editing}
+          shops={shops}
           pending={pending}
           send={send}
           onClose={() => setEditingId(null)}
@@ -375,17 +471,21 @@ export function AmbassadorsClient({ email }: { email: string }) {
  */
 function EditModal({
   row,
+  shops,
   pending,
   send,
   onClose,
 }: {
   row: Row
+  shops: Shop[]
   pending: string | null
   send: Send
   onClose: () => void
 }) {
   const [percent, setPercent] = useState(String(row.commissionPercent))
+  const [codeShopId, setCodeShopId] = useState('')
   const [code, setCode] = useState('')
+  const { codes: shopCodes, loading: codesLoading } = useShopCoupons(codeShopId)
   const busy = pending !== null
 
   async function saveCommission() {
@@ -396,9 +496,11 @@ function EditModal({
   }
 
   async function addCode() {
-    if (await send('add-code', `/api/ambassadors/${row.id}/codes`, 'POST', { code: code.trim() })) {
-      setCode('')
-    }
+    const ok = await send('add-code', `/api/ambassadors/${row.id}/codes`, 'POST', {
+      code: code.trim(),
+      shopId: codeShopId,
+    })
+    if (ok) setCode('')
   }
 
   return (
@@ -433,7 +535,10 @@ function EditModal({
               key={c.id}
               className="flex items-center justify-between rounded-[var(--radius-control)] border border-line px-3 py-1.5"
             >
-              <span className="text-sm font-semibold text-ink">{c.code}</span>
+              <span className="text-sm font-semibold text-ink">
+                {c.code}
+                <span className="ml-1.5 text-xs font-normal text-faint">· {c.shopName}</span>
+              </span>
               {/* Never disabled on the last code: the server's reason is worth reading. */}
               <button
                 onClick={() =>
@@ -451,17 +556,35 @@ function EditModal({
           ))}
         </div>
 
-        <div className="mt-2 flex gap-2">
-          <input
-            aria-label="New discount code"
-            placeholder="Another code"
+        <p className="mt-3 text-[11px] font-medium text-muted">Add a code on a store</p>
+        <div className="mt-1 grid gap-2 sm:grid-cols-[10rem_1fr_auto]">
+          <select
+            aria-label="Code store"
+            value={codeShopId}
+            onChange={(e) => {
+              setCodeShopId(e.target.value)
+              setCode('')
+            }}
+            className={INPUT}
+          >
+            <option value="">Store</option>
+            {shops.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <CodeCombobox
             value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className={`${INPUT} w-full uppercase placeholder:normal-case`}
+            onChange={setCode}
+            codes={shopCodes}
+            loading={codesLoading}
+            disabled={!codeShopId}
+            ariaLabel="New discount code"
+            placeholder="Another code"
+            className={INPUT}
           />
           <button
             onClick={addCode}
-            disabled={busy || !code.trim()}
+            disabled={busy || !codeShopId || !code.trim()}
             className="shrink-0 rounded-[var(--radius-control)] border border-line px-3 py-2 text-xs font-semibold text-ink transition-colors duration-150 hover:bg-panel disabled:opacity-60"
           >
             {pending === 'add-code' ? 'Adding…' : 'Add code'}

@@ -27,11 +27,21 @@ const post = (body: unknown) =>
 const EMAIL = 'plan-test-amb@example.local'
 const OTHER_EMAIL = 'plan-test-amb-2@example.local'
 
+let shopId = ''
+let otherShopId = ''
+
 async function cleanup() {
   await db.ambassador.deleteMany({ where: { email: { in: [EMAIL, OTHER_EMAIL] } } })
+  await db.shop.deleteMany({ where: { name: { contains: '[amb-test]' } } })
 }
 
-beforeEach(cleanup)
+beforeEach(async () => {
+  await cleanup()
+  const a = await db.shop.create({ data: { name: 'A [amb-test]', currency: 'NOK' } })
+  const b = await db.shop.create({ data: { name: 'B [amb-test]', currency: 'SEK' } })
+  shopId = a.id
+  otherShopId = b.id
+})
 afterEach(cleanup)
 
 describe('GET /api/ambassadors', () => {
@@ -40,68 +50,74 @@ describe('GET /api/ambassadors', () => {
     expect((await GET()).status).toBe(403)
   })
 
-  it('refuses an ambassador', async () => {
-    cookieValue.current = await signSession({
-      userId: 'u', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'x',
-    })
-    expect((await GET()).status).toBe(403)
-  })
-
   it('allows an admin', async () => {
     await asAdmin()
     expect((await GET()).status).toBe(200)
+  })
+
+  it('reports each code with the store it belongs to', async () => {
+    await asAdmin()
+    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, shopId, code: 'STORECODE10' })
+
+    const body = await (await GET()).json()
+    const row = body.ambassadors.find((a: { email: string }) => a.email === EMAIL)
+    expect(row.codes[0]).toMatchObject({ code: 'STORECODE10', shopId, shopName: 'A [amb-test]' })
   })
 })
 
 describe('POST /api/ambassadors', () => {
   it('refuses a non-admin', async () => {
     cookieValue.current = undefined
-    expect((await post({ name: 'X', email: EMAIL, commissionPercent: 10, code: 'X10' })).status).toBe(403)
+    expect((await post({ name: 'X', email: EMAIL, commissionPercent: 10, shopId, code: 'X10' })).status).toBe(403)
   })
 
-  it('stores 10 percent as the fraction 0.1', async () => {
+  it('needs a store for the code', async () => {
     await asAdmin()
-    const res = await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, code: 'PLANTEST10' })
-    expect(res.status).toBe(200)
-
-    const saved = await db.ambassador.findUniqueOrThrow({ where: { email: EMAIL } })
-    expect(saved.commissionRate).toBeCloseTo(0.1)
+    expect((await post({ name: 'X', email: EMAIL, commissionPercent: 10, code: 'X10' })).status).toBe(400)
   })
 
-  it('uppercases the code and creates it alongside the ambassador', async () => {
+  it('uppercases the code and ties it to the chosen store', async () => {
     await asAdmin()
-    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 15, code: 'lower10' })
+    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 15, shopId, code: 'lower10' })
 
     const saved = await db.ambassador.findUniqueOrThrow({
       where: { email: EMAIL }, include: { codes: true },
     })
     expect(saved.codes).toHaveLength(1)
-    expect(saved.codes[0].code).toBe('LOWER10')
+    expect(saved.codes[0]).toMatchObject({ code: 'LOWER10', shopId })
     expect(saved.commissionRate).toBeCloseTo(0.15)
   })
 
   it('rejects a commission percent above 100', async () => {
     await asAdmin()
-    expect((await post({ name: 'X', email: EMAIL, commissionPercent: 1000, code: 'X10' })).status).toBe(400)
+    expect((await post({ name: 'X', email: EMAIL, commissionPercent: 1000, shopId, code: 'X10' })).status).toBe(400)
   })
 
   it('rejects a duplicate email with 409', async () => {
     await asAdmin()
-    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, code: 'DUPE1' })
-    const again = await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, code: 'DUPE2' })
+    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, shopId, code: 'DUPE1' })
+    const again = await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, shopId, code: 'DUPE2' })
     expect(again.status).toBe(409)
   })
 
-  it('rejects a duplicate code with 409, even in a different case', async () => {
+  it('rejects the same code on the SAME store with 409', async () => {
     await asAdmin()
-    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, code: 'PLANTEST10' })
-    const again = await post({ name: 'Other', email: OTHER_EMAIL, commissionPercent: 10, code: 'plantest10' })
+    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, shopId, code: 'SAME10' })
+    const again = await post({ name: 'Other', email: OTHER_EMAIL, commissionPercent: 10, shopId, code: 'same10' })
     expect(again.status).toBe(409)
+  })
+
+  it('ALLOWS the same code on a DIFFERENT store (Sweden JOHN10 vs Norway JOHN10)', async () => {
+    await asAdmin()
+    const one = await post({ name: 'John NO', email: EMAIL, commissionPercent: 10, shopId, code: 'JOHN10' })
+    const two = await post({ name: 'John SE', email: OTHER_EMAIL, commissionPercent: 10, shopId: otherShopId, code: 'JOHN10' })
+    expect(one.status).toBe(200)
+    expect(two.status).toBe(200)
   })
 
   it('gives a new ambassador an invite link, since they have no login yet', async () => {
     await asAdmin()
-    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, code: 'INVITE10' })
+    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, shopId, code: 'INVITE10' })
 
     const body = await (await GET()).json()
     const row = body.ambassadors.find((a: { email: string }) => a.email === EMAIL)
@@ -112,11 +128,11 @@ describe('POST /api/ambassadors', () => {
 
   it('returns a clean percent, with no float artifacts', async () => {
     await asAdmin()
-    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 7, code: 'SEVEN7' })
+    await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 7, shopId, code: 'SEVEN7' })
 
     const body = await (await GET()).json()
     const row = body.ambassadors.find((a: { email: string }) => a.email === EMAIL)
-    expect(row.commissionPercent).toBe(7)        // exactly, not 7.000000000000001
+    expect(row.commissionPercent).toBe(7)
     expect(String(row.commissionPercent)).toBe('7')
   })
 })

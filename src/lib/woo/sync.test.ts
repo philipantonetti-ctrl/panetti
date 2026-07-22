@@ -5,6 +5,7 @@ import { db } from '../db'
 
 async function cleanup() {
   await db.shop.deleteMany({ where: { name: { contains: '[sync-test]' } } })
+  await db.ambassador.deleteMany({ where: { email: { contains: '[sync-test]' } } })
 }
 beforeEach(cleanup)
 afterEach(async () => {
@@ -51,6 +52,11 @@ function fullPage(n: number, startId: number) {
   return Array.from({ length: n }, (_, i) =>
     wooOrder(startId + i, new Date(Date.UTC(2024, 0, 1, 0, startId + i)).toISOString().slice(0, 19)),
   )
+}
+
+/** A mappable order that carries a discount code. */
+function wooCouponOrder(id: number, placedAt: string, code: string) {
+  return { ...wooOrder(id, placedAt), coupon_lines: [{ code }] }
 }
 
 async function connectedShop(name: string) {
@@ -183,6 +189,43 @@ describe('syncShop', () => {
       String(url).includes('/products') ? new Response('boom', { status: 500 }) : emptyPage(),
     ))
     expect((await syncShop(shop.id)).ok).toBe(true)
+  })
+
+  it('attributes the same code text to a different ambassador per store, never mixing them', async () => {
+    // The client's real case: JOHN10 exists on both Norway and Sweden, meaning
+    // two different people. A Norwegian order must never earn a Swedish John.
+    const norway = await connectedShop('Attr NO [sync-test]')
+    const sweden = await connectedShop('Attr SE [sync-test]')
+    const johnN = await db.ambassador.create({
+      data: {
+        name: 'John Norway',
+        email: 'john-no-[sync-test]@x.local',
+        commissionRate: 0.1,
+        codes: { create: { shopId: norway.id, code: 'SAME10' } },
+      },
+    })
+    const johnS = await db.ambassador.create({
+      data: {
+        name: 'John Sweden',
+        email: 'john-se-[sync-test]@x.local',
+        commissionRate: 0.1,
+        codes: { create: { shopId: sweden.id, code: 'SAME10' } },
+      },
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown) =>
+      String(url).includes('/orders')
+        ? jsonPage([wooCouponOrder(1, '2024-01-01T00:00:00', 'SAME10')])
+        : emptyPage(),
+    ))
+
+    expect((await syncShop(norway.id)).ok).toBe(true)
+    expect((await syncShop(sweden.id)).ok).toBe(true)
+
+    const noOrder = await db.order.findFirstOrThrow({ where: { shopId: norway.id } })
+    const seOrder = await db.order.findFirstOrThrow({ where: { shopId: sweden.id } })
+    expect(noOrder.ambassadorId).toBe(johnN.id)
+    expect(seOrder.ambassadorId).toBe(johnS.id)
   })
 
   it('an incremental sync with 5,000+ changed orders stops loudly instead of skipping', async () => {

@@ -12,7 +12,10 @@ const { signSession } = await import('@/lib/auth/session')
 const { db } = await import('@/lib/db')
 
 const EMAIL = 'plan-codes-amb@example.local'
+const OTHER = 'plan-codes-other@example.local'
 let id = ''
+let shopId = ''
+let otherShopId = ''
 
 const asAdmin = async () => {
   cookieValue.current = await signSession({
@@ -30,81 +33,95 @@ const call = (fn: typeof POST | typeof DELETE, body: unknown, target = id) =>
     { params: Promise.resolve({ id: target }) },
   )
 
+async function cleanup() {
+  await db.ambassador.deleteMany({ where: { email: { in: [EMAIL, OTHER] } } })
+  await db.shop.deleteMany({ where: { name: { contains: '[codes-test]' } } })
+}
+
 beforeEach(async () => {
-  await db.ambassador.deleteMany({
-    where: { email: { in: [EMAIL, 'plan-codes-other@example.local'] } },
+  await cleanup()
+  const a = await db.shop.create({ data: { name: 'A [codes-test]', currency: 'NOK' } })
+  const b = await db.shop.create({ data: { name: 'B [codes-test]', currency: 'SEK' } })
+  shopId = a.id
+  otherShopId = b.id
+  const amb = await db.ambassador.create({
+    data: { name: 'Codes', email: EMAIL, commissionRate: 0.1, codes: { create: { code: 'FIRST10', shopId } } },
   })
-  const a = await db.ambassador.create({
-    data: { name: 'Codes', email: EMAIL, commissionRate: 0.1, codes: { create: { code: 'FIRST10' } } },
-  })
-  id = a.id
+  id = amb.id
 })
 
-afterEach(async () => {
-  await db.ambassador.deleteMany({
-    where: { email: { in: [EMAIL, 'plan-codes-other@example.local'] } },
-  })
-})
+afterEach(cleanup)
 
 describe('POST — add a code', () => {
   it('refuses an anonymous caller', async () => {
     cookieValue.current = undefined
-    expect((await call(POST, { code: 'HACK10' })).status).toBe(403)
-    expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(1) // nothing written
+    expect((await call(POST, { code: 'HACK10', shopId })).status).toBe(403)
+    expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(1)
   })
 
   it('refuses an ambassador', async () => {
     cookieValue.current = await signSession({
       userId: 'u', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'x',
     })
-    expect((await call(POST, { code: 'HACK10' })).status).toBe(403)
+    expect((await call(POST, { code: 'HACK10', shopId })).status).toBe(403)
     expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(1)
   })
 
-  it('adds a code, uppercased', async () => {
+  it('adds a code on a store, uppercased', async () => {
     await asAdmin()
-    expect((await call(POST, { code: 'second20' })).status).toBe(200)
+    expect((await call(POST, { code: 'second20', shopId })).status).toBe(200)
     const codes = await db.ambassadorCode.findMany({ where: { ambassadorId: id } })
     expect(codes.map((c) => c.code).sort()).toEqual(['FIRST10', 'SECOND20'])
+    expect(codes.every((c) => c.shopId === shopId)).toBe(true)
   })
 
-  it('rejects a duplicate code with 409, even in a different case', async () => {
+  it('needs a store', async () => {
     await asAdmin()
-    expect((await call(POST, { code: 'first10' })).status).toBe(409)
+    expect((await call(POST, { code: 'NOSHOP10' })).status).toBe(400)
+  })
+
+  it('rejects the same code on the SAME store with 409', async () => {
+    await asAdmin()
+    expect((await call(POST, { code: 'first10', shopId })).status).toBe(409)
     expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(1)
+  })
+
+  it('ALLOWS the same code on a DIFFERENT store', async () => {
+    await asAdmin()
+    expect((await call(POST, { code: 'FIRST10', shopId: otherShopId })).status).toBe(200)
+    expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(2)
   })
 
   it('404s for an unknown ambassador', async () => {
     await asAdmin()
-    expect((await call(POST, { code: 'ORPHAN10' }, 'does-not-exist')).status).toBe(404)
+    expect((await call(POST, { code: 'ORPHAN10', shopId }, 'does-not-exist')).status).toBe(404)
   })
 
   it('rejects an empty code', async () => {
     await asAdmin()
-    expect((await call(POST, { code: '' })).status).toBe(400)
+    expect((await call(POST, { code: '', shopId })).status).toBe(400)
   })
 })
 
 describe('DELETE — remove a code', () => {
   it('refuses an anonymous caller', async () => {
     await asAdmin()
-    await call(POST, { code: 'SECOND20' })
+    await call(POST, { code: 'SECOND20', shopId })
     const doomed = await db.ambassadorCode.findFirstOrThrow({ where: { code: 'SECOND20' } })
 
     cookieValue.current = undefined
     expect((await call(DELETE, { codeId: doomed.id })).status).toBe(403)
-    expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(2) // nothing deleted
+    expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(2)
   })
 
   it('removes a code when more than one remains', async () => {
     await asAdmin()
-    await call(POST, { code: 'SECOND20' })
+    await call(POST, { code: 'SECOND20', shopId })
     const doomed = await db.ambassadorCode.findFirstOrThrow({ where: { code: 'SECOND20' } })
     expect((await call(DELETE, { codeId: doomed.id })).status).toBe(200)
     expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(1)
   })
 
-  // An ambassador with no code can never earn again.
   it('refuses to delete the LAST code', async () => {
     await asAdmin()
     const only = await db.ambassadorCode.findFirstOrThrow({ where: { ambassadorId: id } })
@@ -112,35 +129,27 @@ describe('DELETE — remove a code', () => {
     expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(1)
   })
 
-  // Codes must never be deletable across ambassadors.
   it("refuses to delete another ambassador's code", async () => {
     await asAdmin()
-    // Give the caller a SECOND code first, so the "keep at least one" guard cannot
-    // intercept and mask what this test is actually for. Without this the test
-    // passes off the wrong guard and proves nothing.
-    await call(POST, { code: 'MINE20' })
+    await call(POST, { code: 'MINE20', shopId })
     expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(2)
 
     const other = await db.ambassador.create({
       data: {
-        name: 'Other', email: 'plan-codes-other@example.local', commissionRate: 0.1,
-        codes: { create: [{ code: 'OTHERA10' }, { code: 'OTHERB10' }] },
+        name: 'Other', email: OTHER, commissionRate: 0.1,
+        codes: { create: [{ code: 'OTHERA10', shopId }, { code: 'OTHERB10', shopId }] },
       },
       include: { codes: true },
     })
-    try {
-      const victim = other.codes[0]
-      const res = await call(DELETE, { codeId: victim.id })
-      expect(res.status).toBe(404) // the RIGHT status, not merely "not 200"
-      expect(await db.ambassadorCode.count({ where: { ambassadorId: other.id } })).toBe(2)
-    } finally {
-      await db.ambassador.delete({ where: { id: other.id } })
-    }
+    const victim = other.codes[0]
+    const res = await call(DELETE, { codeId: victim.id })
+    expect(res.status).toBe(404)
+    expect(await db.ambassadorCode.count({ where: { ambassadorId: other.id } })).toBe(2)
   })
 
   it('404s for a codeId that does not exist at all', async () => {
     await asAdmin()
-    await call(POST, { code: 'MINE20' }) // clear the "keep at least one" guard
+    await call(POST, { code: 'MINE20', shopId })
     expect((await call(DELETE, { codeId: 'no-such-code-id' })).status).toBe(404)
   })
 })

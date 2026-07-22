@@ -91,14 +91,15 @@ async function main() {
   console.log('Creating ambassadors + logins...')
   const passwordHash = await bcrypt.hash('password123', 10)
   const ambassadors = []
-  for (const name of AMBASSADORS) {
+  for (const [i, name] of AMBASSADORS.entries()) {
     const slug = name.split(' ')[0].toLowerCase()
+    // A code belongs to a store now; spread the sample ambassadors across shops.
     const a = await db.ambassador.create({
       data: {
         name,
         email: `${slug}@ambassador.test`,
         commissionRate: 0.1,
-        codes: { create: { code: `${name.split(' ')[0].toUpperCase()}10` } },
+        codes: { create: { code: `${name.split(' ')[0].toUpperCase()}10`, shopId: shops[i % shops.length].id } },
       },
     })
     await db.user.create({

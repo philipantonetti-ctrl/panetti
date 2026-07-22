@@ -4,7 +4,7 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 
-const AddBody = z.object({ code: z.string().min(1) })
+const AddBody = z.object({ code: z.string().min(1), shopId: z.string().min(1) })
 const RemoveBody = z.object({ codeId: z.string().min(1) })
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -19,7 +19,7 @@ export async function POST(req: Request, { params }: Ctx) {
     assertAdmin(await currentUser())
 
     const parsed = AddBody.safeParse(await req.json())
-    if (!parsed.success) return NextResponse.json({ error: 'Enter a code' }, { status: 400 })
+    if (!parsed.success) return NextResponse.json({ error: 'Enter a code and pick a store' }, { status: 400 })
 
     const { id } = await params
     const ambassador = await db.ambassador.findUnique({ where: { id } })
@@ -27,16 +27,16 @@ export async function POST(req: Request, { params }: Ctx) {
 
     // Stored uppercase: sync.ts uppercases the coupon before looking it up, and
     // Postgres uniqueness is case-sensitive — so 'save10' and 'SAVE10' would be two
-    // legal rows collapsing to one key in sync's map, silently cross-attributing
-    // commission that is then frozen onto orders forever.
+    // legal rows on one store collapsing to one key in sync's map, silently
+    // cross-attributing commission that is then frozen onto orders forever.
     await db.ambassadorCode.create({
-      data: { ambassadorId: id, code: parsed.data.code.toUpperCase() },
+      data: { ambassadorId: id, code: parsed.data.code.toUpperCase(), shopId: parsed.data.shopId },
     })
     return NextResponse.json({ ok: true })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
     if (isUniqueViolation(e)) {
-      return NextResponse.json({ error: 'That code is already in use' }, { status: 409 })
+      return NextResponse.json({ error: 'That code already exists on that store' }, { status: 409 })
     }
     return NextResponse.json({ error: 'Could not add the code' }, { status: 500 })
   }

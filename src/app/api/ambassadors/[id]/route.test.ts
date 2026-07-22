@@ -164,13 +164,18 @@ describe('DELETE /api/ambassadors/[id]', () => {
 
   it('takes their codes and login with them', async () => {
     await asAdmin()
-    await db.ambassadorCode.create({ data: { ambassadorId: id, code: 'DELME10' } })
-    await db.user.create({
-      data: { email: DEL_USER_EMAIL, passwordHash: 'x', role: 'AMBASSADOR', ambassadorId: id },
-    })
-    await del()
-    expect(await db.ambassadorCode.count({ where: { code: 'DELME10' } })).toBe(0)
-    expect(await db.user.findUnique({ where: { email: DEL_USER_EMAIL } })).toBeNull()
+    const shop = await db.shop.create({ data: { name: 'del-code-shop', currency: 'NOK' } })
+    try {
+      await db.ambassadorCode.create({ data: { ambassadorId: id, code: 'DELME10', shopId: shop.id } })
+      await db.user.create({
+        data: { email: DEL_USER_EMAIL, passwordHash: 'x', role: 'AMBASSADOR', ambassadorId: id },
+      })
+      await del()
+      expect(await db.ambassadorCode.count({ where: { code: 'DELME10' } })).toBe(0)
+      expect(await db.user.findUnique({ where: { email: DEL_USER_EMAIL } })).toBeNull()
+    } finally {
+      await db.shop.delete({ where: { id: shop.id } })
+    }
   })
 
   // The guarantee: attribution is frozen at sync time and history is NEVER rewritten.
