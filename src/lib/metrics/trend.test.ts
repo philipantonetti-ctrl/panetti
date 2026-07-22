@@ -94,4 +94,23 @@ describe('dailySeries', () => {
     const summed = series.reduce((n, p) => n + p.netRevenue, 0)
     expect(summed).toBe(30000)
   })
+
+  // The fast path buckets orders by their zoned day; that bucketing MUST match
+  // the engine's own day boundaries, or a late-night order lands on the wrong bar.
+  it('places an order on its shop-timezone day, not its UTC day', () => {
+    const nyShops: EngineShop[] = [{ id: 's1', name: 'NY', currency: 'USD' }]
+    const shopTimezones = new Map([['s1', 'America/New_York']])
+    // 02:00 UTC on Jul 2 is 22:00 on Jul 1 in New York.
+    const tzInput = {
+      ...input,
+      shops: nyShops,
+      orders: [order('x', '2026-07-02T02:00:00Z')],
+      shopTimezones,
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-02'),
+    }
+    const byDate = Object.fromEntries(dailySeries(tzInput).map((p) => [p.date, p.netRevenue]))
+    expect(byDate['2026-07-01']).toBe(10000) // its New York day
+    expect(byDate['2026-07-02']).toBe(0)
+  })
 })

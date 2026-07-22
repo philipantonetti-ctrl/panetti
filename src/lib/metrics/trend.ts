@@ -1,5 +1,7 @@
 import { daysInRange, eachDay, utcDay } from '../dates'
+import { zonedDayStr } from '../tz'
 import { computeMetrics, type MetricsInput } from './engine'
+import type { EngineOrder } from './types'
 
 /** Change over time, and change against the period before. */
 
@@ -40,11 +42,28 @@ export type SeriesPoint = {
  * the number in the header can never disagree.
  */
 export function dailySeries(input: MetricsInput): SeriesPoint[] {
+  const tz = input.timezone ?? 'UTC'
+  const tzFor = (shopId: string) => input.shopTimezones?.get(shopId) ?? tz
+
+  // Bucket every order onto its own day ONCE, in the very zone the engine uses.
+  // Then each day is computed from only its own orders. Without this, every day
+  // re-scanned every order in the range (an expensive Intl call per order), so a
+  // year was O(days x orders) — hundreds of thousands of scans. The per-day
+  // compute still runs the real engine, so the numbers are byte-for-byte the same.
+  const byDay = new Map<string, EngineOrder[]>()
+  for (const o of input.orders) {
+    const k = zonedDayStr(o.placedAt, tzFor(o.shopId))
+    const list = byDay.get(k)
+    if (list) list.push(o)
+    else byDay.set(k, [o])
+  }
+
   return eachDay(input.from, input.to).map((day) => {
-    const { total } = computeMetrics({ ...input, from: day, to: day })
+    const date = day.toISOString().slice(0, 10)
+    const { total } = computeMetrics({ ...input, orders: byDay.get(date) ?? [], from: day, to: day })
 
     return {
-      date: day.toISOString().slice(0, 10),
+      date,
       netRevenue: total.netRevenue,
       netProfit: total.netProfit,
     }

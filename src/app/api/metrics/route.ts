@@ -19,13 +19,19 @@ export async function GET(req: Request) {
     const { from, to } = rangeFromQuery(params, new Date(), timezone)
     const shopIds = shopIdsFromQuery(params)
 
-    const input = await loadMetricsInput({ shopIds, from, to, timezone })
-    const metrics = computeMetrics(input)
+    // These three touch the database and do not depend on each other, so fire
+    // them together rather than paying each round trip to Neon in series: the
+    // current range, the ambassadors for the leaderboard, and the equally-long
+    // period before this one (so every figure can say which way it moved).
+    const before = previousRange(from, to)
+    const [input, people, previousInput] = await Promise.all([
+      loadMetricsInput({ shopIds, from, to, timezone }),
+      db.ambassador.findMany({ where: { active: true }, select: { id: true, name: true } }),
+      loadMetricsInput({ shopIds, from: before.from, to: before.to, timezone }),
+    ])
 
-    const people = await db.ambassador.findMany({
-      where: { active: true },
-      select: { id: true, name: true },
-    })
+    const metrics = computeMetrics(input)
+    const previous = computeMetrics(previousInput).total
 
     const top = leaderboard({
       ambassadors: people,
@@ -36,12 +42,6 @@ export async function GET(req: Request) {
       to,
       timezone,
     })
-
-    // The equally-long period before this one, so every figure can say which way it moved.
-    const before = previousRange(from, to)
-    const previous = computeMetrics(
-      await loadMetricsInput({ shopIds, from: before.from, to: before.to, timezone }),
-    ).total
 
     return NextResponse.json({
       metrics,

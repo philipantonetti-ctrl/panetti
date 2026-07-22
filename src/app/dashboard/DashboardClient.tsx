@@ -58,7 +58,8 @@ export function DashboardClient({
     }
     if (selected.length) params.set('shops', selected.join(','))
 
-    setLoading(true)
+    // loading is set true by the filter handlers (and starts true on mount), so
+    // the effect only needs to clear it — keeping setState out of the effect body.
     fetch(`/api/metrics?${params}`)
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error ?? 'Could not load')
@@ -89,12 +90,20 @@ export function DashboardClient({
         }
       >
         {/* Filters belong to the page, with the numbers they change. */}
-        <ShopFilter shops={shops} selected={selected} onChange={setSelected} />
+        <ShopFilter
+          shops={shops}
+          selected={selected}
+          onChange={(next) => {
+            setLoading(true)
+            setSelected(next)
+          }}
+        />
         <DateFilter
           preset={preset}
           from={from}
           to={to}
           onChange={(next) => {
+            setLoading(true)
             setPreset(next.preset)
             if (next.from !== undefined) setFrom(next.from)
             if (next.to !== undefined) setTo(next.to)
@@ -112,7 +121,12 @@ export function DashboardClient({
         {loading && !data ? (
           <Skeleton />
         ) : data ? (
-          <div className="space-y-4">
+          // On a refetch the numbers stay put but dim, so changing the range
+          // gives instant feedback instead of looking frozen until it lands.
+          <div
+            aria-busy={loading}
+            className={`space-y-4 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}
+          >
             <StatStrip
               total={data.metrics.total}
               previous={data.previous}

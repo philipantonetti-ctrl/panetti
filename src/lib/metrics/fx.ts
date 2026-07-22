@@ -18,6 +18,22 @@ export function buildRateTable(rows: RateRow[]): RateTable {
 }
 
 /**
+ * The table's day-keys, sorted once and reused. `rateOn` runs for every money
+ * conversion — tens of thousands per request — so re-sorting the keys each time
+ * (an allocation and an O(n log n) sort) dominated the whole compute. The table
+ * is rebuilt per request, so a WeakMap keyed on it caches for exactly that long.
+ */
+const sortedDaysCache = new WeakMap<RateTable, string[]>()
+function sortedDays(rates: RateTable): string[] {
+  let days = sortedDaysCache.get(rates)
+  if (!days) {
+    days = [...rates.keys()].sort()
+    sortedDaysCache.set(rates, days)
+  }
+  return days
+}
+
+/**
  * Convert `amount` (minor units, in `from` currency) into `display` currency using
  * the rate that applied ON `date`.
  *
@@ -29,7 +45,7 @@ export function buildRateTable(rows: RateRow[]): RateTable {
 /** The USD rate for `currency` on `date`: that day's, else the nearest earlier, else the earliest known. */
 function rateOn(currency: string, date: Date, rates: RateTable): number | undefined {
   const wanted = key(date)
-  const days = [...rates.keys()].sort()
+  const days = sortedDays(rates)
 
   let chosen: number | undefined
   for (const day of days) {
