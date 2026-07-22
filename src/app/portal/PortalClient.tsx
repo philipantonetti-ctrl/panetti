@@ -43,7 +43,16 @@ function Stat({
   )
 }
 
-export function PortalClient({ email, initialPreset }: { email: string; initialPreset?: Preset }) {
+export function PortalClient({
+  email,
+  initialPreset,
+  admin = false,
+}: {
+  email: string
+  initialPreset?: Preset
+  /** An admin viewing their own portal keeps the admin nav, to get back. */
+  admin?: boolean
+}) {
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -60,8 +69,8 @@ export function PortalClient({ email, initialPreset }: { email: string; initialP
       params.set('preset', preset)
     }
 
-    setLoading(true)
-    setError('')
+    // loading/error are set by the date handler (and start set on mount), so the
+    // effect only clears loading — keeping setState out of the effect body.
     fetch(`/api/portal?${params}`)
       .then(async (r) => {
         // Without this check a 403 pipes {error: "..."} straight into `data`
@@ -85,7 +94,7 @@ export function PortalClient({ email, initialPreset }: { email: string; initialP
   const firstName = data?.name.split(' ')[0] ?? ''
 
   return (
-    <AppShell email={email} nav={false}>
+    <AppShell email={email} nav={admin}>
       <PageHeader
         title={firstName ? `Hi ${firstName}` : 'Your performance'}
         subtitle={
@@ -99,6 +108,8 @@ export function PortalClient({ email, initialPreset }: { email: string; initialP
           from={from}
           to={to}
           onChange={(next) => {
+            setLoading(true)
+            setError('')
             setPreset(next.preset)
             if (next.from !== undefined) setFrom(next.from)
             if (next.to !== undefined) setTo(next.to)

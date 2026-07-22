@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
@@ -35,10 +36,13 @@ export function DashboardClient({
   email,
   shops,
   initialPreset,
+  hasOwnAmbassador = false,
 }: {
   email: string
   shops: Shop[]
   initialPreset?: Preset
+  /** The admin is also an ambassador — offer a link to their own portal. */
+  hasOwnAmbassador?: boolean
 }) {
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
@@ -90,6 +94,14 @@ export function DashboardClient({
         }
       >
         {/* Filters belong to the page, with the numbers they change. */}
+        {hasOwnAmbassador && (
+          <Link
+            href="/portal"
+            className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-[13px] text-ink transition-colors duration-150 hover:border-faint"
+          >
+            View my ambassador portal
+          </Link>
+        )}
         <ShopFilter
           shops={shops}
           selected={selected}

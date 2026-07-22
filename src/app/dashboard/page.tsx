@@ -16,6 +16,20 @@ export default async function DashboardPage() {
     orderBy: { name: 'asc' },
   })
 
+  // If the admin is also an ambassador (same email), offer a link to their own
+  // ambassador portal. Most admins are not, and then no link is shown.
+  const ownAmbassador = await db.ambassador.findFirst({
+    where: { email: user.email },
+    select: { id: true },
+  })
+
   const setting = await getSetting()
-  return <DashboardClient email={user.email} shops={shops} initialPreset={setting.defaultPreset as Preset} />
+  return (
+    <DashboardClient
+      email={user.email}
+      shops={shops}
+      initialPreset={setting.defaultPreset as Preset}
+      hasOwnAmbassador={ownAmbassador !== null}
+    />
+  )
 }

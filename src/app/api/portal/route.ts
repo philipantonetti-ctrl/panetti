@@ -23,15 +23,27 @@ export async function GET(req: Request) {
   try {
     const user = await currentUser()
     if (!user) throw new AuthError('Sign in first')
-    if (user.role !== 'AMBASSADOR' || !user.ambassadorId) {
-      throw new AuthError('This page is for ambassadors')
+
+    // Which ambassador's figures? An ambassador sees their own, taken from the
+    // session and never the request. An admin sees the ambassador that shares
+    // their email — their own. Either way it is a single ambassador they are
+    // entitled to: an admin viewing this sees their OWN portal, nothing wider.
+    let ambassadorId: string | null = null
+    if (user.role === 'AMBASSADOR') {
+      ambassadorId = user.ambassadorId
+    } else if (user.role === 'ADMIN') {
+      const mine = await db.ambassador.findFirst({ where: { email: user.email }, select: { id: true } })
+      ambassadorId = mine?.id ?? null
+    }
+    if (!ambassadorId) {
+      return NextResponse.json({ error: 'You do not have an ambassador code yet.' }, { status: 404 })
     }
 
     const { timezone } = await getSetting()
     const { from, to } = rangeFromQuery(new URL(req.url).searchParams, new Date(), timezone)
 
     const me = await db.ambassador.findUniqueOrThrow({
-      where: { id: user.ambassadorId },
+      where: { id: ambassadorId },
       include: { codes: true },
     })
 
