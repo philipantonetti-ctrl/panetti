@@ -4,7 +4,12 @@ import { db } from '@/lib/db'
 import { checkPassword } from '@/lib/auth/password'
 import { SESSION_COOKIE, signSession } from '@/lib/auth/session'
 
-const Body = z.object({ email: z.string().email(), password: z.string().min(1) })
+const Body = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+  /** Which front door was used, so we can land them on the side they asked for. */
+  mode: z.enum(['ambassador', 'admin']).optional(),
+})
 
 export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json())
@@ -27,10 +32,22 @@ export async function POST(req: Request) {
     ambassadorId: user.ambassadorId,
   })
 
-  const res = NextResponse.json({
-    ok: true,
-    redirectTo: user.role === 'ADMIN' ? '/dashboard' : '/portal',
-  })
+  // Where to land. An ambassador only has a portal. An admin normally gets the
+  // dashboard — but if they came through the AMBASSADOR door and have an
+  // ambassador of their own (same email), show them that side, which is what
+  // they just asked for. They can switch either way once inside.
+  let redirectTo = '/dashboard'
+  if (user.role !== 'ADMIN') {
+    redirectTo = '/portal'
+  } else if (parsed.data.mode === 'ambassador') {
+    const mine = await db.ambassador.findFirst({
+      where: { email: user.email },
+      select: { id: true },
+    })
+    if (mine) redirectTo = '/portal'
+  }
+
+  const res = NextResponse.json({ ok: true, redirectTo })
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true, // JavaScript in the browser can never read it
     sameSite: 'lax',

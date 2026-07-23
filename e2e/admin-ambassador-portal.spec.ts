@@ -34,15 +34,23 @@ test.afterAll(async () => {
   await db.$disconnect()
 })
 
-async function signIn(page: import('@playwright/test').Page, email: string) {
-  await page.goto('/login')
+async function signIn(page: import('@playwright/test').Page, email: string, door = '/login') {
+  await page.goto(door)
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill('password123')
   await page.getByRole('button', { name: 'Sign in' }).click()
 }
 
+// The owner's ask: "I signed in as ambassador, so show me the ambassador side."
+test('the owner signing in at the AMBASSADOR door lands straight on their portal', async ({ page }) => {
+  await signIn(page, ADMIN, '/login')
+  await page.waitForURL(/\/portal/)
+  await expect(page.getByText('Your sales')).toBeVisible()
+  await expect(page.getByText(CODE)).toBeVisible()
+})
+
 test('an admin who is also an ambassador can open their own portal from the dashboard', async ({ page }) => {
-  await signIn(page, ADMIN)
+  await signIn(page, ADMIN, '/admin')
   await page.waitForURL(/\/dashboard/)
 
   // The link is offered because this admin has a matching ambassador.

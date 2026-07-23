@@ -29,7 +29,8 @@ export function SignInForm({ mode }: { mode: 'ambassador' | 'admin' }) {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      // Tell the API which door this is, so it can land you on the side you chose.
+      body: JSON.stringify({ email, password, mode }),
     })
     const data = await res.json()
 
