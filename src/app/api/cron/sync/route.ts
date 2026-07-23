@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { syncAllShops } from '@/lib/woo/sync'
+import { ensureRates } from '@/lib/fx/rates'
+import { db } from '@/lib/db'
 
 /**
  * Pulling eight stores takes well over the default budget, so ask for the
@@ -32,6 +34,18 @@ export async function GET(req: Request) {
 
   const results = await syncAllShops()
   const failed = results.filter((r) => !r.ok).map((r) => r.shopName)
+
+  // Top up exchange rates here rather than inside someone's page load. A rate
+  // failure must never fail the sync, so it is best-effort.
+  try {
+    const currencies = [
+      ...new Set((await db.shop.findMany({ select: { currency: true } })).map((s) => s.currency)),
+    ]
+    const now = new Date()
+    await ensureRates(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), now, currencies)
+  } catch {
+    // Rates stay as they were; convert() falls back to the nearest earlier rate.
+  }
 
   // Report honestly: a half-failed run that claimed success would hide stale figures.
   return NextResponse.json({

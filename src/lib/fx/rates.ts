@@ -36,26 +36,47 @@ export function missingDays(from: Date, to: Date, have: Date[]): Date[] {
   return eachDay(from, to).filter((d) => !known.has(d.toISOString().slice(0, 10)))
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
 /**
- * Make sure we hold rates for every day in the range, fetching only the gaps.
- * Called before computing metrics.
+ * How far behind we tolerate before calling the rate provider.
+ *
+ * Markets are shut at weekends and on holidays, so those days have no rate
+ * ANYWHERE and can never be filled. Demanding a row for every calendar day
+ * meant every dashboard load called an external API that could not help — on
+ * every request, forever. `convert()` already falls back to the nearest earlier
+ * rate, so a gap costs nothing; only being genuinely behind is worth a call.
+ */
+const FRESH_DAYS = 4
+
+/**
+ * Top up the rates we hold if they have fallen behind the range being asked
+ * about. Called before computing metrics, and hourly by the scheduled sync so
+ * that a user's request rarely has to do it at all.
  */
 export async function ensureRates(from: Date, to: Date, currencies: string[]): Promise<void> {
   const wanted = currencies.filter((c) => c !== DISPLAY)
   if (wanted.length === 0) return
 
-  const existing = await db.fxRate.findMany({
-    where: { quote: DISPLAY, date: { gte: utcDay(from), lte: utcDay(to) } },
+  const end = utcDay(to)
+  const newest = await db.fxRate.findFirst({
+    where: { quote: DISPLAY, date: { lte: end } },
+    orderBy: { date: 'desc' },
     select: { date: true },
-    distinct: ['date'],
   })
 
-  const gaps = missingDays(from, to, existing.map((r) => r.date))
-  if (gaps.length === 0) return
+  if (newest && Math.round((end.getTime() - utcDay(newest.date).getTime()) / DAY_MS) <= FRESH_DAYS) {
+    return // current enough — nothing the provider could add
+  }
 
-  const start = gaps[0].toISOString().slice(0, 10)
-  const end = gaps[gaps.length - 1].toISOString().slice(0, 10)
-  const url = `https://api.frankfurter.app/${start}..${end}?from=${DISPLAY}&to=${wanted.join(',')}`
+  // Ask only for what is missing, and never for days before the range itself.
+  const startDay = newest
+    ? new Date(Math.max(utcDay(from).getTime(), utcDay(newest.date).getTime() + DAY_MS))
+    : utcDay(from)
+  if (startDay > end) return
+
+  const start = startDay.toISOString().slice(0, 10)
+  const url = `https://api.frankfurter.app/${start}..${end.toISOString().slice(0, 10)}?from=${DISPLAY}&to=${wanted.join(',')}`
 
   try {
     const res = await fetch(url)
