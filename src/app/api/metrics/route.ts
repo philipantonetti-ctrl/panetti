@@ -47,7 +47,10 @@ export async function GET(req: Request) {
       metrics,
       previous,
       series: dailySeries(input), // revenue and profit per day, for the chart
-      leaderboard: top.filter((r) => r.orders > 0).slice(0, 10),
+      // Sellers rank first (the list is already sorted by sales), but an
+      // ambassador who sold nothing this period is still shown. Dropping them
+      // made a roster of three look like a table with one row in it.
+      leaderboard: top.slice(0, 10),
       range: { from: from.toISOString(), to: to.toISOString() },
     })
   } catch (e) {
