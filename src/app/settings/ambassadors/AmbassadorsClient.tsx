@@ -8,6 +8,7 @@ import { useToast } from '@/components/toast/useToast'
 type Code = { id: string; code: string; shopId: string; shopName: string }
 type Shop = { id: string; name: string }
 
+
 type Row = {
   id: string
   name: string
@@ -17,7 +18,9 @@ type Row = {
   active: boolean
   codes: Code[]
   onboarded: boolean
-  /** A path, so the link is built against whatever host the admin is on. Null once onboarded. */
+  /** The email already belongs to a login (typically the owner's admin account). */
+  emailHasLogin: boolean
+  /** A path, so the link is built against whatever host the admin is on. Null when no invite can be redeemed. */
   invitePath: string | null
 }
 
@@ -120,6 +123,18 @@ function StatusPill({ row }: { row: Row }) {
     return (
       <span className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-gain">
         Active
+      </span>
+    )
+  }
+  // Their email is already a login (usually the owner, who is admin too), so
+  // there is no invite to send — they sign in with the account they have.
+  if (row.emailHasLogin) {
+    return (
+      <span
+        title="This email already has a login. They sign in with it; their ambassador sales show on the dashboard."
+        className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-gain"
+      >
+        Uses existing login
       </span>
     )
   }

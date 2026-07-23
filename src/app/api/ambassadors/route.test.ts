@@ -134,8 +134,23 @@ describe('POST /api/ambassadors', () => {
     const body = await (await GET()).json()
     const row = body.ambassadors.find((a: { email: string }) => a.email === EMAIL)
     expect(row.onboarded).toBe(false)
+    expect(row.emailHasLogin).toBe(false)
     expect(row.invitePath).toMatch(/^\/invite\/.+/)
     expect(row.commissionPercent).toBeCloseTo(10)
+  })
+
+  // The owner's case: their email is already the admin login, so an invite could
+  // never work. Say so, and do not offer a link that is guaranteed to fail.
+  it('flags an ambassador whose email already has a login, and mints no invite for them', async () => {
+    await asAdmin()
+    await db.user.create({ data: { email: EMAIL, passwordHash: 'x', role: 'ADMIN' } })
+    await post({ name: 'Owner', email: EMAIL, commissionPercent: 10, shopId, code: 'OWNER10' })
+
+    const body = await (await GET()).json()
+    const row = body.ambassadors.find((a: { email: string }) => a.email === EMAIL)
+    expect(row.emailHasLogin).toBe(true)
+    expect(row.onboarded).toBe(false) // no login is linked to THIS ambassador
+    expect(row.invitePath).toBeNull()
   })
 
   it('returns a clean percent, with no float artifacts', async () => {

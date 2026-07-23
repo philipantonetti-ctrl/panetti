@@ -59,6 +59,21 @@ describe('AmbassadorsClient store-scoped codes', () => {
     })
   })
 
+  it('says an ambassador uses their existing login, and offers no dead invite link', async () => {
+    // The owner: their email is already the admin login, so an invite can never
+    // be redeemed. Showing "Not set up yet" with a Copy invite link misleads.
+    renderPage([
+      {
+        id: 'a1', name: 'Philip', email: 'owner@x.local', commissionPercent: 10, active: true,
+        onboarded: false, emailHasLogin: true, invitePath: null,
+        codes: [{ id: 'c1', code: 'TEKGUIDE500', shopId: 's1', shopName: 'Panetti Norway' }],
+      },
+    ])
+    await waitFor(() => expect(screen.getByText('Uses existing login')).toBeTruthy())
+    expect(screen.queryByText('Not set up yet')).toBeNull()
+    expect(screen.queryByTestId('copy-invite')).toBeNull()
+  })
+
   it('shows each existing code with the store it belongs to', async () => {
     renderPage([
       {

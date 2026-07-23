@@ -28,12 +28,28 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   // The login existing is itself the record that this link was already spent.
   if (ambassador.user) return <InviteDead reason="used" />
 
+  // The email already belongs to a login — typically the owner, who is the admin
+  // AND an ambassador on one email. A password can never be set here, so point
+  // them at the login they already have instead of a form that cannot succeed.
+  const taken = await db.user.findUnique({
+    where: { email: ambassador.email },
+    select: { id: true },
+  })
+  if (taken) return <InviteDead reason="has-login" />
+
   return <InviteClient token={token} name={ambassador.name} />
 }
 
 /** The same card as the sign-in door, holding a reason instead of a form. */
-function InviteDead({ reason }: { reason: 'invalid' | 'used' }) {
-  const used = reason === 'used'
+function InviteDead({ reason }: { reason: 'invalid' | 'used' | 'has-login' }) {
+  // Both "spent" and "the email is already a login" end the same way: sign in.
+  const signIn = reason !== 'invalid'
+  const message =
+    reason === 'used'
+      ? 'This invite has already been used. Sign in with the password you set.'
+      : reason === 'has-login'
+        ? 'This email already has a login. Sign in with it — your ambassador sales show on your dashboard.'
+        : 'Ask for a new one.'
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas p-6">
@@ -47,15 +63,11 @@ function InviteDead({ reason }: { reason: 'invalid' | 'used' }) {
 
         <div className="rounded-[var(--radius-card)] border border-line bg-surface p-6">
           <h1 className="text-[19px] font-semibold tracking-tight text-ink">
-            {used ? 'You already have a login' : 'This invite link is not valid'}
+            {signIn ? 'You already have a login' : 'This invite link is not valid'}
           </h1>
-          <p className="mt-1 text-[13px] text-muted">
-            {used
-              ? 'This invite has already been used. Sign in with the password you set.'
-              : 'Ask for a new one.'}
-          </p>
+          <p className="mt-1 text-[13px] text-muted">{message}</p>
 
-          {used && (
+          {signIn && (
             <Link
               href="/login"
               className="mt-5 block w-full rounded-[var(--radius-control)] bg-ink py-2.5 text-center text-[13px] font-semibold text-white transition-opacity duration-150 hover:opacity-90"

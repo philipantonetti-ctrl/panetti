@@ -30,18 +30,35 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
+    // Which of these emails already have a login? Usually that is the owner, who
+    // is an admin AND an ambassador on one email. They can never redeem an
+    // invite (the email is taken), so we must not offer them one.
+    const withLogin = new Set(
+      (
+        await db.user.findMany({
+          where: { email: { in: rows.map((a) => a.email) } },
+          select: { email: true },
+        })
+      ).map((u) => u.email),
+    )
+
     const ambassadors = await Promise.all(
-      rows.map(async (a) => ({
-        id: a.id,
-        name: a.name,
-        email: a.email,
-        commissionPercent: Math.round(a.commissionRate * 10000) / 100,
-        active: a.active,
-        codes: a.codes.map((c) => ({ id: c.id, code: c.code, shopId: c.shopId, shopName: c.shop.name })),
-        onboarded: a.user !== null,
-        // Never mint a link for someone who already has a login.
-        invitePath: a.user ? null : `/invite/${await signInvite(a.id)}`,
-      })),
+      rows.map(async (a) => {
+        const emailHasLogin = withLogin.has(a.email)
+        return {
+          id: a.id,
+          name: a.name,
+          email: a.email,
+          commissionPercent: Math.round(a.commissionRate * 10000) / 100,
+          active: a.active,
+          codes: a.codes.map((c) => ({ id: c.id, code: c.code, shopId: c.shopId, shopName: c.shop.name })),
+          onboarded: a.user !== null,
+          emailHasLogin,
+          // Never mint a link that cannot be redeemed: already onboarded, or the
+          // email belongs to a login already.
+          invitePath: a.user || emailHasLogin ? null : `/invite/${await signInvite(a.id)}`,
+        }
+      }),
     )
 
     return NextResponse.json({ ambassadors })
