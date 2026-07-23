@@ -66,19 +66,39 @@ export async function GET(req: Request) {
       select: { netSales: true, currency: true, placedAt: true },
     })
 
-    // Only the orders actually shown carry their line items — an ambassador with
-    // thousands of sales should not haul every product row to render ten.
+    // Their whole order history for the period, newest first, each with what was
+    // sold in it. Capped high rather than at ten, so "86 orders" really means 86
+    // rows to look through.
     const recentRows = await db.order.findMany({
       where: mine,
       orderBy: { placedAt: 'desc' },
-      take: 10,
+      take: 500,
       select: {
         id: true,
         placedAt: true,
         netSales: true,
         currency: true,
         shop: { select: { name: true } },
-        items: { select: { name: true, quantity: true } },
+        items: {
+          select: {
+            name: true,
+            quantity: true,
+            product: { select: { imageUrl: true } },
+          },
+        },
+      },
+    })
+
+    // Every line they ever sold in the period, to rank products by units sold.
+    const soldLines = await db.orderItem.findMany({
+      where: { order: mine },
+      select: {
+        productId: true,
+        name: true,
+        quantity: true,
+        lineNetTotal: true,
+        order: { select: { currency: true, placedAt: true } },
+        product: { select: { imageUrl: true } },
       },
     })
 
@@ -95,8 +115,41 @@ export async function GET(req: Request) {
       sales: crossConvert(o.netSales, o.currency, DISPLAY, o.placedAt, rates),
       commission: crossConvert(pct(o.netSales, me.commissionRate), o.currency, DISPLAY, o.placedAt, rates),
       // What was actually sold in this order.
-      products: o.items.map((i) => ({ name: i.name, quantity: i.quantity })),
+      products: o.items.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        imageUrl: i.product?.imageUrl ?? null,
+      })),
     }))
+
+    // Everything they have ever sold, best seller first. Commission follows the
+    // same rule as an order's: their rate on the line's net value.
+    const byProduct = new Map<
+      string,
+      { productId: string; name: string; imageUrl: string | null; units: number; revenue: number }
+    >()
+    for (const line of soldLines) {
+      const row = byProduct.get(line.productId) ?? {
+        productId: line.productId,
+        name: line.name,
+        imageUrl: line.product?.imageUrl ?? null,
+        units: 0,
+        revenue: 0,
+      }
+      row.units += line.quantity
+      row.revenue += crossConvert(
+        line.lineNetTotal,
+        line.order.currency,
+        DISPLAY,
+        line.order.placedAt,
+        rates,
+      )
+      byProduct.set(line.productId, row)
+    }
+
+    const productTotals = [...byProduct.values()]
+      .sort((a, b) => b.units - a.units || b.revenue - a.revenue)
+      .map((p) => ({ ...p, commission: Math.round(p.revenue * me.commissionRate) }))
 
     for (const o of orders) {
       sales += crossConvert(o.netSales, o.currency, DISPLAY, o.placedAt, rates)
@@ -138,6 +191,7 @@ export async function GET(req: Request) {
       rank: orders.length > 0 ? better + 1 : null,
       totalAmbassadors,
       recent,
+      productTotals,
     })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })

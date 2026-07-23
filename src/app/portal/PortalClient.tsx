@@ -24,8 +24,29 @@ type Portal = {
     sales: number
     commission: number
     /** What was actually sold in this order. */
-    products: { name: string; quantity: number }[]
+    products: { name: string; quantity: number; imageUrl: string | null }[]
   }[]
+  /** Everything sold with their code, best seller first. */
+  productTotals: {
+    productId: string
+    name: string
+    imageUrl: string | null
+    units: number
+    revenue: number
+    commission: number
+  }[]
+}
+
+/** How many orders show before "Show all". */
+const PAGE = 10
+
+/** A small product picture, or a quiet placeholder when the shop has none. */
+function Thumb({ src, alt }: { src: string | null; alt: string }) {
+  if (!src) {
+    return <span aria-hidden="true" className="h-8 w-8 shrink-0 rounded-md bg-panel" />
+  }
+  // eslint-disable-next-line @next/next/no-img-element -- shop images are arbitrary remote hosts
+  return <img src={src} alt={alt} className="h-8 w-8 shrink-0 rounded-md object-cover" />
 }
 
 /** The same stat vocabulary as the admin dashboard — one system, two audiences. */
@@ -68,6 +89,8 @@ export function PortalClient({
   const [data, setData] = useState<Portal | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [tab, setTab] = useState<'orders' | 'products'>('orders')
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -101,6 +124,7 @@ export function PortalClient({
   }, [preset, from, to])
 
   const firstName = data?.name.split(' ')[0] ?? ''
+  const shownOrders = showAll ? (data?.recent ?? []) : (data?.recent ?? []).slice(0, PAGE)
 
   return (
     <AppShell email={email} nav={false}>
@@ -176,13 +200,69 @@ export function PortalClient({
             </section>
 
             <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
-              <div className="flex items-center justify-between px-5 py-3.5">
-                <h2 className="text-[13px] font-semibold text-ink">Orders with your code</h2>
+              <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+                <div className="flex gap-1">
+                  {(['orders', 'products'] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTab(t)}
+                      className={`rounded-[var(--radius-control)] px-3 py-1.5 text-[13px] font-semibold transition-colors duration-150 ${
+                        tab === t
+                          ? 'bg-accent-soft text-accent-ink'
+                          : 'text-muted hover:bg-panel hover:text-ink'
+                      }`}
+                    >
+                      {t === 'orders' ? 'Orders with your code' : 'Products you have sold'}
+                    </button>
+                  ))}
+                </div>
                 <p className="text-[12px] text-muted">
                   {preset === 'custom' ? 'Selected period' : PRESET_LABELS[preset]}
                 </p>
               </div>
 
+              {tab === 'products' ? (
+                <table className="w-full border-collapse text-[13px]">
+                  <thead>
+                    <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                      <th className="px-5 py-2 text-left">Product</th>
+                      <th className="px-4 py-2 text-right">Units sold</th>
+                      <th className="px-4 py-2 text-right">Revenue</th>
+                      <th className="px-5 py-2 text-right">Your commission</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.productTotals.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-5 py-12 text-center text-[13px] text-muted">
+                          Nothing sold with your code in this period yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.productTotals.map((p) => (
+                        <tr
+                          key={p.productId}
+                          className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-panel"
+                        >
+                          <td className="px-5 py-2.5">
+                            <div className="flex items-center gap-2.5">
+                              <Thumb src={p.imageUrl} alt={p.name} />
+                              <span className="text-ink">{p.name}</span>
+                            </div>
+                          </td>
+                          <td className="num px-4 py-2.5 text-right font-semibold text-ink">{p.units}</td>
+                          <td className="num px-4 py-2.5 text-right text-ink">
+                            {formatMoney(p.revenue, data.currency)}
+                          </td>
+                          <td className="num px-5 py-2.5 text-right font-semibold text-gain">
+                            {formatMoney(p.commission, data.currency)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              ) : (
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
@@ -203,7 +283,7 @@ export function PortalClient({
                       </td>
                     </tr>
                   ) : (
-                    data.recent.map((o) => (
+                    shownOrders.map((o) => (
                       <tr
                         key={o.id}
                         className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-panel"
@@ -222,11 +302,17 @@ export function PortalClient({
                               Not recorded
                             </span>
                           ) : (
-                            <ul className="space-y-0.5">
+                            <ul className="space-y-1">
                               {o.products.map((p, i) => (
-                                <li key={`${o.id}-${i}`} className="text-[12px] leading-snug">
-                                  {p.name}
-                                  <span className="text-muted"> × {p.quantity}</span>
+                                <li
+                                  key={`${o.id}-${i}`}
+                                  className="flex items-center gap-2 text-[12px] leading-snug"
+                                >
+                                  <Thumb src={p.imageUrl} alt={p.name} />
+                                  <span>
+                                    {p.name}
+                                    <span className="text-muted"> × {p.quantity}</span>
+                                  </span>
                                 </li>
                               ))}
                             </ul>
@@ -243,13 +329,25 @@ export function PortalClient({
                   )}
                 </tbody>
               </table>
+              )}
+
+              {/* The count in the header is the truth; make every one reachable. */}
+              {tab === 'orders' && !showAll && data.recent.length > PAGE && (
+                <div className="border-t border-line px-5 py-3">
+                  <button
+                    onClick={() => setShowAll(true)}
+                    className="text-[13px] font-semibold text-accent hover:underline"
+                  >
+                    Show all {data.recent.length} orders
+                  </button>
+                </div>
+              )}
             </section>
 
-            <p className="text-[12px] text-muted">
+            <p data-testid="earn-note" className="text-[12px] text-muted">
               You earn {(data.commissionRate * 100).toFixed(0)}% of the net sale value of every order
               placed with your code. Net sale means after any discount and{' '}
-              <strong>excluding VAT</strong>, and excludes shipping — so it is not the total the
-              customer paid. Figures shown in {data.currency}, your store’s own currency.
+              <strong>excluding VAT</strong>.
             </p>
           </div>
         ) : null}
