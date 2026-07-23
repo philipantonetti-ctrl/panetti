@@ -17,7 +17,15 @@ type Portal = {
   orders: number
   rank: number | null
   totalAmbassadors: number
-  recent: { id: string; date: string; shop: string; sales: number; commission: number }[]
+  recent: {
+    id: string
+    date: string
+    shop: string
+    sales: number
+    commission: number
+    /** What was actually sold in this order. */
+    products: { name: string; quantity: number }[]
+  }[]
 }
 
 /** The same stat vocabulary as the admin dashboard — one system, two audiences. */
@@ -180,6 +188,7 @@ export function PortalClient({
                   <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
                     <th className="px-5 py-2 text-left">Date</th>
                     <th className="px-4 py-2 text-left">Shop</th>
+                    <th className="px-4 py-2 text-left">Products</th>
                     <th className="px-4 py-2 text-right">Sale</th>
                     <th className="px-5 py-2 text-right">Your commission</th>
                   </tr>
@@ -188,7 +197,7 @@ export function PortalClient({
                 <tbody>
                   {data.recent.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-5 py-12 text-center text-[13px] text-muted">
+                      <td colSpan={5} className="px-5 py-12 text-center text-[13px] text-muted">
                         No orders with your code in this period yet. Share your code and they will
                         appear here.
                       </td>
@@ -207,6 +216,22 @@ export function PortalClient({
                           })}
                         </td>
                         <td className="px-4 py-2.5 text-ink">{o.shop}</td>
+                        <td className="px-4 py-2.5 text-ink">
+                          {o.products.length === 0 ? (
+                            <span data-testid="no-products" className="text-faint">
+                              Not recorded
+                            </span>
+                          ) : (
+                            <ul className="space-y-0.5">
+                              {o.products.map((p, i) => (
+                                <li key={`${o.id}-${i}`} className="text-[12px] leading-snug">
+                                  {p.name}
+                                  <span className="text-muted"> × {p.quantity}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
                         <td className="num px-4 py-2.5 text-right text-ink">
                           {formatMoney(o.sales, data.currency)}
                         </td>

@@ -51,17 +51,35 @@ export async function GET(req: Request) {
     const own = [...new Set(me.codes.map((c) => c.shop.currency))]
     const DISPLAY = own.length === 1 ? own[0] : 'USD'
 
-    const orders = await db.order.findMany({
-      where: {
-        ambassadorId: me.id, // <- from the session. Not from the request.
-        placedAt: {
-          gte: zoneDayStartUtc(utcDay(from).toISOString().slice(0, 10), timezone),
-          lte: zoneDayEndUtc(utcDay(to).toISOString().slice(0, 10), timezone),
-        },
-        status: { notIn: [...EXCLUDED_STATUSES] },
+    const mine = {
+      ambassadorId: me.id, // <- from the session. Not from the request.
+      placedAt: {
+        gte: zoneDayStartUtc(utcDay(from).toISOString().slice(0, 10), timezone),
+        lte: zoneDayEndUtc(utcDay(to).toISOString().slice(0, 10), timezone),
       },
-      include: { shop: { select: { name: true, currency: true } } },
+      status: { notIn: [...EXCLUDED_STATUSES] },
+    }
+
+    // Totals need every order in the range, but not what was inside them.
+    const orders = await db.order.findMany({
+      where: mine,
+      select: { netSales: true, currency: true, placedAt: true },
+    })
+
+    // Only the orders actually shown carry their line items — an ambassador with
+    // thousands of sales should not haul every product row to render ten.
+    const recentRows = await db.order.findMany({
+      where: mine,
       orderBy: { placedAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        placedAt: true,
+        netSales: true,
+        currency: true,
+        shop: { select: { name: true } },
+        items: { select: { name: true, quantity: true } },
+      },
     })
 
     // The display currency needs its own USD leg too, to cross into it.
@@ -70,17 +88,15 @@ export async function GET(req: Request) {
 
     let sales = 0
     let commission = 0
-    const recent = orders.slice(0, 10).map((o) => {
-      const orderSales = crossConvert(o.netSales, o.currency, DISPLAY, o.placedAt, rates)
-      const orderCommission = crossConvert(pct(o.netSales, me.commissionRate), o.currency, DISPLAY, o.placedAt, rates)
-      return {
-        id: o.id,
-        date: o.placedAt.toISOString(),
-        shop: o.shop.name,
-        sales: orderSales,
-        commission: orderCommission,
-      }
-    })
+    const recent = recentRows.map((o) => ({
+      id: o.id,
+      date: o.placedAt.toISOString(),
+      shop: o.shop.name,
+      sales: crossConvert(o.netSales, o.currency, DISPLAY, o.placedAt, rates),
+      commission: crossConvert(pct(o.netSales, me.commissionRate), o.currency, DISPLAY, o.placedAt, rates),
+      // What was actually sold in this order.
+      products: o.items.map((i) => ({ name: i.name, quantity: i.quantity })),
+    }))
 
     for (const o of orders) {
       sales += crossConvert(o.netSales, o.currency, DISPLAY, o.placedAt, rates)
