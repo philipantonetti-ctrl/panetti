@@ -89,6 +89,15 @@ export async function GET(req: Request) {
       },
     })
 
+    // What they have EVER sold, ignoring the period. Without this an empty month
+    // reads as "you have never sold anything" to someone with years of sales.
+    const lifetime = await db.order.aggregate({
+      where: { ambassadorId: me.id, status: { notIn: [...EXCLUDED_STATUSES] } },
+      _count: { _all: true },
+      _min: { placedAt: true },
+      _max: { placedAt: true },
+    })
+
     // Every line they ever sold in the period, to rank products by units sold.
     const soldLines = await db.orderItem.findMany({
       where: { order: mine },
@@ -192,6 +201,9 @@ export async function GET(req: Request) {
       totalAmbassadors,
       recent,
       productTotals,
+      lifetimeOrders: lifetime._count._all,
+      firstSaleAt: lifetime._min.placedAt?.toISOString() ?? null,
+      lastSaleAt: lifetime._max.placedAt?.toISOString() ?? null,
     })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })

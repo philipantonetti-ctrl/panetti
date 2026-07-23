@@ -26,6 +26,10 @@ type Portal = {
     /** What was actually sold in this order. */
     products: { name: string; quantity: number; imageUrl: string | null }[]
   }[]
+  /** Everything they have EVER sold, ignoring the chosen period. */
+  lifetimeOrders: number
+  firstSaleAt: string | null
+  lastSaleAt: string | null
   /** Everything sold with their code, best seller first. */
   productTotals: {
     productId: string
@@ -125,6 +129,19 @@ export function PortalClient({
 
   const firstName = data?.name.split(' ')[0] ?? ''
   const shownOrders = showAll ? (data?.recent ?? []) : (data?.recent ?? []).slice(0, PAGE)
+  const day = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+
+  /** Jump to a range that covers everything they have ever sold. */
+  function showAllSales() {
+    if (!data?.firstSaleAt) return
+    setLoading(true)
+    setError('')
+    setShowAll(false)
+    setPreset('custom')
+    setFrom(data.firstSaleAt.slice(0, 10))
+    setTo(new Date().toISOString().slice(0, 10))
+  }
 
   return (
     <AppShell email={email} nav={false}>
@@ -192,6 +209,9 @@ export function PortalClient({
                         of {data.totalAmbassadors}
                       </span>
                     </span>
+                  ) : data.lifetimeOrders > 0 ? (
+                    // They have sold before, just not now — never imply otherwise.
+                    <span className="text-[15px]">No sales this period</span>
                   ) : (
                     'No sales yet'
                   )
@@ -278,8 +298,25 @@ export function PortalClient({
                   {data.recent.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-5 py-12 text-center text-[13px] text-muted">
-                        No orders with your code in this period yet. Share your code and they will
-                        appear here.
+                        {data.lifetimeOrders > 0 ? (
+                          // They HAVE sold — just not in this window. Saying
+                          // "share your code" here would be plainly wrong.
+                          <div data-testid="quiet-period" className="space-y-2">
+                            <p className="text-ink">No sales in this period.</p>
+                            <p>
+                              You have {data.lifetimeOrders} orders in total
+                              {data.lastSaleAt ? `, most recently on ${day(data.lastSaleAt)}` : ''}.
+                            </p>
+                            <button
+                              onClick={showAllSales}
+                              className="font-semibold text-accent hover:underline"
+                            >
+                              Show all my sales
+                            </button>
+                          </div>
+                        ) : (
+                          'No orders with your code in this period yet. Share your code and they will appear here.'
+                        )}
                       </td>
                     </tr>
                   ) : (
