@@ -222,7 +222,9 @@ export function PortalClient({
 
             <p className="text-[12px] text-muted">
               You earn {(data.commissionRate * 100).toFixed(0)}% of the net sale value of every order
-              placed with your code. Figures shown in {data.currency}.
+              placed with your code. Net sale means after any discount and{' '}
+              <strong>excluding VAT</strong>, and excludes shipping — so it is not the total the
+              customer paid. Figures shown in {data.currency}, your store’s own currency.
             </p>
           </div>
         ) : null}

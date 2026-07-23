@@ -7,11 +7,9 @@ import { getSetting } from '@/lib/settings'
 import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
 import { pct } from '@/lib/money'
-import { buildRateTable, convert } from '@/lib/metrics/fx'
+import { buildRateTable, crossConvert } from '@/lib/metrics/fx'
 import { loadRates, ensureRates } from '@/lib/fx/rates'
 import { EXCLUDED_STATUSES } from '@/lib/metrics/types'
-
-const DISPLAY = 'USD'
 
 /**
  * An ambassador's own figures — and ONLY their own.
@@ -44,8 +42,14 @@ export async function GET(req: Request) {
 
     const me = await db.ambassador.findUniqueOrThrow({
       where: { id: ambassadorId },
-      include: { codes: true },
+      include: { codes: { include: { shop: { select: { currency: true } } } } },
     })
+
+    // Report in the money they actually sell in. Same rule the dashboard uses:
+    // one currency across their stores -> that currency, untouched; several ->
+    // consolidate to USD, because adding NOK to SEK would mean nothing.
+    const own = [...new Set(me.codes.map((c) => c.shop.currency))]
+    const DISPLAY = own.length === 1 ? own[0] : 'USD'
 
     const orders = await db.order.findMany({
       where: {
@@ -60,14 +64,15 @@ export async function GET(req: Request) {
       orderBy: { placedAt: 'desc' },
     })
 
-    await ensureRates(from, to, [...new Set(orders.map((o) => o.currency))])
+    // The display currency needs its own USD leg too, to cross into it.
+    await ensureRates(from, to, [...new Set([...orders.map((o) => o.currency), DISPLAY])])
     const rates = buildRateTable(await loadRates())
 
     let sales = 0
     let commission = 0
     const recent = orders.slice(0, 10).map((o) => {
-      const orderSales = convert(o.netSales, o.currency, o.placedAt, DISPLAY, rates)
-      const orderCommission = convert(pct(o.netSales, me.commissionRate), o.currency, o.placedAt, DISPLAY, rates)
+      const orderSales = crossConvert(o.netSales, o.currency, DISPLAY, o.placedAt, rates)
+      const orderCommission = crossConvert(pct(o.netSales, me.commissionRate), o.currency, DISPLAY, o.placedAt, rates)
       return {
         id: o.id,
         date: o.placedAt.toISOString(),
@@ -78,8 +83,8 @@ export async function GET(req: Request) {
     })
 
     for (const o of orders) {
-      sales += convert(o.netSales, o.currency, o.placedAt, DISPLAY, rates)
-      commission += convert(pct(o.netSales, me.commissionRate), o.currency, o.placedAt, DISPLAY, rates)
+      sales += crossConvert(o.netSales, o.currency, DISPLAY, o.placedAt, rates)
+      commission += crossConvert(pct(o.netSales, me.commissionRate), o.currency, DISPLAY, o.placedAt, rates)
     }
 
     // Rank: where do I stand among all ambassadors this period?
