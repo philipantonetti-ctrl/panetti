@@ -9,18 +9,45 @@ import { PrismaClient } from '@prisma/client'
 
 const ADMIN = 'admin@ecom.test'
 const CODE = 'OWNERSELFE2E'
+const ORDER_EXT = 'e2e-portal-order'
+const PRODUCT_EXT = 'e2e-portal-product'
+const PRODUCT_NAME = 'E2E Pizza Oven'
 
 test.beforeAll(async () => {
   const db = new PrismaClient()
   try {
+    await db.order.deleteMany({ where: { externalId: ORDER_EXT } })
+    await db.product.deleteMany({ where: { externalId: PRODUCT_EXT } })
     await db.ambassador.deleteMany({ where: { email: ADMIN } })
+
     const shop = await db.shop.findFirstOrThrow()
-    await db.ambassador.create({
+    const amb = await db.ambassador.create({
       data: {
         name: 'Owner',
         email: ADMIN,
         commissionRate: 0.1,
         codes: { create: { code: CODE, shopId: shop.id } },
+      },
+    })
+
+    // A real sale, dated today so it falls inside the portal's default period,
+    // carrying a product line — so the page must render what was sold.
+    const product = await db.product.create({
+      data: { shopId: shop.id, externalId: PRODUCT_EXT, sku: 'E2E-1', name: PRODUCT_NAME, lastPrice: 100000 },
+    })
+    await db.order.create({
+      data: {
+        shopId: shop.id, externalId: ORDER_EXT, number: ORDER_EXT,
+        placedAt: new Date(), status: 'completed', currency: shop.currency,
+        grossSales: 300000, discountTotal: 0, netSales: 300000,
+        shippingCharged: 0, taxTotal: 0, total: 300000,
+        couponCode: CODE, ambassadorId: amb.id,
+        items: {
+          create: [{
+            productId: product.id, sku: 'E2E-1', name: PRODUCT_NAME,
+            quantity: 3, unitPrice: 100000, lineNetTotal: 300000,
+          }],
+        },
       },
     })
   } finally {
@@ -30,6 +57,8 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   const db = new PrismaClient()
+  await db.order.deleteMany({ where: { externalId: ORDER_EXT } })
+  await db.product.deleteMany({ where: { externalId: PRODUCT_EXT } })
   await db.ambassador.deleteMany({ where: { email: ADMIN } })
   await db.$disconnect()
 })
@@ -47,6 +76,12 @@ test('the owner signing in at the AMBASSADOR door lands straight on their portal
   await page.waitForURL(/\/portal/)
   await expect(page.getByText('Your sales')).toBeVisible()
   await expect(page.getByText(CODE)).toBeVisible()
+
+  // The real page must show WHAT was sold on the order, with its quantity —
+  // rendered from the live database, not a mocked payload.
+  await expect(page.getByRole('columnheader', { name: 'Products' })).toBeVisible()
+  await expect(page.getByText(PRODUCT_NAME)).toBeVisible()
+  await expect(page.getByText('× 3')).toBeVisible()
 })
 
 test('an admin who is also an ambassador can open their own portal from the dashboard', async ({ page }) => {
