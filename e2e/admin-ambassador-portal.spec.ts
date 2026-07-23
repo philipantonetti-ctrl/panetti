@@ -70,6 +70,11 @@ test('a regular ambassador still cannot reach the admin dashboard', async ({ pag
   await signIn(page, 'emma@ambassador.test')
   await page.waitForURL(/\/portal/)
 
+  // The owner's switch link must NEVER be rendered for a real ambassador.
+  await expect(page.getByText('Your sales')).toBeVisible() // their portal really loaded
+  await expect(page.getByRole('link', { name: /Back to admin dashboard/ })).toHaveCount(0)
+  await expect(page.getByText(/admin/i)).toHaveCount(0)
+
   await page.goto('/dashboard')
   await expect(page).toHaveURL(/\/portal/) // bounced by the guard
   await expect(page.getByText('Compare shops')).toHaveCount(0)
