@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { signInvite } from '@/lib/auth/invite'
+import { attributeExistingOrders } from '@/lib/attribution'
 import { db } from '@/lib/db'
 
 const Body = z.object({
@@ -97,7 +98,11 @@ export async function POST(req: Request) {
       },
     })
 
-    return NextResponse.json({ ok: true, id: ambassador.id })
+    // Their code may already have months of sales behind it. Link those now, so
+    // a new ambassador does not open an empty portal.
+    const linked = await attributeExistingOrders(ambassador.id, shopId, code)
+
+    return NextResponse.json({ ok: true, id: ambassador.id, linkedOrders: linked })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
     if (isUniqueViolation(e)) {

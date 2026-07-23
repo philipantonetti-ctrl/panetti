@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { attributeExistingOrders } from '@/lib/attribution'
 import { db } from '@/lib/db'
 
 const AddBody = z.object({ code: z.string().min(1), shopId: z.string().min(1) })
@@ -32,7 +33,11 @@ export async function POST(req: Request, { params }: Ctx) {
     await db.ambassadorCode.create({
       data: { ambassadorId: id, code: parsed.data.code.toUpperCase(), shopId: parsed.data.shopId },
     })
-    return NextResponse.json({ ok: true })
+
+    // Sales already made on this code belong to them too.
+    const linked = await attributeExistingOrders(id, parsed.data.shopId, parsed.data.code)
+
+    return NextResponse.json({ ok: true, linkedOrders: linked })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
     if (isUniqueViolation(e)) {

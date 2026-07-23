@@ -127,6 +127,27 @@ describe('POST /api/ambassadors', () => {
     expect(two.status).toBe(200)
   })
 
+  // Codes usually run for months before anyone is added as an ambassador here.
+  // Those sales are theirs, so adding them must not open an empty portal.
+  it('links a new ambassador to the sales their code already made', async () => {
+    await asAdmin()
+    await db.order.create({
+      data: {
+        shopId, externalId: 'past-1', number: 'past-1', placedAt: new Date('2026-01-10'),
+        status: 'completed', currency: 'NOK', grossSales: 10000, discountTotal: 0, netSales: 10000,
+        shippingCharged: 0, taxTotal: 0, total: 10000, couponCode: 'HISTORIC10',
+      },
+    })
+
+    const res = await post({ name: 'Late', email: EMAIL, commissionPercent: 10, shopId, code: 'historic10' })
+    expect(res.status).toBe(200)
+    expect((await res.json()).linkedOrders).toBe(1)
+
+    const amb = await db.ambassador.findUniqueOrThrow({ where: { email: EMAIL } })
+    const past = await db.order.findFirstOrThrow({ where: { externalId: 'past-1' } })
+    expect(past.ambassadorId).toBe(amb.id)
+  })
+
   it('gives a new ambassador an invite link, since they have no login yet', async () => {
     await asAdmin()
     await post({ name: 'Plan Test', email: EMAIL, commissionPercent: 10, shopId, code: 'INVITE10' })
