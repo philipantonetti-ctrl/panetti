@@ -51,7 +51,7 @@ describe('CompareTable', () => {
     render(<CompareTable result={result} />)
     expect(screen.queryByRole('button', { name: /Sort by Discounts/i })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: /Columns/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Select metrics/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Discounts' }))
 
     expect(screen.queryByRole('button', { name: /Sort by Discounts/i })).toBeNull()
@@ -59,7 +59,7 @@ describe('CompareTable', () => {
 
   it('remembers the chosen metrics across reloads', () => {
     const { unmount } = render(<CompareTable result={result} />)
-    fireEvent.click(screen.getByRole('button', { name: /Columns/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Select metrics/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Discounts' }))
     unmount()
 

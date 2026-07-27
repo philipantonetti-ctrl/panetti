@@ -141,7 +141,7 @@ export function CompareTable({ result }: { result: EngineResult }) {
               aria-expanded={pickerOpen}
               className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink transition-colors duration-150 hover:border-faint"
             >
-              Columns
+              Select metrics
             </button>
             {pickerOpen && (
               <>
