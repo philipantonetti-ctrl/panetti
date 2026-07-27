@@ -23,11 +23,13 @@ type Column = {
 
 const COLUMNS: Column[] = [
   { key: 'orders', label: 'Orders' },
-  { key: 'grossSales', label: 'Gross sales', money: true, hint: 'Before discounts, excl. VAT' },
+  { key: 'grossSales', label: 'Gross sales', money: true, hint: 'Before discounts, excl. VAT (Shopify sense — not "brutto")' },
   { key: 'discounts', label: 'Discounts', money: true, hint: 'Coupon and code discounts, excl. VAT' },
-  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base' },
+  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base, excl. VAT' },
   { key: 'shippingCharged', label: 'Shipping', money: true, hint: 'Shipping charged to customers, excl. VAT' },
-  { key: 'netRevenue', label: 'Net revenue', money: true, hint: 'Net sales + shipping' },
+  { key: 'taxes', label: 'VAT', money: true, hint: 'VAT collected (25% NO/SE/DK, 25.5% FI, 19% DE) — remitted to the tax office, never income or cost' },
+  { key: 'salesInclVat', label: 'Sales incl. VAT', money: true, hint: 'What customers actually paid: net revenue + VAT (Nordic "brutto")' },
+  { key: 'netRevenue', label: 'Net revenue', money: true, hint: 'Net sales + shipping, excl. VAT — the basis for profit' },
   { key: 'transactionFees', label: 'Transaction fees', money: true, hint: 'Payment gateway: % of the charged total + fixed part' },
   { key: 'cogs', label: 'COGS', money: true, hint: 'Product cost + handling' },
   { key: 'fulfillment', label: 'Fulfillment', money: true, hint: 'Per-order rate from Settings' },
@@ -35,8 +37,45 @@ const COLUMNS: Column[] = [
   { key: 'commission', label: 'Commission', money: true },
   { key: 'netProfit', label: 'Net profit', money: true, tone: true },
   { key: 'netMargin', label: 'Margin', percent: true, tone: true },
-  { key: 'taxes', label: 'Taxes', money: true, hint: 'VAT collected — passed on to the tax office, not income or cost' },
 ]
+
+const STORAGE_KEY = 'compare-columns'
+
+/** Which metric columns to show. Everything on by default; the choice is remembered per browser. */
+function useVisibleColumns() {
+  // Read the saved choice lazily. This table only ever mounts on the client (the
+  // dashboard shows a skeleton until its data arrives), so localStorage is safe
+  // here — and doing it in the initializer keeps setState out of an effect.
+  // Unknown keys are dropped, so a renamed metric can never wedge the table.
+  const [hidden, setHidden] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY)
+      if (!raw) return new Set()
+      const allKeys = COLUMNS.map((c) => c.key as string)
+      const saved = JSON.parse(raw) as string[]
+      return new Set(saved.filter((k) => allKeys.includes(k)))
+    } catch {
+      return new Set()
+    }
+  })
+
+  function toggle(key: string) {
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]))
+      } catch {
+        // Non-fatal: the table still reflects the choice for this session.
+      }
+      return next
+    })
+  }
+
+  return { columns: COLUMNS.filter((c) => !hidden.has(c.key)), hidden, toggle }
+}
 
 /** BeProfit-style vertical banding: every other metric column is lightly tinted. */
 const stripeOf = (index: number) => (index % 2 === 1 ? 'bg-panel/45' : '')
@@ -69,6 +108,8 @@ function Cell({
 export function CompareTable({ result }: { result: EngineResult }) {
   const [sortBy, setSortBy] = useState<keyof ShopFigures>('netProfit')
   const [desc, setDesc] = useState(true)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const { columns, hidden, toggle } = useVisibleColumns()
 
   const currency = result.displayCurrency
 
@@ -90,9 +131,43 @@ export function CompareTable({ result }: { result: EngineResult }) {
     <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <div className="flex items-center justify-between px-5 py-3.5">
         <h2 className="text-[13px] font-semibold text-ink">Compare shops</h2>
-        <p className="text-[12px] text-muted">
-          {result.byShop.length} shops · shown in {currency}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-[12px] text-muted">
+            {result.byShop.length} shops · shown in {currency}
+          </p>
+          <div className="relative">
+            <button
+              onClick={() => setPickerOpen((o) => !o)}
+              aria-expanded={pickerOpen}
+              className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink transition-colors duration-150 hover:border-faint"
+            >
+              Columns
+            </button>
+            {pickerOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setPickerOpen(false)} />
+                <div className="absolute right-0 z-30 mt-1 max-h-72 w-56 overflow-y-auto rounded-[var(--radius-control)] border border-line bg-surface p-1.5 shadow-lg">
+                  <p className="px-2 pb-1 pt-1.5 text-[11px] font-semibold text-faint">Show metrics</p>
+                  {COLUMNS.map((c) => (
+                    <label
+                      key={c.key}
+                      className="flex items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-[12px] text-ink hover:bg-panel"
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={c.label}
+                        checked={!hidden.has(c.key)}
+                        onChange={() => toggle(c.key)}
+                        className="h-3.5 w-3.5"
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -103,7 +178,7 @@ export function CompareTable({ result }: { result: EngineResult }) {
                 Shop
               </th>
 
-              {COLUMNS.map((column, i) => {
+              {columns.map((column, i) => {
                 const active = sortBy === column.key
                 return (
                   <th
@@ -137,7 +212,7 @@ export function CompareTable({ result }: { result: EngineResult }) {
                 className="border-b border-line bg-surface transition-colors duration-150 last:border-b-0 hover:bg-panel"
               >
                 <td className="sticky left-0 z-10 bg-inherit px-5 py-2.5 font-medium text-ink">{row.shopName}</td>
-                {COLUMNS.map((column, i) => (
+                {columns.map((column, i) => (
                   <Cell key={column.key} column={column} row={row} currency={currency} stripe={stripeOf(i)} />
                 ))}
               </tr>
@@ -147,7 +222,7 @@ export function CompareTable({ result }: { result: EngineResult }) {
           <tfoot>
             <tr className="border-t border-line bg-panel font-semibold">
               <td className="sticky left-0 z-10 bg-inherit px-5 py-3 text-ink">Total</td>
-              {COLUMNS.map((column, i) => (
+              {columns.map((column, i) => (
                 <Cell
                   key={column.key}
                   column={column}

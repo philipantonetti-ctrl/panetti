@@ -1,10 +1,13 @@
-﻿// @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+// @vitest-environment jsdom
+import { describe, it, expect, afterEach } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { CompareTable } from './CompareTable'
-import { ZERO_FIGURES } from '@/lib/metrics/types'
+import { formatMoney } from '@/lib/money'
+import { ZERO_FIGURES, type EngineResult, type ShopFigures } from '@/lib/metrics/types'
 
-const row = {
+afterEach(() => localStorage.clear())
+
+const row: ShopFigures = {
   ...ZERO_FIGURES,
   shopId: 's1',
   shopName: 'Panetti Norway',
@@ -13,30 +16,54 @@ const row = {
   discounts: 10000,
   netSales: 90000,
   shippingCharged: 5000,
+  taxes: 23750, // 25% of net revenue
   netRevenue: 95000,
-  taxes: 22500,
+  salesInclVat: 118750, // net revenue + VAT = what the customer paid
   netProfit: 73000,
   netMargin: 73000 / 95000,
 }
 
+const result: EngineResult = { displayCurrency: 'NOK', byShop: [row], total: row }
+
 describe('CompareTable', () => {
-  it('shows the full BeProfit-style column set', () => {
-    render(<CompareTable result={{ displayCurrency: 'NOK', byShop: [row], total: row }} />)
+  it('surfaces VAT and a VAT-inclusive sales column, not buried at the end', () => {
+    render(<CompareTable result={result} />)
 
     for (const label of [
-      'Orders', 'Gross sales', 'Discounts', 'Net sales', 'Shipping', 'Net revenue',
-      'Transaction fees', 'COGS', 'Fulfillment', 'Op. expenses', 'Commission',
-      'Net profit', 'Margin', 'Taxes',
+      'Orders', 'Gross sales', 'Discounts', 'Net sales', 'Shipping', 'VAT', 'Sales incl. VAT',
+      'Net revenue', 'Transaction fees', 'COGS', 'Fulfillment', 'Op. expenses', 'Commission',
+      'Net profit', 'Margin',
     ]) {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
     }
 
-    const headers = screen.getAllByRole('button', { name: /^Sort by / })
-    expect(headers).toHaveLength(14) // a stray 13th column must fail
-    expect(headers[13].textContent).toContain('Taxes') // deliberately last — outside the profit cascade
+    // The incl-VAT figure equals what the customer actually paid (matched on exact
+    // cell text, so the glued currency symbol doesn't trip whitespace normalization).
+    const inclVat = formatMoney(118750, 'NOK')
+    expect(screen.getAllByText((_t, el) => el?.textContent === inclVat).length).toBeGreaterThan(0)
 
-    // the default sort is exposed to assistive tech too
+    // The default sort is exposed to assistive tech.
     const netProfitHeader = screen.getByRole('button', { name: 'Sort by Net profit' }).closest('th')
     expect(netProfitHeader?.getAttribute('aria-sort')).toBe('descending')
+  })
+
+  it('lets you choose which metrics to show, hiding the rest', () => {
+    render(<CompareTable result={result} />)
+    expect(screen.queryByRole('button', { name: /Sort by Discounts/i })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /Columns/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Discounts' }))
+
+    expect(screen.queryByRole('button', { name: /Sort by Discounts/i })).toBeNull()
+  })
+
+  it('remembers the chosen metrics across reloads', () => {
+    const { unmount } = render(<CompareTable result={result} />)
+    fireEvent.click(screen.getByRole('button', { name: /Columns/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Discounts' }))
+    unmount()
+
+    render(<CompareTable result={result} />)
+    expect(screen.queryByRole('button', { name: /Sort by Discounts/i })).toBeNull()
   })
 })
