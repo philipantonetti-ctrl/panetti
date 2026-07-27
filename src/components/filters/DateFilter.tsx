@@ -160,20 +160,38 @@ export function DateFilter({
 
             <div className="grow">
               <div className="flex items-center justify-between">
-                <button
-                  aria-label="Previous month"
-                  onClick={() => setView(addMonths(view.year, view.month, -1))}
-                  className="rounded-[var(--radius-control)] px-2 py-1 text-muted hover:bg-panel hover:text-ink"
-                >
-                  ‹
-                </button>
-                <button
-                  aria-label="Next month"
-                  onClick={() => setView(addMonths(view.year, view.month, 1))}
-                  className="rounded-[var(--radius-control)] px-2 py-1 text-muted hover:bg-panel hover:text-ink"
-                >
-                  ›
-                </button>
+                <div className="flex items-center">
+                  <button
+                    aria-label="Previous year"
+                    onClick={() => setView(addMonths(view.year, view.month, -12))}
+                    className="rounded-[var(--radius-control)] px-2 py-1 text-muted hover:bg-panel hover:text-ink"
+                  >
+                    «
+                  </button>
+                  <button
+                    aria-label="Previous month"
+                    onClick={() => setView(addMonths(view.year, view.month, -1))}
+                    className="rounded-[var(--radius-control)] px-2 py-1 text-muted hover:bg-panel hover:text-ink"
+                  >
+                    ‹
+                  </button>
+                </div>
+                <div className="flex items-center">
+                  <button
+                    aria-label="Next month"
+                    onClick={() => setView(addMonths(view.year, view.month, 1))}
+                    className="rounded-[var(--radius-control)] px-2 py-1 text-muted hover:bg-panel hover:text-ink"
+                  >
+                    ›
+                  </button>
+                  <button
+                    aria-label="Next year"
+                    onClick={() => setView(addMonths(view.year, view.month, 12))}
+                    className="rounded-[var(--radius-control)] px-2 py-1 text-muted hover:bg-panel hover:text-ink"
+                  >
+                    »
+                  </button>
+                </div>
               </div>
 
               <div className="flex gap-4">

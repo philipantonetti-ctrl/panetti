@@ -77,4 +77,16 @@ describe('DateFilter calendar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(onChange).not.toHaveBeenCalled()
   })
+
+  it('the double arrows jump a whole year back and forward', () => {
+    renderPicker() // opens on July 2026
+    expect(screen.getByText('July 2026')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous year' }))
+    expect(screen.getByText('July 2025')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next year' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next year' }))
+    expect(screen.getByText('July 2027')).toBeTruthy()
+  })
 })
