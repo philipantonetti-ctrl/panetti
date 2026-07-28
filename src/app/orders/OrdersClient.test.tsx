@@ -193,9 +193,11 @@ describe('live refresh', () => {
       fireEvent(window, new Event('focus'))
       await act(async () => {})
 
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      // Two orders fetches — the tick also asks /api/version, so count by URL.
+      const orderCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/orders'))
+      expect(orderCalls.length).toBe(2)
       // In place: same page size requested, and the expanded order stays open.
-      expect(String(fetchMock.mock.calls[1][0])).toContain('limit=50')
+      expect(orderCalls[1]).toContain('limit=50')
       expect(screen.getByText('Mazzetti Advanced Comfort')).toBeTruthy()
     } finally {
       vi.useRealTimers()
@@ -212,7 +214,8 @@ describe('live refresh', () => {
       await act(async () => {
         vi.advanceTimersByTime(60_000)
       })
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      const orderCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/orders'))
+      expect(orderCalls.length).toBe(2)
     } finally {
       vi.useRealTimers()
     }

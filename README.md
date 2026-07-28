@@ -61,6 +61,9 @@ Three layers, none of which run on the storefront:
 The browser keeps up too: the Dashboard and Orders pages refetch when their
 tab regains focus and once a minute while it stays visible, so a tab left
 open overnight shows the current numbers, not the world as of when it loaded.
+And when a new version of the app is deployed, every open tab notices within
+a minute (comparing its build against `/api/version`) and reloads itself, so
+nobody keeps running last week's page.
 
 The webhook receiver needs the deployment's public URL (`APP_URL`, or on
 Vercel the production URL is picked up automatically) and verifies every

@@ -4,6 +4,7 @@ import { useContext } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ToastContext } from '@/components/toast/useToast'
+import { FreshBuild } from './FreshBuild'
 
 /**
  * The app shell.
@@ -179,6 +180,9 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-canvas lg:grid lg:grid-cols-[232px_1fr]">
+      {/* Every page heals itself when a newer deployment appears. */}
+      <FreshBuild />
+
       {/* Sidebar — a column on desktop, a strip on smaller screens. */}
       <aside className="border-line bg-panel lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r">
         <div className="flex items-center justify-between border-b border-line px-3 py-3 lg:block lg:border-b-0 lg:py-4">
