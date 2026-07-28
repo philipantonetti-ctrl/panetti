@@ -34,12 +34,17 @@ describe('CompareTable', () => {
     render(<CompareTable result={result} />)
 
     for (const label of [
-      'Orders', 'Gross revenue', 'Gross sales', 'Discounts', 'Net sales', 'Shipping', 'VAT',
+      'Orders', 'Gross revenue', 'Discounts', 'Net sales', 'Shipping', 'VAT',
       'Net revenue', 'Transaction fees', 'COGS', 'Fulfillment', 'Op. expenses', 'Commission',
       'Net profit', 'Margin',
     ]) {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
     }
+
+    // ONE gross figure only. "Gross sales" (the Shopify sense) sat next to
+    // Gross revenue and read like a contradiction — it is gone from the table.
+    expect(screen.queryByRole('button', { name: 'Sort by Gross sales' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Gross sales' })).toBeNull()
 
     // The client asked for Gross revenue directly after the Orders column.
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent ?? '')

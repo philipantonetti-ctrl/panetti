@@ -5,10 +5,18 @@ import { useState } from 'react'
 export type Shop = { id: string; name: string; currency: string }
 
 /**
+ * "No shops selected" as a selection. Real shop ids are cuids, so this can never
+ * collide; it rides the ordinary shops= query param and matches no rows at all.
+ */
+export const NO_SHOPS = 'none'
+
+/**
  * Which shops am I looking at?
  *
  * An empty selection means "all of them" — the common case, so it needs no clicks.
  * "Only" isolates one shop, which is the fastest way to read it in its own currency.
+ * Deselect all empties the board ([NO_SHOPS]) so a couple of shops can be picked
+ * without un-ticking the other seven first.
  */
 export function ShopFilter({
   shops,
@@ -16,23 +24,27 @@ export function ShopFilter({
   onChange,
 }: {
   shops: Shop[]
-  selected: string[] // empty = all
+  selected: string[] // empty = all, [NO_SHOPS] = none
   onChange: (ids: string[]) => void
 }) {
   const [open, setOpen] = useState(false)
 
   const all = selected.length === 0
-  const label = all
-    ? `All shops · ${shops.length}`
-    : selected.length === 1
-      ? (shops.find((s) => s.id === selected[0])?.name ?? '1 shop')
-      : `${selected.length} shops`
+  const none = selected.includes(NO_SHOPS)
+  const label = none
+    ? 'No shops'
+    : all
+      ? `All shops · ${shops.length}`
+      : selected.length === 1
+        ? (shops.find((s) => s.id === selected[0])?.name ?? '1 shop')
+        : `${selected.length} shops`
 
   /** Careful: un-ticking one of "all" must leave the others, not collapse to that one. */
   function toggle(id: string) {
-    const base = all ? shops.map((s) => s.id) : selected
+    const base = all ? shops.map((s) => s.id) : selected.filter((s) => s !== NO_SHOPS)
     const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id]
-    onChange(next.length === shops.length ? [] : next)
+    // Every box ticked is "all" again; the last box un-ticked is "none", not "all".
+    onChange(next.length === shops.length ? [] : next.length === 0 ? [NO_SHOPS] : next)
   }
 
   return (
@@ -61,11 +73,12 @@ export function ShopFilter({
           >
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-[11px] font-semibold text-faint">SHOPS</span>
+              {/* One button, two directions: whichever action is useful right now. */}
               <button
-                onClick={() => onChange([])}
+                onClick={() => onChange(all ? [NO_SHOPS] : [])}
                 className="text-[11px] font-semibold text-accent hover:underline"
               >
-                Select all
+                {all ? 'Deselect all' : 'Select all'}
               </button>
             </div>
 

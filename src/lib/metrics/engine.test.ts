@@ -101,6 +101,23 @@ describe('computeMetrics', () => {
     expect(res.total.commission).toBe(0) // the refunded order earns nothing
   })
 
+  it('excludes unpaid orders — pending and on-hold — until Woo marks them paid', () => {
+    const res = computeMetrics({
+      shops: [shops[0]],
+      orders: [
+        order({ id: 'paid', status: 'processing', ambassadorId: 'a1', commissionRate: 0.1 }),
+        order({ id: 'awaiting-payment', status: 'pending', ambassadorId: 'a1', commissionRate: 0.1 }),
+        order({ id: 'bank-transfer', status: 'on-hold' }),
+      ],
+      expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    // Money that has not arrived is not revenue: one order, one commission.
+    expect(res.total.orders).toBe(1)
+    expect(res.total.netSales).toBe(90000)
+    expect(res.total.commission).toBe(9000)
+  })
+
   it('subtracts operational expenses for the selected range', () => {
     const expense: EngineExpense = {
       id: 'e1', shopId: 'no', amount: 3100000, currency: 'NOK',

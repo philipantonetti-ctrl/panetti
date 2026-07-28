@@ -6,7 +6,7 @@ import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { getSetting } from '@/lib/settings'
 import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
-import { EXCLUDED_STATUSES } from '@/lib/metrics/types'
+import { EXCLUDED_STATUSES, VOIDED_STATUSES } from '@/lib/metrics/types'
 import { costOn } from '@/lib/metrics/costs'
 import { fulfillmentOn, type FulfillmentPoint } from '@/lib/metrics/engine'
 import { buildRateTable, crossConvert } from '@/lib/metrics/fx'
@@ -15,7 +15,8 @@ import { ACTIVE_GATEWAY } from '@/lib/gateways'
 import { pct } from '@/lib/money'
 import type { CostPoint, RateTable } from '@/lib/metrics/types'
 
-const VOIDED = new Set<string>(EXCLUDED_STATUSES)
+// Voided or simply not paid yet — either way the order earns nothing (yet).
+const NOT_EARNING = new Set<string>(EXCLUDED_STATUSES)
 
 /** Admin-only financial JSON: no browser, proxy or CDN may ever replay it. */
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
@@ -63,13 +64,13 @@ export async function GET(req: Request) {
       },
       // Naming a status wins outright — asking for "refunded" and getting an
       // empty list because refunds are hidden would be absurd. Otherwise the
-      // default hides voided orders, like every other figure, unless the list
-      // opts back in to see the whole picture.
+      // default hides only VOIDED orders: a pending order is a live order and
+      // belongs in the list, it just wears no figures until it is paid.
       ...(status
         ? { status }
         : includeVoided
           ? {}
-          : { status: { notIn: [...EXCLUDED_STATUSES] } }),
+          : { status: { notIn: [...VOIDED_STATUSES] } }),
       ...(q
         ? {
             OR: [
@@ -168,10 +169,10 @@ export async function GET(req: Request) {
     const rates: RateTable = needsRates ? buildRateTable(await loadRates()) : new Map()
 
     const orders = rows.map((o) => {
-      const isVoided = VOIDED.has(o.status.toLowerCase())
+      const earnsNothing = NOT_EARNING.has(o.status.toLowerCase())
 
       let figures = null
-      if (!isVoided) {
+      if (!earnsNothing) {
         const cogs = o.items.reduce((sum, i) => {
           const cost = costOn(costs.get(i.productId) ?? [], o.placedAt)
           return sum + i.quantity * (cost.costPerItem + cost.handlingCost)
@@ -228,6 +229,7 @@ export async function GET(req: Request) {
   } catch (e) {
     if (e instanceof AuthError)
       return NextResponse.json({ error: e.message }, { status: 403, headers: NO_STORE })
+    console.error(e)
     return NextResponse.json({ error: 'Could not load orders' }, { status: 500, headers: NO_STORE })
   }
 }

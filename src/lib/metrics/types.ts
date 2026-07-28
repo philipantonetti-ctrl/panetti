@@ -6,8 +6,19 @@
 
 export type Recurrence = 'ONE_TIME' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'
 
-/** Statuses that contribute nothing: no revenue, no commission. */
-export const EXCLUDED_STATUSES = ['refunded', 'cancelled', 'failed', 'trash'] as const
+/** Dead ends: the order earns nothing, ever. */
+export const VOIDED_STATUSES = ['refunded', 'cancelled', 'failed', 'trash'] as const
+
+/**
+ * Not paid yet. Woo's `pending` means no payment received; `on-hold` means
+ * payment awaited (bank transfer and the like). The webhook flips them to
+ * `processing` the moment payment lands — and only from that moment do they
+ * count. Money that has not arrived is not revenue.
+ */
+export const UNPAID_STATUSES = ['pending', 'on-hold'] as const
+
+/** Statuses that contribute nothing to any money figure: no revenue, no commission. */
+export const EXCLUDED_STATUSES = [...VOIDED_STATUSES, ...UNPAID_STATUSES] as const
 
 export type CostPoint = {
   costPerItem: number

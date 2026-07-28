@@ -72,6 +72,25 @@ describe('GET /api/orders', () => {
     expect((await get('from=2026-03-01&to=2026-03-31')).status).toBe(403)
   })
 
+  it('a pending order stays visible but wears no figures until it is paid', async () => {
+    await asAdmin()
+    await order(shopA, prodA, 'A-await', '2026-03-21T12:00:00Z', [{ name: 'Awaiting', sku: 'AW', quantity: 1 }], { status: 'pending' })
+
+    // No includeVoided: the default view hides voided orders — but a pending
+    // order is live and must appear, just with dashes instead of profit.
+    // (Scoped to our own shops: test files share one database in parallel, and
+    // an unscoped page would race other files' fixtures.)
+    const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopA},${shopB}`)
+    expect(res.status).toBe(200)
+    const { orders: list } = (await res.json()) as { orders: { number: string; figures: unknown }[] }
+    const awaiting = list.find((o) => o.number === 'A-await')
+    expect(awaiting).toBeTruthy()
+    expect(awaiting!.figures).toBeNull()
+
+    // The paid orders around it still carry real figures.
+    expect(list.find((o) => o.number === 'A-mar20')!.figures).not.toBeNull()
+  })
+
   it('never lets financial JSON be cached: private, no-store on success and refusal alike', async () => {
     await asAdmin()
     expect((await get('from=2026-03-01&to=2026-03-31')).headers.get('cache-control')).toBe('private, no-store')

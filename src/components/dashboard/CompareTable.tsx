@@ -25,7 +25,6 @@ type Column = {
 const COLUMNS: Column[] = [
   { key: 'orders', label: 'Orders' },
   { key: 'grossRevenue', label: 'Gross revenue', money: true, hint: 'What customers actually paid: net revenue + VAT (Nordic "brutto")' },
-  { key: 'grossSales', label: 'Gross sales', money: true, hint: 'Before discounts, excl. VAT (Shopify sense — not "brutto")' },
   { key: 'discounts', label: 'Discounts', money: true, hint: 'Coupon and code discounts, excl. VAT' },
   { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base, excl. VAT' },
   { key: 'shippingCharged', label: 'Shipping', money: true, hint: 'Shipping charged to customers, excl. VAT' },

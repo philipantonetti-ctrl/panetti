@@ -53,7 +53,7 @@ export function fulfillmentOn(points: FulfillmentPoint[], date: Date): number {
   return chosen
 }
 
-/** An order that contributes nothing — refunded, cancelled, failed. */
+/** An order that contributes nothing — voided (refunded, cancelled, failed) or not yet paid. */
 function counts(order: EngineOrder): boolean {
   return !EXCLUDED_STATUSES.includes(order.status.toLowerCase() as never)
 }

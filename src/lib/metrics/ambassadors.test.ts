@@ -61,6 +61,19 @@ describe('leaderboard', () => {
     expect(rows[0].sales).toBe(10000)
   })
 
+  it('a pending order earns nothing on the leaderboard until it is paid', () => {
+    const rows = leaderboard({
+      ambassadors: people,
+      orders: [
+        order({ id: '1', ambassadorId: 'a1', netSales: 100000 }),
+        order({ id: '2', ambassadorId: 'a1', netSales: 500000, status: 'pending' }),
+      ],
+      rates, displayCurrency: 'USD', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    expect(rows[0].orders).toBe(1)
+    expect(rows[0].sales).toBe(10000)
+  })
+
   it('includes an ambassador with no sales, ranked last with zeroes', () => {
     const rows = leaderboard({
       ambassadors: people,

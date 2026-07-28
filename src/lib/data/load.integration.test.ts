@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { loadMetricsInput } from './load'
 import { computeMetrics } from '../metrics'
+import { EXCLUDED_STATUSES } from '../metrics/types'
 import { db } from '../db'
 
 // These run against the seeded database. Run `npm run db:seed` first.
@@ -47,7 +48,9 @@ describe('engine against the seeded database', () => {
     const refunded = input.orders.filter((o) => o.status === 'refunded').length
     expect(refunded).toBeGreaterThan(0) // the seed must actually contain some
 
-    const counted = input.orders.filter((o) => !['refunded', 'cancelled', 'failed', 'trash'].includes(o.status))
+    // The engine's own list, not a copy: a concurrent test file's pending
+    // fixture order (unpaid, so excluded) must not make the two sides drift.
+    const counted = input.orders.filter((o) => !EXCLUDED_STATUSES.includes(o.status as never))
     expect(res.total.orders).toBe(counted.length)
   })
 
