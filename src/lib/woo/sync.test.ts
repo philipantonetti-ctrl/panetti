@@ -228,6 +228,111 @@ describe('syncShop', () => {
     expect(seOrder.ambassadorId).toBe(johnS.id)
   })
 
+  it('an incremental pull reaches five minutes behind the watermark, so nothing at the boundary is missed', async () => {
+    const shop = await connectedShop('Sync overlap [sync-test]')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-07-01T12:00:00Z') },
+    })
+    const fetchMock = vi.fn().mockImplementation(async () => emptyPage())
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect((await syncShop(shop.id)).ok).toBe(true)
+
+    // Woo is only told whole seconds and its clock may drift from ours; the
+    // five-minute overlap makes both harmless, and the upserts make it free.
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('modified_after=2026-07-01T11%3A55%3A00')
+  })
+
+  it('sets the watermark to when the fetch BEGAN, so an order changed mid-sync stays in the next window', async () => {
+    const shop = await connectedShop('Sync watermark [sync-test]')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-07-01T12:00:00Z') },
+    })
+    // A slow store: every call takes over a second.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => {
+        await new Promise((r) => setTimeout(r, 1200))
+        return emptyPage()
+      }),
+    )
+
+    const before = Date.now()
+    expect((await syncShop(shop.id)).ok).toBe(true)
+
+    // The old bug: stamping completion time (here ≥ 2.4s later, after orders +
+    // catalog calls) left everything changed DURING the sync outside every window.
+    const saved = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(saved.lastSyncAt!.getTime()).toBeGreaterThanOrEqual(before - 50)
+    expect(saved.lastSyncAt!.getTime()).toBeLessThan(before + 1000)
+  })
+
+  it('fills the customer on legacy orders without touching what they earned', async () => {
+    const shop = await connectedShop('Sync cust [sync-test]')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-07-01T12:00:00Z') },
+    })
+    // Synced before customers existed: customerName is null, attribution frozen.
+    const amb = await db.ambassador.create({
+      data: { name: 'Frozen', email: 'frozen-[sync-test]@x.local', commissionRate: 0.1 },
+    })
+    const legacy = await db.order.create({
+      data: {
+        shopId: shop.id, externalId: '7001', number: '7001',
+        placedAt: new Date('2026-05-01T10:00:00Z'), status: 'completed', currency: 'NOK',
+        grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0,
+        taxTotal: 2500, total: 12500, ambassadorId: amb.id,
+      },
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown) => {
+      const u = String(url)
+      if (u.includes('include=7001')) {
+        return jsonPage([
+          { ...wooOrder(7001, '2026-05-01T10:00:00'), billing: { first_name: 'Tino', last_name: 'Skaarup', email: 'tino@x.dk' } },
+        ])
+      }
+      return emptyPage()
+    }))
+
+    expect((await syncShop(shop.id)).ok).toBe(true)
+
+    const saved = await db.order.findUniqueOrThrow({ where: { id: legacy.id } })
+    expect(saved.customerName).toBe('Tino Skaarup')
+    expect(saved.customerEmail).toBe('tino@x.dk')
+    // ONLY the customer landed — the money and the attribution are history.
+    expect(saved.ambassadorId).toBe(amb.id)
+    expect(saved.netSales).toBe(10000)
+  })
+
+  it("marks an order Woo no longer has as 'checked, nothing there', so the backfill always finishes", async () => {
+    const shop = await connectedShop('Sync cust gone [sync-test]')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-07-01T12:00:00Z') },
+    })
+    const legacy = await db.order.create({
+      data: {
+        shopId: shop.id, externalId: '7002', number: '7002',
+        placedAt: new Date('2026-05-02T10:00:00Z'), status: 'completed', currency: 'NOK',
+        grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0,
+        taxTotal: 2500, total: 12500,
+      },
+    })
+    // Woo answers the id lookup with nothing at all.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => emptyPage()))
+
+    expect((await syncShop(shop.id)).ok).toBe(true)
+
+    // '' and not null: the order leaves the backfill queue for good.
+    const saved = await db.order.findUniqueOrThrow({ where: { id: legacy.id } })
+    expect(saved.customerName).toBe('')
+  })
+
   it('an incremental sync with 5,000+ changed orders stops loudly instead of skipping', async () => {
     const shop = await connectedShop('Sync inc cap [sync-test]')
     await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: new Date('2026-07-01') } })

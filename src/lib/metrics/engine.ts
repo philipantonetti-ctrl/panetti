@@ -40,7 +40,7 @@ export type MetricsInput = {
 }
 
 /** The newest rate that was already in force on `date`; 0 before the first one. */
-function fulfillmentOn(points: FulfillmentPoint[], date: Date): number {
+export function fulfillmentOn(points: FulfillmentPoint[], date: Date): number {
   let chosen = 0
   let best = -Infinity
   for (const p of points) {

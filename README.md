@@ -46,6 +46,29 @@ Settings → Shops → Connect. You need the store URL and a WooCommerce REST AP
 (WordPress → WooCommerce → Settings → Advanced → REST API → Add key, Read access).
 Then press "Sync all". Until a shop is connected it shows seeded sample data.
 
+## How data stays current
+
+Three layers, none of which run on the storefront:
+
+1. **Webhooks (live).** After a completed sync the app registers order webhooks
+   on each store (`order.created/updated/deleted/restored`), so new orders,
+   refunds, cancellations and edits land seconds after they happen. WooCommerce
+   delivers webhooks from its background queue — checkout never waits on us.
+2. **Scheduled sync (safety net).** Vercel Cron pulls changes every 15 minutes,
+   catching anything a webhook missed. Needs `CRON_SECRET` set.
+3. **Sync now (on demand).** Buttons on the Orders and Shops pages.
+
+The webhook receiver needs the deployment's public URL (`APP_URL`, or on
+Vercel the production URL is picked up automatically) and verifies every
+delivery against a per-shop HMAC secret the app generates itself.
+
+## Deploying
+
+`npm run build` pushes the Prisma schema to the database first (additive
+changes only — `db push` refuses anything destructive without an explicit
+flag), then builds. So on Vercel a plain `git push` ships schema and code
+together, in the right order.
+
 ## Tests
 
 ```bash

@@ -4,6 +4,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const syncAllShops = vi.fn()
 vi.mock('@/lib/woo/sync', () => ({ syncAllShops: () => syncAllShops() }))
 
+// Nor is the real currency API: the route tops up FX rates best-effort after a
+// sync, and a unit test must not depend on a third-party service being up.
+vi.mock('@/lib/fx/rates', () => ({ ensureRates: vi.fn() }))
+
 const { GET } = await import('./route')
 
 const call = (auth?: string) =>
@@ -70,10 +74,11 @@ describe('the scheduled sync endpoint', () => {
 })
 
 describe('the schedule itself', () => {
-  // A route nothing ever calls is not an automatic sync.
-  it('is registered as an hourly cron in vercel.json', async () => {
+  // A route nothing ever calls is not an automatic sync. Every 15 minutes:
+  // webhooks carry the live changes, this is the promised safety net.
+  it('is registered as a 15-minute cron in vercel.json', async () => {
     const { readFileSync } = await import('fs')
     const cfg = JSON.parse(readFileSync('vercel.json', 'utf8'))
-    expect(cfg.crons).toEqual([{ path: '/api/cron/sync', schedule: '0 * * * *' }])
+    expect(cfg.crons).toEqual([{ path: '/api/cron/sync', schedule: '*/15 * * * *' }])
   })
 })

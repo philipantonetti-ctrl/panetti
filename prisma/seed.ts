@@ -69,6 +69,14 @@ const EXPENSES = [
 
 const ORDER_STATUSES = ['completed', 'completed', 'completed', 'completed', 'processing', 'refunded']
 
+// Sample buyers, so the Orders page shows who bought. A slice of orders stay
+// nameless — real stores have guest checkouts, and the UI must cope.
+const CUSTOMERS = [
+  'Tino Skaarup', 'Anne Berg', 'Ola Nordmann', 'Kari Olsen', 'Jens Hansen',
+  'Maria Virtanen', 'Lars Larsen', 'Sofia Andersson', 'Peter Madsen', 'Ingrid Dahl',
+  'Mikael Koskinen', 'Astrid Holm', 'Erik Lund', 'Freja Nielsen', 'Henrik Berg',
+]
+
 async function main() {
   console.log('Clearing existing data...')
   await db.orderItem.deleteMany()
@@ -224,6 +232,7 @@ async function main() {
       const shipping = rnd() < 0.5 ? 0 : between(4900, 9900)
       const tax = Math.round((netSales + shipping) * 0.25) // 25% VAT
       const status = pick(ORDER_STATUSES)
+      const customer = rnd() < 0.9 ? pick(CUSTOMERS) : null
 
       await db.order.create({
         data: {
@@ -241,6 +250,8 @@ async function main() {
           total: netSales + shipping + tax,
           couponCode: ambassador ? `${ambassador.name.split(' ')[0].toUpperCase()}10` : null,
           ambassadorId: ambassador?.id ?? null,
+          customerName: customer ?? '',
+          customerEmail: customer ? `${customer.split(' ')[0].toLowerCase()}@customer.test` : '',
           items: { create: items },
         },
       })
@@ -249,9 +260,11 @@ async function main() {
   }
 
   console.log('Seeding exchange rates...')
-  // Roughly realistic; the live fetcher will fill in and correct these.
+  // Roughly realistic; the live fetcher will fill in and correct these. The
+  // range runs well past "today" so sample data never looks stale enough to
+  // send a dev machine (or a test) to the real currency API.
   const RATES: Record<string, number> = { NOK: 0.097, SEK: 0.094, DKK: 0.145, EUR: 1.08, USD: 1 }
-  for (let d = 0; d <= 200; d++) {
+  for (let d = 0; d <= 500; d++) {
     const date = new Date(Date.UTC(2026, 0, 1) + d * 24 * 60 * 60 * 1000)
     for (const [currency, rate] of Object.entries(RATES)) {
       await db.fxRate.create({

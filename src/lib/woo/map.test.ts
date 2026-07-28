@@ -73,6 +73,29 @@ describe('mapOrder', () => {
     expect(mapOrder({ ...woo, status: 'refunded' }).status).toBe('refunded')
   })
 
+  it('reads the customer from billing, name first and email alongside', () => {
+    const o = mapOrder({
+      ...woo,
+      billing: { first_name: 'Tino', last_name: 'Skaarup', email: 'tino@example.dk' },
+    })
+    expect(o.customerName).toBe('Tino Skaarup')
+    expect(o.customerEmail).toBe('tino@example.dk')
+  })
+
+  it("records '' — checked, nothing there — when the store has no billing details", () => {
+    // '' and not null: null means "never looked", and the backfill relies on
+    // that difference to know when it is finished.
+    const o = mapOrder(woo)
+    expect(o.customerName).toBe('')
+    expect(o.customerEmail).toBe('')
+  })
+
+  it('survives partial billing: an email-only guest still shows who bought', () => {
+    const o = mapOrder({ ...woo, billing: { email: 'guest@example.no' } })
+    expect(o.customerName).toBe('')
+    expect(o.customerEmail).toBe('guest@example.no')
+  })
+
   it('survives a missing or malformed number without crashing', () => {
     // Line items here must imply zero discount (subtotal === total) — otherwise
     // discountTotal would be derived from the lines regardless of discount_total,

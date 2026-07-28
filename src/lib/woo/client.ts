@@ -19,6 +19,16 @@ export type FetchFilter = {
 export type FetchResult = { orders: WooOrder[]; hasMore: boolean }
 
 /**
+ * A readable error from a Woo response. The body is truncated hard: a broken
+ * WordPress answers with a whole HTML error page, and that belongs in nobody's
+ * toast, log line or error report.
+ */
+async function wooError(res: Response): Promise<Error> {
+  const text = (await res.text()).slice(0, 300)
+  return new Error(`WooCommerce responded ${res.status}: ${text}`)
+}
+
+/**
  * Fetch orders one page at a time, oldest first. WooCommerce caps `per_page` at 100.
  *
  * Stops early on a short page (the end), or at `maxPages` with `hasMore: true` so
@@ -44,9 +54,7 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
       headers: { Authorization: `Basic ${auth}` },
     })
 
-    if (!res.ok) {
-      throw new Error(`WooCommerce responded ${res.status}: ${await res.text()}`)
-    }
+    if (!res.ok) throw await wooError(res)
 
     const batch = (await res.json()) as WooOrder[]
     all.push(...batch)
@@ -55,6 +63,84 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
 
   // Every page we were allowed to fetch came back full — more is behind it.
   return { orders: all, hasMore: true }
+}
+
+/**
+ * Fetch specific orders by their WooCommerce ids. Used by the customer
+ * backfill, which knows exactly which stored orders still miss their customer.
+ * Ids Woo no longer has simply don't come back — the caller decides what that
+ * means.
+ */
+export async function fetchOrdersByIds(creds: WooCredentials, ids: string[]): Promise<WooOrder[]> {
+  const all: WooOrder[] = []
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+
+  for (let i = 0; i < ids.length; i += 100) {
+    const params = new URLSearchParams({
+      include: ids.slice(i, i + 100).join(','),
+      per_page: '100',
+    })
+    const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders?${params}`, {
+      headers: { Authorization: `Basic ${auth}` },
+    })
+    if (!res.ok) throw await wooError(res)
+    all.push(...((await res.json()) as WooOrder[]))
+  }
+
+  return all
+}
+
+export type WooWebhook = {
+  id: number
+  topic: string
+  delivery_url: string
+  status: string // "active" | "paused" | "disabled"
+}
+
+/** Every webhook the store has, whatever its status. */
+export async function fetchWebhooks(creds: WooCredentials): Promise<WooWebhook[]> {
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  const res = await fetch(
+    `${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/webhooks?per_page=100&status=all`,
+    { headers: { Authorization: `Basic ${auth}` } },
+  )
+  if (!res.ok) throw await wooError(res)
+  return (await res.json()) as WooWebhook[]
+}
+
+/** Register one webhook: this topic, delivered there, signed with that secret. */
+export async function createWebhook(
+  creds: WooCredentials,
+  webhook: { name: string; topic: string; deliveryUrl: string; secret: string },
+): Promise<void> {
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/webhooks`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: webhook.name,
+      topic: webhook.topic,
+      delivery_url: webhook.deliveryUrl,
+      secret: webhook.secret,
+      status: 'active',
+    }),
+  })
+  if (!res.ok) throw await wooError(res)
+}
+
+/** Wake a paused/disabled webhook back up and make sure it signs with our secret. */
+export async function activateWebhook(
+  creds: WooCredentials,
+  id: number,
+  secret: string,
+): Promise<void> {
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/webhooks/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'active', secret }),
+  })
+  if (!res.ok) throw await wooError(res)
 }
 
 /**
@@ -71,9 +157,7 @@ export async function fetchCoupons(creds: WooCredentials): Promise<string[]> {
     const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/coupons?${params}`, {
       headers: { Authorization: `Basic ${auth}` },
     })
-    if (!res.ok) {
-      throw new Error(`WooCommerce responded ${res.status}: ${await res.text()}`)
-    }
+    if (!res.ok) throw await wooError(res)
 
     const batch = (await res.json()) as { code?: string }[]
     for (const c of batch) if (c.code) codes.add(c.code.toUpperCase())
@@ -96,9 +180,7 @@ export async function fetchCatalogPrices(creds: WooCredentials): Promise<Map<str
     const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/products?${params}`, {
       headers: { Authorization: `Basic ${auth}` },
     })
-    if (!res.ok) {
-      throw new Error(`WooCommerce responded ${res.status}: ${await res.text()}`)
-    }
+    if (!res.ok) throw await wooError(res)
 
     const batch = (await res.json()) as { id: number; price?: string }[]
     for (const p of batch) {

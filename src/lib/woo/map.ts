@@ -25,6 +25,7 @@ export type WooOrder = {
   total: string
   coupon_lines: { code: string }[]
   line_items: WooLineItem[]
+  billing?: { first_name?: string; last_name?: string; email?: string }
 }
 
 export type MappedOrder = {
@@ -40,6 +41,10 @@ export type MappedOrder = {
   taxTotal: number
   total: number
   couponCode: string | null
+  // '' when the store has none on file — never null, so a synced order always
+  // counts as "customer checked" and the backfill knows it is done.
+  customerName: string
+  customerEmail: string
   items: {
     externalProductId: string
     sku: string
@@ -83,6 +88,8 @@ export function mapOrder(woo: WooOrder): MappedOrder {
     taxTotal: num(woo.total_tax),
     total: num(woo.total),
     couponCode: woo.coupon_lines?.[0]?.code?.toUpperCase() ?? null,
+    customerName: [woo.billing?.first_name, woo.billing?.last_name].filter(Boolean).join(' ').trim(),
+    customerEmail: woo.billing?.email?.trim() ?? '',
     items: woo.line_items.map((li) => ({
       externalProductId: String(li.product_id),
       sku: li.sku || String(li.product_id),
