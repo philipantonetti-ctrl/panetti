@@ -135,6 +135,13 @@ describe('OrdersClient', () => {
     expect(screen.getByRole('button', { name: 'Sync now' })).toBeTruthy()
   })
 
+  it('says out loud that the page keeps itself current', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('10356')).toBeTruthy())
+    expect(screen.getByText(/the moment they happen/i)).toBeTruthy()
+    expect(screen.getByText(/every 15 minutes/i)).toBeTruthy()
+  })
+
   it('asks the server for everything by default, and for one status when narrowed', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('10356')).toBeTruthy())

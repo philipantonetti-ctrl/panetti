@@ -91,7 +91,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
     <AppShell email={email}>
       <PageHeader
         title="Shops"
-        subtitle="Add your store, Connect it with its WooCommerce API keys, then press Sync all. Your orders flow in and update every screen."
+        subtitle="Add your store, Connect it with its WooCommerce API keys, then press Sync all once. From then on it syncs itself — changes stream in as they happen, with a full re-check every 15 minutes."
       >
         <div className="flex items-center gap-2">
           <button
@@ -103,6 +103,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
           <button
             onClick={syncAll}
             disabled={syncing}
+            title="Everything arrives by itself; this just asks the stores right now."
             className="rounded-[var(--radius-control)] border border-line bg-surface px-4 py-2 text-[13px] font-semibold text-ink transition-opacity duration-150 hover:opacity-90 disabled:opacity-60"
           >
             {syncing ? 'Syncing…' : 'Sync all'}

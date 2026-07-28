@@ -204,7 +204,10 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
 
   return (
     <AppShell email={email}>
-      <PageHeader title="Orders">
+      <PageHeader
+        title="Orders"
+        subtitle="Keeps itself current — new orders, refunds and edits stream in from your stores the moment they happen, with a full re-check every 15 minutes."
+      >
         <ShopFilter
           shops={shops}
           selected={selected}
@@ -273,6 +276,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                 <button
                   onClick={syncNow}
                   disabled={syncing}
+                  title="Everything arrives by itself; this just asks the stores right now."
                   className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold text-ink transition-colors duration-150 hover:border-faint disabled:opacity-60"
                 >
                   {syncing ? 'Syncing…' : 'Sync now'}
