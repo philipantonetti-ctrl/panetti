@@ -91,7 +91,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
     <AppShell email={email}>
       <PageHeader
         title="Shops"
-        subtitle="Add your store, Connect it with its WooCommerce API keys, then press Sync all once. From then on it syncs itself — changes stream in as they happen, with a full re-check every 15 minutes."
+        subtitle="Add your store, Connect it with its WooCommerce API keys, then press Sync all once. From then on it syncs itself: changes stream in as they happen, with a full re-check every 15 minutes."
       >
         <div className="flex items-center gap-2">
           <button

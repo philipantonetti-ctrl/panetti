@@ -206,7 +206,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
     <AppShell email={email}>
       <PageHeader
         title="Orders"
-        subtitle="Keeps itself current — new orders, refunds and edits stream in from your stores the moment they happen, with a full re-check every 15 minutes."
+        subtitle="Keeps itself current: new orders, refunds and edits stream in from your stores the moment they happen, with a full re-check every 15 minutes."
       >
         <ShopFilter
           shops={shops}
@@ -303,7 +303,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                         <th className="py-2.5 pr-4 text-right">Items</th>
                         <th className="py-2.5 pr-4 text-right">Paid</th>
                         <th className="py-2.5 pr-4 text-right">Shipping</th>
-                        <th className="py-2.5 pr-4 text-right">Tax</th>
+                        <th className="py-2.5 pr-4 text-right">VAT</th>
                         <th className="py-2.5 pr-4 text-right">Fulfillment</th>
                         <th className="py-2.5 pr-4 text-right">Fee</th>
                         <th className="py-2.5 pr-4 text-right">COGS</th>
