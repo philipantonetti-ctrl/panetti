@@ -72,6 +72,14 @@ describe('GET /api/orders', () => {
     expect((await get('from=2026-03-01&to=2026-03-31')).status).toBe(403)
   })
 
+  it('never lets financial JSON be cached: private, no-store on success and refusal alike', async () => {
+    await asAdmin()
+    expect((await get('from=2026-03-01&to=2026-03-31')).headers.get('cache-control')).toBe('private, no-store')
+
+    cookieValue.current = undefined
+    expect((await get('from=2026-03-01&to=2026-03-31')).headers.get('cache-control')).toBe('private, no-store')
+  })
+
   it('lists orders in the range, newest first, with their products and customer', async () => {
     await asAdmin()
     const body = await (await get(`from=2026-03-01&to=2026-03-31&shops=${shopA}`)).json()

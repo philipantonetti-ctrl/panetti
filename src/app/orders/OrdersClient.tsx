@@ -1,11 +1,12 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
 import { formatMoney } from '@/lib/money'
 import type { Preset } from '@/lib/dates'
+import { useLiveTick } from '@/lib/use-live-tick'
 
 type Product = {
   name: string
@@ -153,10 +154,28 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
     return p
   }
 
+  // The subtitle promises the page keeps itself current — this delivers it for a
+  // tab that is already open: refetch on focus and once a minute while visible.
+  const tick = useLiveTick()
+  const seenTick = useRef(0)
+  const countRef = useRef(0)
+  useEffect(() => {
+    countRef.current = orders.length
+  }, [orders.length])
+
   // First page, refetched whenever the filters change. "Load more" appends from an
   // event handler, so no setState-in-effect and the open row resets on a new filter.
+  // A tick-driven run refreshes IN PLACE instead: it reloads every row already on
+  // screen (not just the first page) and leaves the expanded order open.
   useEffect(() => {
-    fetch(`/api/orders?${buildParams(0)}`)
+    const live = tick !== seenTick.current
+    seenTick.current = tick
+
+    const p = buildParams(0)
+    if (live) p.set('limit', String(Math.min(200, Math.max(PAGE, countRef.current))))
+
+    const ctrl = new AbortController()
+    fetch(`/api/orders?${p}`, { signal: ctrl.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error ?? 'Could not load orders')
         return res.json()
@@ -164,13 +183,16 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
       .then((json: { orders: OrderRow[]; total: number }) => {
         setOrders(json.orders)
         setTotal(json.total)
-        setOpen(null)
+        if (!live) setOpen(null)
         setError('')
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        if (e.name !== 'AbortError') setError(e.message)
+      })
       .finally(() => setLoading(false))
+    return () => ctrl.abort() // a superseded response must never overwrite a newer one
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset, from, to, selected, status, query, refresh])
+  }, [preset, from, to, selected, status, query, refresh, tick])
 
   async function loadMore() {
     setLoadingMore(true)

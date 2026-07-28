@@ -10,6 +10,7 @@ import { TrendChart } from '@/components/dashboard/TrendChart'
 import { CompareTable } from '@/components/dashboard/CompareTable'
 import { Leaderboard } from '@/components/dashboard/Leaderboard'
 import { PRESET_LABELS, type Preset } from '@/lib/dates'
+import { useLiveTick } from '@/lib/use-live-tick'
 import type { EngineResult, Figures } from '@/lib/metrics/types'
 import type { LeaderboardRow } from '@/lib/metrics/ambassadors'
 import type { SeriesPoint } from '@/lib/metrics/trend'
@@ -52,6 +53,11 @@ export function DashboardClient({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Webhooks and the cron keep the DATABASE current; this keeps the TAB current.
+  // Ticks on focus and once a minute while visible, so a dashboard left open
+  // overnight shows this morning's numbers, not the world as of last night.
+  const tick = useLiveTick()
+
   useEffect(() => {
     const params = new URLSearchParams()
     if (preset === 'custom' && from && to) {
@@ -63,8 +69,10 @@ export function DashboardClient({
     if (selected.length) params.set('shops', selected.join(','))
 
     // loading is set true by the filter handlers (and starts true on mount), so
-    // the effect only needs to clear it — keeping setState out of the effect body.
-    fetch(`/api/metrics?${params}`)
+    // the effect only needs to clear it — keeping setState out of the effect
+    // body. A tick refetch therefore stays silent: nothing dims, data just lands.
+    const ctrl = new AbortController()
+    fetch(`/api/metrics?${params}`, { signal: ctrl.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json()).error ?? 'Could not load')
         return res.json()
@@ -73,9 +81,12 @@ export function DashboardClient({
         setData(json)
         setError('')
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        if (e.name !== 'AbortError') setError(e.message)
+      })
       .finally(() => setLoading(false))
-  }, [preset, from, to, selected])
+    return () => ctrl.abort() // a superseded response must never overwrite a newer one
+  }, [preset, from, to, selected, tick])
 
   const currency = data?.metrics.displayCurrency ?? 'USD'
   const periodLabel =

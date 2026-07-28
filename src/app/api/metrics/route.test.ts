@@ -1,8 +1,20 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
+
+// No cookie = no user; enough to reach the route's refusal path without a DB.
+vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }) }))
+const { GET } = await import('./route')
 
 const now = new Date('2026-07-14T12:00:00Z')
 const q = (s: string) => new URLSearchParams(s)
+
+describe('GET /api/metrics', () => {
+  it('refuses anonymous callers, and even the refusal is never cacheable', async () => {
+    const res = await GET(new Request('http://localhost/api/metrics?preset=yesterday'))
+    expect(res.status).toBe(403)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+  })
+})
 
 describe('rangeFromQuery', () => {
   it('reads an explicit from/to', () => {

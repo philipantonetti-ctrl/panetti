@@ -58,6 +58,10 @@ Three layers, none of which run on the storefront:
    catching anything a webhook missed. Needs `CRON_SECRET` set.
 3. **Sync now (on demand).** Buttons on the Orders and Shops pages.
 
+The browser keeps up too: the Dashboard and Orders pages refetch when their
+tab regains focus and once a minute while it stays visible, so a tab left
+open overnight shows the current numbers, not the world as of when it loaded.
+
 The webhook receiver needs the deployment's public URL (`APP_URL`, or on
 Vercel the production URL is picked up automatically) and verifies every
 delivery against a per-shop HMAC secret the app generates itself.

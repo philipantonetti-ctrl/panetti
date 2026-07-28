@@ -9,6 +9,9 @@ import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
 
+/** Admin-only financial JSON: no browser, proxy or CDN may ever replay it. */
+const NO_STORE = { 'Cache-Control': 'private, no-store' }
+
 export async function GET(req: Request) {
   try {
     // Company-wide figures are admin-only. This is the security boundary.
@@ -52,10 +55,11 @@ export async function GET(req: Request) {
       // made a roster of three look like a table with one row in it.
       leaderboard: top.slice(0, 10),
       range: { from: from.toISOString(), to: to.toISOString() },
-    })
+    }, { headers: NO_STORE })
   } catch (e) {
-    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
+    if (e instanceof AuthError)
+      return NextResponse.json({ error: e.message }, { status: 403, headers: NO_STORE })
     console.error(e)
-    return NextResponse.json({ error: 'Could not load metrics' }, { status: 500 })
+    return NextResponse.json({ error: 'Could not load metrics' }, { status: 500, headers: NO_STORE })
   }
 }

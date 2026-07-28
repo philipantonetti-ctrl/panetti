@@ -17,6 +17,9 @@ import type { CostPoint, RateTable } from '@/lib/metrics/types'
 
 const VOIDED = new Set<string>(EXCLUDED_STATUSES)
 
+/** Admin-only financial JSON: no browser, proxy or CDN may ever replay it. */
+const NO_STORE = { 'Cache-Control': 'private, no-store' }
+
 /**
  * The order list for admins: every order in a date range, newest first, with
  * what was bought inside each one and what it truly earned. Paged, because a
@@ -221,9 +224,10 @@ export async function GET(req: Request) {
       }
     })
 
-    return NextResponse.json({ orders, total })
+    return NextResponse.json({ orders, total }, { headers: NO_STORE })
   } catch (e) {
-    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
-    return NextResponse.json({ error: 'Could not load orders' }, { status: 500 })
+    if (e instanceof AuthError)
+      return NextResponse.json({ error: e.message }, { status: 403, headers: NO_STORE })
+    return NextResponse.json({ error: 'Could not load orders' }, { status: 500, headers: NO_STORE })
   }
 }

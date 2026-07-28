@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react'
 import { OrdersClient, paymentBadge, fulfillmentBadge } from './OrdersClient'
 
 vi.mock('next/navigation', () => ({
@@ -160,5 +160,61 @@ describe('OrdersClient', () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('10356')).toBeTruthy())
     expect(screen.getByText(/found/i)).toBeTruthy()
+  })
+})
+
+describe('live refresh', () => {
+  // A fresh Response per call — a body can only be read once.
+  function renderLive() {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <OrdersClient
+        email="admin@test.local"
+        shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]}
+      />,
+    )
+    return fetchMock
+  }
+
+  it('refetches on window focus, reloading rows in place and keeping the open order open', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = renderLive()
+      await act(async () => {})
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      fireEvent.click(screen.getByRole('button', { name: /order 10356/i }))
+      expect(screen.getByText('Mazzetti Advanced Comfort')).toBeTruthy()
+
+      act(() => vi.advanceTimersByTime(1_500)) // past the tick's coalescing guard
+      fireEvent(window, new Event('focus'))
+      await act(async () => {})
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      // In place: same page size requested, and the expanded order stays open.
+      expect(String(fetchMock.mock.calls[1][0])).toContain('limit=50')
+      expect(screen.getByText('Mazzetti Advanced Comfort')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('polls once a minute while the tab stays visible', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = renderLive()
+      await act(async () => {})
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        vi.advanceTimersByTime(60_000)
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
