@@ -72,7 +72,7 @@ export type Figures = {
   fulfillment: number // per-order fulfillment cost at the rate in effect that day
   transactionFees: number // payment gateway: % of charged total + fixed part
   netRevenue: number
-  salesInclVat: number // net revenue + VAT = what customers actually paid (Nordic "brutto")
+  grossRevenue: number // net revenue + VAT = what customers actually paid (Nordic "brutto")
   cogs: number // product cost + handling combined
   operationalExpenses: number
   commission: number
@@ -100,7 +100,7 @@ export const ZERO_FIGURES: Figures = {
   fulfillment: 0,
   transactionFees: 0,
   netRevenue: 0,
-  salesInclVat: 0,
+  grossRevenue: 0,
   cogs: 0,
   operationalExpenses: 0,
   commission: 0,

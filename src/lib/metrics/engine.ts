@@ -158,7 +158,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       taxes,
       netRevenue,
       // What the customer actually paid: net revenue plus the VAT collected.
-      salesInclVat: netRevenue + taxes,
+      grossRevenue: netRevenue + taxes,
       cogs,
       fulfillment,
       transactionFees,
@@ -194,7 +194,7 @@ function totalOf(rows: ShopFigures[]): Figures {
     fulfillment: add((r) => r.fulfillment),
     transactionFees: add((r) => r.transactionFees),
     netRevenue,
-    salesInclVat: add((r) => r.salesInclVat),
+    grossRevenue: add((r) => r.grossRevenue),
     cogs: add((r) => r.cogs),
     operationalExpenses: add((r) => r.operationalExpenses),
     commission: add((r) => r.commission),

@@ -19,19 +19,20 @@ type Column = {
   money?: boolean
   percent?: boolean
   tone?: boolean // colour by sign
+  shareOfNetRevenue?: boolean // append "(26.10%)" — this figure as a share of the row's net revenue
 }
 
 const COLUMNS: Column[] = [
   { key: 'orders', label: 'Orders' },
+  { key: 'grossRevenue', label: 'Gross revenue', money: true, hint: 'What customers actually paid: net revenue + VAT (Nordic "brutto")' },
   { key: 'grossSales', label: 'Gross sales', money: true, hint: 'Before discounts, excl. VAT (Shopify sense — not "brutto")' },
   { key: 'discounts', label: 'Discounts', money: true, hint: 'Coupon and code discounts, excl. VAT' },
   { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base, excl. VAT' },
   { key: 'shippingCharged', label: 'Shipping', money: true, hint: 'Shipping charged to customers, excl. VAT' },
   { key: 'taxes', label: 'VAT', money: true, hint: 'VAT collected (25% NO/SE/DK, 25.5% FI, 19% DE) — remitted to the tax office, never income or cost' },
-  { key: 'salesInclVat', label: 'Sales incl. VAT', money: true, hint: 'What customers actually paid: net revenue + VAT (Nordic "brutto")' },
   { key: 'netRevenue', label: 'Net revenue', money: true, hint: 'Net sales + shipping, excl. VAT — the basis for profit' },
   { key: 'transactionFees', label: 'Transaction fees', money: true, hint: 'Payment gateway: % of the charged total + fixed part' },
-  { key: 'cogs', label: 'COGS', money: true, hint: 'Product cost + handling' },
+  { key: 'cogs', label: 'COGS', money: true, shareOfNetRevenue: true, hint: 'Product cost + handling, and its share of net revenue' },
   { key: 'fulfillment', label: 'Fulfillment', money: true, hint: 'Per-order rate from Settings' },
   { key: 'operationalExpenses', label: 'Op. expenses', money: true },
   { key: 'commission', label: 'Commission', money: true },
@@ -93,8 +94,14 @@ function Cell({
 }) {
   const value = row[column.key] as number
 
+  // "$3,843.74 (26.10%)" — the share only exists when there is revenue to share.
+  const share =
+    column.shareOfNetRevenue && row.netRevenue > 0
+      ? ` (${((value / row.netRevenue) * 100).toFixed(2)}%)`
+      : ''
+
   const text = column.money
-    ? formatMoney(value, currency)
+    ? formatMoney(value, currency) + share
     : column.percent
       ? `${(value * 100).toFixed(1)}%`
       : value.toLocaleString('en-US')
