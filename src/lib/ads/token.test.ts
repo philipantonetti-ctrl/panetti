@@ -118,4 +118,25 @@ describe('inspectMetaToken', () => {
     await expect(inspectMetaToken(APP, 'bad')).rejects.toThrow(AdApiError)
     await expect(inspectMetaToken(APP, 'bad')).rejects.toThrow('Malformed access token')
   })
+
+  it('accepts a good token even when the app ID and secret are wrong', async () => {
+    // metaAppToken throws here, inside the courtesy try. A wrong app secret
+    // must cost us the expiry date and nothing else — never a working token.
+    // Hoisting that call out of the try would silently break this.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('grant_type=client_credentials'))
+          return Response.json({ error: { message: 'Invalid appsecret' } }, { status: 400 })
+        if (url.includes('/debug_token'))
+          throw new Error('debug_token is unreachable without an app token')
+        return Response.json({ name: 'Philip Antonetti' })
+      }),
+    )
+
+    await expect(inspectMetaToken(APP, 'EAABpasted')).resolves.toEqual({
+      label: 'Philip Antonetti',
+      expiresAt: null,
+    })
+  })
 })
