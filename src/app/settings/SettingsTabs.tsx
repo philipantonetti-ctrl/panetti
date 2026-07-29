@@ -26,7 +26,8 @@ const TABS: { name: string; items: Item[] }[] = [
   {
     name: 'User',
     items: [
-      { href: '/settings/ambassadors', title: 'Ambassadors', blurb: 'Invite links, codes and commissions', icon: '🤝' },
+      { href: '/ambassadors', title: 'Ambassadors', blurb: 'Statistics, invite links, codes and commissions', icon: '🤝' },
+      { href: '/settings/users', title: 'Users', blurb: 'Admin and Marketing logins', icon: '🔑' },
       { href: '/account', title: 'Your account', blurb: 'Your details and your password', icon: '👤' },
     ],
   },
