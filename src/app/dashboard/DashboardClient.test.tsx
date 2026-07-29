@@ -48,7 +48,7 @@ describe('DashboardClient live refresh', () => {
     await act(async () => {})
 
     // Two metrics fetches — the tick also asks /api/version, so count by URL.
-    const metricCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/metrics'))
+    const metricCalls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0])).filter((u) => u.includes('/api/metrics'))
     expect(metricCalls.length).toBe(2)
     // The refresh never re-enters the loading state: no dimmed aria-busy veil.
     expect(document.querySelector('[aria-busy="true"]')).toBeNull()
@@ -63,7 +63,7 @@ describe('DashboardClient live refresh', () => {
     await act(async () => {
       vi.advanceTimersByTime(60_000)
     })
-    const metricCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/metrics'))
+    const metricCalls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0])).filter((u) => u.includes('/api/metrics'))
     expect(metricCalls.length).toBe(2)
   })
 })

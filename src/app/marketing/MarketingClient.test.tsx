@@ -56,7 +56,7 @@ describe('MarketingClient', () => {
     )
     await act(async () => {})
 
-    const calls = fetchMock.mock.calls.map((c) => String(c[0]))
+    const calls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0]))
     expect(calls.some((u) => u.includes('/api/marketing?'))).toBe(true)
 
     expect(screen.getByText('AD SPEND')).toBeTruthy()

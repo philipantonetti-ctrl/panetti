@@ -194,7 +194,7 @@ describe('live refresh', () => {
       await act(async () => {})
 
       // Two orders fetches — the tick also asks /api/version, so count by URL.
-      const orderCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/orders'))
+      const orderCalls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0])).filter((u) => u.includes('/api/orders'))
       expect(orderCalls.length).toBe(2)
       // In place: same page size requested, and the expanded order stays open.
       expect(orderCalls[1]).toContain('limit=50')
@@ -214,7 +214,7 @@ describe('live refresh', () => {
       await act(async () => {
         vi.advanceTimersByTime(60_000)
       })
-      const orderCalls = fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/orders'))
+      const orderCalls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0])).filter((u) => u.includes('/api/orders'))
       expect(orderCalls.length).toBe(2)
     } finally {
       vi.useRealTimers()
