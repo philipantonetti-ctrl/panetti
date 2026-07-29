@@ -12,7 +12,7 @@ const { signSession } = await import('@/lib/auth/session')
 const { db } = await import('@/lib/db')
 
 const EMAILS = ['plan-rank-1@example.local', 'plan-rank-2@example.local']
-const SHOP_NAME = 'plan-rank-test-shop'
+const SHOP_NAME = 'plan-rank-test-shop [rank-test]'
 const ids: string[] = []
 let shopId = ''
 

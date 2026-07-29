@@ -12,7 +12,7 @@ const { signSession } = await import('@/lib/auth/session')
 const { db } = await import('@/lib/db')
 
 const ADMIN_EMAIL = 'plan-adminportal@example.local'
-const SHOP = 'plan-adminportal-shop'
+const SHOP = 'plan-adminportal-shop [portal-test]'
 let shopId = ''
 let ambId = ''
 

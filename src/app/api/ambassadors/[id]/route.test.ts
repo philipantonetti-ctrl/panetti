@@ -164,7 +164,7 @@ describe('DELETE /api/ambassadors/[id]', () => {
 
   it('takes their codes and login with them', async () => {
     await asAdmin()
-    const shop = await db.shop.create({ data: { name: 'del-code-shop', currency: 'NOK' } })
+    const shop = await db.shop.create({ data: { name: 'del-code-shop [amb-del-test]', currency: 'NOK' } })
     try {
       await db.ambassadorCode.create({ data: { ambassadorId: id, code: 'DELME10', shopId: shop.id } })
       await db.user.create({
@@ -182,7 +182,7 @@ describe('DELETE /api/ambassadors/[id]', () => {
   // onDelete: SetNull would silently orphan every past order, so refuse instead.
   it('REFUSES to delete an ambassador who has attributed orders', async () => {
     await asAdmin()
-    const shop = await db.shop.create({ data: { name: 'del-test-shop', currency: 'NOK' } })
+    const shop = await db.shop.create({ data: { name: 'del-test-shop [amb-del-test]', currency: 'NOK' } })
     try {
       await db.order.create({
         data: {

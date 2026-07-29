@@ -5,7 +5,9 @@ import { db } from '@/lib/db'
 
 const ADMIN_EMAIL = 'plan-login-admin@example.local'
 const AMB_EMAIL = 'plan-login-amb@example.local'
-const SHOP = 'plan-login-shop'
+// The bracket marker keeps this transient shop out of the fixture-blind
+// shop counts in load.integration.test.ts, which runs in a parallel worker.
+const SHOP = 'plan-login-shop [login-test]'
 const PASSWORD = 'longenough1'
 
 const login = (body: unknown) =>
