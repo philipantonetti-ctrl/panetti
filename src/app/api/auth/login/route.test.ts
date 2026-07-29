@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 
 const ADMIN_EMAIL = 'plan-login-admin@example.local'
 const AMB_EMAIL = 'plan-login-amb@example.local'
+const MKT_EMAIL = 'plan-login-marketing@example.local'
 // The bracket marker keeps this transient shop out of the fixture-blind
 // shop counts in load.integration.test.ts, which runs in a parallel worker.
 const SHOP = 'plan-login-shop [login-test]'
@@ -18,7 +19,7 @@ const login = (body: unknown) =>
   }))
 
 async function wipe() {
-  await db.user.deleteMany({ where: { email: { in: [ADMIN_EMAIL, AMB_EMAIL] } } })
+  await db.user.deleteMany({ where: { email: { in: [ADMIN_EMAIL, AMB_EMAIL, MKT_EMAIL] } } })
   await db.ambassador.deleteMany({ where: { email: { in: [ADMIN_EMAIL, AMB_EMAIL] } } })
   await db.shop.deleteMany({ where: { name: SHOP } })
 }
@@ -40,6 +41,9 @@ beforeEach(async () => {
   // A plain ambassador with their own login.
   const amb = await db.ambassador.create({ data: { name: 'Plain', email: AMB_EMAIL, commissionRate: 0.1 } })
   await db.user.create({ data: { email: AMB_EMAIL, passwordHash, role: 'AMBASSADOR', ambassadorId: amb.id } })
+
+  // A marketing colleague: staff door, ambassador half of the house only.
+  await db.user.create({ data: { email: MKT_EMAIL, passwordHash, role: 'MARKETING' } })
 })
 
 afterEach(wipe)
@@ -76,5 +80,12 @@ describe('where signing in lands you', () => {
   it('still refuses a wrong password', async () => {
     const res = await login({ email: ADMIN_EMAIL, password: 'wrong-password', mode: 'admin' })
     expect(res.status).toBe(401)
+  })
+
+  it('a marketing user lands on the ambassadors page from either door', async () => {
+    const admin = await login({ email: MKT_EMAIL, password: PASSWORD, mode: 'admin' })
+    expect((await admin.json()).redirectTo).toBe('/ambassadors')
+    const amb = await login({ email: MKT_EMAIL, password: PASSWORD, mode: 'ambassador' })
+    expect((await amb.json()).redirectTo).toBe('/ambassadors')
   })
 })

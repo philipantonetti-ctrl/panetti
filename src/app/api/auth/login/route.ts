@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { checkPassword } from '@/lib/auth/password'
-import { SESSION_COOKIE, signSession } from '@/lib/auth/session'
+import { SESSION_COOKIE, signSession, type Role } from '@/lib/auth/session'
 
 const Body = z.object({
   email: z.string().email(),
@@ -28,17 +28,19 @@ export async function POST(req: Request) {
   const token = await signSession({
     userId: user.id,
     email: user.email,
-    role: user.role as 'ADMIN' | 'AMBASSADOR',
+    role: user.role as Role,
     ambassadorId: user.ambassadorId,
   })
 
-  // Where to land. An ambassador only has a portal. An admin normally gets the
-  // dashboard — but if they came through the AMBASSADOR door and have an
-  // ambassador of their own (same email), show them that side, which is what
-  // they just asked for. They can switch either way once inside.
+  // Where to land. An ambassador only has a portal; marketing has the
+  // ambassadors page. An admin normally gets the dashboard — but if they came
+  // through the AMBASSADOR door and have an ambassador of their own (same
+  // email), show them that side, which is what they just asked for.
   let redirectTo = '/dashboard'
-  if (user.role !== 'ADMIN') {
+  if (user.role === 'AMBASSADOR') {
     redirectTo = '/portal'
+  } else if (user.role === 'MARKETING') {
+    redirectTo = '/ambassadors'
   } else if (parsed.data.mode === 'ambassador') {
     const mine = await db.ambassador.findFirst({
       where: { email: user.email },
