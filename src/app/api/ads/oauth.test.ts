@@ -86,7 +86,60 @@ const callback = (provider: string, qs: string) =>
   })
 
 describe('platform setup', () => {
+  /** Meta saves prove themselves against the platform first. */
+  function stubMetaAppOk() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('grant_type=client_credentials'))
+          return json({ access_token: 'app|token' })
+        return json({ app_domains: ['localhost'] })
+      }),
+    )
+  }
+
+  it('refuses a wrong App ID or secret with Facebook words and stores nothing', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(json({ error: { message: 'Error validating client secret.' } }, 400)),
+    )
+    const res = await appsPut(
+      new Request('http://localhost/api/ad-platform-apps', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'meta', clientId: 'oauth-test-bad', clientSecret: 'typo' }),
+      }),
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Error validating client secret.')
+    const row = await db.adPlatformApp.findUniqueOrThrow({ where: { provider: 'meta' } })
+    expect(row.clientId).not.toBe('oauth-test-bad')
+  })
+
+  it('passes the missing-domain warning through on a successful save', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('grant_type=client_credentials'))
+          return json({ access_token: 'app|token' })
+        return json({ app_domains: ['some-other-site.com'] })
+      }),
+    )
+    const res = await appsPut(
+      new Request('http://localhost/api/ad-platform-apps', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: 'meta', clientId: 'oauth-test-9002', clientSecret: 's' }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect((await res.json()).warning).toContain('App Domains')
+  })
+
   it('stores secrets encrypted and answers with booleans only', async () => {
+    stubMetaAppOk()
     const res = await appsPut(
       new Request('http://localhost/api/ad-platform-apps', {
         method: 'PUT',

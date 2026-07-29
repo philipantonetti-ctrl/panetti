@@ -496,15 +496,18 @@ function PlatformCard({
   const [clientSecret, setClientSecret] = useState('')
   const [developerToken, setDeveloperToken] = useState('')
   const [busy, setBusy] = useState(false)
+  const [warning, setWarning] = useState('')
   const toast = useToast()
 
   // The origin only exists in the browser; setting it after mount avoids a
   // hydration mismatch between the server's empty string and the real URL.
-  const [redirectUri, setRedirectUri] = useState('')
+  const [origin, setOrigin] = useState('')
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRedirectUri(`${window.location.origin}/api/ads/oauth/${provider}/callback`)
-  }, [provider])
+    setOrigin(window.location.origin)
+  }, [])
+  const domain = origin.replace(/^https?:\/\//, '')
+  const redirectUri = origin ? `${origin}/api/ads/oauth/${provider}/callback` : ''
 
   async function save() {
     setBusy(true)
@@ -514,10 +517,13 @@ function PlatformCard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider, clientId, clientSecret, developerToken }),
       })
+      const body = (await res.json().catch(() => null)) as { error?: string; warning?: string } | null
       if (!res.ok) {
-        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save')
+        toast.error(body?.error ?? 'Could not save')
         return
       }
+      // The warning outlives the toast: it stays until the next save fixes it.
+      setWarning(body?.warning ?? '')
       toast.success(`${provider === 'meta' ? 'Meta' : 'Google'} setup saved`)
       router.refresh()
     } catch {
@@ -532,14 +538,42 @@ function PlatformCard({
       <h3 className="text-sm font-semibold text-ink">
         {provider === 'meta' ? 'Meta app' : 'Google app'}
       </h3>
-      <p className="mt-1 text-[11px] text-muted">
-        {provider === 'meta'
-          ? 'developers.facebook.com → Create app (Business type) → Use cases or Settings → add Facebook Login and paste the redirect URL below into Valid OAuth Redirect URIs. Keep the app in development mode.'
-          : 'console.cloud.google.com → Credentials → OAuth client (Web application) with the redirect URL below. Set the consent screen to In production. The developer token comes from Google Ads → manager account → API Center.'}
-      </p>
+      {provider === 'meta' ? (
+        <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-[11px] text-muted">
+          <li>developers.facebook.com: Create app, Business type.</li>
+          <li>
+            Settings, Basic: add the domain below under App Domains, and Add platform, Website,
+            with {origin || 'this site'} as the Site URL.
+          </li>
+          <li>
+            Add the Facebook Login product, then Facebook Login, Settings: paste the callback URL
+            below under Valid OAuth Redirect URIs.
+          </li>
+          <li>Keep the app in Development mode. Only you log in, so no review is needed.</li>
+        </ol>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted">
+          console.cloud.google.com, Credentials, OAuth client (Web application) with the callback
+          URL below. Set the consent screen to In production. The developer token comes from
+          Google Ads, manager account, API Center.
+        </p>
+      )}
+      {provider === 'meta' && (
+        <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
+          <span className="text-faint">App Domains: </span>
+          {domain || '…'}
+        </p>
+      )}
       <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
+        <span className="text-faint">Callback URL: </span>
         {redirectUri || '…'}
       </p>
+
+      {warning && (
+        <p className="mt-2 rounded-[var(--radius-control)] border border-line bg-panel px-2 py-1.5 text-[11px] font-medium text-loss">
+          {warning}
+        </p>
+      )}
 
       <label className={label}>{provider === 'meta' ? 'App ID' : 'Client ID'}</label>
       <input

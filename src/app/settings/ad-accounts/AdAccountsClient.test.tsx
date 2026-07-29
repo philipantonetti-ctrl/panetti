@@ -180,6 +180,28 @@ describe('AdAccountsClient', () => {
     )
   })
 
+  it('keeps a save-time warning on screen until it is fixed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            warning:
+              'Saved, but the Meta app does not list this site yet, so the login will fail. In Meta app settings add localhost under App Domains.',
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    renderPage([])
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
+    await waitFor(() =>
+      expect(screen.getByText(/does not list this site yet/)).toBeTruthy(),
+    )
+  })
+
   it('saves the platform setup and never demands a saved secret again', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)

@@ -3,7 +3,9 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
-import { encryptSecret } from '@/lib/secrets'
+import { decryptSecret, encryptSecret } from '@/lib/secrets'
+import { validateMetaApp } from '@/lib/ads/oauth'
+import { AdApiError } from '@/lib/ads/types'
 
 /**
  * The client's own Meta app / Google OAuth client — the one-time setup that
@@ -56,6 +58,17 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Paste the developer token' }, { status: 400 })
     }
 
+    // A Meta app proves itself before it is saved: a wrong App ID or secret
+    // dies here with Facebook's words, not later at the login dialog. The
+    // domain check is the same courtesy for the "Can't load URL" screen.
+    // (Google offers no silent way to prove a client id + secret.)
+    let warning: string | undefined
+    if (provider === 'meta') {
+      const secret = clientSecret || (existing ? decryptSecret(existing.clientSecret) : '')
+      const domain = new URL(req.url).hostname
+      warning = (await validateMetaApp({ clientId, clientSecret: secret }, domain)).warning
+    }
+
     // Blank secret fields mean "keep what is saved", like every other modal.
     await db.adPlatformApp.upsert({
       where: { provider },
@@ -71,9 +84,10 @@ export async function PUT(req: Request) {
         ...(developerToken ? { developerToken: encryptSecret(developerToken) } : {}),
       },
     })
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, ...(warning ? { warning } : {}) })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
+    if (e instanceof AdApiError) return NextResponse.json({ error: e.message }, { status: 400 })
     console.error(e)
     return NextResponse.json({ error: 'Could not save the platform setup' }, { status: 500 })
   }

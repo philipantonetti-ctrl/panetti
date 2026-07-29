@@ -47,6 +47,51 @@ async function readJson<T>(res: Response): Promise<T & { error?: { message?: str
   return (await res.json().catch(() => ({}))) as T & { error?: { message?: string } }
 }
 
+/**
+ * Prove an App ID + secret against Meta at save time, and — best-effort —
+ * read the app's own settings to catch the classic "Can't load URL" before
+ * Facebook gets to deliver it. A wrong pair throws with Facebook's words; a
+ * missing domain comes back as a warning naming exactly what to paste where.
+ */
+export async function validateMetaApp(
+  app: PlatformApp,
+  domain: string,
+): Promise<{ warning?: string }> {
+  const token = await readJson<{ access_token?: string }>(
+    await fetch(
+      `${META}/oauth/access_token?${new URLSearchParams({
+        client_id: app.clientId,
+        client_secret: app.clientSecret,
+        grant_type: 'client_credentials',
+      })}`,
+    ),
+  )
+  if (!token.access_token)
+    throw new AdApiError(token.error?.message ?? 'Meta did not accept the App ID and secret')
+
+  try {
+    const settings = await readJson<{ app_domains?: string[] }>(
+      await fetch(
+        `${META}/${app.clientId}?${new URLSearchParams({
+          fields: 'app_domains,website_url',
+          access_token: token.access_token,
+        })}`,
+      ),
+    )
+    if (Array.isArray(settings.app_domains) && !settings.app_domains.includes(domain)) {
+      return {
+        warning:
+          `Saved, but the Meta app does not list this site yet, so the login will fail. ` +
+          `In Meta app settings add ${domain} under App Domains, and ` +
+          `https://${domain}/api/ads/oauth/meta/callback under Facebook Login, Valid OAuth Redirect URIs.`,
+      }
+    }
+  } catch {
+    // The check is a courtesy, never a blocker.
+  }
+  return {}
+}
+
 export async function exchangeMetaCode(
   app: PlatformApp,
   redirectUri: string,

@@ -4,6 +4,7 @@ import {
   buildMetaAuthUrl,
   exchangeGoogleCode,
   exchangeMetaCode,
+  validateMetaApp,
   type PlatformApp,
 } from './oauth'
 import { AdApiError } from './types'
@@ -29,6 +30,53 @@ describe('auth URLs', () => {
     expect(google).toContain(encodeURIComponent('https://www.googleapis.com/auth/adwords'))
     expect(google).toContain('access_type=offline')
     expect(google).toContain('prompt=consent')
+  })
+})
+
+describe('validateMetaApp', () => {
+  it("throws Facebook's words for a wrong App ID or secret", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(json({ error: { message: 'Error validating client secret.' } }, 400)),
+    )
+    await expect(validateMetaApp(APP, 'panetti.vercel.app')).rejects.toThrow(
+      new AdApiError('Error validating client secret.'),
+    )
+  })
+
+  it('stays quiet when the app already lists the domain', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+        .mockResolvedValueOnce(json({ app_domains: ['panetti.vercel.app'], website_url: 'https://panetti.vercel.app' })),
+    )
+    expect(await validateMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+  })
+
+  it('warns with the exact values to paste when the domain is missing', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+        .mockResolvedValueOnce(json({ app_domains: [] })),
+    )
+    const { warning } = await validateMetaApp(APP, 'panetti.vercel.app')
+    expect(warning).toContain('panetti.vercel.app under App Domains')
+    expect(warning).toContain('https://panetti.vercel.app/api/ads/oauth/meta/callback')
+  })
+
+  it('treats an unreadable settings answer as no news, not bad news', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+        .mockResolvedValueOnce(json({ error: { message: 'no' } }, 400)),
+    )
+    expect(await validateMetaApp(APP, 'panetti.vercel.app')).toEqual({})
   })
 })
 
