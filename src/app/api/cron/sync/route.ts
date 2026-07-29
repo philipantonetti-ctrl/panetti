@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { syncAllShops } from '@/lib/woo/sync'
+import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { db } from '@/lib/db'
 
@@ -35,11 +36,25 @@ export async function GET(req: Request) {
   const results = await syncAllShops()
   const failed = results.filter((r) => !r.ok).map((r) => r.shopName)
 
+  // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
+  // skips accounts synced in the last six hours, so most runs cost nothing.
+  // Best-effort like the rates: a broken token must never fail the shop sync.
+  let ads: AdSyncResult[] = []
+  try {
+    ads = await syncAllAdAccounts()
+  } catch {
+    // Each account keeps its own lastError; the settings page tells the story.
+  }
+
   // Top up exchange rates here rather than inside someone's page load. A rate
   // failure must never fail the sync, so it is best-effort.
   try {
     const currencies = [
-      ...new Set((await db.shop.findMany({ select: { currency: true } })).map((s) => s.currency)),
+      ...new Set([
+        ...(await db.shop.findMany({ select: { currency: true } })).map((s) => s.currency),
+        // Ad accounts can bill in a currency no shop trades in.
+        ...(await db.adAccount.findMany({ select: { currency: true } })).map((a) => a.currency),
+      ]),
     ]
     const now = new Date()
     await ensureRates(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), now, currencies)
@@ -53,5 +68,7 @@ export async function GET(req: Request) {
     shops: results.length,
     ordersSynced: results.reduce((n, r) => n + r.ordersSynced, 0),
     failed,
+    adAccounts: ads.length,
+    adFailed: ads.filter((r) => !r.ok).map((r) => r.name),
   })
 }

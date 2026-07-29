@@ -83,6 +83,24 @@ describe('buildMarketing', () => {
     ])
   })
 
+  it('cross-converts when one shop is shown in its own currency', () => {
+    const single = buildMarketing({
+      accounts,
+      spend,
+      engine: {
+        displayCurrency: 'NOK',
+        byShop: [{ ...ZERO_FIGURES, shopId: 'shop-a', shopName: 'Alpha', orders: 10, grossRevenue: 5000_00 }],
+        total: { ...ZERO_FIGURES, orders: 10, grossRevenue: 5000_00 },
+      },
+      series,
+      rates,
+    })
+    const alpha = single.byShop[0]
+    // NOK spend passes through; 50 EUR on the 2nd crosses at 1.1/0.2 -> 275 NOK.
+    expect(alpha.metaSpend).toBe(2000_00)
+    expect(alpha.googleSpend).toBe(275_00)
+  })
+
   it('ignores spend from accounts outside the current scope', () => {
     const scoped = buildMarketing({
       accounts: [],

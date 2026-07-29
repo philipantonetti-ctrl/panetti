@@ -1,4 +1,4 @@
-import { convert } from '../metrics/fx'
+import { crossConvert } from '../metrics/fx'
 import type { EngineResult, RateTable } from '../metrics/types'
 import type { SeriesPoint } from '../metrics/trend'
 
@@ -71,8 +71,9 @@ export function buildMarketing(args: {
     const account = accountById.get(row.accountId)
     if (!account) continue // an account outside the current shop scope
 
-    // Each day's spend converts at that day's rate, exactly like an order would.
-    const minor = convert(row.spend, account.currency, row.date, display, args.rates)
+    // Each day's spend converts at that day's rate. Cross-convert, because an
+    // account can bill in a currency that is neither the shop's nor USD.
+    const minor = crossConvert(row.spend, account.currency, display, row.date, args.rates)
     const acc = byShop.get(account.shopId) ?? zero()
     acc.spend += minor
     if (account.provider === 'meta') acc.metaSpend += minor
