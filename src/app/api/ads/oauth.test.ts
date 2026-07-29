@@ -189,7 +189,10 @@ describe('oauth start', () => {
     expect(cookie).toMatch(/ads_oauth_state=meta(%3A|:)/)
   })
 
-  it('writes a missing domain into the Meta app before walking to Facebook', async () => {
+  it('writes a missing domain into the Meta app, then asks for a second click', async () => {
+    // Facebook's dialog can lag seconds behind a settings write. Walking
+    // straight from the write into the dialog loses that race exactly once —
+    // the client saw the wall on the very click that fixed his app.
     const fetchMock = vi
       .fn()
       .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -203,7 +206,9 @@ describe('oauth start', () => {
 
     const res = await start('meta')
     expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toContain('facebook.com/v25.0/dialog/oauth')
+    const location = decodeURIComponent(res.headers.get('location') ?? '')
+    expect(location).toContain('/settings/ad-accounts?notice=')
+    expect(location).toContain('again')
 
     const write = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === 'POST')
     expect(String(write?.[0])).toContain('/oauth-test-app')

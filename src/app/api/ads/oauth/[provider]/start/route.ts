@@ -33,11 +33,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
       // app lists this domain, writing it into the app when it is missing.
       // Only a firm no from Meta blocks — silence lets the login proceed.
       try {
-        const { warning } = await ensureMetaApp(
+        const { healed, warning } = await ensureMetaApp(
           { clientId: app.clientId, clientSecret: decryptSecret(app.clientSecret) },
           new URL(req.url).hostname,
         )
         if (warning) return back(`/settings/ad-accounts?error=${encodeURIComponent(warning)}`)
+        // Facebook's dialog lags seconds behind a fresh settings write.
+        // Racing it loses exactly once — ask for the second click instead.
+        if (healed) {
+          return back(
+            `/settings/ad-accounts?notice=${encodeURIComponent(
+              'The Facebook app was missing this site, so it was fixed automatically just now. Press Connect with Facebook again.',
+            )}`,
+          )
+        }
       } catch (e) {
         if (e instanceof AdApiError) {
           return back(

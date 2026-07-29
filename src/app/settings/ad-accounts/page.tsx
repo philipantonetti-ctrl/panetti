@@ -6,13 +6,13 @@ import { AdAccountsClient } from './AdAccountsClient'
 export default async function AdAccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ picker?: string; error?: string }>
+  searchParams: Promise<{ picker?: string; error?: string; notice?: string }>
 }) {
   const user = await currentUser()
   if (!user) redirect('/login')
   if (user.role !== 'ADMIN') redirect('/portal')
 
-  const { picker, error } = await searchParams
+  const { picker, error, notice } = await searchParams
 
   const [accounts, shops, apps] = await Promise.all([
     db.adAccount.findMany({
@@ -54,6 +54,7 @@ export default async function AdAccountsPage({
       }}
       picker={picker ?? null}
       initialError={error ?? null}
+      initialNotice={notice ?? null}
     />
   )
 }

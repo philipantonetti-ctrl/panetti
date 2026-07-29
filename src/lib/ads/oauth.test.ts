@@ -72,7 +72,9 @@ describe('ensureMetaApp', () => {
       .mockResolvedValueOnce(json({ success: true }))
     vi.stubGlobal('fetch', fetchMock)
 
-    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+    // A write is a heal, and it says so: Facebook's dialog can lag behind a
+    // fresh write, so the caller must not walk straight into it.
+    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({ healed: true })
 
     const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit]
     expect(String(url)).toContain(`/${APP.clientId}`)
@@ -93,7 +95,7 @@ describe('ensureMetaApp', () => {
       .mockResolvedValueOnce(json({ success: true }))
     vi.stubGlobal('fetch', fetchMock)
 
-    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({ healed: true })
     const body = String((fetchMock.mock.calls[2][1] as RequestInit).body)
     expect(body).toContain(encodeURIComponent('https://panetti.vercel.app/'))
   })

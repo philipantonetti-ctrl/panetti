@@ -59,14 +59,16 @@ const covered = (domains: string[] | undefined, domain: string): boolean =>
  * domain — by writing it into the app's own settings when it is missing (the
  * Application node is updatable with the app access token). The classic
  * "Can't load URL" screen dies here instead of in front of the admin. A
- * wrong pair throws with Facebook's words; a write Facebook refuses comes
- * back as a warning naming exactly what to paste where; an unreadable or
- * unreachable Meta stays quiet — the check is a courtesy, never a blocker.
+ * wrong pair throws with Facebook's words; a successful write answers
+ * `healed` — the dialog can lag seconds behind a fresh write, so the caller
+ * must not walk straight into it; a write Facebook refuses comes back as a
+ * warning naming exactly what to paste where; an unreadable or unreachable
+ * Meta stays quiet — the check is a courtesy, never a blocker.
  */
 export async function ensureMetaApp(
   app: PlatformApp,
   domain: string,
-): Promise<{ warning?: string }> {
+): Promise<{ healed?: boolean; warning?: string }> {
   const token = await readJson<{ access_token?: string }>(
     await fetch(
       `${META}/oauth/access_token?${new URLSearchParams({
@@ -106,7 +108,7 @@ export async function ensureMetaApp(
     })
     // Graph can answer 200 with success:false — that is still a refusal.
     const outcome = await readJson<{ success?: boolean }>(write)
-    if (write.ok && outcome.success !== false) return {}
+    if (write.ok && outcome.success !== false) return { healed: true }
 
     return {
       warning:

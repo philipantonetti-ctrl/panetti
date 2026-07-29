@@ -41,7 +41,7 @@ const account = (over: Partial<Row>): Row => ({
 
 function renderPage(
   accounts: Row[],
-  opts: { platform?: PlatformSetup; picker?: string | null } = {},
+  opts: { platform?: PlatformSetup; picker?: string | null; notice?: string | null } = {},
 ) {
   return render(
     <ToastProvider>
@@ -52,6 +52,7 @@ function renderPage(
         platform={opts.platform ?? READY}
         picker={opts.picker ?? null}
         initialError={null}
+        initialNotice={opts.notice ?? null}
       />
     </ToastProvider>,
   )
@@ -177,6 +178,13 @@ describe('AdAccountsClient', () => {
       expect(
         screen.getByText('Synced 1 account(s). Failed: B (Invalid OAuth access token)'),
       ).toBeTruthy(),
+    )
+  })
+
+  it('greets a good-news notice from the redirect as success, not alarm', async () => {
+    renderPage([], { notice: 'The Facebook app was just fixed. Press Connect with Facebook again.' })
+    await waitFor(() =>
+      expect(screen.getByText(/Press Connect with Facebook again/)).toBeTruthy(),
     )
   })
 

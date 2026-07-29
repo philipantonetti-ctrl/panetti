@@ -41,6 +41,7 @@ export function AdAccountsClient({
   platform,
   picker,
   initialError,
+  initialNotice,
 }: {
   email: string
   shops: ShopOption[]
@@ -48,6 +49,7 @@ export function AdAccountsClient({
   platform: PlatformSetup
   picker: string | null
   initialError: string | null
+  initialNotice: string | null
 }) {
   const router = useRouter()
   const [manualOpen, setManualOpen] = useState(false)
@@ -64,7 +66,8 @@ export function AdAccountsClient({
     if (greeted.current) return
     greeted.current = true
     if (initialError) toast.error(initialError)
-  }, [initialError, toast])
+    if (initialNotice) toast.success(initialNotice)
+  }, [initialError, initialNotice, toast])
 
   async function remove(account: Row) {
     if (!window.confirm(`Remove ${account.name}? Its synced spend history goes with it.`)) return
