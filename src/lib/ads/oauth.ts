@@ -70,22 +70,27 @@ export async function validateMetaApp(
     throw new AdApiError(token.error?.message ?? 'Meta did not accept the App ID and secret')
 
   try {
-    const settings = await readJson<{ app_domains?: string[] }>(
-      await fetch(
-        `${META}/${app.clientId}?${new URLSearchParams({
-          fields: 'app_domains,website_url',
-          access_token: token.access_token,
-        })}`,
-      ),
+    const res = await fetch(
+      `${META}/${app.clientId}?${new URLSearchParams({
+        fields: 'app_domains,website_url',
+        access_token: token.access_token,
+      })}`,
     )
-    if (Array.isArray(settings.app_domains) && !settings.app_domains.includes(domain)) {
-      return {
-        warning:
-          `Saved, but the Meta app does not list this site yet, so the login will fail. ` +
-          `In Meta app settings add ${domain} under App Domains, and ` +
-          `https://${domain}/api/ads/oauth/meta/callback under Facebook Login, Valid OAuth Redirect URIs.`,
+    if (res.ok) {
+      const settings = (await res.json()) as { app_domains?: string[] }
+      // Meta omits app_domains entirely when none were ever set — that is the
+      // SAME failure as a wrong list, and it must warn, not slip through.
+      if (!settings.app_domains?.includes(domain)) {
+        return {
+          warning:
+            `Saved, but the Facebook app does not list this site yet, so the login will fail with "Can't load URL". ` +
+            `Open https://developers.facebook.com/apps/${app.clientId}/settings/basic/ and add ${domain} under App Domains, ` +
+            `then open https://developers.facebook.com/apps/${app.clientId}/fb-login/settings/ and paste ` +
+            `https://${domain}/api/ads/oauth/meta/callback under Valid OAuth Redirect URIs. Press Save changes on both pages.`,
+        }
       }
     }
+    // A refused settings read tells us nothing either way; stay quiet.
   } catch {
     // The check is a courtesy, never a blocker.
   }

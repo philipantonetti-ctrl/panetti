@@ -55,7 +55,7 @@ describe('validateMetaApp', () => {
     expect(await validateMetaApp(APP, 'panetti.vercel.app')).toEqual({})
   })
 
-  it('warns with the exact values to paste when the domain is missing', async () => {
+  it('warns with the exact links and values when the domain is missing', async () => {
     vi.stubGlobal(
       'fetch',
       vi
@@ -64,8 +64,23 @@ describe('validateMetaApp', () => {
         .mockResolvedValueOnce(json({ app_domains: [] })),
     )
     const { warning } = await validateMetaApp(APP, 'panetti.vercel.app')
-    expect(warning).toContain('panetti.vercel.app under App Domains')
+    expect(warning).toContain('add panetti.vercel.app under App Domains')
     expect(warning).toContain('https://panetti.vercel.app/api/ads/oauth/meta/callback')
+    expect(warning).toContain(`https://developers.facebook.com/apps/${APP.clientId}/fb-login/settings/`)
+  })
+
+  it('treats a MISSING app_domains field as not configured, never as fine', async () => {
+    // Meta omits the field entirely when no domain was ever set — the exact
+    // false-green that let a half-finished app look ready.
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+        .mockResolvedValueOnce(json({ website_url: 'https://x.example' })),
+    )
+    const { warning } = await validateMetaApp(APP, 'panetti.vercel.app')
+    expect(warning).toContain("Can't load URL")
   })
 
   it('treats an unreadable settings answer as no news, not bad news', async () => {
