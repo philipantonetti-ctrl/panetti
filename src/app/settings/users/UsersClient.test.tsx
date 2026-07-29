@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { UsersClient } from './UsersClient'
 import { ToastProvider } from '@/components/toast/ToastProvider'
 
@@ -38,10 +38,12 @@ describe('UsersClient', () => {
       { id: 'me-1', email: 'admin@test.local', role: 'ADMIN' },
       { id: 'u2', email: 'mkt@test.local', role: 'MARKETING' },
     ])
+    // Scoped to the table: the admin nav carries a 'Marketing' link too.
     await waitFor(() => {
-      expect(screen.getByText('mkt@test.local')).toBeTruthy()
-      expect(screen.getByText('Marketing')).toBeTruthy()
-      expect(screen.getByText('Admin')).toBeTruthy()
+      const table = within(screen.getByRole('table'))
+      expect(table.getByText('mkt@test.local')).toBeTruthy()
+      expect(table.getByText('Marketing')).toBeTruthy()
+      expect(table.getByText('Admin')).toBeTruthy()
     })
   })
 
