@@ -8,7 +8,7 @@ export class AuthError extends Error {
 }
 
 /** Admin and Marketing: the people who run the ambassador program. */
-const isStaff = (user: SessionUser | null): user is SessionUser =>
+const isStaff = (user: SessionUser | null): boolean =>
   user !== null && (user.role === 'ADMIN' || user.role === 'MARKETING')
 
 /**
