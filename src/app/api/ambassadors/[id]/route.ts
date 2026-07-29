@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertStaff, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 
 // Every field optional: PATCH is a partial update, never a replace.
@@ -16,7 +16,7 @@ type Ctx = { params: Promise<{ id: string }> }
 
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertStaff(await currentUser())
 
     const parsed = Body.safeParse(await req.json())
     if (!parsed.success) return NextResponse.json({ error: 'Check the values' }, { status: 400 })
@@ -44,7 +44,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
 export async function DELETE(_req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertStaff(await currentUser())
 
     const { id } = await params
     const existing = await db.ambassador.findUnique({

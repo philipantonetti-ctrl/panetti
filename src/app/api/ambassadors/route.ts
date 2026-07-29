@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertStaff, AuthError } from '@/lib/auth/guard'
 import { signInvite } from '@/lib/auth/invite'
 import { attributeExistingOrders } from '@/lib/attribution'
 import { db } from '@/lib/db'
@@ -21,7 +21,7 @@ function isUniqueViolation(e: unknown): boolean {
 
 export async function GET() {
   try {
-    assertAdmin(await currentUser())
+    assertStaff(await currentUser())
 
     const rows = await db.ambassador.findMany({
       include: {
@@ -71,7 +71,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertStaff(await currentUser())
 
     const parsed = Body.safeParse(await req.json())
     if (!parsed.success) {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertStaff, AuthError } from '@/lib/auth/guard'
 import { attributeExistingOrders } from '@/lib/attribution'
 import { db } from '@/lib/db'
 
@@ -17,7 +17,7 @@ function isUniqueViolation(e: unknown): boolean {
 
 export async function POST(req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertStaff(await currentUser())
 
     const parsed = AddBody.safeParse(await req.json())
     if (!parsed.success) return NextResponse.json({ error: 'Enter a code and pick a store' }, { status: 400 })
@@ -49,7 +49,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
 export async function DELETE(req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertStaff(await currentUser())
 
     const parsed = RemoveBody.safeParse(await req.json())
     if (!parsed.success) return NextResponse.json({ error: 'Which code?' }, { status: 400 })
