@@ -57,6 +57,16 @@ const NAV: { section: string; items: NavItem[] }[] = [
           </>,
         ),
       },
+      {
+        href: '/marketing',
+        label: 'Marketing',
+        icon: icon(
+          <>
+            <path d="m3 11 18-5v12L3 14v-3Z" />
+            <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+          </>,
+        ),
+      },
     ],
   },
   {
@@ -96,6 +106,17 @@ const NAV: { section: string; items: NavItem[] }[] = [
             <path d="M3 9h18l-1.5-5H4.5L3 9Z" />
             <path d="M5 9v11h14V9" />
             <path d="M9 20v-6h6v6" />
+          </>,
+        ),
+      },
+      {
+        href: '/settings/ad-accounts',
+        label: 'Ad accounts',
+        icon: icon(
+          <>
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="5" />
+            <circle cx="12" cy="12" r="1" />
           </>,
         ),
       },
