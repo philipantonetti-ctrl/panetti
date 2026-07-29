@@ -223,37 +223,71 @@ model FxRate {
   @@index([base, quote, date])
 }
 
-// One connected ad platform account, mapped to the shop it advertises for.
-// That mapping is what makes per-shop ROAS possible.
-model AdAccount {
-  id          String    @id @default(cuid())
-  shopId      String
-  provider    String    // "meta" | "google"
-  externalId  String    // Meta: ad account id digits (no act_); Google: customer id (no dashes)
-  name        String    // from the platform at connect time, never typed by hand
-  currency    String    // from the platform at connect time
-  credentials String    // encrypted JSON, provider-specific shape
-  active      Boolean   @default(true)
-  lastSyncAt  DateTime?
-  lastError   String?
-  createdAt   DateTime  @default(now())
+// The client's own Meta app / Google OAuth client, entered once in settings.
+// It is what makes "Connect with Facebook/Google" possible without pasting tokens.
+model AdPlatformApp {
+  id             String   @id @default(cuid())
+  provider       String   @unique // "meta" | "google"
+  clientId       String   // Meta App ID / Google client ID
+  clientSecret   String   // encrypted
+  developerToken String?  // Google only, encrypted
+  createdAt      DateTime @default(now())
+}
 
-  shop  Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  spend AdSpend[]
+// One "Logged in with Facebook/Google"; many ad accounts can hang off it.
+model AdConnection {
+  id        String      @id @default(cuid())
+  provider  String      // "meta" | "google"
+  label     String      // who logged in
+  secret    String      // encrypted: Meta long-lived user token / Google refresh token
+  expiresAt DateTime?   // Meta tokens live ~60 days; null for Google
+  createdAt DateTime    @default(now())
+
+  accounts AdAccount[]
+}
+
+// One connected ad platform account, mapped to the shop it advertises for.
+// That mapping is what makes per-shop ROAS possible. Credentials come from its
+// connection when it has one; the manual paste path fills `credentials` instead.
+model AdAccount {
+  id              String    @id @default(cuid())
+  shopId          String
+  provider        String    // "meta" | "google"
+  externalId      String    // Meta: ad account id digits (no act_); Google: customer id (no dashes)
+  name            String    // from the platform at connect time, never typed by hand
+  currency        String    // from the platform at connect time
+  credentials     String?   // encrypted JSON, provider-specific shape (manual path)
+  connectionId    String?
+  loginCustomerId String?   // Google: the manager (MCC) id access goes through
+  active          Boolean   @default(true)
+  lastSyncAt      DateTime?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+
+  shop       Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  connection AdConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  spend      AdSpend[]
 
   @@unique([provider, externalId])
   @@index([shopId])
 }
 
-// One day of one account's delivery. Minor units in the ACCOUNT's currency;
-// conversion happens at read time like everything else.
+// One day of one account's delivery. Money in minor units of the ACCOUNT's
+// currency; conversion happens at read time like everything else. Only
+// day-additive numbers live here — reach/frequency do not sum across days.
 model AdSpend {
-  id          String   @id @default(cuid())
-  accountId   String
-  date        DateTime // UTC midnight
-  spend       Int
-  impressions Int
-  clicks      Int
+  id              String   @id @default(cuid())
+  accountId       String
+  date            DateTime // UTC midnight
+  spend           Int
+  impressions     Int
+  clicks          Int
+  linkClicks      Int      @default(0)
+  conversions     Float    @default(0) // purchases; Google reports fractions
+  conversionValue Int      @default(0) // attributed purchase value, minor units
+  videoViews3s    Int      @default(0)
+  thruplays       Int      @default(0)
+  reach           Int      @default(0)
 
   account AdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 

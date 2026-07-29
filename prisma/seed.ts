@@ -81,6 +81,8 @@ async function main() {
   console.log('Clearing existing data...')
   await db.adSpend.deleteMany()
   await db.adAccount.deleteMany()
+  await db.adConnection.deleteMany()
+  await db.adPlatformApp.deleteMany()
   await db.orderItem.deleteMany()
   await db.order.deleteMany()
   await db.productCost.deleteMany()
@@ -276,12 +278,22 @@ async function main() {
   }
 
   console.log('Creating ad accounts and daily spend...')
-  // Plaintext dummy credentials: decryptSecret passes non-encrypted values
-  // through, and nothing in the sample data ever calls the real platforms.
+  // Plaintext dummy secrets: decryptSecret passes non-encrypted values through,
+  // and nothing in the sample data ever calls the real platforms.
+  await db.adPlatformApp.create({
+    data: { provider: 'meta', clientId: 'seed-app', clientSecret: 'seed' },
+  })
+  await db.adPlatformApp.create({
+    data: { provider: 'google', clientId: 'seed-app', clientSecret: 'seed', developerToken: 'seed' },
+  })
+  const connection = await db.adConnection.create({
+    data: { provider: 'meta', label: 'Philip (sample)', secret: 'seed' },
+  })
+
   const AD_ACCOUNTS = [
-    { shop: shops[0], provider: 'meta', externalId: '111222333444555', busy: true },
-    { shop: shops[0], provider: 'google', externalId: '1112223334', busy: true },
-    { shop: shops[1], provider: 'meta', externalId: '555444333222111', busy: false },
+    { shop: shops[0], provider: 'meta', externalId: '111222333444555', busy: true, connected: true },
+    { shop: shops[0], provider: 'google', externalId: '1112223334', busy: true, connected: false },
+    { shop: shops[1], provider: 'meta', externalId: '555444333222111', busy: false, connected: false },
   ]
   for (const a of AD_ACCOUNTS) {
     const account = await db.adAccount.create({
@@ -291,20 +303,36 @@ async function main() {
         externalId: a.externalId,
         name: `${a.shop.name} ${a.provider === 'meta' ? 'Meta' : 'Google'} Ads`,
         currency: a.shop.currency,
-        credentials: JSON.stringify({ accessToken: 'seed' }),
+        // The sample data shows both roads: one account connected by login,
+        // the others with pasted credentials.
+        credentials: a.connected ? null : JSON.stringify({ accessToken: 'seed' }),
+        connectionId: a.connected ? connection.id : null,
         lastSyncAt: today,
       },
     })
 
-    // Daily delivery for the last 90 days, sized so ROAS lands in a
-    // believable range against the sample orders.
+    // Daily delivery for the last 90 days, sized so ROAS and the platform
+    // metrics land in a believable range against the sample orders.
     for (let d = 0; d < 90; d++) {
       const date = new Date(Date.UTC(2026, 6, 14) - d * 24 * 60 * 60 * 1000)
       const spend = a.busy ? between(50000, 400000) : between(20000, 150000)
       const impressions = Math.round(spend / 3)
       const clicks = Math.max(1, Math.round(impressions / 40))
+      const conversions = Math.round(clicks * 0.6) / 10 // ~6% of clicks, one decimal
       await db.adSpend.create({
-        data: { accountId: account.id, date, spend, impressions, clicks },
+        data: {
+          accountId: account.id,
+          date,
+          spend,
+          impressions,
+          clicks,
+          linkClicks: Math.round(clicks * 0.8),
+          conversions,
+          conversionValue: Math.round(spend * (2 + rnd() * 6)),
+          videoViews3s: a.provider === 'meta' ? Math.round(impressions * 0.25) : 0,
+          thruplays: a.provider === 'meta' ? Math.round(impressions * 0.05) : 0,
+          reach: Math.round(impressions * 0.6),
+        },
       })
     }
   }
