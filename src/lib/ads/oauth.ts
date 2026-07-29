@@ -104,7 +104,9 @@ export async function ensureMetaApp(
         ...(settings.website_url ? {} : { website_url: `https://${host}/` }),
       }),
     })
-    if (write.ok) return {}
+    // Graph can answer 200 with success:false — that is still a refusal.
+    const outcome = await readJson<{ success?: boolean }>(write)
+    if (write.ok && outcome.success !== false) return {}
 
     return {
       warning:

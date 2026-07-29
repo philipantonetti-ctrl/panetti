@@ -114,6 +114,19 @@ describe('ensureMetaApp', () => {
     expect(warning).toContain(`https://developers.facebook.com/apps/${APP.clientId}/fb-login/settings/`)
   })
 
+  it('treats a 200 answer that says success false as a refused write', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+        .mockResolvedValueOnce(json({ app_domains: [] }))
+        .mockResolvedValueOnce(json({ success: false })),
+    )
+    const { warning } = await ensureMetaApp(APP, 'panetti.vercel.app')
+    expect(warning).toContain("Can't load URL")
+  })
+
   it('treats an unreadable settings answer as no news, not bad news', async () => {
     vi.stubGlobal(
       'fetch',
