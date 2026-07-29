@@ -13,12 +13,15 @@ const { db } = await import('@/lib/db')
 
 const SELLER = 'plan-lb-seller@example.local'
 const QUIET = 'plan-lb-quiet@example.local'
+const ELSEWHERE = 'plan-lb-elsewhere@example.local'
 const MARK = '[leaderboard-test]'
 let shopId = ''
+let otherShopId = ''
+let elsewhereId = ''
 
 async function wipe() {
   await db.shop.deleteMany({ where: { name: { contains: MARK } } })
-  await db.ambassador.deleteMany({ where: { email: { in: [SELLER, QUIET] } } })
+  await db.ambassador.deleteMany({ where: { email: { in: [SELLER, QUIET, ELSEWHERE] } } })
 }
 
 beforeEach(async () => {
@@ -26,6 +29,8 @@ beforeEach(async () => {
   // USD so nothing needs converting and no rate provider is touched.
   const shop = await db.shop.create({ data: { name: `Shop ${MARK}`, currency: 'USD' } })
   shopId = shop.id
+  const other = await db.shop.create({ data: { name: `Elsewhere ${MARK}`, currency: 'USD' } })
+  otherShopId = other.id
 
   const seller = await db.ambassador.create({
     data: {
@@ -39,6 +44,13 @@ beforeEach(async () => {
       codes: { create: { code: 'LBQUIET500', shopId: shop.id } },
     },
   })
+  const elsewhere = await db.ambassador.create({
+    data: {
+      name: 'Belongs Elsewhere', email: ELSEWHERE, commissionRate: 0.1,
+      codes: { create: { code: 'LBELSEWHERE500', shopId: other.id } },
+    },
+  })
+  elsewhereId = elsewhere.id
 
   await db.order.create({
     data: {
@@ -75,5 +87,25 @@ describe('the Top ambassadors table', () => {
 
     expect(body.leaderboard.length).toBeGreaterThan(1)
     expect(body.leaderboard.some((r: { orders: number }) => r.orders === 0)).toBe(true)
+  })
+
+  // The client filtered to one shop and still saw the whole roster: people
+  // from other stores, sitting on zero rows. Codes say who belongs where.
+  it('keeps the roster to ambassadors with a code on the selected shop', async () => {
+    const body = await (await metrics()).json()
+    const ids = body.leaderboard.map((r: { ambassadorId: string }) => r.ambassadorId)
+    expect(ids).not.toContain(elsewhereId)
+
+    const there = await (
+      await GET(new Request(`http://localhost/api/metrics?from=2026-03-01&to=2026-03-31&shops=${otherShopId}`))
+    ).json()
+    const thereIds = there.leaderboard.map((r: { ambassadorId: string }) => r.ambassadorId)
+    expect(thereIds).toContain(elsewhereId)
+  })
+
+  it("names each ambassador's shops on the row", async () => {
+    const body = await (await metrics()).json()
+    const seller = body.leaderboard.find((r: { name: string }) => r.name === 'Sells This Month')
+    expect(seller.shops).toEqual([`Shop ${MARK}`])
   })
 })

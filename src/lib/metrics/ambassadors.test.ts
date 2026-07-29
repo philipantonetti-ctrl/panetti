@@ -14,9 +14,9 @@ function order(over: Partial<EngineOrder>): EngineOrder {
 }
 
 const people = [
-  { id: 'a1', name: 'Emma Nilsen' },
-  { id: 'a2', name: 'Johan Berg' },
-  { id: 'a3', name: 'Sofia Lind' },
+  { id: 'a1', name: 'Emma Nilsen', shops: ['Panetti Norway'] },
+  { id: 'a2', name: 'Johan Berg', shops: ['Panetti Norway', 'Panetti Sweden'] },
+  { id: 'a3', name: 'Sofia Lind', shops: [] },
 ]
 
 describe('leaderboard', () => {
@@ -72,6 +72,16 @@ describe('leaderboard', () => {
     })
     expect(rows[0].orders).toBe(1)
     expect(rows[0].sales).toBe(10000)
+  })
+
+  it("carries each ambassador's shops through to the row", () => {
+    const rows = leaderboard({
+      ambassadors: people,
+      orders: [order({ ambassadorId: 'a2', netSales: 100000 })],
+      rates, displayCurrency: 'USD', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    expect(rows[0].shops).toEqual(['Panetti Norway', 'Panetti Sweden'])
+    expect(rows.find((r) => r.name === 'Sofia Lind')?.shops).toEqual([])
   })
 
   it('includes an ambassador with no sales, ranked last with zeroes', () => {

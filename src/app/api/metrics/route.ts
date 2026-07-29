@@ -27,11 +27,29 @@ export async function GET(req: Request) {
     // current range, the ambassadors for the leaderboard, and the equally-long
     // period before this one (so every figure can say which way it moved).
     const before = previousRange(from, to)
-    const [input, people, previousInput] = await Promise.all([
+    const [input, roster, previousInput] = await Promise.all([
       loadMetricsInput({ shopIds, from, to, timezone }),
-      db.ambassador.findMany({ where: { active: true }, select: { id: true, name: true } }),
+      // The roster follows the shop filter the same way the numbers do. An
+      // ambassador belongs to the shops holding their codes; with a filter
+      // on, only those people appear — zero-sellers included, as ever.
+      db.ambassador.findMany({
+        where: {
+          active: true,
+          ...(shopIds ? { codes: { some: { shopId: { in: shopIds } } } } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          codes: { select: { shop: { select: { name: true } } } },
+        },
+      }),
       loadMetricsInput({ shopIds, from: before.from, to: before.to, timezone }),
     ])
+    const people = roster.map((person) => ({
+      id: person.id,
+      name: person.name,
+      shops: [...new Set(person.codes.map((c) => c.shop.name))].sort(),
+    }))
 
     const metrics = computeMetrics(input)
     const previous = computeMetrics(previousInput).total

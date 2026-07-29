@@ -8,13 +8,14 @@ export type LeaderboardRow = {
   rank: number
   ambassadorId: string
   name: string
+  shops: string[] // where their codes live — their shops, shown beside the name
   orders: number
   sales: number // net sales, display currency
   commission: number // display currency
 }
 
 export type LeaderboardInput = {
-  ambassadors: { id: string; name: string }[]
+  ambassadors: { id: string; name: string; shops: string[] }[]
   orders: EngineOrder[]
   rates: RateTable
   displayCurrency: string
@@ -54,7 +55,15 @@ export function leaderboard(input: LeaderboardInput): LeaderboardRow[] {
       commission += convert(pct(o.netSales, o.commissionRate), o.currency, o.placedAt, displayCurrency, rates)
     }
 
-    return { rank: 0, ambassadorId: person.id, name: person.name, orders: mine.length, sales, commission }
+    return {
+      rank: 0,
+      ambassadorId: person.id,
+      name: person.name,
+      shops: person.shops,
+      orders: mine.length,
+      sales,
+      commission,
+    }
   })
 
   rows.sort((a, b) => b.sales - a.sales)

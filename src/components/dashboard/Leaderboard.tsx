@@ -51,7 +51,12 @@ export function Leaderboard({ rows, currency }: { rows: LeaderboardRow[]; curren
             >
               <td className="num px-5 py-2.5 text-left text-muted">{row.rank}</td>
 
-              <td className="px-2 py-2.5 font-medium text-ink">{row.name}</td>
+              <td className="px-2 py-2.5 font-medium text-ink">
+                {row.name}
+                {row.shops.length > 0 && (
+                  <span className="ml-1.5 font-normal text-muted">({row.shops.join(', ')})</span>
+                )}
+              </td>
 
               {/* The share bar earns its own column, so it reads as a bar and not as an
                   underline beneath the name. */}
