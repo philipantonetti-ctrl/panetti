@@ -33,6 +33,7 @@ export type SeriesPoint = {
   date: string // yyyy-mm-dd
   netRevenue: number
   netProfit: number
+  grossRevenue: number
 }
 
 /**
@@ -66,6 +67,7 @@ export function dailySeries(input: MetricsInput): SeriesPoint[] {
       date,
       netRevenue: total.netRevenue,
       netProfit: total.netProfit,
+      grossRevenue: total.grossRevenue,
     }
   })
 }
