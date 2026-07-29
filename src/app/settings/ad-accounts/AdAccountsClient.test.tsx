@@ -73,27 +73,70 @@ describe('AdAccountsClient', () => {
     expect(screen.getByText('Never synced')).toBeTruthy()
   })
 
-  it('walks you to the setup when a connect button is pressed too early', async () => {
+  it('walks you to the setup when the Google connect button is pressed too early', async () => {
     renderPage([], { platform: { meta: null, google: { clientId: 'x', hasDeveloperToken: false } } })
 
     // Not a link yet — the login flow would only bounce back with an error.
-    expect(screen.getByText('Connect with Facebook').closest('a')).toBeNull()
-    fireEvent.click(screen.getByText('Connect with Facebook'))
+    expect(screen.getByText('Connect with Google').closest('a')).toBeNull()
+    fireEvent.click(screen.getByText('Connect with Google'))
     await waitFor(() =>
       expect(
         screen.getByText('One-time setup needed first. Two minutes, the steps are right below.'),
       ).toBeTruthy(),
     )
-    // Google without a developer token cannot list or sync anything yet either.
-    expect(screen.getByText('Connect with Google').closest('a')).toBeNull()
   })
 
-  it('links the connect buttons straight to the oauth start when ready', () => {
+  it('links the Google connect button straight to the oauth start when ready', () => {
     renderPage([])
-    const fb = screen.getByText('Connect with Facebook').closest('a')
-    expect(fb?.getAttribute('href')).toBe('/api/ads/oauth/meta/start')
-    const g = screen.getByText('Connect with Google').closest('a')
-    expect(g?.getAttribute('href')).toBe('/api/ads/oauth/google/start')
+    expect(screen.getByText('Connect with Google').closest('a')?.getAttribute('href')).toBe(
+      '/api/ads/oauth/google/start',
+    )
+  })
+
+  it('offers Meta a token box instead of a Facebook login that never worked', () => {
+    renderPage([])
+    expect(screen.queryByText('Connect with Facebook')).toBeNull()
+    expect(screen.getByLabelText('System user access token')).toBeTruthy()
+  })
+
+  it('saves a pasted Meta token and opens the picker on what comes back', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ connectionId: 'conn1', label: 'Philip', expiresAt: null }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage([])
+
+    fireEvent.change(screen.getByLabelText('System user access token'), {
+      target: { value: 'EAABpasted' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save token' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/ads/connections/meta')
+    expect(JSON.parse(init.body as string)).toEqual({ token: 'EAABpasted' })
+    // The picker took over, which is the whole point of pasting once.
+    await waitFor(() => expect(screen.getByText('Pick the ad accounts')).toBeTruthy())
+  })
+
+  it('keeps the card open and says why when Facebook refuses the token', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ error: 'This token has no ads_read permission.' }, { status: 400 }),
+      ),
+    )
+    renderPage([])
+
+    fireEvent.change(screen.getByLabelText('System user access token'), {
+      target: { value: 'bad' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save token' }))
+
+    await waitFor(() =>
+      expect(screen.getByText('This token has no ads_read permission.')).toBeTruthy(),
+    )
+    expect(screen.queryByText('Pick the ad accounts')).toBeNull()
   })
 
   it('still offers the manual path behind Advanced, with provider fields switching', () => {
@@ -102,11 +145,13 @@ describe('AdAccountsClient', () => {
     expect(screen.getAllByText('Developer token')).toHaveLength(1)
 
     fireEvent.click(screen.getByText('Advanced: paste credentials manually'))
-    expect(screen.getByText('System user access token')).toBeTruthy()
+    // Named apart from the Meta card's own token field, which is always on
+    // the page — two identical labels would read the same to a screen reader.
+    expect(screen.getByText('Access token for this account')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Google' }))
     expect(screen.getAllByText('Developer token')).toHaveLength(2) // card + modal
-    expect(screen.queryByText('System user access token')).toBeNull()
+    expect(screen.queryByText('Access token for this account')).toBeNull()
   })
 
   it('opens the picker from the callback redirect, pre-ticks the matches, and connects them', async () => {
@@ -181,34 +226,11 @@ describe('AdAccountsClient', () => {
     )
   })
 
-  it('greets a good-news notice from the redirect as success, not alarm', async () => {
-    renderPage([], { notice: 'The Facebook app was just fixed. Press Connect with Facebook again.' })
-    await waitFor(() =>
-      expect(screen.getByText(/Press Connect with Facebook again/)).toBeTruthy(),
-    )
-  })
-
-  it('keeps a save-time warning on screen until it is fixed', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            ok: true,
-            warning:
-              'Saved, but the Meta app does not list this site yet, so the login will fail. In Meta app settings add localhost under App Domains.',
-          }),
-          { status: 200 },
-        ),
-      ),
-    )
-    renderPage([])
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
-    await waitFor(() =>
-      expect(screen.getByText(/does not list this site yet/)).toBeTruthy(),
-    )
-  })
+  // Two tests lived here that asserted messages nothing can produce any more:
+  // the "the Facebook app was just fixed, press Connect again" notice, which
+  // WAS the loop, and the save-time App Domains warning. Both died with
+  // ensureMetaApp. A green test guarding an impossible message is worse than
+  // no test — it reads as coverage while proving nothing.
 
   it('saves the platform setup and never demands a saved secret again', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))

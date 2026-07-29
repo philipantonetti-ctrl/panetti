@@ -123,10 +123,10 @@ export function AdAccountsClient({
     <AppShell email={email}>
       <PageHeader
         title="Ad accounts"
-        subtitle="Press connect, log in, tick the ad accounts you want, done. Daily spend then syncs itself a few times a day and lands on the Marketing page, shop by shop."
+        subtitle="Paste one Meta token or log in with Google, tick the ad accounts you want, done. Daily spend then syncs itself a few times a day and lands on the Marketing page, shop by shop."
       >
         <div className="flex flex-wrap items-center gap-2">
-          <ConnectButton provider="meta" ready={Boolean(platform.meta)} />
+          {/* Meta has no button: it connects by pasted token, below. */}
           <ConnectButton
             provider="google"
             ready={Boolean(platform.google && platform.google.hasDeveloperToken)}
@@ -166,8 +166,8 @@ export function AdAccountsClient({
               {accounts.length === 0 && (
                 <tr className="border-t border-line">
                   <td colSpan={7} className="px-3 py-8 text-center text-muted">
-                    Nothing connected yet. Fill in the platform setup below once, then press
-                    “Connect with Facebook” or “Connect with Google”.
+                    Nothing connected yet. Paste a Meta system user token below, or fill in the
+                    Google setup and press “Connect with Google”.
                   </td>
                 </tr>
               )}
@@ -235,6 +235,8 @@ export function AdAccountsClient({
           Advanced: paste credentials manually
         </button>
 
+        <MetaTokenCard saved={platform.meta} onConnected={setPickerId} />
+
         <PlatformSetupSection platform={platform} />
       </PageBody>
 
@@ -269,9 +271,10 @@ export function AdAccountsClient({
   )
 }
 
-function ConnectButton({ provider, ready }: { provider: 'meta' | 'google'; ready: boolean }) {
+/** Google only. Meta connects by pasted token — see MetaTokenCard. */
+function ConnectButton({ provider, ready }: { provider: 'google'; ready: boolean }) {
   const toast = useToast()
-  const text = provider === 'meta' ? 'Connect with Facebook' : 'Connect with Google'
+  const text = 'Connect with Google'
   if (!ready) {
     // A button that cannot be pressed and cannot say why is a dead end.
     // Pressing this one explains itself and walks to the setup.
@@ -405,7 +408,12 @@ function PickerModal({
         {!loading && !error && (
           <div className="mt-4 space-y-2">
             {rows.length === 0 && (
-              <p className="text-sm text-muted">This login can see no ad accounts.</p>
+              // Almost always the assets step was skipped, so say that rather
+              // than leave an empty table looking like a broken token.
+              <p className="text-sm text-muted">
+                This token can see no ad accounts. Open the system user in Meta Business settings,
+                press Add assets, choose Ad accounts, tick them and turn on “View performance”.
+              </p>
             )}
             {rows.map((row, i) => (
               <div
@@ -468,6 +476,120 @@ function PickerModal({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Meta's whole connect flow: paste one system user token, then pick accounts.
+ *
+ * There is no Facebook login dialog here on purpose. A Business type app is
+ * served Facebook Login for Business, which needs a configuration id we
+ * cannot create on his behalf — four designs died on that wall. A token
+ * needs no login product, no redirect URI and no app domains at all.
+ */
+function MetaTokenCard({
+  saved,
+  onConnected,
+}: {
+  saved: { clientId: string } | null
+  onConnected: (connectionId: string) => void
+}) {
+  const [token, setToken] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    if (!token.trim()) return
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch('/api/ads/connections/meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token.trim() }),
+      })
+      const data = (await res.json().catch(() => null)) as
+        | { connectionId?: string; error?: string }
+        | null
+      if (!res.ok || !data?.connectionId) {
+        // Facebook's own words, kept on screen next to the field to fix.
+        setError(data?.error ?? 'Could not save the token')
+        return
+      }
+      setToken('')
+      onConnected(data.connectionId) // straight into the picker
+    } catch {
+      setError('Could not reach the server')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="mt-8">
+      <h2 className="text-[13px] font-semibold text-ink">Meta: paste a system user token</h2>
+      <p className="mt-1 max-w-2xl text-xs text-muted">
+        One token covers every ad account. There is no Facebook login screen: a token needs no
+        login product, no redirect URL and no app domains.
+      </p>
+
+      <div className="mt-3 max-w-2xl rounded-[var(--radius-card)] border border-line bg-surface p-4">
+        <ol className="list-decimal space-y-1 pl-4 text-xs text-muted">
+          <li>
+            Open{' '}
+            <a
+              href="https://business.facebook.com/settings/system-users"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-accent hover:underline"
+            >
+              Business settings, System users
+            </a>
+            , press Add, name it “panetti analytics”, role Admin.
+          </li>
+          <li>
+            Press Add assets, choose Ad accounts, tick your ad accounts, turn on “View
+            performance”, save. Skip this and the list below comes back empty.
+          </li>
+          <li>
+            Press Generate token, choose your app
+            {saved ? ` (${saved.clientId})` : ''}, set expiration to Never, tick ads_read.
+          </li>
+          <li>Paste it here.</li>
+        </ol>
+
+        {!saved && (
+          <p className="mt-3 text-xs text-warn">
+            Fill in the Meta app ID and secret under Platform setup below first — they are what
+            proves the token.
+          </p>
+        )}
+
+        <label htmlFor="meta-token" className="mt-3 block text-xs font-medium text-ink">
+          System user access token
+        </label>
+        <input
+          id="meta-token"
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="EAAB…"
+          className="mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-xs"
+        />
+
+        {error && <p className="mt-2 text-xs text-loss">{error}</p>}
+
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={save}
+            disabled={busy || !token.trim()}
+            className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+          >
+            {busy ? 'Checking…' : 'Save token'}
+          </button>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -729,7 +851,9 @@ function AccountModal({
         {!viaConnection &&
           (provider === 'meta' ? (
             <>
-              <label className={label}>System user access token</label>
+              {/* Named apart from the card's field above: two identical
+                  labels on one page read the same to a screen reader. */}
+              <label className={label}>Access token for this account</label>
               <input
                 type="password"
                 value={accessToken}
