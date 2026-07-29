@@ -26,12 +26,54 @@ const accounts = [
   { id: 'acc-google', shopId: 'shop-a', provider: 'google', currency: 'EUR' },
 ]
 
+const spendRow = (over: Partial<import('./marketing').SpendRow> & { accountId: string; date: Date; spend: number }) => ({
+  impressions: 0,
+  clicks: 0,
+  linkClicks: 0,
+  conversions: 0,
+  conversionValue: 0,
+  videoViews3s: 0,
+  thruplays: 0,
+  ...over,
+})
+
 const spend = [
   // 1000 NOK on the 1st at 0.1 -> $100.00; 1000 NOK on the 2nd at 0.2 -> $200.00
-  { accountId: 'acc-meta', date: new Date('2026-07-01T00:00:00Z'), spend: 1000_00, impressions: 3000, clicks: 60 },
-  { accountId: 'acc-meta', date: new Date('2026-07-02T00:00:00Z'), spend: 1000_00, impressions: 1000, clicks: 40 },
+  spendRow({
+    accountId: 'acc-meta',
+    date: new Date('2026-07-01T00:00:00Z'),
+    spend: 1000_00,
+    impressions: 3000,
+    clicks: 60,
+    linkClicks: 45,
+    conversions: 2,
+    conversionValue: 4000_00, // NOK at 0.1 -> $400.00
+    videoViews3s: 800,
+    thruplays: 200,
+  }),
+  spendRow({
+    accountId: 'acc-meta',
+    date: new Date('2026-07-02T00:00:00Z'),
+    spend: 1000_00,
+    impressions: 1000,
+    clicks: 40,
+    linkClicks: 35,
+    conversions: 1,
+    conversionValue: 1000_00, // NOK at 0.2 -> $200.00
+    videoViews3s: 200,
+    thruplays: 50,
+  }),
   // 50 EUR on the 2nd at 1.1 -> $55.00
-  { accountId: 'acc-google', date: new Date('2026-07-02T00:00:00Z'), spend: 50_00, impressions: 500, clicks: 25 },
+  spendRow({
+    accountId: 'acc-google',
+    date: new Date('2026-07-02T00:00:00Z'),
+    spend: 50_00,
+    impressions: 500,
+    clicks: 25,
+    linkClicks: 25,
+    conversions: 0.5,
+    conversionValue: 100_00, // EUR at 1.1 -> $110.00
+  }),
 ]
 
 const series = [
@@ -59,13 +101,32 @@ describe('buildMarketing', () => {
     expect(alpha.ctr).toBeCloseTo(125 / 4500, 10)
   })
 
+  it("computes the platform's own metrics: purchases, value, P. ROAS, CPM and video ratios", () => {
+    const alpha = result.byShop.find((r) => r.shopId === 'shop-a')!
+    expect(alpha.conversions).toBeCloseTo(3.5, 10)
+    // $400 + $200 + $110, each day at its own rate.
+    expect(alpha.conversionValue).toBe(710_00)
+    expect(alpha.platformRoas).toBeCloseTo(710_00 / 355_00, 10)
+    expect(alpha.costPerPurchase).toBe(Math.round(355_00 / 3.5))
+    expect(alpha.avgPurchaseValue).toBe(Math.round(710_00 / 3.5))
+    expect(alpha.cpm).toBe(Math.round((355_00 / 4500) * 1000))
+    expect(alpha.linkClicks).toBe(105)
+    expect(alpha.costPerLinkClick).toBe(Math.round(355_00 / 105))
+    expect(alpha.linkCtr).toBeCloseTo(105 / 4500, 10)
+    expect(alpha.holdRate).toBeCloseTo(250 / 1000, 10)
+  })
+
   it('gives a shop without ad accounts zero spend and honest dashes', () => {
     const beta = result.byShop.find((r) => r.shopId === 'shop-b')!
     expect(beta.spend).toBe(0)
     expect(beta.roas).toBeNull()
+    expect(beta.platformRoas).toBeNull()
     expect(beta.cpa).toBeNull()
+    expect(beta.costPerPurchase).toBeNull()
+    expect(beta.cpm).toBeNull()
     expect(beta.cpc).toBeNull()
     expect(beta.ctr).toBeNull()
+    expect(beta.holdRate).toBeNull()
     expect(beta.orders).toBe(4) // context still shown
   })
 

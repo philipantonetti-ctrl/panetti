@@ -57,7 +57,18 @@ export async function GET(req: Request) {
         accountId: { in: accounts.map((a) => a.id) },
         date: { gte: utcDay(from), lte: utcDay(to) },
       },
-      select: { accountId: true, date: true, spend: true, impressions: true, clicks: true },
+      select: {
+        accountId: true,
+        date: true,
+        spend: true,
+        impressions: true,
+        clicks: true,
+        linkClicks: true,
+        conversions: true,
+        conversionValue: true,
+        videoViews3s: true,
+        thruplays: true,
+      },
     })
 
     const engine = computeMetrics(input)

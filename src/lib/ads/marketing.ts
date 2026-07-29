@@ -16,6 +16,11 @@ export type SpendRow = {
   spend: number
   impressions: number
   clicks: number
+  linkClicks: number
+  conversions: number
+  conversionValue: number
+  videoViews3s: number
+  thruplays: number
 }
 
 export type MarketingShopRow = {
@@ -26,12 +31,24 @@ export type MarketingShopRow = {
   googleSpend: number
   impressions: number
   clicks: number
+  linkClicks: number
+  conversions: number // platform-attributed purchases
+  conversionValue: number // display currency minor units
+  videoViews3s: number
+  thruplays: number
   orders: number
   grossRevenue: number
-  roas: number | null // gross revenue per unit of spend, e.g. 4.2
+  roas: number | null // store ROAS: whole-store gross revenue per unit of spend
+  platformRoas: number | null // what the platform attributes: conversion value / spend
   cpa: number | null // spend per paid order, minor units
+  costPerPurchase: number | null // spend per platform purchase, minor units
+  avgPurchaseValue: number | null // conversion value per purchase, minor units
+  cpm: number | null // spend per thousand impressions, minor units
   cpc: number | null // spend per click, minor units
+  costPerLinkClick: number | null // spend per link click, minor units
   ctr: number | null // clicks / impressions, e.g. 0.019
+  linkCtr: number | null // link clicks / impressions
+  holdRate: number | null // thruplays / 3-second plays
 }
 
 export type MarketingSeriesPoint = { date: string; spend: number; grossRevenue: number }
@@ -43,13 +60,37 @@ export type MarketingResult = {
   series: MarketingSeriesPoint[]
 }
 
+type Ratioless = Omit<
+  MarketingShopRow,
+  | 'roas'
+  | 'platformRoas'
+  | 'cpa'
+  | 'costPerPurchase'
+  | 'avgPurchaseValue'
+  | 'cpm'
+  | 'cpc'
+  | 'costPerLinkClick'
+  | 'ctr'
+  | 'linkCtr'
+  | 'holdRate'
+>
+
 /** A ratio with a zero denominator is not a number, and printing one would lie. */
-const ratios = (row: Omit<MarketingShopRow, 'roas' | 'cpa' | 'cpc' | 'ctr'>): MarketingShopRow => ({
+const ratios = (row: Ratioless): MarketingShopRow => ({
   ...row,
   roas: row.spend > 0 ? row.grossRevenue / row.spend : null,
+  platformRoas: row.spend > 0 ? row.conversionValue / row.spend : null,
   cpa: row.spend > 0 && row.orders > 0 ? Math.round(row.spend / row.orders) : null,
+  costPerPurchase:
+    row.spend > 0 && row.conversions > 0 ? Math.round(row.spend / row.conversions) : null,
+  avgPurchaseValue: row.conversions > 0 ? Math.round(row.conversionValue / row.conversions) : null,
+  cpm: row.impressions > 0 ? Math.round((row.spend / row.impressions) * 1000) : null,
   cpc: row.spend > 0 && row.clicks > 0 ? Math.round(row.spend / row.clicks) : null,
+  costPerLinkClick:
+    row.spend > 0 && row.linkClicks > 0 ? Math.round(row.spend / row.linkClicks) : null,
   ctr: row.impressions > 0 ? row.clicks / row.impressions : null,
+  linkCtr: row.impressions > 0 ? row.linkClicks / row.impressions : null,
+  holdRate: row.videoViews3s > 0 ? row.thruplays / row.videoViews3s : null,
 })
 
 export function buildMarketing(args: {
@@ -62,8 +103,30 @@ export function buildMarketing(args: {
   const display = args.engine.displayCurrency
   const accountById = new Map(args.accounts.map((a) => [a.id, a]))
 
-  type Acc = { spend: number; metaSpend: number; googleSpend: number; impressions: number; clicks: number }
-  const zero = (): Acc => ({ spend: 0, metaSpend: 0, googleSpend: 0, impressions: 0, clicks: 0 })
+  type Acc = {
+    spend: number
+    metaSpend: number
+    googleSpend: number
+    impressions: number
+    clicks: number
+    linkClicks: number
+    conversions: number
+    conversionValue: number
+    videoViews3s: number
+    thruplays: number
+  }
+  const zero = (): Acc => ({
+    spend: 0,
+    metaSpend: 0,
+    googleSpend: 0,
+    impressions: 0,
+    clicks: 0,
+    linkClicks: 0,
+    conversions: 0,
+    conversionValue: 0,
+    videoViews3s: 0,
+    thruplays: 0,
+  })
   const byShop = new Map<string, Acc>()
   const byDay = new Map<string, number>()
 
@@ -71,15 +134,21 @@ export function buildMarketing(args: {
     const account = accountById.get(row.accountId)
     if (!account) continue // an account outside the current shop scope
 
-    // Each day's spend converts at that day's rate. Cross-convert, because an
-    // account can bill in a currency that is neither the shop's nor USD.
+    // Money converts at that day's rate. Cross-convert, because an account can
+    // bill in a currency that is neither the shop's nor USD.
     const minor = crossConvert(row.spend, account.currency, display, row.date, args.rates)
+    const valueMinor = crossConvert(row.conversionValue, account.currency, display, row.date, args.rates)
     const acc = byShop.get(account.shopId) ?? zero()
     acc.spend += minor
     if (account.provider === 'meta') acc.metaSpend += minor
     else acc.googleSpend += minor
     acc.impressions += row.impressions
     acc.clicks += row.clicks
+    acc.linkClicks += row.linkClicks
+    acc.conversions += row.conversions
+    acc.conversionValue += valueMinor
+    acc.videoViews3s += row.videoViews3s
+    acc.thruplays += row.thruplays
     byShop.set(account.shopId, acc)
 
     const day = row.date.toISOString().slice(0, 10)
@@ -107,6 +176,11 @@ export function buildMarketing(args: {
     googleSpend: rows.reduce((n, r) => n + r.googleSpend, 0),
     impressions: rows.reduce((n, r) => n + r.impressions, 0),
     clicks: rows.reduce((n, r) => n + r.clicks, 0),
+    linkClicks: rows.reduce((n, r) => n + r.linkClicks, 0),
+    conversions: rows.reduce((n, r) => n + r.conversions, 0),
+    conversionValue: rows.reduce((n, r) => n + r.conversionValue, 0),
+    videoViews3s: rows.reduce((n, r) => n + r.videoViews3s, 0),
+    thruplays: rows.reduce((n, r) => n + r.thruplays, 0),
     orders: args.engine.total.orders,
     grossRevenue: args.engine.total.grossRevenue,
   })
