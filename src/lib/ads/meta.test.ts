@@ -7,21 +7,68 @@ const json = (body: unknown, status = 200) =>
 
 afterEach(() => vi.unstubAllGlobals())
 
+const zeros = {
+  linkClicks: 0,
+  conversions: 0,
+  conversionValue: 0,
+  videoViews3s: 0,
+  thruplays: 0,
+  reach: 0,
+}
+
 describe('parseMetaInsights', () => {
   it('maps a day of delivery into minor units', () => {
     const rows = parseMetaInsights([
       { date_start: '2026-07-01', spend: '123.45', impressions: '1000', clicks: '50' },
     ])
     expect(rows).toEqual([
-      { date: new Date('2026-07-01T00:00:00Z'), spend: 12345, impressions: 1000, clicks: 50 },
+      { date: new Date('2026-07-01T00:00:00Z'), spend: 12345, impressions: 1000, clicks: 50, ...zeros },
     ])
   })
 
   it('skips rows without a date and tolerates missing fields', () => {
     const rows = parseMetaInsights([{ spend: '9.99' }, { date_start: '2026-07-02' }])
     expect(rows).toEqual([
-      { date: new Date('2026-07-02T00:00:00Z'), spend: 0, impressions: 0, clicks: 0 },
+      { date: new Date('2026-07-02T00:00:00Z'), spend: 0, impressions: 0, clicks: 0, ...zeros },
     ])
+  })
+
+  it('reads purchases, their value, link clicks and video plays from the action lists', () => {
+    const rows = parseMetaInsights([
+      {
+        date_start: '2026-07-01',
+        spend: '100.00',
+        impressions: '1000',
+        clicks: '50',
+        inline_link_clicks: '40',
+        reach: '600',
+        actions: [
+          { action_type: 'omni_purchase', value: '3' },
+          { action_type: 'video_view', value: '250' },
+        ],
+        action_values: [{ action_type: 'omni_purchase', value: '764.50' }],
+        video_thruplay_watched_actions: [{ action_type: 'video_view', value: '50' }],
+      },
+    ])
+    expect(rows[0]).toMatchObject({
+      linkClicks: 40,
+      reach: 600,
+      conversions: 3,
+      conversionValue: 76450,
+      videoViews3s: 250,
+      thruplays: 50,
+    })
+  })
+
+  it('falls back to plain purchase actions on accounts without omni tracking', () => {
+    const rows = parseMetaInsights([
+      {
+        date_start: '2026-07-01',
+        actions: [{ action_type: 'purchase', value: '2' }],
+        action_values: [{ action_type: 'purchase', value: '99.99' }],
+      },
+    ])
+    expect(rows[0]).toMatchObject({ conversions: 2, conversionValue: 9999 })
   })
 })
 

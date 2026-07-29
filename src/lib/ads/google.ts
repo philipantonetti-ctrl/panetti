@@ -1,4 +1,5 @@
 import { utcDay } from '../dates'
+import { toMinor } from '../money'
 import { AdApiError, type DailyRow, type GoogleCredentials, type VerifiedAccount } from './types'
 
 /**
@@ -17,7 +18,15 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 /** REST protobuf JSON is camelCase; tolerate snake_case anyway. */
 type GoogleResult = {
   segments?: { date?: string }
-  metrics?: { costMicros?: string; cost_micros?: string; impressions?: string; clicks?: string }
+  metrics?: {
+    costMicros?: string
+    cost_micros?: string
+    impressions?: string
+    clicks?: string
+    conversions?: number | string
+    conversionsValue?: number | string
+    conversions_value?: number | string
+  }
   customer?: {
     descriptiveName?: string
     descriptive_name?: string
@@ -43,11 +52,23 @@ export function toDailyRows(results: GoogleResult[]): DailyRow[] {
   const out: DailyRow[] = []
   for (const r of results) {
     if (!r.segments?.date) continue
+    const clicks = parseInt(String(r.metrics?.clicks ?? '0'), 10) || 0
+    const conversions = parseFloat(String(r.metrics?.conversions ?? '0')) || 0
+    const value =
+      parseFloat(String(r.metrics?.conversionsValue ?? r.metrics?.conversions_value ?? '0')) || 0
     out.push({
       date: utcDay(new Date(r.segments.date + 'T00:00:00Z')),
       spend: microsToMinor(r.metrics?.costMicros ?? r.metrics?.cost_micros),
       impressions: parseInt(String(r.metrics?.impressions ?? '0'), 10) || 0,
-      clicks: parseInt(String(r.metrics?.clicks ?? '0'), 10) || 0,
+      clicks,
+      // A search or shopping click IS a link click; Meta's distinction has no
+      // Google twin, so the columns stay comparable.
+      linkClicks: clicks,
+      conversions,
+      conversionValue: toMinor(value),
+      videoViews3s: 0,
+      thruplays: 0,
+      reach: 0,
     })
   }
   return out
@@ -112,7 +133,8 @@ export async function fetchGoogleDaily(
   to: Date,
 ): Promise<DailyRow[]> {
   const query =
-    'SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks ' +
+    'SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, ' +
+    'metrics.conversions, metrics.conversions_value ' +
     `FROM customer WHERE segments.date BETWEEN '${day(from)}' AND '${day(to)}'`
   return toDailyRows(await searchStream(creds, customerId, query))
 }

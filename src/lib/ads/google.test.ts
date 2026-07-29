@@ -33,6 +33,15 @@ describe('microsToMinor', () => {
   })
 })
 
+const zeros = {
+  linkClicks: 0,
+  conversions: 0,
+  conversionValue: 0,
+  videoViews3s: 0,
+  thruplays: 0,
+  reach: 0,
+}
+
 describe('parseGoogleChunks / toDailyRows', () => {
   it('reads camelCase results across an array of chunks', () => {
     const rows = toDailyRows(
@@ -42,8 +51,8 @@ describe('parseGoogleChunks / toDailyRows', () => {
       ]),
     )
     expect(rows).toEqual([
-      { date: new Date('2026-07-01T00:00:00Z'), spend: 5000, impressions: 100, clicks: 7 },
-      { date: new Date('2026-07-02T00:00:00Z'), spend: 1, impressions: 0, clicks: 0 },
+      { date: new Date('2026-07-01T00:00:00Z'), spend: 5000, impressions: 100, clicks: 7, ...zeros, linkClicks: 7 },
+      { date: new Date('2026-07-02T00:00:00Z'), spend: 1, impressions: 0, clicks: 0, ...zeros },
     ])
   })
 
@@ -53,7 +62,23 @@ describe('parseGoogleChunks / toDailyRows', () => {
         results: [{ segments: { date: '2026-07-03' }, metrics: { cost_micros: '20000' } }],
       }),
     )
-    expect(rows).toEqual([{ date: new Date('2026-07-03T00:00:00Z'), spend: 2, impressions: 0, clicks: 0 }])
+    expect(rows).toEqual([
+      { date: new Date('2026-07-03T00:00:00Z'), spend: 2, impressions: 0, clicks: 0, ...zeros },
+    ])
+  })
+
+  it('carries conversions and their value into minor units', () => {
+    const rows = toDailyRows([
+      {
+        segments: { date: '2026-07-04' },
+        metrics: { costMicros: '10000000', clicks: '20', conversions: 2.5, conversionsValue: 764.5 },
+      },
+    ])
+    expect(rows[0]).toMatchObject({
+      conversions: 2.5,
+      conversionValue: 76450,
+      linkClicks: 20,
+    })
   })
 })
 

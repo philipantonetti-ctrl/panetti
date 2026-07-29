@@ -15,6 +15,7 @@ const json = (body: unknown, status = 200) =>
 
 async function wipe() {
   await db.adAccount.deleteMany({ where: { name: { contains: MARKER } } })
+  await db.adConnection.deleteMany({ where: { label: { contains: MARKER } } })
   await db.shop.deleteMany({ where: { name: { contains: MARKER } } })
 }
 
@@ -95,6 +96,69 @@ describe('syncAdAccount', () => {
 
     const fresh = await db.adAccount.findUniqueOrThrow({ where: { id: account.id } })
     expect(fresh.lastError).toBe('Invalid OAuth access token')
+  })
+})
+
+describe('connection-backed accounts', () => {
+  it('syncs with the login token instead of pasted credentials', async () => {
+    const shop = await db.shop.create({ data: { name: `${MARKER} conn shop`, currency: 'NOK' } })
+    const connection = await db.adConnection.create({
+      data: { provider: 'meta', label: `${MARKER} login`, secret: 'conn-token' },
+    })
+    const account = await db.adAccount.create({
+      data: {
+        shopId: shop.id,
+        provider: 'meta',
+        externalId: `conn-${Date.now()}`,
+        name: `${MARKER} connected`,
+        currency: 'NOK',
+        credentials: null,
+        connectionId: connection.id,
+      },
+    })
+
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      json({ data: [{ date_start: '2026-07-01', spend: '10.00', impressions: '1', clicks: '1' }] }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await syncAdAccount({ ...account, connection })
+    expect(result.ok).toBe(true)
+    const headers = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer conn-token')
+  })
+
+  it('an expired Facebook login becomes a readable error, not a crash', async () => {
+    const shop = await db.shop.create({ data: { name: `${MARKER} exp shop`, currency: 'NOK' } })
+    const connection = await db.adConnection.create({
+      data: {
+        provider: 'meta',
+        label: `${MARKER} old login`,
+        secret: 'old',
+        expiresAt: new Date(Date.now() - 1000),
+      },
+    })
+    const account = await db.adAccount.create({
+      data: {
+        shopId: shop.id,
+        provider: 'meta',
+        externalId: `exp-${Date.now()}`,
+        name: `${MARKER} expired`,
+        currency: 'NOK',
+        credentials: null,
+        connectionId: connection.id,
+      },
+    })
+
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await syncAdAccount({ ...account, connection })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Facebook login expired')
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    const fresh = await db.adAccount.findUniqueOrThrow({ where: { id: account.id } })
+    expect(fresh.lastError).toContain('Facebook login expired')
   })
 })
 

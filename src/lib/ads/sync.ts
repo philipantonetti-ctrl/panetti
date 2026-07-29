@@ -3,7 +3,13 @@ import { utcDay } from '../dates'
 import { decryptSecret } from '../secrets'
 import { fetchMetaDaily } from './meta'
 import { fetchGoogleDaily } from './google'
-import type { AdCredentials, DailyRow, GoogleCredentials, MetaCredentials } from './types'
+import {
+  AdApiError,
+  type AdCredentials,
+  type DailyRow,
+  type GoogleCredentials,
+  type MetaCredentials,
+} from './types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 /** First sync reaches back a year of history. */
@@ -21,8 +27,11 @@ export type AdAccountRow = {
   provider: string
   externalId: string
   name: string
-  credentials: string
+  credentials: string | null
+  loginCustomerId?: string | null
   lastSyncAt: Date | null
+  /** Set when the account was connected by logging in rather than pasting. */
+  connection?: { provider: string; secret: string; expiresAt: Date | null } | null
 }
 
 export type AdSyncResult = {
@@ -43,8 +52,39 @@ export function readCredentials(stored: string): AdCredentials {
   return JSON.parse(decryptSecret(stored)) as AdCredentials
 }
 
+/**
+ * A login connection wins over pasted credentials; neither is a visible error,
+ * never a silent skip. Google logins also need the platform app for the
+ * developer token and OAuth client.
+ */
+export async function resolveCredentials(account: AdAccountRow): Promise<AdCredentials> {
+  if (account.connection) {
+    if (account.provider === 'meta') {
+      if (account.connection.expiresAt && account.connection.expiresAt < new Date()) {
+        throw new AdApiError('Facebook login expired. Press Connect with Facebook to renew it.')
+      }
+      return { accessToken: decryptSecret(account.connection.secret) }
+    }
+    const app = await db.adPlatformApp.findUnique({ where: { provider: 'google' } })
+    if (!app?.developerToken) {
+      throw new AdApiError('Google platform setup is missing. Fill it in under Ad accounts.')
+    }
+    return {
+      developerToken: decryptSecret(app.developerToken),
+      clientId: app.clientId,
+      clientSecret: decryptSecret(app.clientSecret),
+      refreshToken: decryptSecret(account.connection.secret),
+      ...(account.loginCustomerId ? { loginCustomerId: account.loginCustomerId } : {}),
+    }
+  }
+  if (!account.credentials) {
+    throw new AdApiError('No credentials. Connect this account again.')
+  }
+  return readCredentials(account.credentials)
+}
+
 async function fetchDaily(account: AdAccountRow, from: Date, to: Date): Promise<DailyRow[]> {
-  const creds = readCredentials(account.credentials)
+  const creds = await resolveCredentials(account)
   return account.provider === 'meta'
     ? fetchMetaDaily(creds as MetaCredentials, account.externalId, from, to)
     : fetchGoogleDaily(creds as GoogleCredentials, account.externalId, from, to)
@@ -52,19 +92,24 @@ async function fetchDaily(account: AdAccountRow, from: Date, to: Date): Promise<
 
 async function storeDaily(accountId: string, rows: DailyRow[]): Promise<number> {
   await db.$transaction(
-    rows.map((r) =>
-      db.adSpend.upsert({
+    rows.map((r) => {
+      const metrics = {
+        spend: r.spend,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        linkClicks: r.linkClicks,
+        conversions: r.conversions,
+        conversionValue: r.conversionValue,
+        videoViews3s: r.videoViews3s,
+        thruplays: r.thruplays,
+        reach: r.reach,
+      }
+      return db.adSpend.upsert({
         where: { accountId_date: { accountId, date: r.date } },
-        create: {
-          accountId,
-          date: r.date,
-          spend: r.spend,
-          impressions: r.impressions,
-          clicks: r.clicks,
-        },
-        update: { spend: r.spend, impressions: r.impressions, clicks: r.clicks },
-      }),
-    ),
+        create: { accountId, date: r.date, ...metrics },
+        update: metrics,
+      })
+    }),
   )
   return rows.length
 }
@@ -90,7 +135,10 @@ export async function syncAdAccount(account: AdAccountRow, now = new Date()): Pr
 }
 
 export async function syncAllAdAccounts(opts: { force?: boolean } = {}): Promise<AdSyncResult[]> {
-  const accounts = await db.adAccount.findMany({ where: { active: true } })
+  const accounts = await db.adAccount.findMany({
+    where: { active: true },
+    include: { connection: true },
+  })
   const now = new Date()
   const due = opts.force
     ? accounts

@@ -16,17 +16,48 @@ const GRAPH = 'https://graph.facebook.com/v25.0'
 const PAGE_LIMIT = 500
 const MAX_PAGES = 10
 
-type InsightRow = { date_start?: string; spend?: string; impressions?: string; clicks?: string }
+type ActionEntry = { action_type?: string; value?: string }
+type InsightRow = {
+  date_start?: string
+  spend?: string
+  impressions?: string
+  clicks?: string
+  inline_link_clicks?: string
+  reach?: string
+  actions?: ActionEntry[]
+  action_values?: ActionEntry[]
+  video_thruplay_watched_actions?: ActionEntry[]
+}
+
+/** Purchases and video views arrive as action lists keyed by action_type. */
+const action = (list: ActionEntry[] | undefined, type: string): number =>
+  parseFloat(list?.find((a) => a.action_type === type)?.value ?? '0') || 0
+
+const count = (value: string | undefined): number => parseInt(value ?? '0', 10) || 0
 
 export function parseMetaInsights(rows: InsightRow[]): DailyRow[] {
   const out: DailyRow[] = []
   for (const row of rows) {
     if (!row.date_start) continue
+    // omni_purchase spans web + app + shop; older accounts only report purchase.
+    const conversions = action(row.actions, 'omni_purchase') || action(row.actions, 'purchase')
+    const value =
+      action(row.action_values, 'omni_purchase') || action(row.action_values, 'purchase')
+    const thruplays =
+      action(row.video_thruplay_watched_actions, 'video_view') ||
+      parseFloat(row.video_thruplay_watched_actions?.[0]?.value ?? '0') ||
+      0
     out.push({
       date: utcDay(new Date(row.date_start + 'T00:00:00Z')),
       spend: toMinor(row.spend ?? '0'),
-      impressions: parseInt(row.impressions ?? '0', 10) || 0,
-      clicks: parseInt(row.clicks ?? '0', 10) || 0,
+      impressions: count(row.impressions),
+      clicks: count(row.clicks),
+      linkClicks: count(row.inline_link_clicks),
+      conversions,
+      conversionValue: toMinor(value),
+      videoViews3s: action(row.actions, 'video_view'),
+      thruplays,
+      reach: count(row.reach),
     })
   }
   return out
@@ -51,7 +82,8 @@ export async function fetchMetaDaily(
     level: 'account',
     time_increment: '1',
     time_range: JSON.stringify({ since: day(from), until: day(to) }),
-    fields: 'spend,impressions,clicks',
+    fields:
+      'spend,impressions,clicks,inline_link_clicks,reach,actions,action_values,video_thruplay_watched_actions',
     limit: String(PAGE_LIMIT),
   })
 
