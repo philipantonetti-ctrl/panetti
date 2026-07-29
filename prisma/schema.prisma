@@ -259,6 +259,7 @@ model AdAccount {
   credentials     String?   // encrypted JSON, provider-specific shape (manual path)
   connectionId    String?
   loginCustomerId String?   // Google: the manager (MCC) id access goes through
+  dailyBudget     Int?      // current daily budget across active campaigns, minor units, account currency
   active          Boolean   @default(true)
   lastSyncAt      DateTime?
   lastError       String?

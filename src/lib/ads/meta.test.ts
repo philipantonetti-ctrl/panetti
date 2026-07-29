@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchMetaDaily, parseMetaInsights, verifyMeta } from './meta'
+import { fetchMetaDaily, fetchMetaDailyBudget, parseMetaInsights, verifyMeta } from './meta'
 import { AdApiError } from './types'
 
 const json = (body: unknown, status = 200) =>
@@ -120,6 +120,28 @@ describe('fetchMetaDaily', () => {
     await expect(
       fetchMetaDaily({ accessToken: 'bad' }, '123', new Date(), new Date()),
     ).rejects.toThrow(new AdApiError('Invalid OAuth access token'))
+  })
+})
+
+describe('fetchMetaDailyBudget', () => {
+  it('sums the daily budgets of ACTIVE campaigns only, across pages', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        json({
+          data: [
+            { daily_budget: '800000', effective_status: 'ACTIVE' },
+            { daily_budget: '999999', effective_status: 'PAUSED' },
+            { effective_status: 'ACTIVE' }, // lifetime budget: no daily amount
+          ],
+          paging: { next: 'https://graph.facebook.com/v25.0/act_1/campaigns?after=x' },
+        }),
+      )
+      .mockResolvedValueOnce(json({ data: [{ daily_budget: '200000', effective_status: 'ACTIVE' }] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await fetchMetaDailyBudget({ accessToken: 't' }, '1')).toBe(1_000_000)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/act_1/campaigns')
   })
 })
 

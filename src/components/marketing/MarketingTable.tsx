@@ -21,6 +21,7 @@ type Column = {
 
 const COLUMNS: Column[] = [
   { key: 'spend', label: 'Ad spend', kind: 'money', hint: 'Meta and Google combined' },
+  { key: 'dailyBudget', label: 'Daily budget', kind: 'money', hint: 'Current daily budgets across active campaigns, as set on the platforms' },
   { key: 'conversions', label: 'Purchases', kind: 'decimal', hint: 'Purchases as the platforms attribute them' },
   { key: 'conversionValue', label: 'Conv. value', kind: 'money', hint: 'Purchase value as the platforms attribute it' },
   { key: 'platformRoas', label: 'P. ROAS', kind: 'roas', hint: 'Purchase ROAS as the platform reports it: attributed value divided by spend' },
@@ -35,7 +36,7 @@ const COLUMNS: Column[] = [
   { key: 'cpm', label: 'CPM', kind: 'money', hint: 'Cost per 1,000 impressions' },
   { key: 'costPerLinkClick', label: 'Cost/link click', kind: 'money' },
   { key: 'linkCtr', label: 'Link CTR', kind: 'pct', hint: 'Link clicks per impression' },
-  { key: 'cpc', label: 'CPC', kind: 'money', hint: 'Spend per click, all clicks' },
+  { key: 'cpc', label: 'Avg. CPC', kind: 'money', hint: 'Spend per click, all clicks' },
   { key: 'ctr', label: 'CTR', kind: 'pct', hint: 'All clicks per impression' },
   { key: 'holdRate', label: 'Hold rate', kind: 'pct', hint: 'ThruPlays (15 s or complete) per 3-second play' },
   { key: 'videoViews3s', label: '3s plays', kind: 'count' },
@@ -43,7 +44,11 @@ const COLUMNS: Column[] = [
   { key: 'clicks', label: 'Clicks', kind: 'count' },
 ]
 
-/** The everyday view; everything else is one tick away in Select metrics. */
+/**
+ * The everyday view — the client's own Google list (budget, spend, purchases,
+ * value, ROAS, Avg. CPC, clicks) plus the store context; everything else is
+ * one tick away in Select metrics.
+ */
 const DEFAULT_HIDDEN = [
   'metaSpend',
   'googleSpend',
@@ -51,12 +56,10 @@ const DEFAULT_HIDDEN = [
   'cpm',
   'costPerLinkClick',
   'linkCtr',
-  'cpc',
   'ctr',
   'holdRate',
   'videoViews3s',
   'thruplays',
-  'clicks',
 ]
 
 const STORAGE_KEY = 'marketing-columns'

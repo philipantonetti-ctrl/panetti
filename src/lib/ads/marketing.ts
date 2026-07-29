@@ -8,7 +8,14 @@ import type { SeriesPoint } from '../metrics/trend'
  * the numbers one tab over.
  */
 
-export type MarketingAccount = { id: string; shopId: string; provider: string; currency: string }
+export type MarketingAccount = {
+  id: string
+  shopId: string
+  provider: string
+  currency: string
+  /** Current daily budget across active campaigns, minor units, account currency. */
+  dailyBudget: number | null
+}
 
 export type SpendRow = {
   accountId: string
@@ -27,6 +34,7 @@ export type MarketingShopRow = {
   shopId: string
   shopName: string
   spend: number // display currency minor units
+  dailyBudget: number | null // current daily budgets, null when no account reports one
   metaSpend: number
   googleSpend: number
   impressions: number
@@ -99,9 +107,20 @@ export function buildMarketing(args: {
   engine: EngineResult
   series: SeriesPoint[]
   rates: RateTable
+  /** Range end: a current setting like the budget converts at the current rate. */
+  to: Date
 }): MarketingResult {
   const display = args.engine.displayCurrency
   const accountById = new Map(args.accounts.map((a) => [a.id, a]))
+
+  // Budgets come from the accounts themselves, not the spend rows — an account
+  // that spent nothing this period still has its budget set.
+  const budgetByShop = new Map<string, number>()
+  for (const account of args.accounts) {
+    if (account.dailyBudget === null) continue
+    const minor = crossConvert(account.dailyBudget, account.currency, display, args.to, args.rates)
+    budgetByShop.set(account.shopId, (budgetByShop.get(account.shopId) ?? 0) + minor)
+  }
 
   type Acc = {
     spend: number
@@ -162,15 +181,18 @@ export function buildMarketing(args: {
     return ratios({
       shopId: shop.shopId,
       shopName: shop.shopName,
+      dailyBudget: budgetByShop.get(shop.shopId) ?? null,
       ...acc,
       orders: shop.orders,
       grossRevenue: shop.grossRevenue,
     })
   })
 
+  const budgets = rows.filter((r) => r.dailyBudget !== null)
   const total = ratios({
     shopId: '',
     shopName: 'Total',
+    dailyBudget: budgets.length ? budgets.reduce((n, r) => n + (r.dailyBudget ?? 0), 0) : null,
     spend: rows.reduce((n, r) => n + r.spend, 0),
     metaSpend: rows.reduce((n, r) => n + r.metaSpend, 0),
     googleSpend: rows.reduce((n, r) => n + r.googleSpend, 0),

@@ -1,8 +1,8 @@
 import { db } from '../db'
 import { utcDay } from '../dates'
 import { decryptSecret } from '../secrets'
-import { fetchMetaDaily } from './meta'
-import { fetchGoogleDaily } from './google'
+import { fetchMetaDaily, fetchMetaDailyBudget } from './meta'
+import { fetchGoogleDaily, fetchGoogleDailyBudget } from './google'
 import {
   AdApiError,
   type AdCredentials,
@@ -83,11 +83,21 @@ export async function resolveCredentials(account: AdAccountRow): Promise<AdCrede
   return readCredentials(account.credentials)
 }
 
-async function fetchDaily(account: AdAccountRow, from: Date, to: Date): Promise<DailyRow[]> {
-  const creds = await resolveCredentials(account)
+function fetchDaily(
+  account: AdAccountRow,
+  creds: AdCredentials,
+  from: Date,
+  to: Date,
+): Promise<DailyRow[]> {
   return account.provider === 'meta'
     ? fetchMetaDaily(creds as MetaCredentials, account.externalId, from, to)
     : fetchGoogleDaily(creds as GoogleCredentials, account.externalId, from, to)
+}
+
+function fetchBudget(account: AdAccountRow, creds: AdCredentials): Promise<number> {
+  return account.provider === 'meta'
+    ? fetchMetaDailyBudget(creds as MetaCredentials, account.externalId)
+    : fetchGoogleDailyBudget(creds as GoogleCredentials, account.externalId)
 }
 
 async function storeDaily(accountId: string, rows: DailyRow[]): Promise<number> {
@@ -116,11 +126,26 @@ async function storeDaily(accountId: string, rows: DailyRow[]): Promise<number> 
 
 export async function syncAdAccount(account: AdAccountRow, now = new Date()): Promise<AdSyncResult> {
   try {
+    const creds = await resolveCredentials(account)
     const { from, to } = syncWindow(account.lastSyncAt, now)
-    const days = await storeDaily(account.id, await fetchDaily(account, from, to))
+    const days = await storeDaily(account.id, await fetchDaily(account, creds, from, to))
+
+    // Budgets are decoration on top of the spend history: refreshed when the
+    // platform answers, kept as they were when it does not.
+    let dailyBudget: number | undefined
+    try {
+      dailyBudget = await fetchBudget(account, creds)
+    } catch {
+      // The last known budget stands.
+    }
+
     await db.adAccount.update({
       where: { id: account.id },
-      data: { lastSyncAt: now, lastError: null },
+      data: {
+        lastSyncAt: now,
+        lastError: null,
+        ...(dailyBudget !== undefined ? { dailyBudget } : {}),
+      },
     })
     return { accountId: account.id, name: account.name, ok: true, days }
   } catch (e) {

@@ -10,6 +10,7 @@ const row = (over: Partial<MarketingShopRow>): MarketingShopRow => ({
   shopId: 'a',
   shopName: 'Alpha',
   spend: 0,
+  dailyBudget: null,
   metaSpend: 0,
   googleSpend: 0,
   impressions: 0,
@@ -59,8 +60,8 @@ describe('MarketingTable', () => {
       />,
     )
 
-    // Default-visible headers, including both clearly named ROAS columns.
-    for (const label of ['Ad spend', 'Purchases', 'Conv. value', 'P. ROAS', 'Cost/purchase', 'Store ROAS', 'CPA']) {
+    // Default-visible headers: the client's own list plus the store context.
+    for (const label of ['Ad spend', 'Daily budget', 'Purchases', 'Conv. value', 'P. ROAS', 'Cost/purchase', 'Avg. CPC', 'Clicks', 'Store ROAS', 'CPA']) {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
     }
     // Detail columns wait behind Select metrics.

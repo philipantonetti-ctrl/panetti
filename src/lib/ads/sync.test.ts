@@ -99,6 +99,42 @@ describe('syncAdAccount', () => {
   })
 })
 
+describe('daily budgets', () => {
+  it('refreshes the budget alongside the spend', async () => {
+    const account = await makeAccount()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/campaigns'))
+          return json({ data: [{ daily_budget: '80000', effective_status: 'ACTIVE' }] })
+        return json({ data: [{ date_start: '2026-07-01', spend: '10.00', impressions: '1', clicks: '1' }] })
+      }),
+    )
+
+    expect((await syncAdAccount(account)).ok).toBe(true)
+    const fresh = await db.adAccount.findUniqueOrThrow({ where: { id: account.id } })
+    expect(fresh.dailyBudget).toBe(80000)
+  })
+
+  it('a failed budget answer keeps the old number and the sync green', async () => {
+    const account = await makeAccount({ dailyBudget: 55555 })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/campaigns')) return json({ error: { message: 'nope' } }, 500)
+        return json({ data: [] })
+      }),
+    )
+
+    expect((await syncAdAccount(account)).ok).toBe(true)
+    const fresh = await db.adAccount.findUniqueOrThrow({ where: { id: account.id } })
+    expect(fresh.dailyBudget).toBe(55555)
+    expect(fresh.lastError).toBeNull()
+  })
+})
+
 describe('connection-backed accounts', () => {
   it('syncs with the login token instead of pasted credentials', async () => {
     const shop = await db.shop.create({ data: { name: `${MARKER} conn shop`, currency: 'NOK' } })

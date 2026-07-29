@@ -1,6 +1,7 @@
 ﻿import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchGoogleDaily,
+  fetchGoogleDailyBudget,
   googleAccessToken,
   microsToMinor,
   parseGoogleChunks,
@@ -149,6 +150,30 @@ describe('fetchGoogleDaily', () => {
     await expect(fetchGoogleDaily(CREDS, '1', new Date(), new Date())).rejects.toThrow(
       new AdApiError('The developer token is not approved.'),
     )
+  })
+})
+
+describe('fetchGoogleDailyBudget', () => {
+  it('asks for ENABLED campaigns and counts a shared budget once', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(
+        json([
+          {
+            results: [
+              { campaignBudget: { resourceName: 'customers/1/campaignBudgets/10', amountMicros: '80000000' } },
+              { campaignBudget: { resourceName: 'customers/1/campaignBudgets/10', amountMicros: '80000000' } },
+              { campaign_budget: { resource_name: 'customers/1/campaignBudgets/11', amount_micros: '20000000' } },
+            ],
+          },
+        ]),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await fetchGoogleDailyBudget(CREDS, '1')).toBe(10_000)
+    const query = (JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body)) as { query: string }).query
+    expect(query).toContain("campaign.status = 'ENABLED'")
   })
 })
 

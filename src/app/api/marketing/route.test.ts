@@ -83,6 +83,7 @@ beforeEach(async () => {
       name: `Account ${MARK}`,
       currency: 'NOK',
       credentials: JSON.stringify({ accessToken: 'seed' }),
+      dailyBudget: 800000,
     },
   })
   // 500.00 NOK across two March days, inside the query range.
@@ -117,6 +118,7 @@ describe('GET /api/marketing', () => {
 
     const row = body.byShop.find((r: { shopId: string }) => r.shopId === shopId)
     expect(row.spend).toBe(50000) // 500.00 NOK, the May row ignored
+    expect(row.dailyBudget).toBe(800000) // kr8,000.00, shop currency, no conversion
     expect(row.metaSpend).toBe(50000)
     expect(row.googleSpend).toBe(0)
     expect(row.orders).toBe(2) // pending not counted

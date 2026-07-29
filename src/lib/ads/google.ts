@@ -33,6 +33,8 @@ type GoogleResult = {
     currencyCode?: string
     currency_code?: string
   }
+  campaignBudget?: { resourceName?: string; resource_name?: string; amountMicros?: string; amount_micros?: string }
+  campaign_budget?: { resourceName?: string; resource_name?: string; amountMicros?: string; amount_micros?: string }
 }
 type Chunk = { results?: GoogleResult[] }
 
@@ -137,6 +139,33 @@ export async function fetchGoogleDaily(
     'metrics.conversions, metrics.conversions_value ' +
     `FROM customer WHERE segments.date BETWEEN '${day(from)}' AND '${day(to)}'`
   return toDailyRows(await searchStream(creds, customerId, query))
+}
+
+/**
+ * The current daily budget across ENABLED campaigns, minor units. A budget
+ * shared by several campaigns counts once — that is what the money really is.
+ */
+export async function fetchGoogleDailyBudget(
+  creds: GoogleCredentials,
+  customerId: string,
+): Promise<number> {
+  const results = await searchStream(
+    creds,
+    customerId,
+    'SELECT campaign.status, campaign_budget.resource_name, campaign_budget.amount_micros ' +
+      "FROM campaign WHERE campaign.status = 'ENABLED'",
+  )
+  const seen = new Set<string>()
+  let total = 0
+  for (const r of results) {
+    const budget = r.campaignBudget ?? r.campaign_budget
+    if (!budget) continue
+    const name = budget.resourceName ?? budget.resource_name ?? ''
+    if (name && seen.has(name)) continue
+    if (name) seen.add(name)
+    total += microsToMinor(budget.amountMicros ?? budget.amount_micros)
+  }
+  return total
 }
 
 /** Prove the credentials work and read the account's real name and currency. */

@@ -22,6 +22,7 @@ const row = (over: Partial<MarketingShopRow>): MarketingShopRow => ({
   shopId: 'a',
   shopName: 'Panetti Norway',
   spend: 0,
+  dailyBudget: null,
   metaSpend: 0,
   googleSpend: 0,
   impressions: 0,

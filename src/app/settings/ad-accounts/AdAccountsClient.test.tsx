@@ -72,14 +72,19 @@ describe('AdAccountsClient', () => {
     expect(screen.getByText('Never synced')).toBeTruthy()
   })
 
-  it('keeps the connect buttons asleep until the platform setup exists', () => {
+  it('walks you to the setup when a connect button is pressed too early', async () => {
     renderPage([], { platform: { meta: null, google: { clientId: 'x', hasDeveloperToken: false } } })
 
-    const fb = screen.getByText('Connect with Facebook').closest('button')
-    expect(fb?.disabled).toBe(true)
-    // Google without a developer token cannot list or sync anything yet.
-    const g = screen.getByText('Connect with Google').closest('button')
-    expect(g?.disabled).toBe(true)
+    // Not a link yet — the login flow would only bounce back with an error.
+    expect(screen.getByText('Connect with Facebook').closest('a')).toBeNull()
+    fireEvent.click(screen.getByText('Connect with Facebook'))
+    await waitFor(() =>
+      expect(
+        screen.getByText('One-time setup needed first. Two minutes, the steps are right below.'),
+      ).toBeTruthy(),
+    )
+    // Google without a developer token cannot list or sync anything yet either.
+    expect(screen.getByText('Connect with Google').closest('a')).toBeNull()
   })
 
   it('links the connect buttons straight to the oauth start when ready', () => {

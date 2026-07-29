@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     const [accounts, connectedCount] = await Promise.all([
       db.adAccount.findMany({
         where: { active: true, shopId: { in: scopeIds } },
-        select: { id: true, shopId: true, provider: true, currency: true },
+        select: { id: true, shopId: true, provider: true, currency: true, dailyBudget: true },
       }),
       db.adAccount.count({ where: { active: true } }),
     ])
@@ -72,7 +72,7 @@ export async function GET(req: Request) {
     })
 
     const engine = computeMetrics(input)
-    const result = buildMarketing({ accounts, spend, engine, series: dailySeries(input), rates })
+    const result = buildMarketing({ accounts, spend, engine, series: dailySeries(input), rates, to })
 
     return NextResponse.json(
       {

@@ -22,9 +22,11 @@ const engine: EngineResult = {
 }
 
 const accounts = [
-  { id: 'acc-meta', shopId: 'shop-a', provider: 'meta', currency: 'NOK' },
-  { id: 'acc-google', shopId: 'shop-a', provider: 'google', currency: 'EUR' },
+  { id: 'acc-meta', shopId: 'shop-a', provider: 'meta', currency: 'NOK', dailyBudget: 500_00 },
+  { id: 'acc-google', shopId: 'shop-a', provider: 'google', currency: 'EUR', dailyBudget: 20_00 },
 ]
+
+const TO = new Date('2026-07-02T00:00:00Z')
 
 const spendRow = (over: Partial<import('./marketing').SpendRow> & { accountId: string; date: Date; spend: number }) => ({
   impressions: 0,
@@ -82,7 +84,7 @@ const series = [
 ]
 
 describe('buildMarketing', () => {
-  const result = buildMarketing({ accounts, spend, engine, series, rates })
+  const result = buildMarketing({ accounts, spend, engine, series, rates, to: TO })
 
   it('converts each day of spend at that day\'s rate and splits by provider', () => {
     const alpha = result.byShop.find((r) => r.shopId === 'shop-a')!
@@ -114,6 +116,15 @@ describe('buildMarketing', () => {
     expect(alpha.costPerLinkClick).toBe(Math.round(355_00 / 105))
     expect(alpha.linkCtr).toBeCloseTo(105 / 4500, 10)
     expect(alpha.holdRate).toBeCloseTo(250 / 1000, 10)
+  })
+
+  it('sums current budgets at the range-end rate, from the accounts themselves', () => {
+    const alpha = result.byShop.find((r) => r.shopId === 'shop-a')!
+    // 500 NOK at the 2nd's 0.2 -> $100.00; 20 EUR at 1.1 -> $22.00.
+    expect(alpha.dailyBudget).toBe(122_00)
+    const beta = result.byShop.find((r) => r.shopId === 'shop-b')!
+    expect(beta.dailyBudget).toBeNull()
+    expect(result.total.dailyBudget).toBe(122_00)
   })
 
   it('gives a shop without ad accounts zero spend and honest dashes', () => {
@@ -155,6 +166,7 @@ describe('buildMarketing', () => {
       },
       series,
       rates,
+      to: TO,
     })
     const alpha = single.byShop[0]
     // NOK spend passes through; 50 EUR on the 2nd crosses at 1.1/0.2 -> 275 NOK.
@@ -169,7 +181,9 @@ describe('buildMarketing', () => {
       engine,
       series,
       rates,
+      to: TO,
     })
     expect(scoped.total.spend).toBe(0)
+    expect(scoped.total.dailyBudget).toBeNull()
   })
 })

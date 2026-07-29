@@ -100,6 +100,35 @@ export async function fetchMetaDaily(
   return rows
 }
 
+type CampaignRow = { daily_budget?: string; effective_status?: string }
+
+/**
+ * The current daily budget across ACTIVE campaigns, in the account currency's
+ * minor units (which is how Meta returns budget amounts). A setting, not a
+ * time series — refreshed at every sync.
+ */
+export async function fetchMetaDailyBudget(
+  creds: MetaCredentials,
+  externalId: string,
+): Promise<number> {
+  const params = new URLSearchParams({ fields: 'daily_budget,effective_status', limit: '200' })
+  let url: string | undefined = `${GRAPH}/act_${externalId}/campaigns?${params}`
+  let total = 0
+  for (let page = 0; url && page < MAX_PAGES; page++) {
+    const body: { data?: CampaignRow[]; paging?: { next?: string } } = await metaJson(
+      url,
+      creds.accessToken,
+    )
+    for (const campaign of body.data ?? []) {
+      if (campaign.effective_status !== 'ACTIVE') continue
+      // Lifetime-budget campaigns carry no daily_budget and add nothing here.
+      total += parseInt(campaign.daily_budget ?? '0', 10) || 0
+    }
+    url = body.paging?.next
+  }
+  return total
+}
+
 /** Prove the credentials work and read the account's real name and currency. */
 export async function verifyMeta(
   creds: MetaCredentials,

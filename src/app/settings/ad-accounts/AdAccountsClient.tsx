@@ -267,10 +267,19 @@ export function AdAccountsClient({
 }
 
 function ConnectButton({ provider, ready }: { provider: 'meta' | 'google'; ready: boolean }) {
+  const toast = useToast()
   const text = provider === 'meta' ? 'Connect with Facebook' : 'Connect with Google'
   if (!ready) {
+    // A button that cannot be pressed and cannot say why is a dead end.
+    // Pressing this one explains itself and walks to the setup.
     return (
-      <button disabled title="Fill in the platform setup below first" className={`${quietBtn} opacity-60`}>
+      <button
+        onClick={() => {
+          toast.error('One-time setup needed first. Two minutes, the steps are right below.')
+          document.getElementById('platform-setup')?.scrollIntoView?.({ behavior: 'smooth' })
+        }}
+        className={quietBtn}
+      >
         {text}
       </button>
     )
@@ -461,7 +470,7 @@ function PickerModal({
 
 function PlatformSetupSection({ platform }: { platform: PlatformSetup }) {
   return (
-    <section className="mt-8">
+    <section id="platform-setup" className="mt-8">
       <h2 className="text-[13px] font-semibold text-ink">Platform setup</h2>
       <p className="mt-1 max-w-2xl text-xs text-muted">
         A one-time step per platform: create your own app, paste its keys here, and the connect
