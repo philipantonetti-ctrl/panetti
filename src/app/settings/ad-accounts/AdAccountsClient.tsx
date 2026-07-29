@@ -621,7 +621,6 @@ function PlatformCard({
   const [clientSecret, setClientSecret] = useState('')
   const [developerToken, setDeveloperToken] = useState('')
   const [busy, setBusy] = useState(false)
-  const [warning, setWarning] = useState('')
   const toast = useToast()
 
   // The origin only exists in the browser; setting it after mount avoids a
@@ -641,13 +640,11 @@ function PlatformCard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider, clientId, clientSecret, developerToken }),
       })
-      const body = (await res.json().catch(() => null)) as { error?: string; warning?: string } | null
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
       if (!res.ok) {
         toast.error(body?.error ?? 'Could not save')
         return
       }
-      // The warning outlives the toast: it stays until the next save fixes it.
-      setWarning(body?.warning ?? '')
       toast.success(`${provider === 'meta' ? 'Meta' : 'Google'} setup saved`)
       router.refresh()
     } catch {
@@ -663,18 +660,13 @@ function PlatformCard({
         {provider === 'meta' ? 'Meta app' : 'Google app'}
       </h3>
       {provider === 'meta' ? (
-        <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-[11px] text-muted">
-          <li>developers.facebook.com: Create app, Business type.</li>
-          <li>
-            Paste the App ID and App secret here and press Save. Saving adds this site to the
-            app&apos;s domains for you.
-          </li>
-          <li>
-            Add the Facebook Login product, then Facebook Login, Settings: paste the callback URL
-            below under Valid OAuth Redirect URIs.
-          </li>
-          <li>Keep the app in Development mode. Only you log in, so no review is needed.</li>
-        </ol>
+        // No Facebook Login product, no redirect URI, no App Domains: none of
+        // it was ever the way in. These two values only prove the token.
+        <p className="mt-1 text-[11px] text-muted">
+          developers.facebook.com: Create app, Business type. Paste the App ID and App secret
+          here. They are used to check the token you paste above, and to name the app you pick
+          when you generate it. There is no callback URL to set up.
+        </p>
       ) : (
         <p className="mt-1 text-[11px] text-muted">
           console.cloud.google.com, Credentials, OAuth client (Web application) with the callback
@@ -682,14 +674,10 @@ function PlatformCard({
           Google Ads, manager account, API Center.
         </p>
       )}
-      <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
-        <span className="text-faint">Callback URL: </span>
-        {redirectUri || '…'}
-      </p>
-
-      {warning && (
-        <p className="mt-2 rounded-[var(--radius-control)] border border-line bg-panel px-2 py-1.5 text-[11px] font-medium text-loss">
-          {warning}
+      {provider === 'google' && (
+        <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
+          <span className="text-faint">Callback URL: </span>
+          {redirectUri || '…'}
         </p>
       )}
 

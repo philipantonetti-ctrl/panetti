@@ -59,11 +59,12 @@ test('the ad accounts page offers one-click connect and lists the seeded account
   await expect(page).toHaveURL(/\/settings\/ad-accounts/)
   await expect(page.getByRole('heading', { name: 'Ad accounts' })).toBeVisible()
 
-  // The platform setup is seeded, so the connect buttons are live links.
-  const fb = page.getByRole('link', { name: 'Connect with Facebook' })
-  await expect(fb).toBeVisible()
-  await expect(fb).toHaveAttribute('href', '/api/ads/oauth/meta/start')
-  await expect(page.getByRole('link', { name: 'Connect with Google' })).toBeVisible()
+  // Meta connects by pasted token; only Google still has a login button.
+  await expect(page.getByLabel('System user access token')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Connect with Facebook' })).toHaveCount(0)
+  const g = page.getByRole('link', { name: 'Connect with Google' })
+  await expect(g).toBeVisible()
+  await expect(g).toHaveAttribute('href', '/api/ads/oauth/google/start')
 
   // The three seeded accounts; one carries the login it came through.
   await expect(page.getByText('Panetti Norway Meta Ads')).toBeVisible()
@@ -72,12 +73,14 @@ test('the ad accounts page offers one-click connect and lists the seeded account
   await expect(page.getByText('via Philip (sample)')).toBeVisible()
   await expect(page.getByText('Connected').first()).toBeVisible()
 
-  // The one-time platform setup lives on the page with the redirect URL shown.
+  // The one-time platform setup lives on the page. Only Google shows a
+  // callback URL now — Meta has no dialog to come back from.
   await expect(page.getByRole('heading', { name: 'Platform setup' })).toBeVisible()
-  await expect(page.getByText('/api/ads/oauth/meta/callback')).toBeVisible()
+  await expect(page.getByText('/api/ads/oauth/google/callback')).toBeVisible()
+  await expect(page.getByText('/api/ads/oauth/meta/callback')).toHaveCount(0)
 
-  // The manual path still exists, one quiet link away.
+  // The per-account manual path still exists, one quiet link away.
   await page.getByRole('button', { name: 'Advanced: paste credentials manually' }).click()
-  await expect(page.getByText('System user access token', { exact: true })).toBeVisible()
+  await expect(page.getByText('Access token for this account', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Cancel' }).click()
 })
