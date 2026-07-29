@@ -1,11 +1,14 @@
 import { AdApiError } from './types'
 
 /**
- * The OAuth handshakes behind "Connect with Facebook / Google".
+ * The OAuth handshake behind "Connect with Google".
  *
- * The apps are the CLIENT'S own (a Meta app in development mode, a Google OAuth
- * client published unverified): their admin is the only person who ever logs
- * in, which is exactly the case the platforms allow without app review.
+ * The client's own OAuth client, published unverified: its admin is the only
+ * person who ever logs in, which is the case Google allows without review.
+ *
+ * Meta is deliberately absent. Its dialog needs a login configuration living
+ * inside developers.facebook.com that no API can create, so Meta connects by
+ * a pasted system user token instead — see `./token.ts`.
  */
 
 export type PlatformApp = { clientId: string; clientSecret: string; developerToken?: string }
@@ -13,21 +16,7 @@ export type PlatformApp = { clientId: string; clientSecret: string; developerTok
 /** The stamp that ties an OAuth callback to the login this app started. */
 export const STATE_COOKIE = 'ads_oauth_state'
 
-const META = 'https://graph.facebook.com/v25.0'
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token'
-
-/** Meta tokens usually say how long they live; when silent, plan for 60 days. */
-const META_TOKEN_DAYS = 60
-
-export function buildMetaAuthUrl(clientId: string, redirectUri: string, state: string): string {
-  const params = new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    state,
-    scope: 'ads_read,business_management',
-  })
-  return `https://www.facebook.com/v25.0/dialog/oauth?${params}`
-}
 
 export function buildGoogleAuthUrl(clientId: string, redirectUri: string, state: string): string {
   const params = new URLSearchParams({
@@ -41,126 +30,6 @@ export function buildGoogleAuthUrl(clientId: string, redirectUri: string, state:
     prompt: 'consent',
   })
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
-}
-
-async function readJson<T>(res: Response): Promise<T & { error?: { message?: string } }> {
-  return (await res.json().catch(() => ({}))) as T & { error?: { message?: string } }
-}
-
-/** Facebook counts subdomains of every listed domain as covered. So do we. */
-const covered = (domains: string[] | undefined, domain: string): boolean =>
-  (domains ?? []).some((d) => {
-    const entry = d.toLowerCase()
-    return entry === domain || domain.endsWith(`.${entry}`)
-  })
-
-/**
- * Prove an App ID + secret against Meta, then make sure the app lists our
- * domain — by writing it into the app's own settings when it is missing (the
- * Application node is updatable with the app access token). The classic
- * "Can't load URL" screen dies here instead of in front of the admin. A
- * wrong pair throws with Facebook's words; a successful write answers
- * `healed` — the dialog can lag seconds behind a fresh write, so the caller
- * must not walk straight into it; a write Facebook refuses comes back as a
- * warning naming exactly what to paste where; an unreadable or unreachable
- * Meta stays quiet — the check is a courtesy, never a blocker.
- */
-export async function ensureMetaApp(
-  app: PlatformApp,
-  domain: string,
-): Promise<{ healed?: boolean; warning?: string }> {
-  const token = await readJson<{ access_token?: string }>(
-    await fetch(
-      `${META}/oauth/access_token?${new URLSearchParams({
-        client_id: app.clientId,
-        client_secret: app.clientSecret,
-        grant_type: 'client_credentials',
-      })}`,
-    ),
-  )
-  if (!token.access_token)
-    throw new AdApiError(token.error?.message ?? 'Meta did not accept the App ID and secret')
-
-  try {
-    const res = await fetch(
-      `${META}/${app.clientId}?${new URLSearchParams({
-        fields: 'app_domains,website_url',
-        access_token: token.access_token,
-      })}`,
-    )
-    // A refused settings read tells us nothing either way; stay quiet.
-    if (!res.ok) return {}
-    const settings = (await res.json()) as { app_domains?: string[]; website_url?: string }
-    const host = domain.toLowerCase()
-    if (covered(settings.app_domains, host)) return {}
-
-    // Meta omits app_domains entirely when none were ever set — the same
-    // unconfigured state as a wrong list. Write ours in, keeping theirs.
-    const write = await fetch(`${META}/${app.clientId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        access_token: token.access_token,
-        app_domains: JSON.stringify([...new Set([...(settings.app_domains ?? []), host])]),
-        // App Domains only count when a website platform exists to back them.
-        ...(settings.website_url ? {} : { website_url: `https://${host}/` }),
-      }),
-    })
-    // Graph can answer 200 with success:false — that is still a refusal.
-    const outcome = await readJson<{ success?: boolean }>(write)
-    if (write.ok && outcome.success !== false) return { healed: true }
-
-    return {
-      warning:
-        `The Facebook app does not list this site yet and Facebook did not let us add it automatically, ` +
-        `so the login will fail with "Can't load URL". ` +
-        `Open https://developers.facebook.com/apps/${app.clientId}/settings/basic/ and add ${domain} under App Domains, ` +
-        `then open https://developers.facebook.com/apps/${app.clientId}/fb-login/settings/ and paste ` +
-        `https://${domain}/api/ads/oauth/meta/callback under Valid OAuth Redirect URIs. Press Save changes on both pages.`,
-    }
-  } catch {
-    // The check is a courtesy, never a blocker.
-  }
-  return {}
-}
-
-export async function exchangeMetaCode(
-  app: PlatformApp,
-  redirectUri: string,
-  code: string,
-): Promise<{ token: string; expiresAt: Date; label: string }> {
-  const short = await readJson<{ access_token?: string }>(
-    await fetch(
-      `${META}/oauth/access_token?${new URLSearchParams({
-        client_id: app.clientId,
-        redirect_uri: redirectUri,
-        client_secret: app.clientSecret,
-        code,
-      })}`,
-    ),
-  )
-  if (!short.access_token)
-    throw new AdApiError(short.error?.message ?? 'Facebook did not accept the login')
-
-  // Trade the hours-lived token for the ~60-day one before storing anything.
-  const long = await readJson<{ access_token?: string; expires_in?: number }>(
-    await fetch(
-      `${META}/oauth/access_token?${new URLSearchParams({
-        grant_type: 'fb_exchange_token',
-        client_id: app.clientId,
-        client_secret: app.clientSecret,
-        fb_exchange_token: short.access_token,
-      })}`,
-    ),
-  )
-  const token = long.access_token ?? short.access_token
-  const seconds = long.expires_in ?? META_TOKEN_DAYS * 24 * 60 * 60
-  const expiresAt = new Date(Date.now() + seconds * 1000)
-
-  const me = await readJson<{ name?: string }>(
-    await fetch(`${META}/me?fields=name`, { headers: { Authorization: `Bearer ${token}` } }),
-  )
-  return { token, expiresAt, label: me.name ?? 'Facebook' }
 }
 
 export async function exchangeGoogleCode(

@@ -67,6 +67,16 @@ beforeEach(async () => {
     create: { provider: 'meta', clientId: 'oauth-test-app', clientSecret: 'shh' },
     update: { clientId: 'oauth-test-app', clientSecret: 'shh' },
   })
+  await db.adPlatformApp.upsert({
+    where: { provider: 'google' },
+    create: {
+      provider: 'google',
+      clientId: 'oauth-test-google',
+      clientSecret: 'shh',
+      developerToken: 'dev',
+    },
+    update: { clientId: 'oauth-test-google', clientSecret: 'shh', developerToken: 'dev' },
+  })
 })
 
 afterEach(async () => {
@@ -85,61 +95,13 @@ const callback = (provider: string, qs: string) =>
     params: Promise.resolve({ provider }),
   })
 
-/** Meta saves and starts prove themselves against the platform first. */
-function stubMetaAppOk() {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes('grant_type=client_credentials')) return json({ access_token: 'app|token' })
-      return json({ app_domains: ['localhost'] })
-    }),
-  )
-}
+// Two save-time tests lived here, both driving ensureMetaApp: a wrong App
+// ID refused with Facebook's words, and the App Domains warning. Saving no
+// longer calls Meta at all — the token proves itself instead, in
+// src/lib/ads/token.test.ts — so they went with it.
 
 describe('platform setup', () => {
-  it('refuses a wrong App ID or secret with Facebook words and stores nothing', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(json({ error: { message: 'Error validating client secret.' } }, 400)),
-    )
-    const res = await appsPut(
-      new Request('http://localhost/api/ad-platform-apps', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: 'meta', clientId: 'oauth-test-bad', clientSecret: 'typo' }),
-      }),
-    )
-    expect(res.status).toBe(400)
-    expect((await res.json()).error).toBe('Error validating client secret.')
-    const row = await db.adPlatformApp.findUniqueOrThrow({ where: { provider: 'meta' } })
-    expect(row.clientId).not.toBe('oauth-test-bad')
-  })
-
-  it('passes the warning through when the missing domain cannot be written either', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input)
-        if (url.includes('grant_type=client_credentials'))
-          return json({ access_token: 'app|token' })
-        if (init?.method === 'POST') return json({ error: { message: 'no' } }, 400)
-        return json({ app_domains: ['some-other-site.com'] })
-      }),
-    )
-    const res = await appsPut(
-      new Request('http://localhost/api/ad-platform-apps', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: 'meta', clientId: 'oauth-test-9002', clientSecret: 's' }),
-      }),
-    )
-    expect(res.status).toBe(200)
-    expect((await res.json()).warning).toContain('App Domains')
-  })
-
   it('stores secrets encrypted and answers with booleans only', async () => {
-    stubMetaAppOk()
     const res = await appsPut(
       new Request('http://localhost/api/ad-platform-apps', {
         method: 'PUT',
@@ -177,78 +139,25 @@ describe('platform setup', () => {
   })
 })
 
+// Four Meta start tests lived here: the domain write, the second click it
+// asked for, the refused write, and the unreachable-Meta fallthrough. The
+// second-click one WAS the loop — ensureMetaApp could report "healed"
+// forever. Meta no longer has a start route to test.
+
 describe('oauth start', () => {
   it('stamps a state cookie and sends the admin to the platform dialog', async () => {
-    stubMetaAppOk()
-    const res = await start('meta')
+    const res = await start('google')
     expect(res.status).toBe(307)
     const location = res.headers.get('location') ?? ''
-    expect(location).toContain('facebook.com/v25.0/dialog/oauth')
-    expect(location).toContain('client_id=oauth-test-app')
+    expect(location).toContain('accounts.google.com/o/oauth2/v2/auth')
+    expect(location).toContain('client_id=oauth-test-google')
     const cookie = res.headers.get('set-cookie') ?? ''
-    expect(cookie).toMatch(/ads_oauth_state=meta(%3A|:)/)
+    expect(cookie).toMatch(/ads_oauth_state=google(%3A|:)/)
   })
 
-  it('writes a missing domain into the Meta app, then asks for a second click', async () => {
-    // Facebook's dialog can lag seconds behind a settings write. Walking
-    // straight from the write into the dialog loses that race exactly once —
-    // the client saw the wall on the very click that fixed his app.
-    const fetchMock = vi
-      .fn()
-      .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input)
-        if (url.includes('grant_type=client_credentials'))
-          return json({ access_token: 'app|token' })
-        if (init?.method === 'POST') return json({ success: true })
-        return json({ app_domains: ['somewhere-else.example'] })
-      })
-    vi.stubGlobal('fetch', fetchMock)
-
+  it('has no door left for Meta', async () => {
     const res = await start('meta')
-    expect(res.status).toBe(307)
-    const location = decodeURIComponent(res.headers.get('location') ?? '')
-    expect(location).toContain('/settings/ad-accounts?notice=')
-    expect(location).toContain('again')
-
-    const write = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === 'POST')
-    expect(String(write?.[0])).toContain('/oauth-test-app')
-    expect(String((write?.[1] as RequestInit).body)).toContain('localhost')
-  })
-
-  it('bounces to the setup with the fix in words when the domain cannot be written', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input)
-        if (url.includes('grant_type=client_credentials'))
-          return json({ access_token: 'app|token' })
-        if (init?.method === 'POST') return json({ error: { message: 'no' } }, 400)
-        return json({ app_domains: [] })
-      }),
-    )
-
-    const res = await start('meta')
-    expect(res.status).toBe(307)
-    const location = decodeURIComponent(res.headers.get('location') ?? '')
-    expect(location).toContain('/settings/ad-accounts?error=')
-    expect(location).toContain('App Domains')
-  })
-
-  it("bounces with Facebook's words when the saved pair has gone bad", async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(json({ error: { message: 'Error validating client secret.' } }, 400)),
-    )
-    const res = await start('meta')
-    const location = decodeURIComponent(res.headers.get('location') ?? '')
-    expect(location).toContain('/settings/ad-accounts?error=')
-    expect(location).toContain('Error validating client secret.')
-  })
-
-  it('still walks to Facebook when Meta itself cannot be reached', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
-    const res = await start('meta')
-    expect(res.headers.get('location')).toContain('facebook.com/v25.0/dialog/oauth')
+    expect(res.status).toBe(404)
   })
 
   it('sends the admin back with words when the platform setup is missing', async () => {
@@ -260,59 +169,61 @@ describe('oauth start', () => {
 })
 
 describe('oauth callback', () => {
-  it('stores an encrypted connection and opens the picker', async () => {
-    cookieJar.state = 'meta:st-1'
+  /** Google hands back a refresh token, then names who logged in. */
+  const stubGoogleLogin = (refreshToken: string) =>
     vi.stubGlobal(
       'fetch',
       vi
         .fn()
-        .mockResolvedValueOnce(json({ access_token: 'short' }))
-        .mockResolvedValueOnce(json({ access_token: 'long-secret', expires_in: 5_184_000 }))
+        .mockResolvedValueOnce(json({ access_token: 'short', refresh_token: refreshToken }))
         .mockResolvedValueOnce(json({ name: `Philip ${MARK}` })),
     )
 
-    const res = await callback('meta', 'code=c1&state=st-1')
+  it('stores an encrypted connection and opens the picker', async () => {
+    cookieJar.state = 'google:st-1'
+    stubGoogleLogin('long-secret')
+
+    const res = await callback('google', 'code=c1&state=st-1')
     expect(res.status).toBe(307)
-    const location = res.headers.get('location') ?? ''
-    expect(location).toContain('picker=')
+    expect(res.headers.get('location') ?? '').toContain('picker=')
 
     const connection = await db.adConnection.findFirstOrThrow({
       where: { label: `Philip ${MARK}` },
     })
     expect(connection.secret.startsWith('enc:v1:')).toBe(true)
     expect(connection.secret).not.toContain('long-secret')
-    expect(connection.expiresAt).not.toBeNull()
+    // Google refresh tokens do not expire the way Meta's user tokens did.
+    expect(connection.expiresAt).toBeNull()
   })
 
   it('logging in again refreshes the connection instead of duplicating it', async () => {
     await db.adConnection.create({
-      data: { provider: 'meta', label: `Philip ${MARK}`, secret: 'old' },
+      data: { provider: 'google', label: `Philip ${MARK}`, secret: 'old' },
     })
-    cookieJar.state = 'meta:st-2'
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce(json({ access_token: 'short' }))
-        .mockResolvedValueOnce(json({ access_token: 'brand-new', expires_in: 100 }))
-        .mockResolvedValueOnce(json({ name: `Philip ${MARK}` })),
-    )
+    cookieJar.state = 'google:st-2'
+    stubGoogleLogin('brand-new')
 
-    await callback('meta', 'code=c2&state=st-2')
+    await callback('google', 'code=c2&state=st-2')
     const rows = await db.adConnection.findMany({ where: { label: `Philip ${MARK}` } })
     expect(rows).toHaveLength(1)
     expect(rows[0].secret).not.toBe('old')
   })
 
   it('a wrong state stores nothing', async () => {
-    cookieJar.state = 'meta:right'
+    cookieJar.state = 'google:right'
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    const res = await callback('meta', 'code=c&state=wrong')
+    const res = await callback('google', 'code=c&state=wrong')
     expect(res.headers.get('location')).toContain('error=')
     expect(fetchMock).not.toHaveBeenCalled()
     expect(await db.adConnection.count({ where: { label: { contains: MARK } } })).toBe(0)
+  })
+
+  it('has no door left for Meta', async () => {
+    cookieJar.state = 'meta:st-3'
+    const res = await callback('meta', 'code=c&state=st-3')
+    expect(res.status).toBe(404)
   })
 })
 

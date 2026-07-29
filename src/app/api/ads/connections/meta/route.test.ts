@@ -18,8 +18,20 @@ let myId = ''
 
 async function wipe() {
   await db.adConnection.deleteMany({ where: { label: LABEL } })
-  await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
   await db.user.deleteMany({ where: { email: ME } })
+}
+
+/**
+ * AdPlatformApp is a singleton per provider, shared with the seed data and
+ * with the oauth suite running alongside this one. Borrow it, always put it
+ * back — never delete it out from under a neighbour.
+ */
+async function restoreSeedApp() {
+  await db.adPlatformApp.upsert({
+    where: { provider: 'meta' },
+    create: { provider: 'meta', clientId: 'seed-app', clientSecret: 'seed' },
+    update: { clientId: 'seed-app', clientSecret: 'seed' },
+  })
 }
 
 const asAdmin = async () => {
@@ -40,6 +52,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await wipe()
+  await restoreSeedApp()
   vi.unstubAllGlobals()
 })
 
@@ -52,9 +65,13 @@ const post = (body: unknown) =>
     }),
   )
 
+// upsert, never create: the row is a singleton and a neighbouring suite
+// borrows it too, so `create` would race into a unique-constraint failure.
 const app = () =>
-  db.adPlatformApp.create({
-    data: { provider: 'meta', clientId: 'appid', clientSecret: encryptSecret('shh') },
+  db.adPlatformApp.upsert({
+    where: { provider: 'meta' },
+    create: { provider: 'meta', clientId: 'appid', clientSecret: encryptSecret('shh') },
+    update: { clientId: 'appid', clientSecret: encryptSecret('shh') },
   })
 
 /** Facebook, agreeing with everything. */
@@ -120,10 +137,12 @@ describe('POST /api/ads/connections/meta', () => {
   })
 
   it('asks for the app first when no platform setup exists', async () => {
+    await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
     stubHappyMeta()
     const res = await post({ token: 'EAABpasted' })
     expect(res.status).toBe(400)
     expect((await res.json()).error).toMatch(/app ID and secret/i)
+    // afterEach puts the shared row back.
   })
 
   it('refuses an empty token without calling Facebook', async () => {

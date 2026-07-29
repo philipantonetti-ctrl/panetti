@@ -3,8 +3,7 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
-import { decryptSecret, encryptSecret } from '@/lib/secrets'
-import { ensureMetaApp } from '@/lib/ads/oauth'
+import { encryptSecret } from '@/lib/secrets'
 import { AdApiError } from '@/lib/ads/types'
 
 /**
@@ -58,17 +57,9 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Paste the developer token' }, { status: 400 })
     }
 
-    // A Meta app proves itself before it is saved: a wrong App ID or secret
-    // dies here with Facebook's words, not later at the login dialog — and a
-    // missing domain is written into the app's own settings, so the "Can't
-    // load URL" screen has nothing left to complain about. Only a write Meta
-    // refuses becomes a warning. (Google offers no silent equivalent.)
-    let warning: string | undefined
-    if (provider === 'meta') {
-      const secret = clientSecret || (existing ? decryptSecret(existing.clientSecret) : '')
-      const domain = new URL(req.url).hostname
-      warning = (await ensureMetaApp({ clientId, clientSecret: secret }, domain)).warning
-    }
+    // Saving no longer calls Meta. Four designs tried to make the app prove
+    // itself here and heal its own domains; the wall was never the domains.
+    // The token proves itself instead, at the moment it is pasted.
 
     // Blank secret fields mean "keep what is saved", like every other modal.
     await db.adPlatformApp.upsert({
@@ -85,7 +76,7 @@ export async function PUT(req: Request) {
         ...(developerToken ? { developerToken: encryptSecret(developerToken) } : {}),
       },
     })
-    return NextResponse.json({ ok: true, ...(warning ? { warning } : {}) })
+    return NextResponse.json({ ok: true })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: 403 })
     if (e instanceof AdApiError) return NextResponse.json({ error: e.message }, { status: 400 })
