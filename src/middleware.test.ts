@@ -13,6 +13,9 @@ const production = () => {
 const asAmbassador = async () =>
   signSession({ userId: 'u1', email: 'amb@test.local', role: 'AMBASSADOR', ambassadorId: 'a1' })
 
+const asMarketing = async () =>
+  signSession({ userId: 'u5', email: 'mkt@test.local', role: 'MARKETING', ambassadorId: null })
+
 describe('one live host', () => {
   it('walks a stray production host to the canonical domain, path and query intact', async () => {
     production()
@@ -69,5 +72,37 @@ describe('the session gate, unchanged behind the host check', () => {
       }),
     )
     expect(res.headers.get('location')).toBeNull()
+  })
+
+  it('fences marketing onto the ambassadors page', async () => {
+    production()
+    const res = await middleware(
+      new NextRequest('https://panetti.vercel.app/dashboard', {
+        headers: { cookie: `${SESSION_COOKIE}=${await asMarketing()}` },
+      }),
+    )
+    expect(res.headers.get('location')).toBe('https://panetti.vercel.app/ambassadors')
+  })
+
+  it('lets marketing through to the ambassadors page and their own account', async () => {
+    production()
+    const amb = await middleware(
+      new NextRequest('https://panetti.vercel.app/ambassadors', {
+        headers: { cookie: `${SESSION_COOKIE}=${await asMarketing()}` },
+      }),
+    )
+    expect(amb.headers.get('location')).toBeNull()
+    const acc = await middleware(
+      new NextRequest('https://panetti.vercel.app/account', {
+        headers: { cookie: `${SESSION_COOKIE}=${await asMarketing()}` },
+      }),
+    )
+    expect(acc.headers.get('location')).toBeNull()
+  })
+
+  it('a guest on the ambassadors page goes to /login like any protected page', async () => {
+    production()
+    const res = await middleware(new NextRequest('https://panetti.vercel.app/ambassadors'))
+    expect(res.headers.get('location')).toBe('https://panetti.vercel.app/login')
   })
 })

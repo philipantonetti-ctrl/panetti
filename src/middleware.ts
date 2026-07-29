@@ -2,10 +2,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/auth/session'
 
 /** Pages that need a session at all. Everything else passes straight through. */
-const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account']
+const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors']
 
 /** Pages an ambassador is allowed to open. Everything else is the company's. */
 const AMBASSADOR_PAGES = ['/portal', '/account']
+
+/** Pages marketing is allowed to open: the ambassador program and themselves. */
+const MARKETING_PAGES = ['/ambassadors', '/account']
 
 /**
  * Two duties, in order.
@@ -46,6 +49,13 @@ export async function middleware(req: NextRequest) {
   if (user.role === 'AMBASSADOR' && !allowed) {
     const url = req.nextUrl.clone()
     url.pathname = '/portal'
+    return NextResponse.redirect(url)
+  }
+
+  // Marketing runs the ambassador program and nothing else.
+  if (user.role === 'MARKETING' && !MARKETING_PAGES.some((p) => req.nextUrl.pathname.startsWith(p))) {
+    const url = req.nextUrl.clone()
+    url.pathname = '/ambassadors'
     return NextResponse.redirect(url)
   }
 
