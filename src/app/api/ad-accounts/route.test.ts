@@ -98,8 +98,8 @@ describe('POST /api/ad-accounts', () => {
     const stored = await db.adAccount.findUniqueOrThrow({
       where: { provider_externalId: { provider: 'meta', externalId: '777000111' } },
     })
-    expect(stored.credentials.startsWith('enc:v1:')).toBe(true)
-    expect(stored.credentials).not.toContain('EAAB-secret-token')
+    expect(stored.credentials?.startsWith('enc:v1:')).toBe(true)
+    expect(stored.credentials ?? '').not.toContain('EAAB-secret-token')
 
     const spend = await db.adSpend.findMany({ where: { accountId: stored.id } })
     expect(spend).toHaveLength(1)

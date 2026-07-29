@@ -489,8 +489,11 @@ function PlatformCard({
   const [busy, setBusy] = useState(false)
   const toast = useToast()
 
+  // The origin only exists in the browser; setting it after mount avoids a
+  // hydration mismatch between the server's empty string and the real URL.
   const [redirectUri, setRedirectUri] = useState('')
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRedirectUri(`${window.location.origin}/api/ads/oauth/${provider}/callback`)
   }, [provider])
 

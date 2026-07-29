@@ -39,8 +39,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     // A blank field means "leave what is saved" — the edit form posts blanks
-    // for anything untouched, exactly like the shop connection modal.
-    const stored = readCredentials(existing.credentials) as Record<string, string>
+    // for anything untouched, exactly like the shop connection modal. An
+    // account connected by login starts from nothing here.
+    const stored = existing.credentials
+      ? (readCredentials(existing.credentials) as Record<string, string>)
+      : {}
     const patch: Record<string, string> = {}
     for (const field of [
       'accessToken',
