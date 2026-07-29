@@ -164,7 +164,7 @@ describe('connection-backed accounts', () => {
     expect(headers.Authorization).toBe('Bearer conn-token')
   })
 
-  it('an expired Facebook login becomes a readable error, not a crash', async () => {
+  it('an expired Facebook token becomes a readable error, not a crash', async () => {
     const shop = await db.shop.create({ data: { name: `${MARKER} exp shop`, currency: 'NOK' } })
     const connection = await db.adConnection.create({
       data: {

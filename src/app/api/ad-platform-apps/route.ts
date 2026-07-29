@@ -7,8 +7,11 @@ import { encryptSecret } from '@/lib/secrets'
 import { AdApiError } from '@/lib/ads/types'
 
 /**
- * The client's own Meta app / Google OAuth client — the one-time setup that
- * makes "Connect with Facebook/Google" possible. Secrets go in, never out.
+ * The client's own Google OAuth client — the one-time setup that makes
+ * "Connect with Google" possible. Secrets go in, never out.
+ *
+ * Meta keys may still be stored here, but nothing requires them: they only
+ * sharpen the check on a pasted system user token, never gate it.
  */
 
 export async function GET() {
