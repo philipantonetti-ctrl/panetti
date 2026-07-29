@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { CodeCombobox } from '@/components/CodeCombobox'
+import { Leaderboard } from '@/components/dashboard/Leaderboard'
 import { useToast } from '@/components/toast/useToast'
+import { PRESET_LABELS, type Preset } from '@/lib/dates'
+import type { LeaderboardRow } from '@/lib/metrics/ambassadors'
 
 type Code = { id: string; code: string; shopId: string; shopName: string }
 type Shop = { id: string; name: string }
@@ -145,7 +148,22 @@ function StatusPill({ row }: { row: Row }) {
   )
 }
 
-export function AmbassadorsClient({ email }: { email: string }) {
+/** The period choices for the statistics — the everyday ones, nothing exotic. */
+const STAT_PRESETS: Preset[] = ['this_month', 'last_month', 'last_30_days', 'last_90_days', 'this_year']
+
+type Stats = {
+  leaderboard: LeaderboardRow[]
+  shopOptions: { id: string; name: string }[]
+  displayCurrency: string
+}
+
+export function AmbassadorsClient({
+  email,
+  role = 'ADMIN',
+}: {
+  email: string
+  role?: 'ADMIN' | 'MARKETING'
+}) {
   const toast = useToast()
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -160,6 +178,25 @@ export function AmbassadorsClient({ email }: { email: string }) {
   const [newShopId, setNewShopId] = useState('')
   const [newCode, setNewCode] = useState('')
   const { codes: newCodes, loading: newCodesLoading } = useShopCoupons(newShopId)
+
+  // The statistics above the roster: who sold, filtered by shop and period.
+  const [stats, setStats] = useState<Stats | null>(null)
+  const [statShop, setStatShop] = useState('') // '' = all shops
+  const [statPreset, setStatPreset] = useState<Preset>('this_month')
+  useEffect(() => {
+    let live = true
+    const params = new URLSearchParams({ preset: statPreset })
+    if (statShop) params.set('shops', statShop)
+    fetch(`/api/ambassadors/stats?${params}`)
+      .then(async (r) => (r.ok ? ((await r.json()) as Stats) : null))
+      .then((data) => {
+        if (live && data) setStats(data)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [statShop, statPreset])
 
   const busy = pending !== null
 
@@ -296,13 +333,44 @@ export function AmbassadorsClient({ email }: { email: string }) {
   const editing = rows.find((r) => r.id === editingId) ?? null
 
   return (
-    <AppShell email={email}>
+    <AppShell email={email} role={role}>
       <PageHeader
         title="Ambassadors"
-        subtitle="Add an ambassador, send them their invite link, and set what they earn."
-      />
+        subtitle="Who sold what, and the roster: add an ambassador, send their invite link, set what they earn."
+      >
+        <select
+          aria-label="Shops"
+          value={statShop}
+          onChange={(e) => setStatShop(e.target.value)}
+          className={INPUT}
+        >
+          <option value="">All shops</option>
+          {(stats?.shopOptions ?? []).map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Period"
+          value={statPreset}
+          onChange={(e) => setStatPreset(e.target.value as Preset)}
+          className={INPUT}
+        >
+          {STAT_PRESETS.map((p) => (
+            <option key={p} value={p}>
+              {PRESET_LABELS[p]}
+            </option>
+          ))}
+        </select>
+      </PageHeader>
 
       <PageBody>
+        {stats && (
+          <div className="mb-4">
+            <Leaderboard rows={stats.leaderboard} currency={stats.displayCurrency} />
+          </div>
+        )}
         <form
           data-testid="add-ambassador"
           onSubmit={add}

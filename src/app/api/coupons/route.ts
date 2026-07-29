@@ -1,18 +1,18 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertStaff, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { decryptSecret } from '@/lib/secrets'
 import { fetchCoupons } from '@/lib/woo/client'
 
 /**
- * The discount codes defined in one store, for the code picker. Admin only,
+ * The discount codes defined in one store, for the code picker. Staff only,
  * read only. A store that is unconnected or unreachable answers with a clear
  * message rather than a crash, so the picker can fall back to typing.
  */
 export async function GET(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertStaff(await currentUser())
 
     const shopId = new URL(req.url).searchParams.get('shopId')
     if (!shopId) return NextResponse.json({ error: 'Pick a store first' }, { status: 400 })

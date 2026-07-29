@@ -32,6 +32,19 @@ const icon = (path: React.ReactNode) => (
   </svg>
 )
 
+const AMBASSADORS_ITEM: NavItem = {
+  href: '/ambassadors',
+  label: 'Ambassadors',
+  icon: icon(
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>,
+  ),
+}
+
 const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: 'Analytics',
@@ -67,6 +80,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
           </>,
         ),
       },
+      AMBASSADORS_ITEM,
     ],
   },
   {
@@ -151,9 +165,14 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   )
 }
 
-function Wordmark() {
+/** Marketing runs the ambassador program; their nav says exactly that. */
+const MARKETING_NAV: { section: string; items: NavItem[] }[] = [
+  { section: 'People', items: [AMBASSADORS_ITEM] },
+]
+
+function Wordmark({ home }: { home: string }) {
   return (
-    <Link href="/dashboard" className="flex items-center gap-2 px-2.5 py-1">
+    <Link href={home} className="flex items-center gap-2 px-2.5 py-1">
       <span className="flex h-6 w-6 items-center justify-center rounded-md bg-ink text-[11px] font-bold text-white">
         p
       </span>
@@ -166,10 +185,12 @@ export function AppShell({
   email,
   children,
   nav = true,
+  role = 'ADMIN',
 }: {
   email: string
   children: React.ReactNode
   nav?: boolean // the ambassador portal has no admin nav
+  role?: 'ADMIN' | 'MARKETING' // marketing sees only the ambassador program
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -199,6 +220,9 @@ export function AppShell({
   const isActive = (href: string) =>
     href === '/settings' ? pathname === '/settings' : pathname.startsWith(href)
 
+  const groups = role === 'MARKETING' ? MARKETING_NAV : NAV
+  const home = role === 'MARKETING' ? '/ambassadors' : '/dashboard'
+
   return (
     <div className="min-h-screen bg-canvas lg:grid lg:grid-cols-[232px_1fr]">
       {/* Every page heals itself when a newer deployment appears. */}
@@ -207,12 +231,12 @@ export function AppShell({
       {/* Sidebar — a column on desktop, a strip on smaller screens. */}
       <aside className="border-line bg-panel lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r">
         <div className="flex items-center justify-between border-b border-line px-3 py-3 lg:block lg:border-b-0 lg:py-4">
-          <Wordmark />
+          <Wordmark home={home} />
         </div>
 
         {nav && (
           <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-visible lg:pb-0">
-            {NAV.map((group) => (
+            {groups.map((group) => (
               <div key={group.section} className="lg:mb-5">
                 <p className="hidden px-2.5 pb-1.5 text-[11px] font-semibold tracking-wide text-faint lg:block">
                   {group.section}

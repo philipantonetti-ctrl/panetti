@@ -6,5 +6,11 @@ export default async function AccountPage() {
   const user = await currentUser()
   if (!user) redirect('/login')
 
-  return <AccountClient email={user.email} isAmbassador={user.role === 'AMBASSADOR'} />
+  return (
+    <AccountClient
+      email={user.email}
+      isAmbassador={user.role === 'AMBASSADOR'}
+      role={user.role === 'MARKETING' ? 'MARKETING' : 'ADMIN'}
+    />
+  )
 }

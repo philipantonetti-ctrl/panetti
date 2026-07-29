@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { AmbassadorsClient } from './AmbassadorsClient'
 import { ToastProvider } from '@/components/toast/ToastProvider'
 
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/settings/ambassadors',
+  usePathname: () => '/ambassadors',
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }))
 vi.mock('next/link', () => ({
@@ -17,28 +17,63 @@ afterEach(() => vi.unstubAllGlobals())
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
 
-function renderPage(ambassadors: unknown[] = []) {
+function renderPage(ambassadors: unknown[] = [], role: 'ADMIN' | 'MARKETING' = 'ADMIN') {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown, init?: RequestInit) => {
     const u = String(url)
     if (init?.method === 'POST') return json({ ok: true, id: 'new' })
     if (u.includes('/api/shops')) return json({ shops: [{ id: 's1', name: 'Norway' }, { id: 's2', name: 'Sweden' }] })
     if (u.includes('/api/coupons')) return json({ codes: ['JOHN10', 'SUMMER'] })
+    if (u.includes('/api/ambassadors/stats'))
+      return json({
+        leaderboard: [
+          { rank: 1, ambassadorId: 'a9', name: 'Salla Klemetti', shops: ['Norway'], orders: 3, sales: 90000, commission: 9000 },
+        ],
+        shopOptions: [{ id: 's1', name: 'Norway' }, { id: 's2', name: 'Sweden' }],
+        displayCurrency: 'USD',
+        range: { from: '2026-07-01T00:00:00.000Z', to: '2026-07-31T00:00:00.000Z' },
+      })
     if (u.includes('/api/ambassadors')) return json({ ambassadors })
     return json({})
   }))
   render(
     <ToastProvider>
-      <AmbassadorsClient email="admin@test.local" />
+      <AmbassadorsClient email="admin@test.local" role={role} />
     </ToastProvider>,
   )
 }
 
+describe('the statistics on top', () => {
+  it('shows the Top ambassadors table with its shop and period filters', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Top ambassadors')).toBeTruthy()
+      expect(screen.getByText('Salla Klemetti')).toBeTruthy()
+    })
+    expect(screen.getByLabelText('Shops')).toBeTruthy()
+    expect(screen.getByLabelText('Period')).toBeTruthy()
+  })
+
+  it('marketing gets a nav without the dashboard; the roster is still theirs', async () => {
+    renderPage([], 'MARKETING')
+    await waitFor(() => expect(screen.getByText('Top ambassadors')).toBeTruthy())
+    expect(screen.queryByText('Dashboard')).toBeNull()
+    expect(screen.getByText('Add an ambassador')).toBeTruthy()
+  })
+
+  it('an admin keeps the dashboard in the nav next to the ambassadors', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Dashboard')).toBeTruthy())
+  })
+})
+
 describe('AmbassadorsClient store-scoped codes', () => {
   it('lists the connected stores in the Store select', async () => {
     renderPage()
+    // Scoped: the statistics' own Shops filter lists the same store names.
     await waitFor(() => {
-      expect(screen.getByRole('option', { name: 'Norway' })).toBeTruthy()
-      expect(screen.getByRole('option', { name: 'Sweden' })).toBeTruthy()
+      const store = within(screen.getByLabelText('Store'))
+      expect(store.getByRole('option', { name: 'Norway' })).toBeTruthy()
+      expect(store.getByRole('option', { name: 'Sweden' })).toBeTruthy()
     })
   })
 
@@ -47,7 +82,9 @@ describe('AmbassadorsClient store-scoped codes', () => {
     const codeInput = screen.getByLabelText('Discount code') as HTMLInputElement
     expect(codeInput.disabled).toBe(true)
 
-    await waitFor(() => expect(screen.getByRole('option', { name: 'Norway' })).toBeTruthy())
+    await waitFor(() =>
+      expect(within(screen.getByLabelText('Store')).getByRole('option', { name: 'Norway' })).toBeTruthy(),
+    )
     fireEvent.change(screen.getByLabelText('Store'), { target: { value: 's1' } })
 
     await waitFor(() => {

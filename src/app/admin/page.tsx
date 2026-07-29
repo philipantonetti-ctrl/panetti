@@ -5,7 +5,7 @@ import { SignInForm } from '@/components/SignInForm'
 /** The staff door. Same credentials, different framing. */
 export default async function AdminLoginPage() {
   const user = await currentUser()
-  if (user) redirect(user.role === 'ADMIN' ? '/dashboard' : '/portal')
+  if (user) redirect(user.role === 'ADMIN' ? '/dashboard' : user.role === 'MARKETING' ? '/ambassadors' : '/portal')
 
   return <SignInForm mode="admin" />
 }

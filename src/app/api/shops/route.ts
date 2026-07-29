@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertAdmin, assertStaff, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 
 export async function GET() {
   try {
-    assertAdmin(await currentUser())
+    // Names and currencies only — the directory marketing needs for codes.
+    assertStaff(await currentUser())
     const shops = await db.shop.findMany({
       where: { active: true },
       select: { id: true, name: true, currency: true },

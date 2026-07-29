@@ -53,7 +53,15 @@ function Field({
   )
 }
 
-export function AccountClient({ email, isAmbassador }: { email: string; isAmbassador: boolean }) {
+export function AccountClient({
+  email,
+  isAmbassador,
+  role = 'ADMIN',
+}: {
+  email: string
+  isAmbassador: boolean
+  role?: 'ADMIN' | 'MARKETING'
+}) {
   const toast = useToast()
   const [account, setAccount] = useState<Account | null>(null)
 
@@ -134,7 +142,7 @@ export function AccountClient({ email, isAmbassador }: { email: string; isAmbass
   }
 
   return (
-    <AppShell email={email} nav={!isAmbassador}>
+    <AppShell email={email} nav={!isAmbassador} role={role}>
       <PageHeader title="Your account" subtitle="Your details and your password." />
 
       <PageBody>
