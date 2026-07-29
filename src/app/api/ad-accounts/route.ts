@@ -17,7 +17,7 @@ export async function GET() {
   try {
     assertAdmin(await currentUser())
     const accounts = await db.adAccount.findMany({
-      include: { shop: { select: { name: true } } },
+      include: { shop: { select: { name: true } }, connection: { select: { label: true } } },
       orderBy: { createdAt: 'asc' },
     })
     return NextResponse.json({ accounts: accounts.map(toPublic) })

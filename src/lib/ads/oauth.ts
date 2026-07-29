@@ -10,6 +10,9 @@ import { AdApiError } from './types'
 
 export type PlatformApp = { clientId: string; clientSecret: string; developerToken?: string }
 
+/** The stamp that ties an OAuth callback to the login this app started. */
+export const STATE_COOKIE = 'ads_oauth_state'
+
 const META = 'https://graph.facebook.com/v25.0'
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token'
 

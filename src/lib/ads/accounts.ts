@@ -13,6 +13,7 @@ export type PublicAdAccount = {
   currency: string
   shopId: string
   shopName: string
+  connectionLabel: string | null
   active: boolean
   lastSyncAt: Date | null
   lastError: string | null
@@ -32,6 +33,7 @@ export function toPublic(account: {
   lastError: string | null
   createdAt: Date
   shop?: { name: string }
+  connection?: { label: string } | null
 }): PublicAdAccount {
   return {
     id: account.id,
@@ -41,6 +43,7 @@ export function toPublic(account: {
     currency: account.currency,
     shopId: account.shopId,
     shopName: account.shop?.name ?? '',
+    connectionLabel: account.connection?.label ?? null,
     active: account.active,
     lastSyncAt: account.lastSyncAt,
     lastError: account.lastError,
