@@ -13,7 +13,10 @@ vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
 }))
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  localStorage.clear()
+})
 
 const row = (over: Partial<MarketingShopRow>): MarketingShopRow => ({
   shopId: 'a',
@@ -23,25 +26,60 @@ const row = (over: Partial<MarketingShopRow>): MarketingShopRow => ({
   googleSpend: 0,
   impressions: 0,
   clicks: 0,
+  linkClicks: 0,
+  conversions: 0,
+  conversionValue: 0,
+  videoViews3s: 0,
+  thruplays: 0,
   orders: 0,
   grossRevenue: 0,
   roas: null,
+  platformRoas: null,
   cpa: null,
+  costPerPurchase: null,
+  avgPurchaseValue: null,
+  cpm: null,
   cpc: null,
+  costPerLinkClick: null,
   ctr: null,
+  linkCtr: null,
+  holdRate: null,
   ...over,
 })
 
 const payload = {
   displayCurrency: 'USD',
-  byShop: [row({ spend: 120000, orders: 8, grossRevenue: 900000, roas: 7.5, cpa: 15000, cpc: 500, ctr: 0.02 })],
-  total: row({ shopId: '', shopName: 'Total', spend: 120000, orders: 8, grossRevenue: 900000, roas: 7.5, cpa: 15000, cpc: 500 }),
+  byShop: [
+    row({
+      spend: 120000,
+      orders: 8,
+      grossRevenue: 900000,
+      roas: 7.5,
+      platformRoas: 6.28,
+      conversions: 12,
+      conversionValue: 753600,
+      costPerPurchase: 10000,
+      cpa: 15000,
+    }),
+  ],
+  total: row({
+    shopId: '',
+    shopName: 'Total',
+    spend: 120000,
+    orders: 8,
+    grossRevenue: 900000,
+    roas: 7.5,
+    platformRoas: 6.28,
+    conversions: 12,
+    conversionValue: 753600,
+    costPerPurchase: 10000,
+  }),
   series: [],
   connected: true,
 }
 
 describe('MarketingClient', () => {
-  it('fetches marketing metrics and shows spend, ROAS and the shop table', async () => {
+  it('fetches marketing metrics and shows the Ads Manager numbers', async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
     )
@@ -60,8 +98,10 @@ describe('MarketingClient', () => {
     expect(calls.some((u) => u.includes('/api/marketing?'))).toBe(true)
 
     expect(screen.getByText('AD SPEND')).toBeTruthy()
+    expect(screen.getByText('PURCHASE ROAS')).toBeTruthy()
+    expect(screen.getByText('COST PER PURCHASE')).toBeTruthy()
     expect(screen.getAllByText('$1,200.00').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('7.50×').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('6.28×').length).toBeGreaterThan(0)
     expect(screen.getByText('Panetti Norway')).toBeTruthy()
     expect(screen.getByText('No ad spend in this period.')).toBeTruthy()
   })

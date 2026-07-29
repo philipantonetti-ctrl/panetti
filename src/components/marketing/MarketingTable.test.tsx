@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MarketingTable } from './MarketingTable'
 import type { MarketingShopRow } from '@/lib/ads/marketing'
+
+afterEach(() => localStorage.clear())
 
 const row = (over: Partial<MarketingShopRow>): MarketingShopRow => ({
   shopId: 'a',
@@ -12,58 +14,80 @@ const row = (over: Partial<MarketingShopRow>): MarketingShopRow => ({
   googleSpend: 0,
   impressions: 0,
   clicks: 0,
+  linkClicks: 0,
+  conversions: 0,
+  conversionValue: 0,
+  videoViews3s: 0,
+  thruplays: 0,
   orders: 0,
   grossRevenue: 0,
   roas: null,
+  platformRoas: null,
   cpa: null,
+  costPerPurchase: null,
+  avgPurchaseValue: null,
+  cpm: null,
   cpc: null,
+  costPerLinkClick: null,
   ctr: null,
+  linkCtr: null,
+  holdRate: null,
   ...over,
 })
 
+const FILLED = row({
+  shopId: 'a',
+  shopName: 'Panetti Norway',
+  spend: 35500,
+  conversions: 3.5,
+  conversionValue: 71000,
+  platformRoas: 2.0,
+  costPerPurchase: 10143,
+  roas: 14.0845,
+  grossRevenue: 500000,
+  orders: 10,
+  cpa: 3550,
+})
+
 describe('MarketingTable', () => {
-  it('shows money, ratios and honest dashes', () => {
+  it('shows the everyday columns with money, ratios and honest dashes', () => {
     render(
       <MarketingTable
-        rows={[
-          row({
-            shopId: 'a',
-            shopName: 'Panetti Norway',
-            spend: 35500,
-            metaSpend: 30000,
-            googleSpend: 5500,
-            orders: 10,
-            grossRevenue: 500000,
-            roas: 14.0845,
-            cpa: 3550,
-            cpc: 284,
-            ctr: 0.0277,
-            clicks: 125,
-            impressions: 4500,
-          }),
-          row({ shopId: 'b', shopName: 'Panetti Sweden', orders: 4, grossRevenue: 20000 }),
-        ]}
-        total={row({ shopId: '', shopName: 'Total', spend: 35500, orders: 14, grossRevenue: 520000, roas: 14.6479 })}
+        rows={[FILLED, row({ shopId: 'b', shopName: 'Panetti Sweden', orders: 4, grossRevenue: 20000 })]}
+        total={row({ shopId: '', shopName: 'Total', spend: 35500, conversionValue: 71000, platformRoas: 2.0, orders: 14 })}
         currency="USD"
       />,
     )
 
-    // Headers present.
-    for (const label of ['Shop', 'Ad spend', 'Meta', 'Google', 'ROAS', 'CPA', 'CPC', 'CTR']) {
-      expect(screen.getByRole('button', { name: new RegExp(`^${label}`) })).toBeTruthy()
+    // Default-visible headers, including both clearly named ROAS columns.
+    for (const label of ['Ad spend', 'Purchases', 'Conv. value', 'P. ROAS', 'Cost/purchase', 'Store ROAS', 'CPA']) {
+      expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
     }
+    // Detail columns wait behind Select metrics.
+    expect(screen.queryByRole('button', { name: 'Sort by Meta' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Sort by CPM' })).toBeNull()
 
-    expect(screen.getByText('Panetti Norway')).toBeTruthy()
     expect(screen.getAllByText('$355.00').length).toBeGreaterThan(0)
+    expect(screen.getByText('3.5')).toBeTruthy() // fractional purchases stay honest
+    expect(screen.getAllByText('2.00×').length).toBeGreaterThan(0)
     expect(screen.getByText('14.08×')).toBeTruthy()
-    expect(screen.getByText('2.8%')).toBeTruthy()
 
     // The shop without spend wears dashes, not zero-ratios.
-    const swedenCells = screen.getByText('Panetti Sweden').closest('tr')!
-    expect(swedenCells.textContent).toContain('—')
+    const sweden = screen.getByText('Panetti Sweden').closest('tr')!
+    expect(sweden.textContent).toContain('—')
 
-    // Total row.
     expect(screen.getByText('Total')).toBeTruthy()
-    expect(screen.getByText('14.65×')).toBeTruthy()
+  })
+
+  it('brings a hidden metric out through Select metrics and remembers it', () => {
+    render(<MarketingTable rows={[FILLED]} total={FILLED} currency="USD" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select metrics' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Meta' }))
+
+    expect(screen.getByRole('button', { name: 'Sort by Meta' })).toBeTruthy()
+    const saved = JSON.parse(localStorage.getItem('marketing-columns') ?? '[]') as string[]
+    expect(saved).not.toContain('metaSpend')
+    expect(saved).toContain('cpm') // the others stay hidden
   })
 })
