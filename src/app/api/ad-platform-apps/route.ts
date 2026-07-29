@@ -4,7 +4,7 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { decryptSecret, encryptSecret } from '@/lib/secrets'
-import { validateMetaApp } from '@/lib/ads/oauth'
+import { ensureMetaApp } from '@/lib/ads/oauth'
 import { AdApiError } from '@/lib/ads/types'
 
 /**
@@ -59,14 +59,15 @@ export async function PUT(req: Request) {
     }
 
     // A Meta app proves itself before it is saved: a wrong App ID or secret
-    // dies here with Facebook's words, not later at the login dialog. The
-    // domain check is the same courtesy for the "Can't load URL" screen.
-    // (Google offers no silent way to prove a client id + secret.)
+    // dies here with Facebook's words, not later at the login dialog — and a
+    // missing domain is written into the app's own settings, so the "Can't
+    // load URL" screen has nothing left to complain about. Only a write Meta
+    // refuses becomes a warning. (Google offers no silent equivalent.)
     let warning: string | undefined
     if (provider === 'meta') {
       const secret = clientSecret || (existing ? decryptSecret(existing.clientSecret) : '')
       const domain = new URL(req.url).hostname
-      warning = (await validateMetaApp({ clientId, clientSecret: secret }, domain)).warning
+      warning = (await ensureMetaApp({ clientId, clientSecret: secret }, domain)).warning
     }
 
     // Blank secret fields mean "keep what is saved", like every other modal.

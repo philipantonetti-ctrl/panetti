@@ -47,13 +47,23 @@ async function readJson<T>(res: Response): Promise<T & { error?: { message?: str
   return (await res.json().catch(() => ({}))) as T & { error?: { message?: string } }
 }
 
+/** Facebook counts subdomains of every listed domain as covered. So do we. */
+const covered = (domains: string[] | undefined, domain: string): boolean =>
+  (domains ?? []).some((d) => {
+    const entry = d.toLowerCase()
+    return entry === domain || domain.endsWith(`.${entry}`)
+  })
+
 /**
- * Prove an App ID + secret against Meta at save time, and — best-effort —
- * read the app's own settings to catch the classic "Can't load URL" before
- * Facebook gets to deliver it. A wrong pair throws with Facebook's words; a
- * missing domain comes back as a warning naming exactly what to paste where.
+ * Prove an App ID + secret against Meta, then make sure the app lists our
+ * domain — by writing it into the app's own settings when it is missing (the
+ * Application node is updatable with the app access token). The classic
+ * "Can't load URL" screen dies here instead of in front of the admin. A
+ * wrong pair throws with Facebook's words; a write Facebook refuses comes
+ * back as a warning naming exactly what to paste where; an unreadable or
+ * unreachable Meta stays quiet — the check is a courtesy, never a blocker.
  */
-export async function validateMetaApp(
+export async function ensureMetaApp(
   app: PlatformApp,
   domain: string,
 ): Promise<{ warning?: string }> {
@@ -76,21 +86,34 @@ export async function validateMetaApp(
         access_token: token.access_token,
       })}`,
     )
-    if (res.ok) {
-      const settings = (await res.json()) as { app_domains?: string[] }
-      // Meta omits app_domains entirely when none were ever set — that is the
-      // SAME failure as a wrong list, and it must warn, not slip through.
-      if (!settings.app_domains?.includes(domain)) {
-        return {
-          warning:
-            `Saved, but the Facebook app does not list this site yet, so the login will fail with "Can't load URL". ` +
-            `Open https://developers.facebook.com/apps/${app.clientId}/settings/basic/ and add ${domain} under App Domains, ` +
-            `then open https://developers.facebook.com/apps/${app.clientId}/fb-login/settings/ and paste ` +
-            `https://${domain}/api/ads/oauth/meta/callback under Valid OAuth Redirect URIs. Press Save changes on both pages.`,
-        }
-      }
-    }
     // A refused settings read tells us nothing either way; stay quiet.
+    if (!res.ok) return {}
+    const settings = (await res.json()) as { app_domains?: string[]; website_url?: string }
+    const host = domain.toLowerCase()
+    if (covered(settings.app_domains, host)) return {}
+
+    // Meta omits app_domains entirely when none were ever set — the same
+    // unconfigured state as a wrong list. Write ours in, keeping theirs.
+    const write = await fetch(`${META}/${app.clientId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        access_token: token.access_token,
+        app_domains: JSON.stringify([...new Set([...(settings.app_domains ?? []), host])]),
+        // App Domains only count when a website platform exists to back them.
+        ...(settings.website_url ? {} : { website_url: `https://${host}/` }),
+      }),
+    })
+    if (write.ok) return {}
+
+    return {
+      warning:
+        `The Facebook app does not list this site yet and Facebook did not let us add it automatically, ` +
+        `so the login will fail with "Can't load URL". ` +
+        `Open https://developers.facebook.com/apps/${app.clientId}/settings/basic/ and add ${domain} under App Domains, ` +
+        `then open https://developers.facebook.com/apps/${app.clientId}/fb-login/settings/ and paste ` +
+        `https://${domain}/api/ads/oauth/meta/callback under Valid OAuth Redirect URIs. Press Save changes on both pages.`,
+    }
   } catch {
     // The check is a courtesy, never a blocker.
   }

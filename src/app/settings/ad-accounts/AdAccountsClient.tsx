@@ -506,7 +506,6 @@ function PlatformCard({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOrigin(window.location.origin)
   }, [])
-  const domain = origin.replace(/^https?:\/\//, '')
   const redirectUri = origin ? `${origin}/api/ads/oauth/${provider}/callback` : ''
 
   async function save() {
@@ -542,8 +541,8 @@ function PlatformCard({
         <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-[11px] text-muted">
           <li>developers.facebook.com: Create app, Business type.</li>
           <li>
-            Settings, Basic: add the domain below under App Domains, and Add platform, Website,
-            with {origin || 'this site'} as the Site URL.
+            Paste the App ID and App secret here and press Save. Saving adds this site to the
+            app&apos;s domains for you.
           </li>
           <li>
             Add the Facebook Login product, then Facebook Login, Settings: paste the callback URL
@@ -556,12 +555,6 @@ function PlatformCard({
           console.cloud.google.com, Credentials, OAuth client (Web application) with the callback
           URL below. Set the consent screen to In production. The developer token comes from
           Google Ads, manager account, API Center.
-        </p>
-      )}
-      {provider === 'meta' && (
-        <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
-          <span className="text-faint">App Domains: </span>
-          {domain || '…'}
         </p>
       )}
       <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">

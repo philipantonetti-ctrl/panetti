@@ -3,7 +3,9 @@ import { randomBytes } from 'crypto'
 import { currentUser } from '@/lib/auth/current-user'
 import { AuthError, assertAdmin } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
-import { STATE_COOKIE, buildGoogleAuthUrl, buildMetaAuthUrl } from '@/lib/ads/oauth'
+import { decryptSecret } from '@/lib/secrets'
+import { STATE_COOKIE, buildGoogleAuthUrl, buildMetaAuthUrl, ensureMetaApp } from '@/lib/ads/oauth'
+import { AdApiError } from '@/lib/ads/types'
 
 /**
  * Step one of "Connect with Facebook/Google": stamp a state cookie and send
@@ -24,6 +26,27 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
       return back(
         `/settings/ad-accounts?error=${encodeURIComponent('Fill in the platform setup below first.')}`,
       )
+    }
+
+    if (provider === 'meta') {
+      // Refuse to walk into Facebook's "Can't load URL" wall: make sure the
+      // app lists this domain, writing it into the app when it is missing.
+      // Only a firm no from Meta blocks — silence lets the login proceed.
+      try {
+        const { warning } = await ensureMetaApp(
+          { clientId: app.clientId, clientSecret: decryptSecret(app.clientSecret) },
+          new URL(req.url).hostname,
+        )
+        if (warning) return back(`/settings/ad-accounts?error=${encodeURIComponent(warning)}`)
+      } catch (e) {
+        if (e instanceof AdApiError) {
+          return back(
+            `/settings/ad-accounts?error=${encodeURIComponent(
+              `${e.message} Check the App ID and secret in the setup below.`,
+            )}`,
+          )
+        }
+      }
     }
 
     const state = randomBytes(16).toString('hex')

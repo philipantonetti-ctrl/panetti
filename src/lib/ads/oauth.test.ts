@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildGoogleAuthUrl,
   buildMetaAuthUrl,
+  ensureMetaApp,
   exchangeGoogleCode,
   exchangeMetaCode,
-  validateMetaApp,
   type PlatformApp,
 } from './oauth'
 import { AdApiError } from './types'
@@ -33,54 +33,85 @@ describe('auth URLs', () => {
   })
 })
 
-describe('validateMetaApp', () => {
+describe('ensureMetaApp', () => {
   it("throws Facebook's words for a wrong App ID or secret", async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(json({ error: { message: 'Error validating client secret.' } }, 400)),
     )
-    await expect(validateMetaApp(APP, 'panetti.vercel.app')).rejects.toThrow(
+    await expect(ensureMetaApp(APP, 'panetti.vercel.app')).rejects.toThrow(
       new AdApiError('Error validating client secret.'),
     )
   })
 
-  it('stays quiet when the app already lists the domain', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
-        .mockResolvedValueOnce(json({ app_domains: ['panetti.vercel.app'], website_url: 'https://panetti.vercel.app' })),
-    )
-    expect(await validateMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+  it('stays quiet and writes nothing when the app already lists the domain', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+      .mockResolvedValueOnce(json({ app_domains: ['panetti.vercel.app'], website_url: 'https://panetti.vercel.app' }))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('warns with the exact links and values when the domain is missing', async () => {
+  it('counts a listed parent domain as covering the subdomain, like Facebook does', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+      .mockResolvedValueOnce(json({ app_domains: ['panetti.com'], website_url: 'https://panetti.com' }))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await ensureMetaApp(APP, 'www.panetti.com')).toEqual({})
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('writes the missing domain into the app itself and stays quiet', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+      .mockResolvedValueOnce(json({ app_domains: ['other.example'], website_url: 'https://other.example/' }))
+      .mockResolvedValueOnce(json({ success: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+
+    const [url, init] = fetchMock.mock.calls[2] as [string, RequestInit]
+    expect(String(url)).toContain(`/${APP.clientId}`)
+    expect(init.method).toBe('POST')
+    const body = String(init.body)
+    expect(body).toContain('other.example') // merged with what was there, never clobbered
+    expect(body).toContain('panetti.vercel.app')
+    expect(body).not.toContain('website_url') // an existing website stays untouched
+  })
+
+  it('sets the website URL too when the app has none — App Domains need one to count', async () => {
+    // Meta omits both fields entirely on a never-configured app — the exact
+    // state the client's fresh app is in.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+      .mockResolvedValueOnce(json({}))
+      .mockResolvedValueOnce(json({ success: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+    const body = String((fetchMock.mock.calls[2][1] as RequestInit).body)
+    expect(body).toContain(encodeURIComponent('https://panetti.vercel.app/'))
+  })
+
+  it('warns with the exact links and values when Facebook refuses the write', async () => {
     vi.stubGlobal(
       'fetch',
       vi
         .fn()
         .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
-        .mockResolvedValueOnce(json({ app_domains: [] })),
+        .mockResolvedValueOnce(json({ app_domains: [] }))
+        .mockResolvedValueOnce(json({ error: { message: 'no' } }, 400)),
     )
-    const { warning } = await validateMetaApp(APP, 'panetti.vercel.app')
+    const { warning } = await ensureMetaApp(APP, 'panetti.vercel.app')
+    expect(warning).toContain("Can't load URL")
     expect(warning).toContain('add panetti.vercel.app under App Domains')
     expect(warning).toContain('https://panetti.vercel.app/api/ads/oauth/meta/callback')
     expect(warning).toContain(`https://developers.facebook.com/apps/${APP.clientId}/fb-login/settings/`)
-  })
-
-  it('treats a MISSING app_domains field as not configured, never as fine', async () => {
-    // Meta omits the field entirely when no domain was ever set — the exact
-    // false-green that let a half-finished app look ready.
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
-        .mockResolvedValueOnce(json({ website_url: 'https://x.example' })),
-    )
-    const { warning } = await validateMetaApp(APP, 'panetti.vercel.app')
-    expect(warning).toContain("Can't load URL")
   })
 
   it('treats an unreadable settings answer as no news, not bad news', async () => {
@@ -91,7 +122,18 @@ describe('validateMetaApp', () => {
         .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
         .mockResolvedValueOnce(json({ error: { message: 'no' } }, 400)),
     )
-    expect(await validateMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({})
+  })
+
+  it('a network hiccup after the pair check stays quiet, never blocks', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ access_token: 'app-1|apptoken' }))
+        .mockRejectedValueOnce(new Error('offline')),
+    )
+    expect(await ensureMetaApp(APP, 'panetti.vercel.app')).toEqual({})
   })
 })
 

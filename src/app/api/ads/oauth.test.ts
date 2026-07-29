@@ -85,20 +85,19 @@ const callback = (provider: string, qs: string) =>
     params: Promise.resolve({ provider }),
   })
 
-describe('platform setup', () => {
-  /** Meta saves prove themselves against the platform first. */
-  function stubMetaAppOk() {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-        const url = String(input)
-        if (url.includes('grant_type=client_credentials'))
-          return json({ access_token: 'app|token' })
-        return json({ app_domains: ['localhost'] })
-      }),
-    )
-  }
+/** Meta saves and starts prove themselves against the platform first. */
+function stubMetaAppOk() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('grant_type=client_credentials')) return json({ access_token: 'app|token' })
+      return json({ app_domains: ['localhost'] })
+    }),
+  )
+}
 
+describe('platform setup', () => {
   it('refuses a wrong App ID or secret with Facebook words and stores nothing', async () => {
     vi.stubGlobal(
       'fetch',
@@ -117,13 +116,14 @@ describe('platform setup', () => {
     expect(row.clientId).not.toBe('oauth-test-bad')
   })
 
-  it('passes the missing-domain warning through on a successful save', async () => {
+  it('passes the warning through when the missing domain cannot be written either', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
         if (url.includes('grant_type=client_credentials'))
           return json({ access_token: 'app|token' })
+        if (init?.method === 'POST') return json({ error: { message: 'no' } }, 400)
         return json({ app_domains: ['some-other-site.com'] })
       }),
     )
@@ -179,6 +179,7 @@ describe('platform setup', () => {
 
 describe('oauth start', () => {
   it('stamps a state cookie and sends the admin to the platform dialog', async () => {
+    stubMetaAppOk()
     const res = await start('meta')
     expect(res.status).toBe(307)
     const location = res.headers.get('location') ?? ''
@@ -186,6 +187,63 @@ describe('oauth start', () => {
     expect(location).toContain('client_id=oauth-test-app')
     const cookie = res.headers.get('set-cookie') ?? ''
     expect(cookie).toMatch(/ads_oauth_state=meta(%3A|:)/)
+  })
+
+  it('writes a missing domain into the Meta app before walking to Facebook', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.includes('grant_type=client_credentials'))
+          return json({ access_token: 'app|token' })
+        if (init?.method === 'POST') return json({ success: true })
+        return json({ app_domains: ['somewhere-else.example'] })
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await start('meta')
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location')).toContain('facebook.com/v25.0/dialog/oauth')
+
+    const write = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === 'POST')
+    expect(String(write?.[0])).toContain('/oauth-test-app')
+    expect(String((write?.[1] as RequestInit).body)).toContain('localhost')
+  })
+
+  it('bounces to the setup with the fix in words when the domain cannot be written', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.includes('grant_type=client_credentials'))
+          return json({ access_token: 'app|token' })
+        if (init?.method === 'POST') return json({ error: { message: 'no' } }, 400)
+        return json({ app_domains: [] })
+      }),
+    )
+
+    const res = await start('meta')
+    expect(res.status).toBe(307)
+    const location = decodeURIComponent(res.headers.get('location') ?? '')
+    expect(location).toContain('/settings/ad-accounts?error=')
+    expect(location).toContain('App Domains')
+  })
+
+  it("bounces with Facebook's words when the saved pair has gone bad", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(json({ error: { message: 'Error validating client secret.' } }, 400)),
+    )
+    const res = await start('meta')
+    const location = decodeURIComponent(res.headers.get('location') ?? '')
+    expect(location).toContain('/settings/ad-accounts?error=')
+    expect(location).toContain('Error validating client secret.')
+  })
+
+  it('still walks to Facebook when Meta itself cannot be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    const res = await start('meta')
+    expect(res.headers.get('location')).toContain('facebook.com/v25.0/dialog/oauth')
   })
 
   it('sends the admin back with words when the platform setup is missing', async () => {
