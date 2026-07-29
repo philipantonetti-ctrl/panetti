@@ -558,13 +558,6 @@ function MetaTokenCard({
           <li>Paste it here.</li>
         </ol>
 
-        {!saved && (
-          <p className="mt-3 text-xs text-warn">
-            Fill in the Meta app ID and secret under Platform setup below first — they are what
-            proves the token.
-          </p>
-        )}
-
         <label htmlFor="meta-token" className="mt-3 block text-xs font-medium text-ink">
           System user access token
         </label>
@@ -593,16 +586,22 @@ function MetaTokenCard({
   )
 }
 
+/**
+ * Google's one-time setup, and only Google's. Meta had a card here too, asking
+ * for an App ID and secret before a token would be accepted. They only ever
+ * powered an optional check, so requiring them was a wall in front of the one
+ * field that matters.
+ */
 function PlatformSetupSection({ platform }: { platform: PlatformSetup }) {
   return (
     <section id="platform-setup" className="mt-8">
-      <h2 className="text-[13px] font-semibold text-ink">Platform setup</h2>
+      <h2 className="text-[13px] font-semibold text-ink">Google setup</h2>
       <p className="mt-1 max-w-2xl text-xs text-muted">
-        A one-time step per platform: create your own app, paste its keys here, and the connect
-        buttons above come alive. Only you ever log in through it, so no app review is needed.
+        A one-time step: create your own Google OAuth client, paste its keys here, and “Connect
+        with Google” comes alive. Only you ever log in through it, so no app review is needed.
+        Meta needs none of this — it just needs the token above.
       </p>
-      <div className="mt-3 grid gap-4 lg:grid-cols-2">
-        <PlatformCard provider="meta" saved={platform.meta} />
+      <div className="mt-3 max-w-2xl">
         <PlatformCard provider="google" saved={platform.google} />
       </div>
     </section>
@@ -613,7 +612,7 @@ function PlatformCard({
   provider,
   saved,
 }: {
-  provider: 'meta' | 'google'
+  provider: 'google'
   saved: { clientId: string; hasDeveloperToken?: boolean } | null
 }) {
   const router = useRouter()
@@ -645,7 +644,7 @@ function PlatformCard({
         toast.error(body?.error ?? 'Could not save')
         return
       }
-      toast.success(`${provider === 'meta' ? 'Meta' : 'Google'} setup saved`)
+      toast.success('Google setup saved')
       router.refresh()
     } catch {
       toast.error('Could not reach the server')
@@ -657,31 +656,19 @@ function PlatformCard({
   return (
     <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
       <h3 className="text-sm font-semibold text-ink">
-        {provider === 'meta' ? 'Meta app' : 'Google app'}
+Google app
       </h3>
-      {provider === 'meta' ? (
-        // No Facebook Login product, no redirect URI, no App Domains: none of
-        // it was ever the way in. These two values only prove the token.
-        <p className="mt-1 text-[11px] text-muted">
-          developers.facebook.com: Create app, Business type. Paste the App ID and App secret
-          here. They are used to check the token you paste above, and to name the app you pick
-          when you generate it. There is no callback URL to set up.
-        </p>
-      ) : (
-        <p className="mt-1 text-[11px] text-muted">
-          console.cloud.google.com, Credentials, OAuth client (Web application) with the callback
-          URL below. Set the consent screen to In production. The developer token comes from
-          Google Ads, manager account, API Center.
-        </p>
-      )}
-      {provider === 'google' && (
-        <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
-          <span className="text-faint">Callback URL: </span>
-          {redirectUri || '…'}
-        </p>
-      )}
+      <p className="mt-1 text-[11px] text-muted">
+        console.cloud.google.com, Credentials, OAuth client (Web application) with the callback
+        URL below. Set the consent screen to In production. The developer token comes from
+        Google Ads, manager account, API Center.
+      </p>
+      <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
+        <span className="text-faint">Callback URL: </span>
+        {redirectUri || '…'}
+      </p>
 
-      <label className={label}>{provider === 'meta' ? 'App ID' : 'Client ID'}</label>
+      <label className={label}>Client ID</label>
       <input
         value={clientId}
         onChange={(e) => setClientId(e.target.value)}
@@ -689,7 +676,7 @@ function PlatformCard({
         className={field}
       />
 
-      <label className={label}>{provider === 'meta' ? 'App secret' : 'Client secret'}</label>
+      <label className={label}>Client secret</label>
       <input
         type="password"
         value={clientSecret}

@@ -72,26 +72,35 @@ export function tokenVerdict(data: DebugTokenData | null, clientId: string): Tok
   return { ok: true, expiresAt: data.expires_at ? new Date(data.expires_at * 1000) : null }
 }
 
-/** Prove a pasted token and learn who it belongs to. Throws AdApiError. */
+/**
+ * Prove a pasted token and learn who it belongs to. Throws AdApiError.
+ *
+ * `app` is optional, and that is the point: demanding an App ID and secret
+ * before a token is accepted puts one more wall in front of someone who only
+ * wants to connect an ad account. Without them we skip `debug_token` and
+ * lose the expiry date and the scope check — never the connection itself.
+ */
 export async function inspectMetaToken(
-  app: MetaApp,
+  app: MetaApp | null,
   token: string,
 ): Promise<{ label: string; expiresAt: Date | null }> {
   let data: DebugTokenData | null = null
-  try {
-    const appToken = await metaAppToken(app)
-    const res = await fetch(
-      `${GRAPH}/debug_token?${new URLSearchParams({
-        input_token: token,
-        access_token: appToken,
-      })}`,
-    )
-    if (res.ok) data = ((await res.json()) as { data?: DebugTokenData }).data ?? null
-  } catch {
-    // A courtesy check that cannot run tells us nothing. Fall through to /me.
+  if (app) {
+    try {
+      const appToken = await metaAppToken(app)
+      const res = await fetch(
+        `${GRAPH}/debug_token?${new URLSearchParams({
+          input_token: token,
+          access_token: appToken,
+        })}`,
+      )
+      if (res.ok) data = ((await res.json()) as { data?: DebugTokenData }).data ?? null
+    } catch {
+      // A courtesy check that cannot run tells us nothing. Fall through to /me.
+    }
   }
 
-  const verdict = tokenVerdict(data, app.clientId)
+  const verdict = tokenVerdict(data, app?.clientId ?? '')
   if (!verdict.ok) throw new AdApiError(verdict.reason)
 
   // The only question that proves anything.

@@ -136,12 +136,22 @@ describe('POST /api/ads/connections/meta', () => {
     expect(await db.adConnection.count({ where: { label: LABEL } })).toBe(0)
   })
 
-  it('asks for the app first when no platform setup exists', async () => {
+  it('connects with no platform app at all, losing only the expiry check', async () => {
+    // The App ID and secret are optional on purpose: demanding them before a
+    // token is accepted would be one more wall in front of the one field
+    // that matters. Without them we skip debug_token and still connect.
     await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
-    stubHappyMeta()
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/debug_token') || url.includes('client_credentials'))
+        throw new Error('must not ask Facebook about a token with no app to ask as')
+      return Response.json({ name: LABEL })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
     const res = await post({ token: 'EAABpasted' })
-    expect(res.status).toBe(400)
-    expect((await res.json()).error).toMatch(/app ID and secret/i)
+    expect(res.status).toBe(200)
+    expect((await res.json()).expiresAt).toBeNull()
+    expect(await db.adConnection.count({ where: { label: LABEL } })).toBe(1)
     // afterEach puts the shared row back.
   })
 

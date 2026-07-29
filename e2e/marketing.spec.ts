@@ -73,11 +73,12 @@ test('the ad accounts page offers one-click connect and lists the seeded account
   await expect(page.getByText('via Philip (sample)')).toBeVisible()
   await expect(page.getByText('Connected').first()).toBeVisible()
 
-  // The one-time platform setup lives on the page. Only Google shows a
-  // callback URL now — Meta has no dialog to come back from.
-  await expect(page.getByRole('heading', { name: 'Platform setup' })).toBeVisible()
+  // Only Google still needs a one-time setup. Meta asks for the token and
+  // nothing else, so its App ID card and callback URL are both gone.
+  await expect(page.getByRole('heading', { name: 'Google setup' })).toBeVisible()
   await expect(page.getByText('/api/ads/oauth/google/callback')).toBeVisible()
   await expect(page.getByText('/api/ads/oauth/meta/callback')).toHaveCount(0)
+  await expect(page.getByText('Meta app', { exact: true })).toHaveCount(0)
 
   // The per-account manual path still exists, one quiet link away.
   await page.getByRole('button', { name: 'Advanced: paste credentials manually' }).click()

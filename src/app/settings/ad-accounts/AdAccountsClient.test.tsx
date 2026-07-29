@@ -237,15 +237,26 @@ describe('AdAccountsClient', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderPage([])
 
-    fireEvent.change(screen.getByLabelText('meta client id'), { target: { value: 'new-app-id' } })
+    fireEvent.change(screen.getByLabelText('google client id'), { target: { value: 'new-app-id' } })
     fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/ad-platform-apps')
     const body = JSON.parse(String(init.body))
-    expect(body.provider).toBe('meta')
+    expect(body.provider).toBe('google')
     expect(body.clientId).toBe('new-app-id')
     expect(body.clientSecret).toBe('') // blank = keep what is saved
+  })
+
+  it('asks Meta for nothing but the token', () => {
+    renderPage([])
+    // The App ID and secret card is gone. It only ever powered an optional
+    // check, and requiring it put a wall in front of the one field that
+    // matters. Google keeps its card, because Google genuinely needs it.
+    expect(screen.queryByLabelText('meta client id')).toBeNull()
+    expect(screen.queryByText('Meta app')).toBeNull()
+    expect(screen.getByLabelText('System user access token')).toBeTruthy()
+    expect(screen.getByLabelText('google client id')).toBeTruthy()
   })
 })

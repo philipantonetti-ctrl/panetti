@@ -32,16 +32,13 @@ export async function POST(req: Request) {
       )
     }
 
+    // Optional on purpose. When the app keys happen to be saved we also learn
+    // the token's expiry and scopes; without them the token still connects.
+    // One field to fill is the whole point of this flow.
     const app = await db.adPlatformApp.findUnique({ where: { provider: 'meta' } })
-    if (!app) {
-      return NextResponse.json(
-        { error: 'Fill in the Meta app ID and secret below first.' },
-        { status: 400 },
-      )
-    }
 
     const { label, expiresAt } = await inspectMetaToken(
-      { clientId: app.clientId, clientSecret: decryptSecret(app.clientSecret) },
+      app ? { clientId: app.clientId, clientSecret: decryptSecret(app.clientSecret) } : null,
       parsed.data.token,
     )
 
