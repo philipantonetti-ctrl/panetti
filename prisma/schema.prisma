@@ -36,6 +36,7 @@ model Shop {
   expenses         OperationalExpense[]
   codes            AmbassadorCode[]
   fulfillmentRates FulfillmentRate[]
+  adAccounts       AdAccount[]
 }
 
 model Product {
@@ -220,4 +221,42 @@ model FxRate {
 
   @@unique([date, base, quote])
   @@index([base, quote, date])
+}
+
+// One connected ad platform account, mapped to the shop it advertises for.
+// That mapping is what makes per-shop ROAS possible.
+model AdAccount {
+  id          String    @id @default(cuid())
+  shopId      String
+  provider    String    // "meta" | "google"
+  externalId  String    // Meta: ad account id digits (no act_); Google: customer id (no dashes)
+  name        String    // from the platform at connect time, never typed by hand
+  currency    String    // from the platform at connect time
+  credentials String    // encrypted JSON, provider-specific shape
+  active      Boolean   @default(true)
+  lastSyncAt  DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+
+  shop  Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  spend AdSpend[]
+
+  @@unique([provider, externalId])
+  @@index([shopId])
+}
+
+// One day of one account's delivery. Minor units in the ACCOUNT's currency;
+// conversion happens at read time like everything else.
+model AdSpend {
+  id          String   @id @default(cuid())
+  accountId   String
+  date        DateTime // UTC midnight
+  spend       Int
+  impressions Int
+  clicks      Int
+
+  account AdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, date])
+  @@index([date])
 }
