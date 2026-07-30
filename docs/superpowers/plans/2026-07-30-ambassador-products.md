@@ -1722,7 +1722,12 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   const johan = page.getByTestId('ambassador-row').filter({ hasText: 'Johan Berg' })
   await johan.getByRole('button', { name: 'Edit' }).click()
 
-  await page.getByRole('button', { name: 'Product' }).click()
+  // exact: true matters. Playwright's getByRole name matching is SUBSTRING by
+  // default, so a bare 'Product' also matches the 'Add product' submit button
+  // sitting in the same section, and the locator resolves to two elements.
+  // Testing Library's getByRole is exact by default, which is why the Task 5
+  // unit test uses the same words without this flag — do not "harmonise" them.
+  await page.getByRole('button', { name: 'Product', exact: true }).click()
   await page.getByRole('button', { name: 'Mazzetti Lite Comfort - Massasjestol (Beige)' }).click()
 
   const qty = page.getByLabel('Quantity')
