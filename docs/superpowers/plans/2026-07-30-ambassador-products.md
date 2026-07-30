@@ -106,6 +106,30 @@ describe('summariseProducts', () => {
     expect(summariseProducts(rows).map((r) => r.name)).toEqual(['Alpha', 'Bravo', 'Charlie'])
   })
 
+  it('ranks by people before units, not the other way round', () => {
+    // The one case that tells the two orderings apart: A-SKU has more units,
+    // B-SKU has more people. Reach is the question this table answers, so
+    // B-SKU must come first.
+    const rows = [
+      gift('emma', 'A-SKU', 'Alpha', 9),
+      gift('johan', 'B-SKU', 'Bravo', 1),
+      gift('sofia', 'B-SKU', 'Bravo', 1),
+    ]
+
+    expect(summariseProducts(rows).map((r) => r.sku)).toEqual(['B-SKU', 'A-SKU'])
+  })
+
+  it('falls back to sku when everything else ties, so the order is truly total', () => {
+    // Same product name under two SKUs, same reach, same units — without the
+    // sku tiebreaker this pair would come back in whatever order the caller
+    // happened to supply.
+    const rows = [gift('emma', 'Z-SKU', 'Same Name', 1), gift('johan', 'A-SKU', 'Same Name', 1)]
+
+    expect(summariseProducts(rows).map((r) => r.sku)).toEqual(['A-SKU', 'Z-SKU'])
+    // Reversing the input must not reverse the output.
+    expect(summariseProducts([...rows].reverse()).map((r) => r.sku)).toEqual(['A-SKU', 'Z-SKU'])
+  })
+
   it('returns an empty list when nothing has been handed out', () => {
     expect(summariseProducts([])).toEqual([])
   })
@@ -161,9 +185,15 @@ export function summariseProducts(rows: GiftRow[]): ProductSummary[] {
   return [...bySku.entries()]
     .map(([sku, e]) => ({ sku, name: e.name, ambassadors: e.people.size, units: e.units }))
     // A total order, so the table never reshuffles between two identical loads.
+    // SKU is the last tiebreaker and the only one guaranteed distinct: without
+    // it, two SKUs tied on count, units AND name fall back to input order, and
+    // the caller's query has no ORDER BY to make that stable.
     .sort(
       (a, b) =>
-        b.ambassadors - a.ambassadors || b.units - a.units || a.name.localeCompare(b.name),
+        b.ambassadors - a.ambassadors ||
+        b.units - a.units ||
+        a.name.localeCompare(b.name) ||
+        a.sku.localeCompare(b.sku),
     )
 }
 ```
@@ -171,7 +201,7 @@ export function summariseProducts(rows: GiftRow[]): ProductSummary[] {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/ambassador-products.test.ts`
-Expected: PASS, 4 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Add the schema model**
 
@@ -232,7 +262,7 @@ If it asks to reset the database, STOP: something else is wrong. Do not accept.
 - [ ] **Step 7: Run the full suite**
 
 Run: `npm test`
-Expected: 91 files, 649 tests, all passing (baseline 90/645 plus this task's 1 file / 4 tests).
+Expected: 91 files, 651 tests, all passing (baseline 90/645 plus this task’s 1 file / 6 tests).
 
 - [ ] **Step 8: Commit**
 
