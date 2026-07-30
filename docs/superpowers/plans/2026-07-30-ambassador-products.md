@@ -1861,3 +1861,64 @@ No gaps.
 
 1. The component test originally used `@testing-library/user-event`, which is **not a dependency** of this project. Every existing component test uses `fireEvent`. Rewritten; do not add the package.
 2. The component test lacked the `// @vitest-environment jsdom` pragma. `vitest.config.ts` sets `environment: 'node'` globally, so without that first line `render` fails with "document is not defined". Added.
+
+---
+
+## Follow-ups this branch deliberately did not do
+
+Recorded here because the reviews that found them were thorough, and the SDD
+ledger they lived in is scratch that gets deleted. Triaged by the final review;
+everything below was ruled acceptable to defer.
+
+**The rendering path has no component tests, and that is why two bugs reached the
+final review.** `ProductOverview`, the roster chips, and the portal card are
+exercised only by `e2e/ambassador-products.spec.ts`, and Playwright asserts
+behaviour, not formatting. So a card printing `2026-03-10` beside its siblings'
+`10 Mar 2026`, under a header one shade darker, passed every gate until a human
+read the diff. A `ProductOverview.test.tsx` plus a portal-card test would close
+the gap. This is the most valuable item on this list.
+
+**A pre-existing cross-file test race, unrelated to this feature.**
+`src/app/api/orders/route.test.ts` creates a `ProcessingFee` row with gateway
+`'Dintero Checkout'` — which is `ACTIVE_GATEWAY`. That column is `@unique`, so it
+is a single global row, and `loadMetricsInput` reads it unscoped. Vitest
+parallelises test files, so `marketing/route.test.ts` can observe a foreign fee
+row, which flips `needsRates` true and fires a **live** request to
+`api.frankfurter.app` from inside a unit test. Seen twice during this branch,
+green on every re-run. Fixing it means scoping the fee lookup in tests, or
+stubbing the rate provider. It predates this work and this branch does not touch
+either file.
+
+**The e2e "3 ambassadors have Pro X" assertion cannot discriminate the bug it
+looks like it guards.** The seed gives Pro X to three ambassadors with one row
+each, so counting distinct people and counting rows both yield 3. The real guard
+is `summariseProducts`'s unit test, which hands one ambassador two of the same
+SKU. Worth a comment on the e2e assertion so nobody mistakes it for the guard.
+
+**Smaller, each a line or two.**
+
+- `orderBy: { receivedAt: 'desc' }` has no secondary key, so same-day ties are
+  database-ordered. Systemic: no `orderBy` in this codebase uses a compound key.
+- No test asserts a MARKETING session succeeds on `GET /api/ambassador-products`
+  (only POST), and none covers an anonymous caller on the DELETE route. Both
+  verbs share one `assertStaff` call, so the risk is theoretical.
+- `reads.test.ts` lives under `ambassador-products/` but tests the `ambassadors`
+  and `portal` routes, breaking this codebase's co-location convention.
+- `ProductLedger` does not reset `receivedAt` after a successful add, so
+  back-dating one gift carries the date into the next. Arguably useful when
+  entering a batch; inputs correctly are NOT cleared when the server refuses.
+- The add-button disabled test covers "no product picked" but not "quantity < 1".
+- Nothing asserts `receivedAt` crosses the wire as an ISO string.
+- The fetch of `/api/ambassador-products` exists twice in `AmbassadorsClient`
+  (the `loadProducts` callback, and inlined in the mount effect to satisfy
+  `react-hooks/set-state-in-effect`). Mirrors the duplication the file already
+  tolerates between `load()` and its own mount effect.
+- `row.products.map` is unguarded, matching `row.codes.map` beside it. The API
+  always emits `products: []`, never `undefined`.
+- `prisma/seed.ts` indexes ambassadors positionally (`ambassadors[0]`) while the
+  e2e specs key off names, so a reorder fails loudly rather than silently.
+
+**The known limitation from the spec still stands.** Products are discovered from
+order lines, so a product never sold in any shop does not appear in the picker.
+If gifting-before-first-sale becomes real, seed the catalogue from WooCommerce
+products rather than from orders.
