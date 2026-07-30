@@ -39,6 +39,18 @@ type Portal = {
     revenue: number
     commission: number
   }[]
+  /**
+   * What we SENT them. Deliberately not near `productTotals`, which is what
+   * they SOLD — two different things that would read the same if either were
+   * called just "products" on screen.
+   */
+  products: {
+    id: string
+    sku: string
+    name: string
+    quantity: number
+    receivedAt: string
+  }[]
 }
 
 /** How many orders show before "Show all". */
@@ -218,6 +230,38 @@ export function PortalClient({
                 }
               />
             </section>
+
+            {data.products.length > 0 && (
+              <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+                <div className="px-5 py-3.5">
+                  <h2 className="text-[13px] font-semibold text-ink">Products we sent you</h2>
+                  <p className="mt-0.5 text-[12px] text-muted">
+                    Yours to keep and promote. Ask us if anything arrives damaged.
+                  </p>
+                </div>
+
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                      <th className="px-5 py-2 text-left">Product</th>
+                      <th className="px-5 py-2 text-right">Quantity</th>
+                      <th className="px-5 py-2 text-right">Received</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.products.map((p) => (
+                      <tr key={p.id} className="border-b border-line last:border-b-0">
+                        <td className="px-5 py-2.5 font-medium text-ink">{p.name}</td>
+                        <td className="num px-5 py-2.5 text-right text-ink">{p.quantity}</td>
+                        <td className="num px-5 py-2.5 text-right text-muted">
+                          {day(p.receivedAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            )}
 
             <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
               <div className="flex items-center justify-between gap-3 px-5 py-3.5">

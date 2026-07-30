@@ -88,6 +88,7 @@ async function main() {
   await db.productCost.deleteMany()
   await db.product.deleteMany()
   await db.operationalExpense.deleteMany()
+  await db.ambassadorProduct.deleteMany()
   await db.ambassadorCode.deleteMany()
   await db.user.deleteMany()
   await db.ambassador.deleteMany()
@@ -118,6 +119,28 @@ async function main() {
       data: { email: a.email, passwordHash, role: 'AMBASSADOR', ambassadorId: a.id },
     })
     ambassadors.push(a)
+  }
+
+  // A few ambassadors were sent product. Enough that the overview card has
+  // something to say on a fresh database, and the e2e spec has a row to find.
+  console.log('Handing out sample products...')
+  const GIFTS: { to: number; sku: string; name: string; quantity: number; day: string }[] = [
+    { to: 0, sku: 'MACBL661', name: 'Mazzetti Advanced Comfort - Massasjestol (Svart)', quantity: 1, day: '2026-03-12' },
+    { to: 0, sku: 'MPX-001', name: 'Massasjepistol Pro X', quantity: 2, day: '2026-05-02' },
+    { to: 1, sku: 'MPX-001', name: 'Massasjepistol Pro X', quantity: 1, day: '2026-04-18' },
+    { to: 2, sku: 'MPX-001', name: 'Massasjepistol Pro X', quantity: 1, day: '2026-06-01' },
+    { to: 3, sku: 'MLCBL510', name: 'Mazzetti Lite Comfort - Massasjestol (Svart)', quantity: 1, day: '2026-02-20' },
+  ]
+  for (const g of GIFTS) {
+    await db.ambassadorProduct.create({
+      data: {
+        ambassadorId: ambassadors[g.to].id,
+        sku: g.sku,
+        name: g.name,
+        quantity: g.quantity,
+        receivedAt: new Date(`${g.day}T00:00:00Z`),
+      },
+    })
   }
 
   await db.user.create({

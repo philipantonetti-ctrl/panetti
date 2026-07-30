@@ -104,6 +104,7 @@ describe('AmbassadorsClient store-scoped codes', () => {
         id: 'a1', name: 'Philip', email: 'owner@x.local', commissionPercent: 10, active: true,
         onboarded: false, emailHasLogin: true, invitePath: null,
         codes: [{ id: 'c1', code: 'TEKGUIDE500', shopId: 's1', shopName: 'Panetti Norway' }],
+        products: [],
       },
     ])
     await waitFor(() => expect(screen.getByText('Uses existing login')).toBeTruthy())
@@ -117,6 +118,7 @@ describe('AmbassadorsClient store-scoped codes', () => {
         id: 'a1', name: 'John', email: 'john@x.local', commissionPercent: 10, active: true,
         onboarded: false, invitePath: '/invite/x',
         codes: [{ id: 'c1', code: 'JOHN10', shopId: 's1', shopName: 'Norway' }],
+        products: [],
       },
     ])
     await waitFor(() => expect(screen.getByText('JOHN10')).toBeTruthy())
