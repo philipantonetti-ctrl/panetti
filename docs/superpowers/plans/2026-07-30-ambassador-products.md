@@ -397,12 +397,17 @@ describe('POST /api/ambassador-products', () => {
     expect((await res.json()).error).toContain('200 characters')
   })
 
-  it('stores an omitted note as null, never an empty string', async () => {
-    // `note: d.note || null` is one refactor away from storing ''. A null is
-    // what "there was no note" means, and the UI renders it by leaving the
-    // line out entirely.
+  it('stores a blank note as null, never an empty string', async () => {
+    // An empty string is the ONLY case that discriminates. With `note` omitted,
+    // `d.note` is undefined, Prisma drops the key from the INSERT, and the
+    // defaultless nullable column yields null under `||`, under `??`, and under
+    // no fallback at all — so an omitted note proves nothing about the code.
+    // An explicit '' is where they finally diverge: `'' || null` is null (what
+    // we want), `'' ?? null` is '' (what the UI would then print as a blank
+    // note line). This test fails the moment someone "modernises" || to ??.
     await post({
-      ambassadorId, sku: 'MPX-001', name: 'Pro X', quantity: 1, receivedAt: '2026-03-12',
+      ambassadorId, sku: 'MPX-001', name: 'Pro X', quantity: 1,
+      receivedAt: '2026-03-12', note: '',
     })
     const stored = await db.ambassadorProduct.findFirst({ where: { ambassadorId } })
     expect(stored!.note).toBeNull()
