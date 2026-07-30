@@ -142,7 +142,7 @@ describe('platform setup', () => {
 // Four Meta start tests lived here: the domain write, the second click it
 // asked for, the refused write, and the unreachable-Meta fallthrough. The
 // second-click one WAS the loop — ensureMetaApp could report "healed"
-// forever. Meta no longer has a start route to test.
+// forever.
 
 describe('oauth start', () => {
   it('stamps a state cookie and sends the admin to the platform dialog', async () => {
@@ -153,11 +153,6 @@ describe('oauth start', () => {
     expect(location).toContain('client_id=oauth-test-google')
     const cookie = res.headers.get('set-cookie') ?? ''
     expect(cookie).toMatch(/ads_oauth_state=google(%3A|:)/)
-  })
-
-  it('has no door left for Meta', async () => {
-    const res = await start('meta')
-    expect(res.status).toBe(404)
   })
 
   it('sends the admin back with words when the platform setup is missing', async () => {
@@ -220,10 +215,105 @@ describe('oauth callback', () => {
     expect(await db.adConnection.count({ where: { label: { contains: MARK } } })).toBe(0)
   })
 
-  it('has no door left for Meta', async () => {
-    cookieJar.state = 'meta:st-3'
-    const res = await callback('meta', 'code=c&state=st-3')
-    expect(res.status).toBe(404)
+})
+
+describe('meta oauth start', () => {
+  it('stamps a state cookie and sends the admin to the Facebook dialog', async () => {
+    const res = await start('meta')
+    expect(res.status).toBe(307)
+    const location = res.headers.get('location') ?? ''
+    expect(location).toContain('facebook.com/v25.0/dialog/oauth')
+    expect(location).toContain('client_id=oauth-test-app')
+    expect(location).toContain(encodeURIComponent('/api/ads/oauth/meta/callback'))
+    expect(res.headers.get('set-cookie') ?? '').toMatch(/ads_oauth_state=meta(%3A|:)/)
+  })
+
+  // Saving the app row no longer calls Meta, so starting must not either.
+  it('reaches the dialog without asking Facebook anything first', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await start('meta')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('sends the admin to the setup when no meta app row exists', async () => {
+    await db.adPlatformApp.delete({ where: { provider: 'meta' } })
+    const res = await start('meta')
+    expect(res.headers.get('location')).toContain(
+      encodeURIComponent('Fill in the platform setup below first.'),
+    )
+  })
+})
+
+describe('meta oauth callback', () => {
+  const stubExchange = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('fb_exchange_token'))
+          return json({ access_token: 'long-lived', expires_in: 5_184_000 })
+        if (url.includes('/me')) return json({ name: `${MARK} Jacob` })
+        return json({ access_token: 'short' })
+      }),
+    )
+
+  it('stores the long-lived token and opens the picker', async () => {
+    stubExchange()
+    cookieJar.state = 'meta:st-1'
+    const res = await callback('meta', 'code=c1&state=st-1')
+
+    expect(res.status).toBe(307)
+    const location = res.headers.get('location') ?? ''
+    expect(location).toContain('/settings/ad-accounts?picker=')
+
+    const row = await db.adConnection.findFirstOrThrow({
+      where: { provider: 'meta', label: `${MARK} Jacob` },
+    })
+    expect(row.secret.startsWith('enc:v1:')).toBe(true)
+    expect(row.secret).not.toContain('long-lived')
+    // Meta tokens die; Google refresh tokens do not. The date must be real.
+    expect(row.expiresAt).not.toBeNull()
+    expect(location).toContain(row.id)
+  })
+
+  it('logging in again refreshes the same connection instead of piling up', async () => {
+    stubExchange()
+    cookieJar.state = 'meta:st-1'
+    await callback('meta', 'code=c1&state=st-1')
+    cookieJar.state = 'meta:st-2'
+    await callback('meta', 'code=c2&state=st-2')
+
+    const rows = await db.adConnection.findMany({
+      where: { provider: 'meta', label: `${MARK} Jacob` },
+    })
+    expect(rows).toHaveLength(1)
+  })
+
+  it('refuses a callback whose state does not match the cookie', async () => {
+    cookieJar.state = 'meta:st-1'
+    const res = await callback('meta', 'code=c1&state=somebody-elses')
+    expect(res.headers.get('location')).toContain(
+      encodeURIComponent('The login came back wrong. Try again.'),
+    )
+    expect(await db.adConnection.count({ where: { label: { contains: MARK } } })).toBe(0)
+  })
+
+  it("passes Facebook's refusal straight through", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(json({ error: { message: 'Code was invalid.' } }, 400)),
+    )
+    cookieJar.state = 'meta:st-1'
+    const res = await callback('meta', 'code=bad&state=st-1')
+    expect(res.headers.get('location')).toContain(encodeURIComponent('Code was invalid.'))
+  })
+})
+
+describe('unknown providers', () => {
+  it('still refuses a platform we do not support', async () => {
+    expect((await start('tiktok')).status).toBe(404)
+    expect((await callback('tiktok', 'code=c&state=s')).status).toBe(404)
   })
 })
 

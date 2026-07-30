@@ -4,7 +4,7 @@ import { currentUser } from '@/lib/auth/current-user'
 import { AuthError, assertAdmin } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { decryptSecret, encryptSecret } from '@/lib/secrets'
-import { STATE_COOKIE, exchangeGoogleCode } from '@/lib/ads/oauth'
+import { STATE_COOKIE, exchangeGoogleCode, exchangeMetaCode } from '@/lib/ads/oauth'
 import { AdApiError } from '@/lib/ads/types'
 
 /**
@@ -24,8 +24,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
   try {
     assertAdmin(await currentUser())
     const { provider } = await params
-    // Google only — Meta connects by pasted token, with no dialog to return from.
-    if (provider !== 'google') {
+    if (provider !== 'meta' && provider !== 'google') {
       return NextResponse.json({ error: 'No such platform' }, { status: 404 })
     }
 
@@ -48,13 +47,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
     }
     const redirectUri = `${url.origin}/api/ads/oauth/${provider}/callback`
 
-    const { refreshToken: secret, label } = await exchangeGoogleCode(
-      platformApp,
-      redirectUri,
-      code,
-    )
-    // Google refresh tokens do not expire while the client stays published.
-    const expiresAt: Date | null = null
+    let secret: string
+    let label: string
+    // Google refresh tokens live as long as the client stays published; a
+    // Meta user token is good for about 60 days and says so.
+    let expiresAt: Date | null = null
+
+    if (provider === 'meta') {
+      const meta = await exchangeMetaCode(platformApp, redirectUri, code)
+      secret = meta.token
+      label = meta.label
+      expiresAt = meta.expiresAt
+    } else {
+      const google = await exchangeGoogleCode(platformApp, redirectUri, code)
+      secret = google.refreshToken
+      label = google.label
+    }
 
     const existing = await db.adConnection.findFirst({ where: { provider, label } })
     const connection = existing
