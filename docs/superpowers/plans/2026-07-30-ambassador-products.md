@@ -946,6 +946,13 @@ it, `render` fails with "document is not defined".
 `@testing-library/user-event` is **not** a dependency here — every existing
 component test drives the DOM with `fireEvent`. Do not add the package.
 
+Assertions use plain `toBeTruthy()` / `toBeNull()` / `toContain()`, which is what
+every component test in this codebase already uses. Do **not** reach for
+jest-dom matchers (`toBeInTheDocument`, `toBeDisabled`): nothing wires them up —
+`vitest.config.ts` has no `setupFiles` — so they fail with "Invalid Chai
+property", and adding the import would make this the only file in the repo using
+a second assertion style.
+
 ```tsx
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -980,14 +987,16 @@ afterEach(cleanup)
 describe('ProductLedger', () => {
   it('lists what they already have, with quantity and date', () => {
     setup()
-    expect(screen.getByText('Pro X')).toBeInTheDocument()
-    expect(screen.getByText(/×2/)).toBeInTheDocument()
-    expect(screen.getByText(/2026-03-12/)).toBeInTheDocument()
+    // getByText throws when absent, so reaching the assertion is most of the
+    // proof; toBeTruthy is the shape every component test here uses.
+    expect(screen.getByText('Pro X')).toBeTruthy()
+    expect(screen.getByText(/×2/)).toBeTruthy()
+    expect(screen.getByText(/2026-03-12/)).toBeTruthy()
   })
 
   it('teaches the next action when there is nothing yet', () => {
     setup([])
-    expect(screen.getByText(/Nothing yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/Nothing yet/i)).toBeTruthy()
   })
 
   it('removes a gift by its own id', () => {
@@ -1004,7 +1013,8 @@ describe('ProductLedger', () => {
 
   it('will not add until a product is picked', () => {
     setup()
-    expect(screen.getByRole('button', { name: /Add product/ })).toBeDisabled()
+    const add = screen.getByRole('button', { name: /Add product/ }) as HTMLButtonElement
+    expect(add.disabled).toBe(true)
   })
 
   it('sends the picked product with its name, so the record is a snapshot', () => {
