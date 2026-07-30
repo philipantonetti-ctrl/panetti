@@ -242,7 +242,7 @@ model AdConnection {
   id        String      @id @default(cuid())
   provider  String      // "meta" | "google"
   label     String      // who it belongs to, from the platform
-  secret    String      // encrypted: Meta system user token / Google refresh token
+  secret    String      // encrypted: Meta user token / Google refresh token
   // A Meta user token lasts about 60 days and says so. A Google refresh
   // token does not expire while the client stays published, so it is null.
   expiresAt DateTime?

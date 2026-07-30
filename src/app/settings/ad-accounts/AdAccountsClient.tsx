@@ -405,8 +405,8 @@ function PickerModal({
         {!loading && !error && (
           <div className="mt-4 space-y-2">
             {rows.length === 0 && (
-              // Almost always the assets step was skipped, so say that rather
-              // than leave an empty table looking like a broken token.
+              // Almost always the wrong Facebook account got the login, so say
+              // that rather than leave an empty table looking broken.
               <p className="text-sm text-muted">
                 This login can see no ad accounts. Check you logged in with the Facebook account
                 that has access to them.

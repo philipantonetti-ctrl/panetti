@@ -63,7 +63,7 @@ export async function PUT(req: Request) {
 
     // Saving no longer calls Meta. Four designs tried to make the app prove
     // itself here and heal its own domains; the wall was never the domains.
-    // The token proves itself instead, at the moment it is pasted.
+    // Whatever was pasted here proves itself later, when it is actually used.
 
     // Blank secret fields mean "keep what is saved", like every other modal.
     await db.adPlatformApp.upsert({
