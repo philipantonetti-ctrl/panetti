@@ -7,11 +7,12 @@ import { encryptSecret } from '@/lib/secrets'
 import { AdApiError } from '@/lib/ads/types'
 
 /**
- * The client's own Google OAuth client — the one-time setup that makes
- * "Connect with Google" possible. Secrets go in, never out.
+ * The client's own Meta and Google apps — the one-time setup that makes the
+ * connect buttons work. Secrets go in, never out.
  *
- * Meta keys may still be stored here, but nothing requires them: they only
- * sharpen the check on a pasted system user token, never gate it.
+ * Saving does not call either platform. Four designs tried to make the app
+ * prove itself here and heal its own domains; the wall was never the domains,
+ * it was the callback URL, and no API can register that.
  */
 
 export async function GET() {

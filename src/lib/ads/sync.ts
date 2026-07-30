@@ -61,7 +61,7 @@ export async function resolveCredentials(account: AdAccountRow): Promise<AdCrede
   if (account.connection) {
     if (account.provider === 'meta') {
       if (account.connection.expiresAt && account.connection.expiresAt < new Date()) {
-        throw new AdApiError('Facebook token expired. Paste a new system user token.')
+        throw new AdApiError('Facebook login expired. Press Connect with Facebook to renew it.')
       }
       return { accessToken: decryptSecret(account.connection.secret) }
     }

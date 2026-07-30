@@ -59,12 +59,14 @@ test('the ad accounts page offers one-click connect and lists the seeded account
   await expect(page).toHaveURL(/\/settings\/ad-accounts/)
   await expect(page.getByRole('heading', { name: 'Ad accounts' })).toBeVisible()
 
-  // Meta connects by pasted token; only Google still has a login button.
-  await expect(page.getByLabel('System user access token')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Connect with Facebook' })).toHaveCount(0)
+  // Both platforms connect by login again, like BeProfit does.
+  const f = page.getByRole('link', { name: 'Connect with Facebook' })
+  await expect(f).toBeVisible()
+  await expect(f).toHaveAttribute('href', '/api/ads/oauth/meta/start')
   const g = page.getByRole('link', { name: 'Connect with Google' })
   await expect(g).toBeVisible()
   await expect(g).toHaveAttribute('href', '/api/ads/oauth/google/start')
+  await expect(page.getByLabel('System user access token')).toHaveCount(0)
 
   // The three seeded accounts; one carries the login it came through.
   await expect(page.getByText('Panetti Norway Meta Ads')).toBeVisible()
@@ -73,12 +75,11 @@ test('the ad accounts page offers one-click connect and lists the seeded account
   await expect(page.getByText('via Philip (sample)')).toBeVisible()
   await expect(page.getByText('Connected').first()).toBeVisible()
 
-  // Only Google still needs a one-time setup. Meta asks for the token and
-  // nothing else, so its App ID card and callback URL are both gone.
-  await expect(page.getByRole('heading', { name: 'Google setup' })).toBeVisible()
+  // A one-time setup card per platform, each printing its own callback URL.
+  await expect(page.getByRole('heading', { name: 'Platform setup' })).toBeVisible()
   await expect(page.getByText('/api/ads/oauth/google/callback')).toBeVisible()
-  await expect(page.getByText('/api/ads/oauth/meta/callback')).toHaveCount(0)
-  await expect(page.getByText('Meta app', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('/api/ads/oauth/meta/callback')).toBeVisible()
+  await expect(page.getByText('Meta app', { exact: true })).toBeVisible()
 
   // The per-account manual path still exists, one quiet link away.
   await page.getByRole('button', { name: 'Advanced: paste credentials manually' }).click()

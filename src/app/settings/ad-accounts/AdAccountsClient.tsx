@@ -408,8 +408,8 @@ function PickerModal({
               // Almost always the assets step was skipped, so say that rather
               // than leave an empty table looking like a broken token.
               <p className="text-sm text-muted">
-                This token can see no ad accounts. Open the system user in Meta Business settings,
-                press Add assets, choose Ad accounts, tick them and turn on “View performance”.
+                This login can see no ad accounts. Check you logged in with the Facebook account
+                that has access to them.
               </p>
             )}
             {rows.map((row, i) => (
