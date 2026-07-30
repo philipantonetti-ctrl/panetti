@@ -851,4 +851,18 @@ Two things remain that code cannot do.
 
 **Who presses the button.** BeProfit shows Google under Philip Antonetti and Facebook under Jacob Kjos Hanssen, so the Facebook ad accounts sit under Jacob's login. Whoever logs in must be the person who can see those accounts, or the picker comes back empty. That is real information, not a bug.
 
-**The tracked debt.** Once the login is confirmed working against the live app, a follow-up deletes `POST /api/ads/connections/meta`, `src/lib/ads/token.ts`, and their tests. They survive this plan as the only path to the picker that needs no redirect URI.
+**The tracked debt, and why it should be argued rather than executed.** `POST /api/ads/connections/meta` and `src/lib/ads/token.ts` survive this plan with no caller in the UI, as the only path to the picker that needs no registered redirect URI. The obvious follow-up deletes them once the live login is confirmed. Do not run that deletion on autopilot: they are also the only Meta credential path in the app that can never expire, because Facebook caps a login-issued user token at about 60 days while a system user token can be generated with no expiry at all. That is a broader reason to keep them than the one this plan was written around, and it deserves a decision rather than a cleanup commit.
+
+## Follow-ups this branch deliberately did not do
+
+Recorded here because the review that found them was thorough and the reasoning should not evaporate.
+
+**No warning before a Meta connection expires.** `expiresAt` now holds a real date, and exactly one place reads it — the expiry guard in `sync.ts` — which only fires after the date has already passed. So Meta ingestion stops roughly every 60 days and the only signal is an "Error" pill in a settings table nobody is watching, on a dashboard whose entire job is spend reporting. The reactive path does work: the same person logs in again, the label matches, the upsert refreshes the token. But the recurring chore is new, and it arrived with the decision to trade a never-expiring system user token for a user token. A banner when any connection expires inside seven days is the small fix.
+
+**The bulk route cannot re-point an account to a different connection.** `alreadyConnected` is computed from any `AdAccount` row for the provider, ignoring which connection owns it, and the bulk route skips those rows. That is what makes the relabel above load-bearing. Letting bulk move an existing account's `connectionId` when the provider already matches would make "Press Connect with Facebook to renew it" true in every case instead of most, and would retire a manual database step.
+
+**`client_secret` travels in a Graph query string.** That is Meta's documented shape and the wire is TLS, so the request itself is fine. The exposure is `console.error(e)` in the OAuth callback: a fetch failure whose message or cause carries the request URL would write the app secret into Vercel logs. Low likelihood, and the same pattern predates this branch in `token.ts`. Bounding it means catching failures around the exchange and rethrowing an `AdApiError` carrying no URL.
+
+**`AdConnection` has no `@@unique([provider, label])`.** Both upsert sites do `findFirst` then `create`, which is a time-of-check-to-time-of-use race. Pre-existing, and realistic traffic is one admin clicking at human speed, but this branch doubles the paths through it. A unique constraint plus a real `upsert` would remove the pattern rather than narrow it.
+
+**`next-env.d.ts` goes dirty on every Next command.** The committed copy imports `./.next/types/routes.d.ts`; the installed Next regenerates it as `./.next/dev/types/routes.d.ts`. Nothing in this branch touched the file — it was last committed in `4e631ef` — but it dirties the tree constantly and invites exactly the kind of `git checkout` reflex that has already cost this project uncommitted work once. Either commit what Next now generates, or gitignore it.
