@@ -1371,10 +1371,38 @@ After the `load` callback, add:
     }
   }, [])
 
+  // Initial load, inlined for the same reason as the roster's own initial-load
+  // effect below: calling the `loadProducts` callback directly from an effect
+  // body reads as a synchronous setState path to the lint rule, even though the
+  // sets only happen after the fetch resolves. `loadProducts` itself stays
+  // available for `send()` to call after a write.
   useEffect(() => {
-    void loadProducts()
-  }, [loadProducts])
+    let live = true
+    fetch('/api/ambassador-products')
+      .then(async (r) =>
+        r.ok
+          ? ((await r.json()) as { overview?: ProductSummaryRow[]; catalogue?: CatalogueItem[] })
+          : null,
+      )
+      .then((data) => {
+        if (live && data) {
+          setOverview(data.overview ?? [])
+          setCatalogue(data.catalogue ?? [])
+        }
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
 ```
+
+Note the shape. A bare `useEffect(() => { void loadProducts() }, [loadProducts])`
+is the obvious thing to write and it **fails lint** here: the
+`react-hooks/set-state-in-effect` rule treats calling a callback that sets state
+as a synchronous setState path, even though the sets happen after the fetch
+resolves. The file's existing initial-load effect already works around this the
+same way, which is why this one matches it rather than inventing a third shape.
 
 In the `send` helper, refresh the products alongside the roster. Change:
 
@@ -1482,7 +1510,15 @@ Inside `EditModal`, render the ledger immediately after the "Add a code on a sto
 - [ ] **Step 6: Run the existing page tests**
 
 Run: `npx vitest run src/app/ambassadors/AmbassadorsClient.test.tsx`
-Expected: PASS. If a test fails on a column count, it is asserting the old 5-column table — update that assertion to 6, since the extra column is the intended change.
+Expected: PASS. Two failures are expected and correct to fix:
+
+1. A test asserting the old 5-column table — update that assertion to 6, since
+   the extra column is the intended change.
+2. `TypeError: Cannot read properties of undefined (reading 'map')` — the file's
+   fixtures predate Task 4's contract and carry no `products`. Add `products: []`
+   to each. That is fixture INPUT, not an assertion; do not weaken any assertion
+   to get green. Commit `AmbassadorsClient.test.tsx` alongside the client, since
+   shipping a client whose own test crashes is not a green build.
 
 - [ ] **Step 7: Typecheck and lint**
 
