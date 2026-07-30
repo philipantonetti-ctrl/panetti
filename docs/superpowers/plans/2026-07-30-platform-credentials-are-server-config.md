@@ -660,7 +660,9 @@ Delete the whole `PlatformSetupSection` function and its doc comment, the whole 
         <PlatformSetupSection platform={platform} />
 ```
 
-`PlatformCard` was the only user of the `field` and `label` style constants at lines 30-31 and of `useEffect`. Remove whichever become unused — `npx eslint` and `npx tsc --noEmit` will name them. The `useRouter`, `useState` and `useRef` imports are used elsewhere; leave them.
+Deleting `PlatformCard` may leave imports or style constants unused. Do not assume which: run `npx tsc --noEmit` and `npx eslint` and remove only what they actually name.
+
+(An earlier version of this plan claimed `PlatformCard` was the only user of the `field` and `label` constants and of `useEffect`. That was wrong — `AccountModal` uses those constants sixteen times and two other effects use `useEffect`. All three stay. The claim was checked and corrected during execution, by the tools rather than by inspection, which is why the instruction says to let them name it.)
 
 Update the empty-table copy, which still points at a setup that is gone:
 
