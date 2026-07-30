@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
-import { decryptSecret, encryptSecret } from '@/lib/secrets'
+import { encryptSecret } from '@/lib/secrets'
+import { platformApp } from '@/lib/ads/platform-app'
 import { inspectMetaToken } from '@/lib/ads/token'
 import { AdApiError } from '@/lib/ads/types'
 
@@ -44,10 +45,10 @@ export async function POST(req: Request) {
     // Optional on purpose. When the app keys happen to be saved we also learn
     // the token's expiry and scopes; without them the token still connects.
     // One field to fill is the whole point of this flow.
-    const app = await db.adPlatformApp.findUnique({ where: { provider: 'meta' } })
+    const app = await platformApp('meta')
 
     const { label, expiresAt } = await inspectMetaToken(
-      app ? { clientId: app.clientId, clientSecret: decryptSecret(app.clientSecret) } : null,
+      app ? { clientId: app.clientId, clientSecret: app.clientSecret } : null,
       parsed.data.token,
     )
 

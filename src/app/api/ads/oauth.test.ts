@@ -58,6 +58,18 @@ async function restoreSeedApps() {
 }
 
 beforeEach(async () => {
+  // These suites seed an AdPlatformApp row and expect it to be read. The
+  // accessor prefers the environment, so a developer with these set in their
+  // local .env would silently exercise the wrong source.
+  for (const k of [
+    'META_APP_ID',
+    'META_APP_SECRET',
+    'GOOGLE_ADS_CLIENT_ID',
+    'GOOGLE_ADS_CLIENT_SECRET',
+    'GOOGLE_ADS_DEVELOPER_TOKEN',
+  ]) {
+    vi.stubEnv(k, '')
+  }
   await wipe()
   await asAdmin()
   cookieJar.state = undefined
@@ -83,6 +95,7 @@ afterEach(async () => {
   await wipe()
   await restoreSeedApps()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 const start = (provider: string) =>
@@ -156,11 +169,13 @@ describe('oauth start', () => {
     expect(cookie).toMatch(/ads_oauth_state=google(%3A|:)/)
   })
 
-  it('sends the admin back with words when the platform setup is missing', async () => {
+  it('sends the admin back with words when Google is not configured on the server', async () => {
     await db.adPlatformApp.deleteMany({ where: { provider: 'google' } })
     const res = await start('google')
     expect(res.status).toBe(307)
-    expect(res.headers.get('location')).toContain('error=')
+    expect(res.headers.get('location')).toContain(
+      encodeURIComponent('Google connect is not configured on the server.'),
+    )
   })
 })
 
@@ -236,11 +251,40 @@ describe('meta oauth start', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('sends the admin to the setup when no meta app row exists', async () => {
+  it('sends the admin back with words when Facebook is not configured on the server', async () => {
     await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
     const res = await start('meta')
     expect(res.headers.get('location')).toContain(
-      encodeURIComponent('Fill in the platform setup below first.'),
+      encodeURIComponent('Facebook connect is not configured on the server.'),
+    )
+  })
+})
+
+describe('credentials from the environment', () => {
+  it('starts the Facebook login with no database row at all', async () => {
+    await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
+    vi.stubEnv('META_APP_ID', 'env-meta-app')
+    vi.stubEnv('META_APP_SECRET', 'env-meta-secret')
+
+    const res = await start('meta')
+    expect(res.status).toBe(307)
+    expect(res.headers.get('location') ?? '').toContain('client_id=env-meta-app')
+  })
+
+  it('prefers the environment over a row that disagrees', async () => {
+    vi.stubEnv('META_APP_ID', 'env-wins')
+    vi.stubEnv('META_APP_SECRET', 'env-secret')
+    const res = await start('meta')
+    const location = res.headers.get('location') ?? ''
+    expect(location).toContain('client_id=env-wins')
+    expect(location).not.toContain('oauth-test-app')
+  })
+
+  it('says the server is not configured when neither has it', async () => {
+    await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
+    const res = await start('meta')
+    expect(res.headers.get('location')).toContain(
+      encodeURIComponent('Facebook connect is not configured on the server.'),
     )
   })
 })

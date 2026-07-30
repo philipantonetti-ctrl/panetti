@@ -44,6 +44,18 @@ const asAdmin = async () => {
 }
 
 beforeEach(async () => {
+  // These suites seed an AdPlatformApp row and expect it to be read. The
+  // accessor prefers the environment, so a developer with these set in their
+  // local .env would silently exercise the wrong source.
+  for (const k of [
+    'META_APP_ID',
+    'META_APP_SECRET',
+    'GOOGLE_ADS_CLIENT_ID',
+    'GOOGLE_ADS_CLIENT_SECRET',
+    'GOOGLE_ADS_DEVELOPER_TOKEN',
+  ]) {
+    vi.stubEnv(k, '')
+  }
   await wipe()
   const me = await db.user.create({ data: { email: ME, passwordHash: 'x', role: 'ADMIN' } })
   myId = me.id
@@ -54,6 +66,7 @@ afterEach(async () => {
   await wipe()
   await restoreSeedApp()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 const post = (body: unknown) =>

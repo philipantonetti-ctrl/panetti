@@ -3,7 +3,8 @@ import { cookies } from 'next/headers'
 import { currentUser } from '@/lib/auth/current-user'
 import { AuthError, assertAdmin } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
-import { decryptSecret, encryptSecret } from '@/lib/secrets'
+import { encryptSecret } from '@/lib/secrets'
+import { platformApp } from '@/lib/ads/platform-app'
 import { STATE_COOKIE, exchangeGoogleCode, exchangeMetaCode } from '@/lib/ads/oauth'
 import { AdApiError } from '@/lib/ads/types'
 
@@ -39,12 +40,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
       return fail('The login came back wrong. Try again.')
     }
 
-    const app = await db.adPlatformApp.findUnique({ where: { provider } })
-    if (!app) return fail('Fill in the platform setup below first.')
-    const platformApp = {
-      clientId: app.clientId,
-      clientSecret: decryptSecret(app.clientSecret),
+    const app = await platformApp(provider)
+    if (!app) {
+      const platform = provider === 'meta' ? 'Facebook' : 'Google'
+      return fail(`${platform} connect is not configured on the server.`)
     }
+    const platformCredentials = { clientId: app.clientId, clientSecret: app.clientSecret }
     const redirectUri = `${url.origin}/api/ads/oauth/${provider}/callback`
 
     let secret: string
@@ -54,12 +55,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
     let expiresAt: Date | null = null
 
     if (provider === 'meta') {
-      const meta = await exchangeMetaCode(platformApp, redirectUri, code)
+      const meta = await exchangeMetaCode(platformCredentials, redirectUri, code)
       secret = meta.token
       label = meta.label
       expiresAt = meta.expiresAt
     } else {
-      const google = await exchangeGoogleCode(platformApp, redirectUri, code)
+      const google = await exchangeGoogleCode(platformCredentials, redirectUri, code)
       secret = google.refreshToken
       label = google.label
     }
