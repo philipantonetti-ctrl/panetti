@@ -99,7 +99,11 @@ export function ProductLedger({
                 )
               }
               disabled={busy}
-              aria-label={`Remove ${g.name}`}
+              // The date is part of the name because the ledger deliberately
+              // allows the same product twice. Two rows labelled only "Remove
+              // Pro X" are indistinguishable to a screen reader, and ambiguous
+              // to any getByRole that goes looking for one of them.
+              aria-label={`Remove ${g.name} received ${g.receivedAt.slice(0, 10)}`}
               className="shrink-0 text-xs font-semibold text-loss hover:underline disabled:opacity-60"
             >
               Remove
