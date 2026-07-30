@@ -53,12 +53,12 @@ describe('platformApp', () => {
     expect(await platformApp('meta')).toEqual({ clientId: 'env-app', clientSecret: 'env-secret' })
   })
 
-  it('passes a plaintext environment secret through undecrypted', async () => {
-    // decryptSecret returns anything without the enc:v1: prefix unchanged, so
-    // one code path can serve both sources. This proves it.
+  it('decrypts an environment secret too, so a value copied out of the database still works', async () => {
+    // The migration path: someone pastes the database row's encrypted value into Vercel.
+    // This proves decryptSecret is called on environment secrets, not bypassed.
     vi.stubEnv('META_APP_ID', 'env-app')
-    vi.stubEnv('META_APP_SECRET', 'not-encrypted-at-all')
-    expect((await platformApp('meta'))?.clientSecret).toBe('not-encrypted-at-all')
+    vi.stubEnv('META_APP_SECRET', encryptSecret('env-secret'))
+    expect((await platformApp('meta'))?.clientSecret).toBe('env-secret')
   })
 
   it('falls back to the database row and decrypts it', async () => {
@@ -113,6 +113,32 @@ describe('platformApp', () => {
     const app = await platformApp('google')
     expect(app?.clientId).toBe('g-app')
     expect(app?.developerToken).toBeUndefined()
+  })
+
+  it('falls through to the database when only one environment variable is set', async () => {
+    // If clientId is set but clientSecret is not, neither source is complete.
+    vi.stubEnv('META_APP_ID', 'env-app')
+    // META_APP_SECRET remains empty (stubbed to '' in beforeEach)
+    await db.adPlatformApp.upsert({
+      where: { provider: 'meta' },
+      create: { provider: 'meta', clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+      update: { clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+    })
+
+    expect(await platformApp('meta')).toEqual({ clientId: 'row-app', clientSecret: 'row-secret' })
+  })
+
+  it('treats whitespace-only environment variables as unset', async () => {
+    // env() calls .trim() to handle Vercel's whitespace-padded values.
+    vi.stubEnv('META_APP_ID', '   ')
+    vi.stubEnv('META_APP_SECRET', '\t\n')
+    await db.adPlatformApp.upsert({
+      where: { provider: 'meta' },
+      create: { provider: 'meta', clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+      update: { clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+    })
+
+    expect(await platformApp('meta')).toEqual({ clientId: 'row-app', clientSecret: 'row-secret' })
   })
 })
 

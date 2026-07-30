@@ -42,15 +42,20 @@ export async function platformApp(provider: Provider): Promise<PlatformCredentia
   const keys = ENV[provider]
   const clientId = env(keys.id)
   const clientSecret = env(keys.secret)
+  const developerToken = env(keys.developerToken)
+
   if (clientId && clientSecret) {
-    const developerToken = env(keys.developerToken)
-    return { clientId, clientSecret, ...(developerToken ? { developerToken } : {}) }
+    return {
+      clientId,
+      clientSecret: decryptSecret(clientSecret),
+      ...(developerToken ? { developerToken: decryptSecret(developerToken) } : {}),
+    }
   }
 
   const row = await db.adPlatformApp.findUnique({ where: { provider } })
   if (!row) return null
-  // decryptSecret returns a value without the enc:v1: prefix unchanged, so one
-  // path serves an encrypted row and a plaintext variable alike.
+  // decryptSecret returns a value without the enc:v1: prefix unchanged, so both
+  // environment variables and encrypted database rows work the same way.
   return {
     clientId: row.clientId,
     clientSecret: decryptSecret(row.clientSecret),
