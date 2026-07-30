@@ -80,19 +80,13 @@ describe('AdAccountsClient', () => {
     )
   })
 
-  it('links the Google connect button straight to the oauth start when ready', () => {
-    renderPage([])
-    expect(screen.getByText('Connect with Google').closest('a')?.getAttribute('href')).toBe(
-      '/api/ads/oauth/google/start',
-    )
-  })
-
-  it('links Connect with Facebook straight to the oauth start when ready', () => {
-    renderPage([])
-    expect(screen.getByText('Connect with Facebook').closest('a')?.getAttribute('href')).toBe(
-      '/api/ads/oauth/meta/start',
-    )
-  })
+  // Two tests lived here, each asserting one of the two hrefs the test above
+  // already asserts together with the same renderPage([]) / default-ready
+  // setup: 'links the Google connect button straight to the oauth start when
+  // ready' and 'links Connect with Facebook straight to the oauth start when
+  // ready'. 'offers both connect buttons as real links…' above subsumes both
+  // exactly, so keeping them proved nothing a break in that test would not
+  // already catch.
 
   it('says so plainly when a platform is not configured on the server', async () => {
     renderPage([], { platform: { meta: false, google: true } })
@@ -107,6 +101,22 @@ describe('AdAccountsClient', () => {
     )
     // Google is unaffected.
     expect(screen.getByText('Connect with Google').closest('a')).toBeTruthy()
+  })
+
+  it('says so plainly when Google is not configured on the server', async () => {
+    // The Meta case above proves the not-ready branch works; this proves the
+    // provider === 'meta' ? 'Facebook' : 'Google' ternary inside it actually
+    // switches — without this, ConnectButton could say "Facebook" for every
+    // platform and the suite would stay green.
+    renderPage([], { platform: { meta: true, google: false } })
+
+    expect(screen.getByText('Connect with Google').closest('a')).toBeNull()
+    fireEvent.click(screen.getByText('Connect with Google'))
+    await waitFor(() =>
+      expect(screen.getByText('Google connect is not set up on the server yet.')).toBeTruthy(),
+    )
+    // Facebook is unaffected.
+    expect(screen.getByText('Connect with Facebook').closest('a')).toBeTruthy()
   })
 
   it('asks for the token nowhere on the page any more', () => {

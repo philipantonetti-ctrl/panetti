@@ -26,7 +26,10 @@ const ENV_KEYS = [
 
 beforeEach(() => {
   for (const k of ENV_KEYS) vi.stubEnv(k, '')
-  vi.spyOn(db.adPlatformApp, 'findUnique').mockClear()
+  // A real implementation underneath a spy is a call-through: any test that
+  // forgets to mock a resolved value would silently hit the real database.
+  // Defaulting to null removes that trap without needing every test to set it.
+  vi.spyOn(db.adPlatformApp, 'findUnique').mockResolvedValue(null)
 })
 
 afterEach(() => {
@@ -152,6 +155,46 @@ describe('platformApp', () => {
 
     expect(await platformApp('meta')).toEqual({ clientId: 'row-app', clientSecret: 'row-secret' })
   })
+
+  it('falls back to the row for the developer token alone when only that variable is missing', async () => {
+    // A mistyped GOOGLE_ADS_DEVELOPER_TOKEN must not take the id/secret pair
+    // down with it: the token belongs to the manager account, not the OAuth
+    // client, so it is safe to pull from the row while id/secret stay in
+    // the environment. This is the fix for the bug the fallback used to
+    // have: env id + env secret + no token used to mean "not configured",
+    // even with a perfectly good token sitting in the row.
+    vi.stubEnv('GOOGLE_ADS_CLIENT_ID', 'env-app')
+    vi.stubEnv('GOOGLE_ADS_CLIENT_SECRET', 'env-secret')
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'google',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: encryptSecret('row-dev-token'),
+      createdAt: new Date(),
+    })
+
+    expect(await platformApp('google')).toEqual({
+      clientId: 'env-app',
+      clientSecret: 'env-secret',
+      developerToken: 'row-dev-token',
+    })
+  })
+
+  it('leaves the developer token missing when the row exists but has none either', async () => {
+    vi.stubEnv('GOOGLE_ADS_CLIENT_ID', 'env-app')
+    vi.stubEnv('GOOGLE_ADS_CLIENT_SECRET', 'env-secret')
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'google',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: null,
+      createdAt: new Date(),
+    })
+
+    expect(await platformApp('google')).toEqual({ clientId: 'env-app', clientSecret: 'env-secret' })
+  })
 })
 
 describe('configuredProviders', () => {
@@ -175,5 +218,112 @@ describe('configuredProviders', () => {
   it('reports both false when nothing is configured anywhere', async () => {
     vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue(null)
     expect(await configuredProviders()).toEqual({ meta: false, google: false })
+  })
+
+  it('reports Google configured when the developer token comes from the row alone', async () => {
+    // Same mixed case as platformApp's: id and secret from the environment,
+    // developer token from the row. The button must not go dead over that.
+    vi.stubEnv('GOOGLE_ADS_CLIENT_ID', 'env-app')
+    vi.stubEnv('GOOGLE_ADS_CLIENT_SECRET', 'env-secret')
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'google',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: encryptSecret('row-dev-token'),
+      createdAt: new Date(),
+    })
+
+    expect((await configuredProviders()).google).toBe(true)
+  })
+
+  it('answers from presence alone, so an undecryptable row cannot break the page', async () => {
+    // configuredProviders must never decrypt: it only asks whether a value
+    // is present. platformApp, which callers use for real credentials, keeps
+    // throwing on the very same row — proven alongside it so the contrast
+    // between the two is explicit, not just asserted by omission.
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'meta',
+      clientId: 'row-app',
+      clientSecret: 'enc:v2:unrecognisable',
+      developerToken: null,
+      createdAt: new Date(),
+    })
+
+    await expect(configuredProviders()).resolves.toEqual({ meta: true, google: false })
+    await expect(platformApp('meta')).rejects.toThrow('Unknown secret version')
+  })
+})
+
+describe('fallback logging', () => {
+  it('warns, naming the provider and the variable, when the row answers but the environment set something', async () => {
+    vi.stubEnv('META_APP_ID', 'env-app') // secret stays unset: the environment is incomplete
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'meta',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: null,
+      createdAt: new Date(),
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await platformApp('meta')
+
+    expect(warn).toHaveBeenCalledTimes(1)
+    const message = String(warn.mock.calls[0][0])
+    expect(message).toContain('meta')
+    expect(message).toContain('META_APP_ID')
+  })
+
+  it('stays quiet when the row answers and nothing was set in the environment', async () => {
+    // This is production's exact state today: none of the five variables
+    // are set anywhere. It must not start logging warnings the moment this
+    // fix lands.
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'meta',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: null,
+      createdAt: new Date(),
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await platformApp('meta')
+
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('warns for the mixed Google case too: id and secret from the environment, token from the row', async () => {
+    vi.stubEnv('GOOGLE_ADS_CLIENT_ID', 'env-app')
+    vi.stubEnv('GOOGLE_ADS_CLIENT_SECRET', 'env-secret')
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'google',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: encryptSecret('row-dev-token'),
+      createdAt: new Date(),
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await platformApp('google')
+
+    expect(warn).toHaveBeenCalledTimes(1)
+    const message = String(warn.mock.calls[0][0])
+    expect(message).toContain('google')
+    expect(message).toContain('GOOGLE_ADS_CLIENT_ID')
+    expect(message).toContain('GOOGLE_ADS_CLIENT_SECRET')
+  })
+
+  it('never warns from configuredProviders when the environment is untouched', async () => {
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue(null)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await configuredProviders()
+
+    expect(warn).not.toHaveBeenCalled()
   })
 })

@@ -804,7 +804,7 @@ git commit -m "refactor: nothing writes the platform app rows any more"
 
 ## After the plan
 
-**Set the five variables on Vercel** to the values already in the database. Until then the fallback keeps the site working, so this is not urgent — but the point of the change is unmet until it is done.
+**Set the five variables on Vercel**, pasting the plaintext value straight from Facebook's and Google's own dashboards — the Meta app's App ID and App Secret, the Google OAuth client's ID and secret, the Google Ads developer token from the API Center. A value copied straight out of the database is accepted too, for compatibility, but it is `enc:v1:` ciphertext tied to whichever `AUTH_SECRET` encrypted it: it breaks if pasted somewhere that key differs, and breaks here too the day `AUTH_SECRET` is rotated. Plaintext has neither problem. Until the variables are set the fallback keeps the site working, so this is not urgent — but the point of the change is unmet until it is done.
 
 **The Facebook app still needs its redirect URI.** Open `https://developers.facebook.com/apps/1526277315425302/`, add the **Facebook Login for Business** product, paste `https://panetti.vercel.app/api/ads/oauth/meta/callback` under Valid OAuth Redirect URIs, save. No API can do this, and nothing else works until it is done.
 
