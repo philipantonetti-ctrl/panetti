@@ -146,9 +146,10 @@ model Ambassador {
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  codes  AmbassadorCode[]
-  orders Order[]
-  user   User?
+  codes    AmbassadorCode[]
+  orders   Order[]
+  user     User?
+  products AmbassadorProduct[]
 }
 
 // A discount code belongs to ONE store. The same text may exist on other stores
@@ -299,4 +300,29 @@ model AdSpend {
 
   @@unique([accountId, date])
   @@index([date])
+}
+
+// What we sent an ambassador: a chair, a massage gun, whatever they were given
+// to promote. Keyed on SKU, not a Product id, because Product is shop-scoped
+// and cascades away with its shop — a gift is a fact about a physical object
+// and must outlive a store being removed. `name` is a snapshot for the same
+// reason OrderItem.name is one: a shop renaming its listing must not rewrite
+// what we already handed over.
+//
+// No unique on (ambassadorId, sku): two chairs on two dates are two rows, each
+// with its own date and note. Collapsing them would lose the second of both.
+model AmbassadorProduct {
+  id           String   @id @default(cuid())
+  ambassadorId String
+  sku          String   // product identity ACROSS shops
+  name         String   // snapshot at gifting time
+  quantity     Int      @default(1)
+  receivedAt   DateTime
+  note         String?
+  createdAt    DateTime @default(now())
+
+  ambassador Ambassador @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+
+  @@index([ambassadorId])
+  @@index([sku])
 }
