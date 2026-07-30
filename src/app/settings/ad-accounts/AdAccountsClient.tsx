@@ -20,10 +20,10 @@ export type Row = {
 
 type ShopOption = { id: string; name: string }
 
-export type PlatformSetup = {
-  meta: { clientId: string } | null
-  google: { clientId: string; hasDeveloperToken: boolean } | null
-}
+/** Whether each platform's app is configured on the server. Nothing more: the
+ * client never types these credentials, so the browser never needs to see
+ * them. */
+export type PlatformSetup = { meta: boolean; google: boolean }
 
 const PROVIDER_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' }
 
@@ -126,11 +126,8 @@ export function AdAccountsClient({
         subtitle="Log in with Facebook or Google, tick the ad accounts you want, done. Daily spend then syncs itself a few times a day and lands on the Marketing page, shop by shop."
       >
         <div className="flex flex-wrap items-center gap-2">
-          <ConnectButton provider="meta" ready={Boolean(platform.meta)} />
-          <ConnectButton
-            provider="google"
-            ready={Boolean(platform.google && platform.google.hasDeveloperToken)}
-          />
+          <ConnectButton provider="meta" ready={platform.meta} />
+          <ConnectButton provider="google" ready={platform.google} />
           <button
             onClick={syncNow}
             disabled={syncing}
@@ -166,8 +163,8 @@ export function AdAccountsClient({
               {accounts.length === 0 && (
                 <tr className="border-t border-line">
                   <td colSpan={7} className="px-3 py-8 text-center text-muted">
-                    Nothing connected yet. Fill in the setup below, then press “Connect with
-                    Facebook” or “Connect with Google”.
+                    Nothing connected yet. Press “Connect with Facebook” or “Connect with
+                    Google” above.
                   </td>
                 </tr>
               )}
@@ -234,8 +231,6 @@ export function AdAccountsClient({
         >
           Advanced: paste credentials manually
         </button>
-
-        <PlatformSetupSection platform={platform} />
       </PageBody>
 
       {pickerId && (
@@ -273,14 +268,13 @@ function ConnectButton({ provider, ready }: { provider: 'meta' | 'google'; ready
   const toast = useToast()
   const text = provider === 'meta' ? 'Connect with Facebook' : 'Connect with Google'
   if (!ready) {
-    // A button that cannot be pressed and cannot say why is a dead end.
-    // Pressing this one explains itself and walks to the setup.
+    // A button that cannot be pressed and cannot say why is a dead end. There
+    // is nowhere on the page to send anyone now: the credentials are server
+    // config, so a missing one is ours to fix, not the reader's.
+    const platform = provider === 'meta' ? 'Facebook' : 'Google'
     return (
       <button
-        onClick={() => {
-          toast.error('One-time setup needed first. Two minutes, the steps are right below.')
-          document.getElementById('platform-setup')?.scrollIntoView?.({ behavior: 'smooth' })
-        }}
+        onClick={() => toast.error(`${platform} connect is not set up on the server yet.`)}
         className={quietBtn}
       >
         {text}
@@ -471,158 +465,6 @@ function PickerModal({
             {busy ? 'Connecting…' : 'Connect ticked accounts'}
           </button>
         </div>
-      </div>
-    </div>
-  )
-}
-
-/**
- * The one-time setup, per platform. Both need the client's own app keys: ours
- * cannot stand in, because reading someone else's ad accounts through our app
- * is the exact case Meta requires App Review for. Their own app needs none.
- */
-function PlatformSetupSection({ platform }: { platform: PlatformSetup }) {
-  return (
-    <section id="platform-setup" className="mt-8">
-      <h2 className="text-[13px] font-semibold text-ink">Platform setup</h2>
-      <p className="mt-1 max-w-2xl text-xs text-muted">
-        A one-time step per platform: create your own app, paste its keys here, and the connect
-        buttons above come alive. Only you ever log in through it, so no app review is needed.
-      </p>
-      <div className="mt-3 grid gap-4 lg:grid-cols-2">
-        <PlatformCard provider="meta" saved={platform.meta} />
-        <PlatformCard provider="google" saved={platform.google} />
-      </div>
-    </section>
-  )
-}
-
-function PlatformCard({
-  provider,
-  saved,
-}: {
-  provider: 'meta' | 'google'
-  saved: { clientId: string; hasDeveloperToken?: boolean } | null
-}) {
-  const router = useRouter()
-  const [clientId, setClientId] = useState(saved?.clientId ?? '')
-  const [clientSecret, setClientSecret] = useState('')
-  const [developerToken, setDeveloperToken] = useState('')
-  const [busy, setBusy] = useState(false)
-  const toast = useToast()
-
-  // The origin only exists in the browser; setting it after mount avoids a
-  // hydration mismatch between the server's empty string and the real URL.
-  const [origin, setOrigin] = useState('')
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOrigin(window.location.origin)
-  }, [])
-  const redirectUri = origin ? `${origin}/api/ads/oauth/${provider}/callback` : ''
-
-  async function save() {
-    setBusy(true)
-    try {
-      const res = await fetch('/api/ad-platform-apps', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, clientId, clientSecret, developerToken }),
-      })
-      const body = (await res.json().catch(() => null)) as { error?: string } | null
-      if (!res.ok) {
-        toast.error(body?.error ?? 'Could not save')
-        return
-      }
-      toast.success(provider === 'meta' ? 'Meta setup saved' : 'Google setup saved')
-      router.refresh()
-    } catch {
-      toast.error('Could not reach the server')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
-      <h3 className="text-sm font-semibold text-ink">
-        {provider === 'meta' ? 'Meta app' : 'Google app'}
-      </h3>
-      {provider === 'meta' ? (
-        <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-[11px] text-muted">
-          <li>
-            <a
-              href="https://developers.facebook.com/apps/"
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-accent hover:underline"
-            >
-              developers.facebook.com
-            </a>
-            : Create app, Business type.
-          </li>
-          <li>Paste the App ID and App secret here and press Save.</li>
-          <li>
-            In the app, add the product called “Facebook Login for Business”. A Business type app
-            is only offered that one.
-          </li>
-          <li>
-            Open its Settings and paste the callback URL below under Valid OAuth Redirect URIs.
-            Press Save changes. Skip this and Facebook shows “Can’t load URL”.
-          </li>
-        </ol>
-      ) : (
-        <p className="mt-1 text-[11px] text-muted">
-          console.cloud.google.com, Credentials, OAuth client (Web application) with the callback
-          URL below. Set the consent screen to In production. The developer token comes from
-          Google Ads, manager account, API Center.
-        </p>
-      )}
-      <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
-        <span className="text-faint">Callback URL: </span>
-        {redirectUri || '…'}
-      </p>
-
-      <label className={label}>Client ID</label>
-      <input
-        value={clientId}
-        onChange={(e) => setClientId(e.target.value)}
-        aria-label={`${provider} client id`}
-        className={field}
-      />
-
-      <label className={label}>Client secret</label>
-      <input
-        type="password"
-        value={clientSecret}
-        onChange={(e) => setClientSecret(e.target.value)}
-        placeholder={saved ? 'saved, leave blank to keep' : ''}
-        aria-label={`${provider} client secret`}
-        className={field}
-      />
-
-      {provider === 'google' && (
-        <>
-          <label className={label}>Developer token</label>
-          <input
-            type="password"
-            value={developerToken}
-            onChange={(e) => setDeveloperToken(e.target.value)}
-            placeholder={saved?.hasDeveloperToken ? 'saved, leave blank to keep' : ''}
-            aria-label="google developer token"
-            className={field}
-          />
-        </>
-      )}
-
-      <div className="mt-4 flex justify-end">
-        <button
-          onClick={save}
-          disabled={busy}
-          aria-label={`save ${provider} setup`}
-          className={quietBtn}
-        >
-          {busy ? 'Saving…' : 'Save'}
-        </button>
       </div>
     </div>
   )

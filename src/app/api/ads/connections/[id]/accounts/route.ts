@@ -3,6 +3,7 @@ import { currentUser } from '@/lib/auth/current-user'
 import { AuthError, assertAdmin } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { decryptSecret } from '@/lib/secrets'
+import { platformApp } from '@/lib/ads/platform-app'
 import { listGoogleAdAccounts, listMetaAdAccounts } from '@/lib/ads/listing'
 import { suggestShop } from '@/lib/ads/suggest'
 import { AdApiError } from '@/lib/ads/types'
@@ -26,17 +27,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (connection.provider === 'meta') {
       listed = await listMetaAdAccounts(decryptSecret(connection.secret))
     } else {
-      const app = await db.adPlatformApp.findUnique({ where: { provider: 'google' } })
+      const app = await platformApp('google')
       if (!app?.developerToken) {
         return NextResponse.json(
-          { error: 'Google platform setup is missing. Fill it in below first.' },
+          { error: 'Google connect is not configured on the server.' },
           { status: 400 },
         )
       }
       listed = await listGoogleAdAccounts({
-        developerToken: decryptSecret(app.developerToken),
+        developerToken: app.developerToken,
         clientId: app.clientId,
-        clientSecret: decryptSecret(app.clientSecret),
+        clientSecret: app.clientSecret,
         refreshToken: decryptSecret(connection.secret),
       })
     }

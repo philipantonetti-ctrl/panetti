@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { currentUser } from '@/lib/auth/current-user'
 import { AuthError, assertAdmin } from '@/lib/auth/guard'
-import { db } from '@/lib/db'
+import { platformApp } from '@/lib/ads/platform-app'
 import { STATE_COOKIE, buildGoogleAuthUrl, buildMetaAuthUrl } from '@/lib/ads/oauth'
 
 /**
@@ -27,10 +27,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
       return NextResponse.json({ error: 'No such platform' }, { status: 404 })
     }
 
-    const app = await db.adPlatformApp.findUnique({ where: { provider } })
+    const app = await platformApp(provider)
     if (!app) {
+      // There is no setup form to send anyone to any more. This is an
+      // operator's problem: a missing Vercel variable and no fallback row.
+      const platform = provider === 'meta' ? 'Facebook' : 'Google'
       return back(
-        `/settings/ad-accounts?error=${encodeURIComponent('Fill in the platform setup below first.')}`,
+        `/settings/ad-accounts?error=${encodeURIComponent(
+          `${platform} connect is not configured on the server.`,
+        )}`,
       )
     }
 

@@ -1,0 +1,78 @@
+import { db } from '@/lib/db'
+import { decryptSecret } from '@/lib/secrets'
+
+/**
+ * Where the Meta and Google app credentials come from.
+ *
+ * The environment first, the AdPlatformApp row second. That order is the whole
+ * point: these used to be a form the client filled in, which made him register
+ * a Facebook app and apply for a Google developer token before he could press
+ * a button. They are server configuration, and BeProfit — the tool he compared
+ * us to — has always treated them that way.
+ *
+ * The row survives as a fallback rather than being dropped, so a mistyped
+ * variable name on Vercel cannot take the live site dark.
+ */
+
+export type PlatformCredentials = {
+  clientId: string
+  clientSecret: string
+  developerToken?: string
+}
+
+type Provider = 'meta' | 'google'
+
+const ENV: Record<Provider, { id: string; secret: string; developerToken?: string }> = {
+  meta: { id: 'META_APP_ID', secret: 'META_APP_SECRET' },
+  google: {
+    id: 'GOOGLE_ADS_CLIENT_ID',
+    secret: 'GOOGLE_ADS_CLIENT_SECRET',
+    developerToken: 'GOOGLE_ADS_DEVELOPER_TOKEN',
+  },
+}
+
+/** Vercel hands back empty strings for variables that were never filled in. */
+function env(name: string | undefined): string | undefined {
+  if (!name) return undefined
+  const value = process.env[name]?.trim()
+  return value ? value : undefined
+}
+
+export async function platformApp(provider: Provider): Promise<PlatformCredentials | null> {
+  const keys = ENV[provider]
+  let clientId = env(keys.id)
+  let clientSecret = env(keys.secret)
+  let developerToken = env(keys.developerToken)
+
+  if (!clientId || !clientSecret) {
+    const row = await db.adPlatformApp.findUnique({ where: { provider } })
+    if (!row) return null
+    clientId = row.clientId
+    clientSecret = row.clientSecret
+    developerToken = row.developerToken ?? undefined
+  }
+
+  // One decrypt for both sources, deliberately. decryptSecret returns a value
+  // without the enc:v1: prefix unchanged, so a plaintext variable is untouched
+  // — and the deployment step for this change is "copy the values already in
+  // the database", where what you read out of a row IS enc:v1: ciphertext.
+  // Branching here would turn that instruction into a trap.
+  return {
+    clientId,
+    clientSecret: decryptSecret(clientSecret),
+    ...(developerToken ? { developerToken: decryptSecret(developerToken) } : {}),
+  }
+}
+
+/**
+ * What the ad-accounts page is allowed to know: whether a button will work.
+ * Google needs the developer token as well, because every call after the login
+ * carries it. Meta needs only the app it logs into.
+ */
+export async function configuredProviders(): Promise<{ meta: boolean; google: boolean }> {
+  const [meta, google] = await Promise.all([platformApp('meta'), platformApp('google')])
+  return {
+    meta: Boolean(meta),
+    google: Boolean(google?.developerToken),
+  }
+}

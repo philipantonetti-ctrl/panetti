@@ -7,10 +7,23 @@ vi.mock('next/headers', () => ({
   }),
 }))
 
+/**
+ * The route's only credential source, after Task 2, is platformApp('meta').
+ * Mock it here rather than writing real AdPlatformApp rows: the table's
+ * provider column is uniquely constrained, and src/app/api/ads/oauth.test.ts
+ * already owns the one meta row for real-database coverage of the accessor's
+ * fallback path. Two files writing the same row from parallel Vitest workers
+ * raced and failed nondeterministically.
+ */
+vi.mock('@/lib/ads/platform-app', () => ({
+  platformApp: vi.fn(),
+}))
+
 const { POST } = await import('./route')
 const { signSession } = await import('@/lib/auth/session')
 const { db } = await import('@/lib/db')
-const { decryptSecret, encryptSecret } = await import('@/lib/secrets')
+const { decryptSecret } = await import('@/lib/secrets')
+const { platformApp } = await import('@/lib/ads/platform-app')
 
 const ME = 'plan-metatoken-me@example.local'
 const LABEL = 'Plan Metatoken Person'
@@ -19,19 +32,6 @@ let myId = ''
 async function wipe() {
   await db.adConnection.deleteMany({ where: { label: LABEL } })
   await db.user.deleteMany({ where: { email: ME } })
-}
-
-/**
- * AdPlatformApp is a singleton per provider, shared with the seed data and
- * with the oauth suite running alongside this one. Borrow it, always put it
- * back — never delete it out from under a neighbour.
- */
-async function restoreSeedApp() {
-  await db.adPlatformApp.upsert({
-    where: { provider: 'meta' },
-    create: { provider: 'meta', clientId: 'seed-app', clientSecret: 'seed' },
-    update: { clientId: 'seed-app', clientSecret: 'seed' },
-  })
 }
 
 const asAdmin = async () => {
@@ -48,11 +48,12 @@ beforeEach(async () => {
   const me = await db.user.create({ data: { email: ME, passwordHash: 'x', role: 'ADMIN' } })
   myId = me.id
   await asAdmin()
+  // Most tests want an app configured; the one that does not overrides this.
+  vi.mocked(platformApp).mockResolvedValue({ clientId: 'appid', clientSecret: 'shh' })
 })
 
 afterEach(async () => {
   await wipe()
-  await restoreSeedApp()
   vi.unstubAllGlobals()
 })
 
@@ -64,15 +65,6 @@ const post = (body: unknown) =>
       body: JSON.stringify(body),
     }),
   )
-
-// upsert, never create: the row is a singleton and a neighbouring suite
-// borrows it too, so `create` would race into a unique-constraint failure.
-const app = () =>
-  db.adPlatformApp.upsert({
-    where: { provider: 'meta' },
-    create: { provider: 'meta', clientId: 'appid', clientSecret: encryptSecret('shh') },
-    update: { clientId: 'appid', clientSecret: encryptSecret('shh') },
-  })
 
 /** Facebook, agreeing with everything. */
 function stubHappyMeta(name = LABEL) {
@@ -90,7 +82,6 @@ function stubHappyMeta(name = LABEL) {
 
 describe('POST /api/ads/connections/meta', () => {
   it('stores the token encrypted, never expiring, and hands back the connection', async () => {
-    await app()
     stubHappyMeta()
 
     const res = await post({ token: 'EAABpasted' })
@@ -107,7 +98,6 @@ describe('POST /api/ads/connections/meta', () => {
   })
 
   it('refreshes the same person instead of piling up connections', async () => {
-    await app()
     stubHappyMeta()
     const first = await (await post({ token: 'EAABone' })).json()
     const second = await (await post({ token: 'EAABtwo' })).json()
@@ -119,7 +109,6 @@ describe('POST /api/ads/connections/meta', () => {
   })
 
   it('answers 400 with Facebook words when the token is refused', async () => {
-    await app()
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -140,7 +129,7 @@ describe('POST /api/ads/connections/meta', () => {
     // The App ID and secret are optional on purpose: demanding them before a
     // token is accepted would be one more wall in front of the one field
     // that matters. Without them we skip debug_token and still connect.
-    await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
+    vi.mocked(platformApp).mockResolvedValue(null)
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes('/debug_token') || url.includes('client_credentials'))
         throw new Error('must not ask Facebook about a token with no app to ask as')
@@ -152,11 +141,9 @@ describe('POST /api/ads/connections/meta', () => {
     expect(res.status).toBe(200)
     expect((await res.json()).expiresAt).toBeNull()
     expect(await db.adConnection.count({ where: { label: LABEL } })).toBe(1)
-    // afterEach puts the shared row back.
   })
 
   it('refuses an empty token without calling Facebook', async () => {
-    await app()
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     expect((await post({ token: '  ' })).status).toBe(400)
@@ -164,7 +151,6 @@ describe('POST /api/ads/connections/meta', () => {
   })
 
   it('is admin only', async () => {
-    await app()
     stubHappyMeta()
     cookieValue.current = await signSession({
       userId: myId,

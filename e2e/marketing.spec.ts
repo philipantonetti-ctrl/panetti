@@ -75,11 +75,12 @@ test('the ad accounts page offers one-click connect and lists the seeded account
   await expect(page.getByText('via Philip (sample)')).toBeVisible()
   await expect(page.getByText('Connected').first()).toBeVisible()
 
-  // A one-time setup card per platform, each printing its own callback URL.
-  await expect(page.getByRole('heading', { name: 'Platform setup' })).toBeVisible()
-  await expect(page.getByText('/api/ads/oauth/google/callback')).toBeVisible()
-  await expect(page.getByText('/api/ads/oauth/meta/callback')).toBeVisible()
-  await expect(page.getByText('Meta app', { exact: true })).toBeVisible()
+  // The client registers nothing: the app credentials are server config now.
+  await expect(page.getByRole('heading', { name: 'Platform setup' })).toHaveCount(0)
+  await expect(page.getByText('Callback URL:')).toHaveCount(0)
+  await expect(page.getByText('/api/ads/oauth/google/callback')).toHaveCount(0)
+  await expect(page.getByText('/api/ads/oauth/meta/callback')).toHaveCount(0)
+  await expect(page.getByText('Meta app', { exact: true })).toHaveCount(0)
 
   // The per-account manual path still exists, one quiet link away.
   await page.getByRole('button', { name: 'Advanced: paste credentials manually' }).click()

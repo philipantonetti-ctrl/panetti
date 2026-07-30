@@ -1,6 +1,7 @@
 import { db } from '../db'
 import { utcDay } from '../dates'
 import { decryptSecret } from '../secrets'
+import { platformApp } from './platform-app'
 import { fetchMetaDaily, fetchMetaDailyBudget } from './meta'
 import { fetchGoogleDaily, fetchGoogleDailyBudget } from './google'
 import {
@@ -65,14 +66,14 @@ export async function resolveCredentials(account: AdAccountRow): Promise<AdCrede
       }
       return { accessToken: decryptSecret(account.connection.secret) }
     }
-    const app = await db.adPlatformApp.findUnique({ where: { provider: 'google' } })
+    const app = await platformApp('google')
     if (!app?.developerToken) {
-      throw new AdApiError('Google platform setup is missing. Fill it in under Ad accounts.')
+      throw new AdApiError('Google connect is not configured on the server.')
     }
     return {
-      developerToken: decryptSecret(app.developerToken),
+      developerToken: app.developerToken,
       clientId: app.clientId,
-      clientSecret: decryptSecret(app.clientSecret),
+      clientSecret: app.clientSecret,
       refreshToken: decryptSecret(account.connection.secret),
       ...(account.loginCustomerId ? { loginCustomerId: account.loginCustomerId } : {}),
     }

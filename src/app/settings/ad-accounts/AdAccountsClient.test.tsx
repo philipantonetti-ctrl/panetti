@@ -20,10 +20,7 @@ const SHOPS = [
   { id: 's2', name: 'Panetti Sweden' },
 ]
 
-const READY: PlatformSetup = {
-  meta: { clientId: 'app' },
-  google: { clientId: 'app', hasDeveloperToken: true },
-}
+const READY: PlatformSetup = { meta: true, google: true }
 
 const account = (over: Partial<Row>): Row => ({
   id: 'acc1',
@@ -73,16 +70,13 @@ describe('AdAccountsClient', () => {
     expect(screen.getByText('Never synced')).toBeTruthy()
   })
 
-  it('walks you to the setup when the Google connect button is pressed too early', async () => {
-    renderPage([], { platform: { meta: null, google: { clientId: 'x', hasDeveloperToken: false } } })
-
-    // Not a link yet — the login flow would only bounce back with an error.
-    expect(screen.getByText('Connect with Google').closest('a')).toBeNull()
-    fireEvent.click(screen.getByText('Connect with Google'))
-    await waitFor(() =>
-      expect(
-        screen.getByText('One-time setup needed first. Two minutes, the steps are right below.'),
-      ).toBeTruthy(),
+  it('offers both connect buttons as real links when the server is configured', () => {
+    renderPage([])
+    expect(screen.getByText('Connect with Facebook').closest('a')?.getAttribute('href')).toBe(
+      '/api/ads/oauth/meta/start',
+    )
+    expect(screen.getByText('Connect with Google').closest('a')?.getAttribute('href')).toBe(
+      '/api/ads/oauth/google/start',
     )
   })
 
@@ -100,16 +94,19 @@ describe('AdAccountsClient', () => {
     )
   })
 
-  it('walks you to the setup when the Facebook connect button is pressed too early', async () => {
-    renderPage([], { platform: { meta: null, google: { clientId: 'x', hasDeveloperToken: true } } })
+  it('says so plainly when a platform is not configured on the server', async () => {
+    renderPage([], { platform: { meta: false, google: true } })
 
+    // Not a link: pressing it would only bounce off Facebook with a worse error.
     expect(screen.getByText('Connect with Facebook').closest('a')).toBeNull()
     fireEvent.click(screen.getByText('Connect with Facebook'))
     await waitFor(() =>
       expect(
-        screen.getByText('One-time setup needed first. Two minutes, the steps are right below.'),
+        screen.getByText('Facebook connect is not set up on the server yet.'),
       ).toBeTruthy(),
     )
+    // Google is unaffected.
+    expect(screen.getByText('Connect with Google').closest('a')).toBeTruthy()
   })
 
   it('asks for the token nowhere on the page any more', () => {
@@ -121,26 +118,25 @@ describe('AdAccountsClient', () => {
     expect(screen.queryByRole('button', { name: 'Save token' })).toBeNull()
   })
 
-  it('offers a one-time setup card for both platforms', () => {
+  it('asks the client for no app credentials anywhere', () => {
     renderPage([])
-    expect(screen.getByText('Platform setup')).toBeTruthy()
-    expect(screen.getByLabelText('meta client id')).toBeTruthy()
-    expect(screen.getByLabelText('meta client secret')).toBeTruthy()
-    expect(screen.getByLabelText('google client id')).toBeTruthy()
+    expect(screen.queryByText('Platform setup')).toBeNull()
+    expect(screen.queryByLabelText('meta client id')).toBeNull()
+    expect(screen.queryByLabelText('google client id')).toBeNull()
+    expect(screen.queryByLabelText('google developer token')).toBeNull()
+    expect(screen.queryByText('Callback URL:')).toBeNull()
   })
 
   it('still offers the manual path behind Advanced, with provider fields switching', () => {
     renderPage([])
-    // Only Google's setup card carries a Developer token.
-    expect(screen.getAllByText('Developer token')).toHaveLength(1)
+    // The setup cards are gone, so the modal is the only place this label lives.
+    expect(screen.queryAllByText('Developer token')).toHaveLength(0)
 
     fireEvent.click(screen.getByText('Advanced: paste credentials manually'))
-    // The page-level token field is gone, so this label is now unique. Keep
-    // the distinct wording anyway: it says what the field is scoped to.
     expect(screen.getByText('Access token for this account')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Google' }))
-    expect(screen.getAllByText('Developer token')).toHaveLength(2) // card + modal
+    expect(screen.getAllByText('Developer token')).toHaveLength(1) // modal only
     expect(screen.queryByText('Access token for this account')).toBeNull()
   })
 
@@ -221,21 +217,4 @@ describe('AdAccountsClient', () => {
   // WAS the loop, and the save-time App Domains warning. Both died with
   // ensureMetaApp. A green test guarding an impossible message is worse than
   // no test — it reads as coverage while proving nothing.
-
-  it('saves the platform setup and never demands a saved secret again', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
-    vi.stubGlobal('fetch', fetchMock)
-    renderPage([])
-
-    fireEvent.change(screen.getByLabelText('google client id'), { target: { value: 'new-app-id' } })
-    fireEvent.click(screen.getByRole('button', { name: 'save google setup' }))
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('/api/ad-platform-apps')
-    const body = JSON.parse(String(init.body))
-    expect(body.provider).toBe('google')
-    expect(body.clientId).toBe('new-app-id')
-    expect(body.clientSecret).toBe('') // blank = keep what is saved
-  })
 })
