@@ -16,7 +16,6 @@ const { GET: startRoute } = await import('./oauth/[provider]/start/route')
 const { GET: callbackRoute } = await import('./oauth/[provider]/callback/route')
 const { GET: accountsRoute } = await import('./connections/[id]/accounts/route')
 const { POST: bulkRoute } = await import('../ad-accounts/bulk/route')
-const { GET: appsGet, PUT: appsPut } = await import('../ad-platform-apps/route')
 const { signSession } = await import('@/lib/auth/session')
 const { db } = await import('@/lib/db')
 
@@ -114,44 +113,11 @@ const callback = (provider: string, qs: string) =>
 // as Connect with Google always has. The pasted-token path still proves
 // itself the old way, in src/lib/ads/token.test.ts, but only as a fallback.
 
-describe('platform setup', () => {
-  it('stores secrets encrypted and answers with booleans only', async () => {
-    const res = await appsPut(
-      new Request('http://localhost/api/ad-platform-apps', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: 'meta',
-          clientId: 'oauth-test-9000',
-          clientSecret: 'super-secret-value',
-        }),
-      }),
-    )
-    expect(res.status).toBe(200)
-
-    const stored = await db.adPlatformApp.findUniqueOrThrow({ where: { provider: 'meta' } })
-    expect(stored.clientSecret.startsWith('enc:v1:')).toBe(true)
-    expect(stored.clientSecret).not.toContain('super-secret-value')
-
-    const list = await appsGet()
-    const text = JSON.stringify(await list.json())
-    expect(text).toContain('oauth-test-9000')
-    expect(text).toContain('"hasSecret":true')
-    expect(text).not.toContain('super-secret-value')
-
-    // A blank secret on a later save keeps the stored one.
-    await appsPut(
-      new Request('http://localhost/api/ad-platform-apps', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: 'meta', clientId: 'oauth-test-9001', clientSecret: '' }),
-      }),
-    )
-    const kept = await db.adPlatformApp.findUniqueOrThrow({ where: { provider: 'meta' } })
-    expect(kept.clientId).toBe('oauth-test-9001')
-    expect(kept.clientSecret).toBe(stored.clientSecret)
-  })
-})
+// A "platform setup" suite lived here, covering the route that saved the
+// client's App ID and secret. Both are gone: the credentials are environment
+// variables now, so there is no form, no route and nothing to encrypt at
+// save time. What proves a credential is read correctly lives in
+// src/lib/ads/platform-app.test.ts.
 
 // Four Meta start tests lived here: the domain write, the second click it
 // asked for, the refused write, and the unreachable-Meta fallthrough. The
