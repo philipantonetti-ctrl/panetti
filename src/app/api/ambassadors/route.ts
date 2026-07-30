@@ -27,6 +27,11 @@ export async function GET() {
       include: {
         codes: { include: { shop: { select: { name: true } } } },
         user: { select: { id: true } },
+        // Newest first: what we sent most recently is what anyone is asking about.
+        products: {
+          orderBy: { receivedAt: 'desc' },
+          select: { id: true, sku: true, name: true, quantity: true, receivedAt: true, note: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -53,6 +58,14 @@ export async function GET() {
           commissionPercent: Math.round(a.commissionRate * 10000) / 100,
           active: a.active,
           codes: a.codes.map((c) => ({ id: c.id, code: c.code, shopId: c.shopId, shopName: c.shop.name })),
+          products: a.products.map((p) => ({
+            id: p.id,
+            sku: p.sku,
+            name: p.name,
+            quantity: p.quantity,
+            receivedAt: p.receivedAt.toISOString(),
+            note: p.note,
+          })),
           onboarded: a.user !== null,
           emailHasLogin,
           // Never mint a link that cannot be redeemed: already onboarded, or the

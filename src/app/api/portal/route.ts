@@ -98,6 +98,14 @@ export async function GET(req: Request) {
       _max: { placedAt: true },
     })
 
+    // What we SENT them, which is a different thing entirely from what they
+    // sold. No note: that is our internal record, not theirs.
+    const ownedProducts = await db.ambassadorProduct.findMany({
+      where: { ambassadorId: me.id },
+      orderBy: { receivedAt: 'desc' },
+      select: { id: true, sku: true, name: true, quantity: true, receivedAt: true },
+    })
+
     // Every line they ever sold in the period, to rank products by units sold.
     const soldLines = await db.orderItem.findMany({
       where: { order: mine },
@@ -201,6 +209,13 @@ export async function GET(req: Request) {
       totalAmbassadors,
       recent,
       productTotals,
+      products: ownedProducts.map((p) => ({
+        id: p.id,
+        sku: p.sku,
+        name: p.name,
+        quantity: p.quantity,
+        receivedAt: p.receivedAt.toISOString(),
+      })),
       lifetimeOrders: lifetime._count._all,
       firstSaleAt: lifetime._min.placedAt?.toISOString() ?? null,
       lastSaleAt: lifetime._max.placedAt?.toISOString() ?? null,
