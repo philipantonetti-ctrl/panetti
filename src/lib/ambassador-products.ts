@@ -37,8 +37,14 @@ export function summariseProducts(rows: GiftRow[]): ProductSummary[] {
   return [...bySku.entries()]
     .map(([sku, e]) => ({ sku, name: e.name, ambassadors: e.people.size, units: e.units }))
     // A total order, so the table never reshuffles between two identical loads.
+    // SKU is the last tiebreaker and the only one guaranteed distinct: without
+    // it, two SKUs tied on count, units AND name fall back to input order, and
+    // the caller's query has no ORDER BY to make that stable.
     .sort(
       (a, b) =>
-        b.ambassadors - a.ambassadors || b.units - a.units || a.name.localeCompare(b.name),
+        b.ambassadors - a.ambassadors ||
+        b.units - a.units ||
+        a.name.localeCompare(b.name) ||
+        a.sku.localeCompare(b.sku),
     )
 }

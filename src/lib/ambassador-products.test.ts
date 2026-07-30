@@ -45,6 +45,30 @@ describe('summariseProducts', () => {
     expect(summariseProducts(rows).map((r) => r.name)).toEqual(['Alpha', 'Bravo', 'Charlie'])
   })
 
+  it('ranks by people before units, not the other way round', () => {
+    // The one case that tells the two orderings apart: A-SKU has more units,
+    // B-SKU has more people. Reach is the question this table answers, so
+    // B-SKU must come first.
+    const rows = [
+      gift('emma', 'A-SKU', 'Alpha', 9),
+      gift('johan', 'B-SKU', 'Bravo', 1),
+      gift('sofia', 'B-SKU', 'Bravo', 1),
+    ]
+
+    expect(summariseProducts(rows).map((r) => r.sku)).toEqual(['B-SKU', 'A-SKU'])
+  })
+
+  it('falls back to sku when everything else ties, so the order is truly total', () => {
+    // Same product name under two SKUs, same reach, same units — without the
+    // sku tiebreaker this pair would come back in whatever order the caller
+    // happened to supply.
+    const rows = [gift('emma', 'Z-SKU', 'Same Name', 1), gift('johan', 'A-SKU', 'Same Name', 1)]
+
+    expect(summariseProducts(rows).map((r) => r.sku)).toEqual(['A-SKU', 'Z-SKU'])
+    // Reversing the input must not reverse the output.
+    expect(summariseProducts([...rows].reverse()).map((r) => r.sku)).toEqual(['A-SKU', 'Z-SKU'])
+  })
+
   it('returns an empty list when nothing has been handed out', () => {
     expect(summariseProducts([])).toEqual([])
   })
