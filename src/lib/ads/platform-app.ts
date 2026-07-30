@@ -40,26 +40,27 @@ function env(name: string | undefined): string | undefined {
 
 export async function platformApp(provider: Provider): Promise<PlatformCredentials | null> {
   const keys = ENV[provider]
-  const clientId = env(keys.id)
-  const clientSecret = env(keys.secret)
-  const developerToken = env(keys.developerToken)
+  let clientId = env(keys.id)
+  let clientSecret = env(keys.secret)
+  let developerToken = env(keys.developerToken)
 
-  if (clientId && clientSecret) {
-    return {
-      clientId,
-      clientSecret: decryptSecret(clientSecret),
-      ...(developerToken ? { developerToken: decryptSecret(developerToken) } : {}),
-    }
+  if (!clientId || !clientSecret) {
+    const row = await db.adPlatformApp.findUnique({ where: { provider } })
+    if (!row) return null
+    clientId = row.clientId
+    clientSecret = row.clientSecret
+    developerToken = row.developerToken ?? undefined
   }
 
-  const row = await db.adPlatformApp.findUnique({ where: { provider } })
-  if (!row) return null
-  // decryptSecret returns a value without the enc:v1: prefix unchanged, so both
-  // environment variables and encrypted database rows work the same way.
+  // One decrypt for both sources, deliberately. decryptSecret returns a value
+  // without the enc:v1: prefix unchanged, so a plaintext variable is untouched
+  // — and the deployment step for this change is "copy the values already in
+  // the database", where what you read out of a row IS enc:v1: ciphertext.
+  // Branching here would turn that instruction into a trap.
   return {
-    clientId: row.clientId,
-    clientSecret: decryptSecret(row.clientSecret),
-    ...(row.developerToken ? { developerToken: decryptSecret(row.developerToken) } : {}),
+    clientId,
+    clientSecret: decryptSecret(clientSecret),
+    ...(developerToken ? { developerToken: decryptSecret(developerToken) } : {}),
   }
 }
 
