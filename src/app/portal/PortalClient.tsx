@@ -242,10 +242,10 @@ export function PortalClient({
 
                 <table className="w-full text-[13px]">
                   <thead>
-                    <tr className="border-y border-line bg-panel text-left text-[11px] text-muted">
-                      <th className="px-5 py-2 font-semibold">Product</th>
-                      <th className="px-5 py-2 text-right font-semibold">Quantity</th>
-                      <th className="px-5 py-2 text-right font-semibold">Received</th>
+                    <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                      <th className="px-5 py-2 text-left">Product</th>
+                      <th className="px-5 py-2 text-right">Quantity</th>
+                      <th className="px-5 py-2 text-right">Received</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -254,7 +254,7 @@ export function PortalClient({
                         <td className="px-5 py-2.5 font-medium text-ink">{p.name}</td>
                         <td className="num px-5 py-2.5 text-right text-ink">{p.quantity}</td>
                         <td className="num px-5 py-2.5 text-right text-muted">
-                          {p.receivedAt.slice(0, 10)}
+                          {day(p.receivedAt)}
                         </td>
                       </tr>
                     ))}
