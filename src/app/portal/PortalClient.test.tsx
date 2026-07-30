@@ -39,6 +39,7 @@ const payload = {
     { productId: 'p1', name: 'Pizza Oven', imageUrl: 'https://img.example/oven.png', units: 11, revenue: 1100000, commission: 110000 },
     { productId: 'p2', name: 'Pizza Spade', imageUrl: null, units: 3, revenue: 75000, commission: 7500 },
   ],
+  products: [],
 }
 
 function renderPortal(body: unknown = payload) {
