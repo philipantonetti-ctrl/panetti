@@ -1767,6 +1767,35 @@ test('an ambassador cannot reach the staff product API', async ({ page }) => {
 })
 ```
 
+- [ ] **Step 3b: Give the Edit modal the scroll every other modal here has**
+
+Running the e2e spec twice exposed a real, pre-existing bug this feature makes
+reachable. `EditModal` in `src/app/ambassadors/AmbassadorsClient.tsx` renders its
+panel as:
+
+```
+className="w-full max-w-md rounded-[var(--radius-card)] bg-surface p-5 shadow-xl"
+```
+
+No `max-h`, no `overflow-y-auto`, and nothing in its ancestor chain scrolls
+either. Every other modal in the app already handles this — both of
+`AdAccountsClient`'s use `max-h-[90vh] ... overflow-y-auto`. The ambassadors
+modal is the outlier.
+
+It never mattered before because the modal's height was fixed. The product
+ledger grows with the data, so an ambassador holding three or more products
+makes the panel taller than the viewport, and the bottom of it — the product
+picker and the Save button — becomes genuinely unreachable. That is an admin
+being unable to use the screen, not a test artefact.
+
+Change the panel's className to match the established pattern:
+
+```
+className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[var(--radius-card)] bg-surface p-5 shadow-xl"
+```
+
+Nothing else in that file changes.
+
 - [ ] **Step 4: Run the end-to-end spec**
 
 Run: `npx playwright test e2e/ambassador-products.spec.ts`
