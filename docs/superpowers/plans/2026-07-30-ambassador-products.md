@@ -913,7 +913,7 @@ Expected: PASS, 3 tests.
 - [ ] **Step 6: Run the full suite**
 
 Run: `npm test`
-Expected: 94 files, 660 tests, all passing. If `src/app/api/portal/*.test.ts` fails, you changed the shape of an existing field instead of adding a new one — revert that edit and add only.
+Expected: 94 files, 667 tests, all passing. If `src/app/api/portal/*.test.ts` fails, you changed the shape of an existing field instead of adding a new one — revert that edit and add only.
 
 - [ ] **Step 7: Commit**
 
