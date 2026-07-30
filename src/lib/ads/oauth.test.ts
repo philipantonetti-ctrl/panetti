@@ -100,6 +100,23 @@ describe('exchangeMetaCode', () => {
     expect(result.token).toBe('short')
   })
 
+  it("keeps the short token's own expiry when the long-lived exchange says nothing", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ access_token: 'short', expires_in: 5_400 }))
+      .mockResolvedValueOnce(json({}, 400))
+      .mockResolvedValueOnce(json({ name: 'Jacob' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // A silent long exchange must not stamp the 60-day guess on a token that
+    // the short exchange already said dies in hours.
+    const before = Date.now()
+    const result = await exchangeMetaCode(APP, META_REDIRECT, 'code-1')
+    const hours = (result.expiresAt.getTime() - before) / (60 * 60 * 1000)
+    expect(hours).toBeGreaterThan(1)
+    expect(hours).toBeLessThan(2)
+  })
+
   it("surfaces Facebook's own words on a rejected code", async () => {
     vi.stubGlobal(
       'fetch',

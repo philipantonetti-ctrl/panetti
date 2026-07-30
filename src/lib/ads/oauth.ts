@@ -105,7 +105,7 @@ export async function exchangeMetaCode(
   redirectUri: string,
   code: string,
 ): Promise<{ token: string; expiresAt: Date; label: string }> {
-  const short = await readJson<{ access_token?: string }>(
+  const short = await readJson<{ access_token?: string; expires_in?: number }>(
     await fetch(
       `${META}/oauth/access_token?${new URLSearchParams({
         client_id: app.clientId,
@@ -131,7 +131,10 @@ export async function exchangeMetaCode(
     ),
   )
   const token = long.access_token ?? short.access_token
-  const seconds = long.expires_in ?? META_TOKEN_DAYS * 24 * 60 * 60
+  // A silent long exchange must not borrow the 60-day estimate for a token
+  // that is really the hours-lived short one: prefer what either exchange
+  // actually reported before falling back to the guess.
+  const seconds = long.expires_in ?? short.expires_in ?? META_TOKEN_DAYS * 24 * 60 * 60
   const expiresAt = new Date(Date.now() + seconds * 1000)
 
   const me = await readJson<{ name?: string }>(

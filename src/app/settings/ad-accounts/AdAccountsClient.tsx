@@ -549,7 +549,17 @@ function PlatformCard({
       </h3>
       {provider === 'meta' ? (
         <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-[11px] text-muted">
-          <li>developers.facebook.com: Create app, Business type.</li>
+          <li>
+            <a
+              href="https://developers.facebook.com/apps/"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-accent hover:underline"
+            >
+              developers.facebook.com
+            </a>
+            : Create app, Business type.
+          </li>
           <li>Paste the App ID and App secret here and press Save.</li>
           <li>
             In the app, add the product called “Facebook Login for Business”. A Business type app

@@ -97,8 +97,9 @@ const callback = (provider: string, qs: string) =>
 
 // Two save-time tests lived here, both driving ensureMetaApp: a wrong App
 // ID refused with Facebook's words, and the App Domains warning. Saving no
-// longer calls Meta at all — the token proves itself instead, in
-// src/lib/ads/token.test.ts — so they went with it.
+// longer calls Meta at all — Connect with Facebook does that now, the same
+// as Connect with Google always has. The pasted-token path still proves
+// itself the old way, in src/lib/ads/token.test.ts, but only as a fallback.
 
 describe('platform setup', () => {
   it('stores secrets encrypted and answers with booleans only', async () => {
@@ -214,7 +215,6 @@ describe('oauth callback', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(await db.adConnection.count({ where: { label: { contains: MARK } } })).toBe(0)
   })
-
 })
 
 describe('meta oauth start', () => {
@@ -237,7 +237,7 @@ describe('meta oauth start', () => {
   })
 
   it('sends the admin to the setup when no meta app row exists', async () => {
-    await db.adPlatformApp.delete({ where: { provider: 'meta' } })
+    await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
     const res = await start('meta')
     expect(res.headers.get('location')).toContain(
       encodeURIComponent('Fill in the platform setup below first.'),
