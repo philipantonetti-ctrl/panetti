@@ -384,6 +384,8 @@ describe('POST /api/ambassador-products', () => {
       ambassadorId, sku: 'MPX-001', name: 'Pro X', quantity: 1, receivedAt: 'not-a-date',
     })
     expect(res.status).toBe(400)
+    // Assert WHICH rejection: a 400 for the wrong reason would otherwise pass.
+    expect((await res.json()).error).toContain('date they got it')
   })
 
   it('refuses a note longer than 200 characters', async () => {
@@ -392,6 +394,18 @@ describe('POST /api/ambassador-products', () => {
       receivedAt: '2026-03-12', note: 'x'.repeat(201),
     })
     expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('200 characters')
+  })
+
+  it('stores an omitted note as null, never an empty string', async () => {
+    // `note: d.note || null` is one refactor away from storing ''. A null is
+    // what "there was no note" means, and the UI renders it by leaving the
+    // line out entirely.
+    await post({
+      ambassadorId, sku: 'MPX-001', name: 'Pro X', quantity: 1, receivedAt: '2026-03-12',
+    })
+    const stored = await db.ambassadorProduct.findFirst({ where: { ambassadorId } })
+    expect(stored!.note).toBeNull()
   })
 
   it('404s for an ambassador who does not exist', async () => {
@@ -557,7 +571,7 @@ export async function POST(req: Request) {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/app/api/ambassador-products/route.test.ts`
-Expected: PASS, 9 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Commit**
 
