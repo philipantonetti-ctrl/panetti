@@ -4,9 +4,16 @@ import { encryptSecret } from '../secrets'
 import { configuredProviders, platformApp } from './platform-app'
 
 /**
- * DB-backed for the fallback path. AdPlatformApp rows are per-provider
- * singletons shared with seed data, so this file borrows them and always
- * puts them back.
+ * This file mocks the database boundary (`db.adPlatformApp.findUnique`) on
+ * purpose. The table's `provider` column is uniquely constrained, so there is
+ * exactly one meta row and one google row shared by three test files running
+ * in parallel workers (`src/lib/ads/platform-app.test.ts`, `oauth.test.ts`,
+ * and `connections/meta/route.test.ts`). Real rows here would race and fail
+ * nondeterministically. The accessor's contract with the database is testable
+ * without writing rows: which source wins (environment over database), whether
+ * values are decrypted (still running `encryptSecret` and `decryptSecret` for
+ * real), and what `configuredProviders` returns when neither source has it.
+ * The fallback path is covered end-to-end by route tests against real rows.
  */
 
 const ENV_KEYS = [
@@ -17,40 +24,33 @@ const ENV_KEYS = [
   'GOOGLE_ADS_DEVELOPER_TOKEN',
 ] as const
 
-async function restoreSeedApps() {
-  await db.adPlatformApp.upsert({
-    where: { provider: 'meta' },
-    create: { provider: 'meta', clientId: 'seed-app', clientSecret: 'seed' },
-    update: { clientId: 'seed-app', clientSecret: 'seed' },
-  })
-  await db.adPlatformApp.upsert({
-    where: { provider: 'google' },
-    create: { provider: 'google', clientId: 'seed-app', clientSecret: 'seed', developerToken: 'seed' },
-    update: { clientId: 'seed-app', clientSecret: 'seed', developerToken: 'seed' },
-  })
-}
-
 beforeEach(() => {
   for (const k of ENV_KEYS) vi.stubEnv(k, '')
+  vi.spyOn(db.adPlatformApp, 'findUnique').mockClear()
 })
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs()
-  await restoreSeedApps()
+  vi.restoreAllMocks()
 })
 
 describe('platformApp', () => {
   it('reads the environment and never touches the database row', async () => {
     vi.stubEnv('META_APP_ID', 'env-app')
     vi.stubEnv('META_APP_SECRET', 'env-secret')
-    // The row says something different, so a wrong answer is visible.
-    await db.adPlatformApp.upsert({
-      where: { provider: 'meta' },
-      create: { provider: 'meta', clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
-      update: { clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+    // The mock says something different, so a wrong answer is visible if the env is ignored.
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'meta',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: null,
+      createdAt: new Date(),
     })
 
     expect(await platformApp('meta')).toEqual({ clientId: 'env-app', clientSecret: 'env-secret' })
+    // Verify the database was not queried when environment was complete.
+    expect(db.adPlatformApp.findUnique).not.toHaveBeenCalled()
   })
 
   it('decrypts an environment secret too, so a value copied out of the database still works', async () => {
@@ -62,10 +62,13 @@ describe('platformApp', () => {
   })
 
   it('falls back to the database row and decrypts it', async () => {
-    await db.adPlatformApp.upsert({
-      where: { provider: 'meta' },
-      create: { provider: 'meta', clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
-      update: { clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'meta',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: null,
+      createdAt: new Date(),
     })
 
     expect(await platformApp('meta')).toEqual({ clientId: 'row-app', clientSecret: 'row-secret' })
@@ -76,17 +79,20 @@ describe('platformApp', () => {
     // somebody to Facebook with no client_id.
     vi.stubEnv('META_APP_ID', '')
     vi.stubEnv('META_APP_SECRET', '')
-    await db.adPlatformApp.upsert({
-      where: { provider: 'meta' },
-      create: { provider: 'meta', clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
-      update: { clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'meta',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: null,
+      createdAt: new Date(),
     })
 
     expect((await platformApp('meta'))?.clientId).toBe('row-app')
   })
 
   it('answers null when neither the environment nor a row has it', async () => {
-    await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue(null)
     expect(await platformApp('meta')).toBeNull()
   })
 
@@ -119,10 +125,13 @@ describe('platformApp', () => {
     // If clientId is set but clientSecret is not, neither source is complete.
     vi.stubEnv('META_APP_ID', 'env-app')
     // META_APP_SECRET remains empty (stubbed to '' in beforeEach)
-    await db.adPlatformApp.upsert({
-      where: { provider: 'meta' },
-      create: { provider: 'meta', clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
-      update: { clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'meta',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: null,
+      createdAt: new Date(),
     })
 
     expect(await platformApp('meta')).toEqual({ clientId: 'row-app', clientSecret: 'row-secret' })
@@ -132,10 +141,13 @@ describe('platformApp', () => {
     // env() calls .trim() to handle Vercel's whitespace-padded values.
     vi.stubEnv('META_APP_ID', '   ')
     vi.stubEnv('META_APP_SECRET', '\t\n')
-    await db.adPlatformApp.upsert({
-      where: { provider: 'meta' },
-      create: { provider: 'meta', clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
-      update: { clientId: 'row-app', clientSecret: encryptSecret('row-secret') },
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
+      id: 'mock-id',
+      provider: 'meta',
+      clientId: 'row-app',
+      clientSecret: encryptSecret('row-secret'),
+      developerToken: null,
+      createdAt: new Date(),
     })
 
     expect(await platformApp('meta')).toEqual({ clientId: 'row-app', clientSecret: 'row-secret' })
@@ -144,7 +156,7 @@ describe('platformApp', () => {
 
 describe('configuredProviders', () => {
   it('calls Google configured only when the developer token is there too', async () => {
-    await db.adPlatformApp.deleteMany({ where: { provider: 'google' } })
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue(null)
     vi.stubEnv('GOOGLE_ADS_CLIENT_ID', 'g-app')
     vi.stubEnv('GOOGLE_ADS_CLIENT_SECRET', 'g-secret')
     expect((await configuredProviders()).google).toBe(false)
@@ -154,13 +166,14 @@ describe('configuredProviders', () => {
   })
 
   it('calls Meta configured on an id and a secret alone', async () => {
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue(null)
     vi.stubEnv('META_APP_ID', 'm-app')
     vi.stubEnv('META_APP_SECRET', 'm-secret')
     expect((await configuredProviders()).meta).toBe(true)
   })
 
   it('reports both false when nothing is configured anywhere', async () => {
-    await db.adPlatformApp.deleteMany({ where: { provider: { in: ['meta', 'google'] } } })
+    vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue(null)
     expect(await configuredProviders()).toEqual({ meta: false, google: false })
   })
 })
