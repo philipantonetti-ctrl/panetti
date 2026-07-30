@@ -349,8 +349,14 @@ afterEach(async () => {
 
 describe('POST /api/ambassador-products', () => {
   it('records a gift and it shows up in the overview', async () => {
+    // A SKU nothing else in the system uses. The overview aggregates EVERY
+    // AmbassadorProduct row with no scoping, so asserting exact counts against
+    // a real catalogue SKU would break the moment the seed — or a developer
+    // clicking around the local app — created one of the same product. The
+    // catalogue test below already uses a synthetic 'DUP-1' for the same
+    // reason; this makes the file consistent with itself.
     const res = await post({
-      ambassadorId, sku: 'MACBL661', name: 'Advanced Comfort',
+      ambassadorId, sku: 'OVERVIEW-TEST-SKU', name: 'Overview Test Product',
       quantity: 2, receivedAt: '2026-03-12',
     })
     expect(res.status).toBe(200)
@@ -358,7 +364,7 @@ describe('POST /api/ambassador-products', () => {
     const overview = (await (await GET()).json()) as {
       overview: { sku: string; ambassadors: number; units: number }[]
     }
-    const row = overview.overview.find((r) => r.sku === 'MACBL661')
+    const row = overview.overview.find((r) => r.sku === 'OVERVIEW-TEST-SKU')
     expect(row).toMatchObject({ ambassadors: 1, units: 2 })
   })
 
