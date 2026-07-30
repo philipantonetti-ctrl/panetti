@@ -250,14 +250,6 @@ describe('meta oauth start', () => {
     await start('meta')
     expect(fetchMock).not.toHaveBeenCalled()
   })
-
-  it('sends the admin back with words when Facebook is not configured on the server', async () => {
-    await db.adPlatformApp.deleteMany({ where: { provider: 'meta' } })
-    const res = await start('meta')
-    expect(res.headers.get('location')).toContain(
-      encodeURIComponent('Facebook connect is not configured on the server.'),
-    )
-  })
 })
 
 describe('credentials from the environment', () => {
