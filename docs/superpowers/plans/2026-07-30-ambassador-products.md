@@ -999,9 +999,22 @@ describe('ProductLedger', () => {
     expect(screen.getByText(/Nothing yet/i)).toBeTruthy()
   })
 
+  it('gives each row its own accessible name when the same product came twice', () => {
+    // Repeat gifts are the point of a ledger, so two rows can share a product
+    // name. getByRole throws when more than one element matches, so this test
+    // fails outright if both rows carry the same label.
+    setup([
+      { id: 'g1', sku: 'MPX-001', name: 'Pro X', quantity: 1, receivedAt: '2026-03-12T00:00:00.000Z', note: null },
+      { id: 'g2', sku: 'MPX-001', name: 'Pro X', quantity: 1, receivedAt: '2026-06-01T00:00:00.000Z', note: null },
+    ])
+
+    expect(screen.getByRole('button', { name: 'Remove Pro X received 2026-03-12' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Remove Pro X received 2026-06-01' })).toBeTruthy()
+  })
+
   it('removes a gift by its own id', () => {
     const { send } = setup()
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Pro X' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Pro X received 2026-03-12' }))
 
     expect(send).toHaveBeenCalledWith(
       'remove-product-g1',
@@ -1213,7 +1226,11 @@ export function ProductLedger({
                 )
               }
               disabled={busy}
-              aria-label={`Remove ${g.name}`}
+              // The date is part of the name because the ledger deliberately
+              // allows the same product twice. Two rows labelled only "Remove
+              // Pro X" are indistinguishable to a screen reader, and ambiguous
+              // to any getByRole that goes looking for one of them.
+              aria-label={`Remove ${g.name} received ${g.receivedAt.slice(0, 10)}`}
               className="shrink-0 text-xs font-semibold text-loss hover:underline disabled:opacity-60"
             >
               Remove
@@ -1274,7 +1291,7 @@ export function ProductLedger({
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run src/components/ambassadors/ProductLedger.test.tsx`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 6: Commit**
 
