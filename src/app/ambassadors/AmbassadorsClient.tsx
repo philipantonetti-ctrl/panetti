@@ -666,7 +666,7 @@ function EditModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-[var(--radius-card)] bg-surface p-5 shadow-xl"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[var(--radius-card)] bg-surface p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-bold text-ink">{row.name}</h2>
