@@ -190,11 +190,11 @@ describe('connection-backed accounts', () => {
     vi.stubGlobal('fetch', fetchMock)
     const result = await syncAdAccount({ ...account, connection })
     expect(result.ok).toBe(false)
-    expect(result.error).toContain('Facebook token expired')
+    expect(result.error).toContain('Facebook login expired')
     expect(fetchMock).not.toHaveBeenCalled()
 
     const fresh = await db.adAccount.findUniqueOrThrow({ where: { id: account.id } })
-    expect(fresh.lastError).toContain('Facebook token expired')
+    expect(fresh.lastError).toContain('Facebook login expired')
   })
 })
 

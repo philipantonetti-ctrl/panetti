@@ -223,12 +223,10 @@ model FxRate {
   @@index([base, quote, date])
 }
 
-// The client's own Google OAuth client, entered once in settings. It is what
-// makes "Connect with Google" possible without pasting tokens.
-//
-// A Meta row may also live here, but it is optional and gates nothing: Meta
-// connects by a pasted system user token, and these keys only let us ask
-// Facebook what that token's expiry and permissions are.
+// The client's own Meta and Google apps, entered once in settings. They are
+// what make "Connect with Facebook" and "Connect with Google" possible
+// without pasting tokens. Standard Access covers reading the client's own ad
+// accounts, so neither app needs review.
 model AdPlatformApp {
   id             String   @id @default(cuid())
   provider       String   @unique // "meta" | "google"
@@ -238,15 +236,15 @@ model AdPlatformApp {
   createdAt      DateTime @default(now())
 }
 
-// One way in — a Google login, or a Meta system user token someone pasted.
+// One way in — a Facebook or Google login someone completed.
 // Many ad accounts can hang off it.
 model AdConnection {
   id        String      @id @default(cuid())
   provider  String      // "meta" | "google"
   label     String      // who it belongs to, from the platform
-  secret    String      // encrypted: Meta system user token / Google refresh token
-  // null means it never expires, which is the normal case for both a Google
-  // refresh token and a Meta system user token generated with no expiry.
+  secret    String      // encrypted: Meta user token / Google refresh token
+  // A Meta user token lasts about 60 days and says so. A Google refresh
+  // token does not expire while the client stays published, so it is null.
   expiresAt DateTime?
   createdAt DateTime    @default(now())
 

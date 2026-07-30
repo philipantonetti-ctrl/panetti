@@ -1,14 +1,15 @@
 import { AdApiError } from './types'
 
 /**
- * The OAuth handshake behind "Connect with Google".
+ * The OAuth handshakes behind "Connect with Facebook / Google".
  *
- * The client's own OAuth client, published unverified: its admin is the only
- * person who ever logs in, which is the case Google allows without review.
+ * The apps are the CLIENT'S own: their admin is the only person who ever logs
+ * in, which is exactly the case both platforms allow without app review. Meta
+ * calls that Standard Access, and a Business type app gets it automatically.
  *
- * Meta is deliberately absent. Its dialog needs a login configuration living
- * inside developers.facebook.com that no API can create, so Meta connects by
- * a pasted system user token instead — see `./token.ts`.
+ * There is no app-settings healing here any more. `ensureMetaApp` used to
+ * prove the App ID, read the app's `app_domains` and write ours in — eighty
+ * lines aimed at a field that was never the problem. The redirect URI was.
  */
 
 export type PlatformApp = { clientId: string; clientSecret: string; developerToken?: string }
@@ -17,6 +18,15 @@ export type PlatformApp = { clientId: string; clientSecret: string; developerTok
 export const STATE_COOKIE = 'ads_oauth_state'
 
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token'
+
+const META = 'https://graph.facebook.com/v25.0'
+
+/** Meta tokens usually say how long they live; when silent, plan for 60 days. */
+const META_TOKEN_DAYS = 60
+
+async function readJson<T>(res: Response): Promise<T & { error?: { message?: string } }> {
+  return (await res.json().catch(() => ({}))) as T & { error?: { message?: string } }
+}
 
 export function buildGoogleAuthUrl(clientId: string, redirectUri: string, state: string): string {
   const params = new URLSearchParams({
@@ -30,6 +40,24 @@ export function buildGoogleAuthUrl(clientId: string, redirectUri: string, state:
     prompt: 'consent',
   })
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+}
+
+/**
+ * The dialog BeProfit's own login popup runs on, same endpoint and version.
+ *
+ * No `config_id`. Meta recommends one for Facebook Login for Business, but its
+ * reference calls it optional and says `scope` "can still be included" — and a
+ * configuration id would be one more value the client has to create and paste.
+ * The redirect URI is the only thing this dialog needs that no API can set.
+ */
+export function buildMetaAuthUrl(clientId: string, redirectUri: string, state: string): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    state,
+    scope: 'ads_read,business_management',
+  })
+  return `https://www.facebook.com/v25.0/dialog/oauth?${params}`
 }
 
 export async function exchangeGoogleCode(
@@ -70,4 +98,47 @@ export async function exchangeGoogleCode(
     .catch(() => ({}))) as { name?: string; email?: string }
 
   return { refreshToken: body.refresh_token, label: who.name ?? who.email ?? 'Google Ads' }
+}
+
+export async function exchangeMetaCode(
+  app: PlatformApp,
+  redirectUri: string,
+  code: string,
+): Promise<{ token: string; expiresAt: Date; label: string }> {
+  const short = await readJson<{ access_token?: string; expires_in?: number }>(
+    await fetch(
+      `${META}/oauth/access_token?${new URLSearchParams({
+        client_id: app.clientId,
+        redirect_uri: redirectUri,
+        client_secret: app.clientSecret,
+        code,
+      })}`,
+    ),
+  )
+  if (!short.access_token)
+    throw new AdApiError(short.error?.message ?? 'Facebook did not accept the login')
+
+  // Trade the hours-lived token for the ~60-day one before storing anything.
+  // A silent answer here is not a failure: the short token already works.
+  const long = await readJson<{ access_token?: string; expires_in?: number }>(
+    await fetch(
+      `${META}/oauth/access_token?${new URLSearchParams({
+        grant_type: 'fb_exchange_token',
+        client_id: app.clientId,
+        client_secret: app.clientSecret,
+        fb_exchange_token: short.access_token,
+      })}`,
+    ),
+  )
+  const token = long.access_token ?? short.access_token
+  // A silent long exchange must not borrow the 60-day estimate for a token
+  // that is really the hours-lived short one: prefer what either exchange
+  // actually reported before falling back to the guess.
+  const seconds = long.expires_in ?? short.expires_in ?? META_TOKEN_DAYS * 24 * 60 * 60
+  const expiresAt = new Date(Date.now() + seconds * 1000)
+
+  const me = await readJson<{ name?: string }>(
+    await fetch(`${META}/me?fields=name`, { headers: { Authorization: `Bearer ${token}` } }),
+  )
+  return { token, expiresAt, label: me.name ?? 'Facebook' }
 }

@@ -93,60 +93,50 @@ describe('AdAccountsClient', () => {
     )
   })
 
-  it('offers Meta a token box instead of a Facebook login that never worked', () => {
+  it('links Connect with Facebook straight to the oauth start when ready', () => {
     renderPage([])
-    expect(screen.queryByText('Connect with Facebook')).toBeNull()
-    expect(screen.getByLabelText('System user access token')).toBeTruthy()
+    expect(screen.getByText('Connect with Facebook').closest('a')?.getAttribute('href')).toBe(
+      '/api/ads/oauth/meta/start',
+    )
   })
 
-  it('saves a pasted Meta token and opens the picker on what comes back', async () => {
-    const fetchMock = vi.fn(async () =>
-      Response.json({ connectionId: 'conn1', label: 'Philip', expiresAt: null }),
-    )
-    vi.stubGlobal('fetch', fetchMock)
-    renderPage([])
+  it('walks you to the setup when the Facebook connect button is pressed too early', async () => {
+    renderPage([], { platform: { meta: null, google: { clientId: 'x', hasDeveloperToken: true } } })
 
-    fireEvent.change(screen.getByLabelText('System user access token'), {
-      target: { value: 'EAABpasted' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save token' }))
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe('/api/ads/connections/meta')
-    expect(JSON.parse(init.body as string)).toEqual({ token: 'EAABpasted' })
-    // The picker took over, which is the whole point of pasting once.
-    await waitFor(() => expect(screen.getByText('Pick the ad accounts')).toBeTruthy())
-  })
-
-  it('keeps the card open and says why when Facebook refuses the token', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        Response.json({ error: 'This token has no ads_read permission.' }, { status: 400 }),
-      ),
-    )
-    renderPage([])
-
-    fireEvent.change(screen.getByLabelText('System user access token'), {
-      target: { value: 'bad' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save token' }))
-
+    expect(screen.getByText('Connect with Facebook').closest('a')).toBeNull()
+    fireEvent.click(screen.getByText('Connect with Facebook'))
     await waitFor(() =>
-      expect(screen.getByText('This token has no ads_read permission.')).toBeTruthy(),
+      expect(
+        screen.getByText('One-time setup needed first. Two minutes, the steps are right below.'),
+      ).toBeTruthy(),
     )
-    expect(screen.queryByText('Pick the ad accounts')).toBeNull()
+  })
+
+  it('asks for the token nowhere on the page any more', () => {
+    renderPage([])
+    // One button per platform, like BeProfit. The per-account paste behind
+    // Advanced is the only place a token is still typed.
+    expect(screen.queryByLabelText('System user access token')).toBeNull()
+    expect(screen.queryByText('Meta: paste a system user token')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Save token' })).toBeNull()
+  })
+
+  it('offers a one-time setup card for both platforms', () => {
+    renderPage([])
+    expect(screen.getByText('Platform setup')).toBeTruthy()
+    expect(screen.getByLabelText('meta client id')).toBeTruthy()
+    expect(screen.getByLabelText('meta client secret')).toBeTruthy()
+    expect(screen.getByLabelText('google client id')).toBeTruthy()
   })
 
   it('still offers the manual path behind Advanced, with provider fields switching', () => {
     renderPage([])
-    // The Google platform-setup card already shows one Developer token label.
+    // Only Google's setup card carries a Developer token.
     expect(screen.getAllByText('Developer token')).toHaveLength(1)
 
     fireEvent.click(screen.getByText('Advanced: paste credentials manually'))
-    // Named apart from the Meta card's own token field, which is always on
-    // the page — two identical labels would read the same to a screen reader.
+    // The page-level token field is gone, so this label is now unique. Keep
+    // the distinct wording anyway: it says what the field is scoped to.
     expect(screen.getByText('Access token for this account')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('tab', { name: 'Google' }))
@@ -238,7 +228,7 @@ describe('AdAccountsClient', () => {
     renderPage([])
 
     fireEvent.change(screen.getByLabelText('google client id'), { target: { value: 'new-app-id' } })
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'save google setup' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -247,16 +237,5 @@ describe('AdAccountsClient', () => {
     expect(body.provider).toBe('google')
     expect(body.clientId).toBe('new-app-id')
     expect(body.clientSecret).toBe('') // blank = keep what is saved
-  })
-
-  it('asks Meta for nothing but the token', () => {
-    renderPage([])
-    // The App ID and secret card is gone. It only ever powered an optional
-    // check, and requiring it put a wall in front of the one field that
-    // matters. Google keeps its card, because Google genuinely needs it.
-    expect(screen.queryByLabelText('meta client id')).toBeNull()
-    expect(screen.queryByText('Meta app')).toBeNull()
-    expect(screen.getByLabelText('System user access token')).toBeTruthy()
-    expect(screen.getByLabelText('google client id')).toBeTruthy()
   })
 })

@@ -123,10 +123,10 @@ export function AdAccountsClient({
     <AppShell email={email}>
       <PageHeader
         title="Ad accounts"
-        subtitle="Paste one Meta token or log in with Google, tick the ad accounts you want, done. Daily spend then syncs itself a few times a day and lands on the Marketing page, shop by shop."
+        subtitle="Log in with Facebook or Google, tick the ad accounts you want, done. Daily spend then syncs itself a few times a day and lands on the Marketing page, shop by shop."
       >
         <div className="flex flex-wrap items-center gap-2">
-          {/* Meta has no button: it connects by pasted token, below. */}
+          <ConnectButton provider="meta" ready={Boolean(platform.meta)} />
           <ConnectButton
             provider="google"
             ready={Boolean(platform.google && platform.google.hasDeveloperToken)}
@@ -166,8 +166,8 @@ export function AdAccountsClient({
               {accounts.length === 0 && (
                 <tr className="border-t border-line">
                   <td colSpan={7} className="px-3 py-8 text-center text-muted">
-                    Nothing connected yet. Paste a Meta system user token below, or fill in the
-                    Google setup and press “Connect with Google”.
+                    Nothing connected yet. Fill in the setup below, then press “Connect with
+                    Facebook” or “Connect with Google”.
                   </td>
                 </tr>
               )}
@@ -235,8 +235,6 @@ export function AdAccountsClient({
           Advanced: paste credentials manually
         </button>
 
-        <MetaTokenCard saved={platform.meta} onConnected={setPickerId} />
-
         <PlatformSetupSection platform={platform} />
       </PageBody>
 
@@ -271,10 +269,9 @@ export function AdAccountsClient({
   )
 }
 
-/** Google only. Meta connects by pasted token — see MetaTokenCard. */
-function ConnectButton({ provider, ready }: { provider: 'google'; ready: boolean }) {
+function ConnectButton({ provider, ready }: { provider: 'meta' | 'google'; ready: boolean }) {
   const toast = useToast()
-  const text = 'Connect with Google'
+  const text = provider === 'meta' ? 'Connect with Facebook' : 'Connect with Google'
   if (!ready) {
     // A button that cannot be pressed and cannot say why is a dead end.
     // Pressing this one explains itself and walks to the setup.
@@ -408,11 +405,11 @@ function PickerModal({
         {!loading && !error && (
           <div className="mt-4 space-y-2">
             {rows.length === 0 && (
-              // Almost always the assets step was skipped, so say that rather
-              // than leave an empty table looking like a broken token.
+              // Almost always the wrong Facebook account got the login, so say
+              // that rather than leave an empty table looking broken.
               <p className="text-sm text-muted">
-                This token can see no ad accounts. Open the system user in Meta Business settings,
-                press Add assets, choose Ad accounts, tick them and turn on “View performance”.
+                This login can see no ad accounts. Check you logged in with the Facebook account
+                that has access to them.
               </p>
             )}
             {rows.map((row, i) => (
@@ -480,128 +477,20 @@ function PickerModal({
 }
 
 /**
- * Meta's whole connect flow: paste one system user token, then pick accounts.
- *
- * There is no Facebook login dialog here on purpose. A Business type app is
- * served Facebook Login for Business, which needs a configuration id we
- * cannot create on his behalf — four designs died on that wall. A token
- * needs no login product, no redirect URI and no app domains at all.
- */
-function MetaTokenCard({
-  saved,
-  onConnected,
-}: {
-  saved: { clientId: string } | null
-  onConnected: (connectionId: string) => void
-}) {
-  const [token, setToken] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  async function save() {
-    if (!token.trim()) return
-    setBusy(true)
-    setError('')
-    try {
-      const res = await fetch('/api/ads/connections/meta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token.trim() }),
-      })
-      const data = (await res.json().catch(() => null)) as
-        | { connectionId?: string; error?: string }
-        | null
-      if (!res.ok || !data?.connectionId) {
-        // Facebook's own words, kept on screen next to the field to fix.
-        setError(data?.error ?? 'Could not save the token')
-        return
-      }
-      setToken('')
-      onConnected(data.connectionId) // straight into the picker
-    } catch {
-      setError('Could not reach the server')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <section className="mt-8">
-      <h2 className="text-[13px] font-semibold text-ink">Meta: paste a system user token</h2>
-      <p className="mt-1 max-w-2xl text-xs text-muted">
-        One token covers every ad account. There is no Facebook login screen: a token needs no
-        login product, no redirect URL and no app domains.
-      </p>
-
-      <div className="mt-3 max-w-2xl rounded-[var(--radius-card)] border border-line bg-surface p-4">
-        <ol className="list-decimal space-y-1 pl-4 text-xs text-muted">
-          <li>
-            Open{' '}
-            <a
-              href="https://business.facebook.com/settings/system-users"
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-accent hover:underline"
-            >
-              Business settings, System users
-            </a>
-            , press Add, name it “panetti analytics”, role Admin.
-          </li>
-          <li>
-            Press Add assets, choose Ad accounts, tick your ad accounts, turn on “View
-            performance”, save. Skip this and the list below comes back empty.
-          </li>
-          <li>
-            Press Generate token, choose your app
-            {saved ? ` (${saved.clientId})` : ''}, set expiration to Never, tick ads_read.
-          </li>
-          <li>Paste it here.</li>
-        </ol>
-
-        <label htmlFor="meta-token" className="mt-3 block text-xs font-medium text-ink">
-          System user access token
-        </label>
-        <input
-          id="meta-token"
-          type="password"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder="EAAB…"
-          className="mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-xs"
-        />
-
-        {error && <p className="mt-2 text-xs text-loss">{error}</p>}
-
-        <div className="mt-3 flex justify-end">
-          <button
-            onClick={save}
-            disabled={busy || !token.trim()}
-            className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
-          >
-            {busy ? 'Checking…' : 'Save token'}
-          </button>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-/**
- * Google's one-time setup, and only Google's. Meta had a card here too, asking
- * for an App ID and secret before a token would be accepted. They only ever
- * powered an optional check, so requiring them was a wall in front of the one
- * field that matters.
+ * The one-time setup, per platform. Both need the client's own app keys: ours
+ * cannot stand in, because reading someone else's ad accounts through our app
+ * is the exact case Meta requires App Review for. Their own app needs none.
  */
 function PlatformSetupSection({ platform }: { platform: PlatformSetup }) {
   return (
     <section id="platform-setup" className="mt-8">
-      <h2 className="text-[13px] font-semibold text-ink">Google setup</h2>
+      <h2 className="text-[13px] font-semibold text-ink">Platform setup</h2>
       <p className="mt-1 max-w-2xl text-xs text-muted">
-        A one-time step: create your own Google OAuth client, paste its keys here, and “Connect
-        with Google” comes alive. Only you ever log in through it, so no app review is needed.
-        Meta needs none of this — it just needs the token above.
+        A one-time step per platform: create your own app, paste its keys here, and the connect
+        buttons above come alive. Only you ever log in through it, so no app review is needed.
       </p>
-      <div className="mt-3 max-w-2xl">
+      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        <PlatformCard provider="meta" saved={platform.meta} />
         <PlatformCard provider="google" saved={platform.google} />
       </div>
     </section>
@@ -612,7 +501,7 @@ function PlatformCard({
   provider,
   saved,
 }: {
-  provider: 'google'
+  provider: 'meta' | 'google'
   saved: { clientId: string; hasDeveloperToken?: boolean } | null
 }) {
   const router = useRouter()
@@ -644,7 +533,7 @@ function PlatformCard({
         toast.error(body?.error ?? 'Could not save')
         return
       }
-      toast.success('Google setup saved')
+      toast.success(provider === 'meta' ? 'Meta setup saved' : 'Google setup saved')
       router.refresh()
     } catch {
       toast.error('Could not reach the server')
@@ -656,13 +545,38 @@ function PlatformCard({
   return (
     <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
       <h3 className="text-sm font-semibold text-ink">
-Google app
+        {provider === 'meta' ? 'Meta app' : 'Google app'}
       </h3>
-      <p className="mt-1 text-[11px] text-muted">
-        console.cloud.google.com, Credentials, OAuth client (Web application) with the callback
-        URL below. Set the consent screen to In production. The developer token comes from
-        Google Ads, manager account, API Center.
-      </p>
+      {provider === 'meta' ? (
+        <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-[11px] text-muted">
+          <li>
+            <a
+              href="https://developers.facebook.com/apps/"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-accent hover:underline"
+            >
+              developers.facebook.com
+            </a>
+            : Create app, Business type.
+          </li>
+          <li>Paste the App ID and App secret here and press Save.</li>
+          <li>
+            In the app, add the product called “Facebook Login for Business”. A Business type app
+            is only offered that one.
+          </li>
+          <li>
+            Open its Settings and paste the callback URL below under Valid OAuth Redirect URIs.
+            Press Save changes. Skip this and Facebook shows “Can’t load URL”.
+          </li>
+        </ol>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted">
+          console.cloud.google.com, Credentials, OAuth client (Web application) with the callback
+          URL below. Set the consent screen to In production. The developer token comes from
+          Google Ads, manager account, API Center.
+        </p>
+      )}
       <p className="mt-2 break-all rounded-[var(--radius-control)] bg-panel px-2 py-1.5 text-[11px] text-ink">
         <span className="text-faint">Callback URL: </span>
         {redirectUri || '…'}
@@ -701,7 +615,12 @@ Google app
       )}
 
       <div className="mt-4 flex justify-end">
-        <button onClick={save} disabled={busy} className={quietBtn}>
+        <button
+          onClick={save}
+          disabled={busy}
+          aria-label={`save ${provider} setup`}
+          className={quietBtn}
+        >
           {busy ? 'Saving…' : 'Save'}
         </button>
       </div>

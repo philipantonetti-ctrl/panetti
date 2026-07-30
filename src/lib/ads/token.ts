@@ -11,6 +11,10 @@ import { AdApiError } from './types'
  * "never" nor a SYSTEM_USER token type is documented in the current Graph
  * reference, so silence from Facebook proves nothing. The second is fatal,
  * and speaks Facebook's own words when it fails.
+ *
+ * Unreachable from the UI on purpose, same as its only caller,
+ * `POST /api/ads/connections/meta` — see that route's header for why it is
+ * still here and when it goes.
  */
 
 const GRAPH = 'https://graph.facebook.com/v25.0'

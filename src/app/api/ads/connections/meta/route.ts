@@ -11,9 +11,18 @@ import { AdApiError } from '@/lib/ads/types'
  * "I pasted a system user token." Prove it, remember who it belongs to, and
  * hand back a connection the account picker can open.
  *
- * This replaces the Facebook login dialog, which could never work against a
- * Business type app without a login configuration we cannot create for him.
- * A token needs no login product, no redirect URI and no app domains.
+ * Nothing in the UI calls this route any more: the token card that once
+ * posted here is gone, and "Connect with Facebook" now runs the real login
+ * dialog, the same as Google's. It stays reachable by hand for one release
+ * anyway, because it is the only path to the account picker that needs no
+ * Valid OAuth Redirect URI registered on the Facebook app — useful insurance
+ * until that registration is confirmed working everywhere it matters. It is
+ * also the only Meta credential this app can hold that never expires: a
+ * login hands back a user token, and Facebook will not extend a user token
+ * past roughly 60 days no matter how often it is renewed, while a system
+ * user token can be generated with no expiry at all. Delete this route once
+ * the live login is confirmed working — and re-argue that deletion on the
+ * never-expiring point, not simply because the button is gone.
  */
 
 const Body = z.object({

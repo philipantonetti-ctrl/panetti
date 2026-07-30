@@ -7,11 +7,12 @@ import { encryptSecret } from '@/lib/secrets'
 import { AdApiError } from '@/lib/ads/types'
 
 /**
- * The client's own Google OAuth client — the one-time setup that makes
- * "Connect with Google" possible. Secrets go in, never out.
+ * The client's own Meta and Google apps — the one-time setup that makes the
+ * connect buttons work. Secrets go in, never out.
  *
- * Meta keys may still be stored here, but nothing requires them: they only
- * sharpen the check on a pasted system user token, never gate it.
+ * Saving does not call either platform. Four designs tried to make the app
+ * prove itself here and heal its own domains; the wall was never the domains,
+ * it was the callback URL, and no API can register that.
  */
 
 export async function GET() {
@@ -62,7 +63,7 @@ export async function PUT(req: Request) {
 
     // Saving no longer calls Meta. Four designs tried to make the app prove
     // itself here and heal its own domains; the wall was never the domains.
-    // The token proves itself instead, at the moment it is pasted.
+    // Whatever was pasted here proves itself later, when it is actually used.
 
     // Blank secret fields mean "keep what is saved", like every other modal.
     await db.adPlatformApp.upsert({
