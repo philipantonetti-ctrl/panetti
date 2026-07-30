@@ -1587,10 +1587,10 @@ Immediately before the `<section>` that renders the `productTotals` table, add:
 
                 <table className="w-full text-[13px]">
                   <thead>
-                    <tr className="border-y border-line bg-panel text-left text-[11px] text-muted">
-                      <th className="px-5 py-2 font-semibold">Product</th>
-                      <th className="px-5 py-2 text-right font-semibold">Quantity</th>
-                      <th className="px-5 py-2 text-right font-semibold">Received</th>
+                    <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                      <th className="px-5 py-2 text-left">Product</th>
+                      <th className="px-5 py-2 text-right">Quantity</th>
+                      <th className="px-5 py-2 text-right">Received</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1599,7 +1599,7 @@ Immediately before the `<section>` that renders the `productTotals` table, add:
                         <td className="px-5 py-2.5 font-medium text-ink">{p.name}</td>
                         <td className="num px-5 py-2.5 text-right text-ink">{p.quantity}</td>
                         <td className="num px-5 py-2.5 text-right text-muted">
-                          {p.receivedAt.slice(0, 10)}
+                          {day(p.receivedAt)}
                         </td>
                       </tr>
                     ))}
@@ -1608,6 +1608,11 @@ Immediately before the `<section>` that renders the `productTotals` table, add:
               </section>
             )}
 ```
+
+The date goes through the file's existing `day()` helper and the header copies the
+sibling tables' classes verbatim. Both matter: this page already renders two other
+tables, and a card that prints `2026-03-10` beside their `10 Mar 2026`, under a
+header one shade darker, reads as sloppy on the one screen a non-employee sees.
 
 The card is hidden entirely when the list is empty: most ambassadors were sent nothing, and an empty table teaching no next action would be noise on the one screen they actually read.
 
