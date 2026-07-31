@@ -71,6 +71,14 @@ describe('the scheduled sync endpoint', () => {
     expect(body.failed).toEqual(['Panetti Sweden'])
     expect(body.ordersSynced).toBe(3)
   })
+
+  // This whole outage was one constant: maxDuration 60 while the platform
+  // default is 300, so the run was killed four fifths of the way early and the
+  // stores it never reached stayed frozen. Nobody re-caps it by accident.
+  it('claims the full platform duration, never less', async () => {
+    const { maxDuration } = await import('./route')
+    expect(maxDuration).toBe(300)
+  })
 })
 
 describe('the schedule itself', () => {

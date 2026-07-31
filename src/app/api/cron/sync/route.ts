@@ -5,11 +5,14 @@ import { ensureRates } from '@/lib/fx/rates'
 import { db } from '@/lib/db'
 
 /**
- * Pulling eight stores takes well over the default budget, so ask for the
- * headroom explicitly. A run that still overruns is safe: `syncShop` only moves
- * a shop's watermark on success, so anything missed is simply retried next hour.
+ * Vercel's default maximum duration is 300 seconds on every plan, and this run
+ * needs all of it: the stores are pulled one after another, so a lower ceiling
+ * kills the invocation part-way and the stores it never reached stay frozen
+ * until someone presses Sync all. This once said 60, which is where that bug
+ * came from. `syncAllShops` stops itself well before the ceiling, so the number
+ * here is headroom, not a target.
  */
-export const maxDuration = 60
+export const maxDuration = 300
 
 /**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
