@@ -97,6 +97,9 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
       orderby: incremental ? 'modified' : 'date',
       order: 'asc',
     })
+    // Woo compares date filters against the STORE's local time unless told
+    // otherwise. Ours are UTC, so without this a store at UTC+2 hands back a
+    // two-hour-wider window every single pull.
     if (filter.modifiedAfter) {
       params.set('dates_are_gmt', 'true')
       params.set('modified_after', filter.modifiedAfter.toISOString().slice(0, 19))
