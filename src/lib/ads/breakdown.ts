@@ -19,6 +19,15 @@ export type BreakdownRow = BreakdownEntry & {
 export type BreakdownResponse = {
   rows: BreakdownRow[]
   errors: { accountId: string; accountName: string; message: string }[]
+  /**
+   * How many of this shop's ad accounts on this provider were consulted.
+   *
+   * Zero is a different sentence from "no campaigns ran": one means nothing is
+   * connected, the other means nothing was spent. Reading the second when the
+   * first is true is how someone concludes a platform is dead when it was never
+   * plugged in.
+   */
+  accountsChecked: number
 }
 
 /**
@@ -89,5 +98,9 @@ export async function loadBreakdown(opts: {
     }
   }
 
-  return { rows, errors }
+  // Every account in the loop above was consulted, whether it produced rows,
+  // came back empty, or errored — accountsChecked is that count, never
+  // rows.length, which would conflate "nothing connected" with "connected but
+  // spent nothing" the moment any account fails or reports zero.
+  return { rows, errors, accountsChecked: accounts.length }
 }

@@ -14,6 +14,7 @@ import type { BreakdownLevel } from '@/lib/ads/types'
  */
 
 const MIDDLE_LABEL: Record<'meta' | 'google', string> = { meta: 'Ad set', google: 'Ad group' }
+const PLATFORM_NAME: Record<'meta' | 'google', string> = { meta: 'Meta', google: 'Google' }
 
 /** Depth 0 = campaign, 1 = ad set/group, 2 = ad. Literal classes: Tailwind's
  * scanner reads source text, not runtime template results. */
@@ -89,6 +90,7 @@ export function BreakdownTable(props: BreakdownTableProps) {
 function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps) {
   const [rows, setRows] = useState<BreakdownRow[] | null>(null)
   const [errors, setErrors] = useState<BreakdownResponse['errors']>([])
+  const [accountsChecked, setAccountsChecked] = useState(0)
   const [loadError, setLoadError] = useState('')
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
   const [cache, setCache] = useState<Record<string, Expansion>>({})
@@ -111,6 +113,7 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
       .then((json) => {
         setRows(json.rows)
         setErrors(json.errors)
+        setAccountsChecked(json.accountsChecked)
       })
       .catch((e: Error) => {
         if (e.name !== 'AbortError') setLoadError(e.message)
@@ -249,6 +252,12 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
 
       {rows === null ? (
         <p className="px-5 py-8 text-center text-[13px] text-muted">Loading campaigns…</p>
+      ) : accountsChecked === 0 ? (
+        // Nothing connected, not merely nothing spent — a different sentence
+        // from the one below, checked first so it wins when both are empty.
+        <p className="px-5 py-8 text-center text-[13px] text-muted">
+          No {PLATFORM_NAME[provider]} ad accounts on this store yet.
+        </p>
       ) : rows.length === 0 ? (
         <p className="px-5 py-8 text-center text-[13px] text-muted">No campaigns ran in this period.</p>
       ) : (

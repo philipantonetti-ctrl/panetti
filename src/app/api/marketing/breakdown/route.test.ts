@@ -165,6 +165,9 @@ describe('GET /api/marketing/breakdown', () => {
     const body = await res.json()
     expect(body.rows).toEqual([])
     expect(metaBreakdown).not.toHaveBeenCalled()
+    // Zero accounts consulted, not merely zero rows returned — Task 5's
+    // BreakdownTable reads this to say "no account" rather than "no campaigns".
+    expect(body.accountsChecked).toBe(0)
   })
 
   it('turns an expired token into readable text, not a crash', async () => {
@@ -212,6 +215,10 @@ describe('GET /api/marketing/breakdown', () => {
     expect(body.errors).toHaveLength(1)
     expect(body.errors[0].accountId).toBe(broken.id)
     expect(body.errors[0].accountName).toBe(broken.name)
+    // Both accounts were consulted even though only one produced a row —
+    // proves accountsChecked reflects accounts queried, not rows.length
+    // (which is 1 here). Deriving it from rows would pass this fixture wrong.
+    expect(body.accountsChecked).toBe(2)
   })
 
   it('refuses an unknown level before calling anyone', async () => {

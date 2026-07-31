@@ -350,4 +350,50 @@ describe('BreakdownTable', () => {
     expect(screen.queryByText('July Ad Set')).toBeNull()
     expect(screen.getByRole('button', { name: /Recurring Campaign/ }).getAttribute('aria-expanded')).toBe('false')
   })
+
+  // Task 5: the route now says how many of the shop's accounts on this
+  // provider it consulted. Zero and "ran no campaigns" must read as different
+  // sentences — reading the second when the first is true is how someone
+  // concludes a platform is dead when it was never connected.
+  it('says there are no ad accounts when none exist for this platform', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ rows: [], errors: [], accountsChecked: 0 }))),
+    )
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() =>
+      expect(screen.getByText('No Meta ad accounts on this store yet.')).toBeTruthy(),
+    )
+    expect(screen.queryByText('No campaigns ran in this period.')).toBeNull()
+  })
+
+  // Names the platform actually selected, not a hardcoded "Meta" — the self-
+  // review question this branch's own briefs ask by name.
+  it('names Google, not Meta, when Google has no accounts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ rows: [], errors: [], accountsChecked: 0 }))),
+    )
+
+    render(<BreakdownTable shopId="shop1" provider="google" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() =>
+      expect(screen.getByText('No Google ad accounts on this store yet.')).toBeTruthy(),
+    )
+    expect(screen.queryByText('No Meta ad accounts on this store yet.')).toBeNull()
+  })
+
+  // The other side of the same distinction: an account exists and was asked,
+  // it simply spent nothing — that is the pre-existing empty state, not the
+  // new one.
+  it('says nothing ran, not that no account exists, once an account was actually checked', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ rows: [], errors: [], accountsChecked: 1 }))),
+    )
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() => expect(screen.getByText('No campaigns ran in this period.')).toBeTruthy())
+    expect(screen.queryByText(/No Meta ad accounts/)).toBeNull()
+  })
 })
