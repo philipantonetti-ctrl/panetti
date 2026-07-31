@@ -14,9 +14,46 @@ export type FetchFilter = {
   createdAfter?: Date | null
   /** Stop after this many pages; `hasMore` tells the caller history is behind it. */
   maxPages?: number
+  /**
+   * Epoch ms, as from `Date.now()`. Start no further page once it passes. One
+   * store must not be able to spend a whole run's budget.
+   */
+  deadline?: number
+  /** Ceiling for a single request; clamped down to what is left of the deadline. */
+  requestTimeoutMs?: number
 }
 
-export type FetchResult = { orders: WooOrder[]; hasMore: boolean }
+export type FetchResult = {
+  orders: WooOrder[]
+  hasMore: boolean
+  /**
+   * Incremental pulls only: the last `date_modified_gmt` seen, which is where a
+   * truncated pull can safely resume from. Undefined when nothing came back.
+   */
+  resumeFrom?: string
+  /**
+   * False when the store did not return orders in modified order, or sent one
+   * without the stamp — in either case `resumeFrom` is NOT safe to resume from,
+   * because orders we never saw may sit behind it. Always true for a first-sync
+   * chunk, which is sorted by created date and makes no such claim.
+   */
+  sortedByModified: boolean
+}
+
+/** No store gets longer than this for one request, deadline or not. */
+const REQUEST_TIMEOUT_MS = 30_000
+
+/**
+ * What one request is allowed. The ceiling, or whatever is left of the run,
+ * whichever is smaller — a 30-second request begun with 10 seconds left would
+ * overrun the deadline the caller is relying on. Never below 1ms: an expired
+ * budget still has to be a valid timeout, and the page loop is what stops.
+ */
+export function requestBudgetMs(filter: FetchFilter, now = Date.now()): number {
+  const ceiling = filter.requestTimeoutMs ?? REQUEST_TIMEOUT_MS
+  const left = filter.deadline === undefined ? ceiling : filter.deadline - now
+  return Math.max(1, Math.min(ceiling, left))
+}
 
 /**
  * A readable error from a Woo response. The body is truncated hard: a broken
@@ -31,30 +68,35 @@ async function wooError(res: Response): Promise<Error> {
 /**
  * Fetch orders one page at a time, oldest first. WooCommerce caps `per_page` at 100.
  *
- * Stops early on a short page (the end), or at `maxPages` with `hasMore: true` so
- * the caller decides what a partial pull means — a first sync resumes from where
- * it stopped; an incremental sync treats it as an error rather than skip orders.
+ * Stops on a short page (the end), at `maxPages`, or once the caller's deadline
+ * passes — the last two both report `hasMore: true`, and for an incremental
+ * pull `resumeFrom` says exactly how far we got, so the caller can carry on next
+ * run instead of starting the same window again.
  */
 export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): Promise<FetchResult> {
   const all: WooOrder[] = []
   const maxPages = filter.maxPages ?? 50
   const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
 
+  // Only an incremental pull is sorted by modified date, so only it can claim a
+  // resume point. A first-sync chunk makes no such claim.
+  const incremental = Boolean(filter.modifiedAfter)
+  let resumeFrom: string | undefined
+  let sortedByModified = true
+
   for (let page = 1; page <= maxPages; page++) {
-    // An incremental pull is filtered on modified date, so it must be SORTED on
-    // modified date too: that is the only ordering in which a truncated result
-    // has a safe place to resume from. A first sync walks history forwards by
-    // creation date and resumes on that instead.
-    const incremental = Boolean(filter.modifiedAfter)
+    // Checked before the request, not after: starting a page we have no time to
+    // finish wastes the budget of every store still waiting behind this one.
+    if (filter.deadline !== undefined && Date.now() >= filter.deadline) {
+      return { orders: all, hasMore: true, resumeFrom, sortedByModified }
+    }
+
     const params = new URLSearchParams({
       per_page: '100',
       page: String(page),
       orderby: incremental ? 'modified' : 'date',
       order: 'asc',
     })
-    // Woo compares date filters against the STORE's local time unless told
-    // otherwise. Ours are UTC, so without this a store at UTC+2 hands back a
-    // two-hour-wider window every single pull.
     if (filter.modifiedAfter) {
       params.set('dates_are_gmt', 'true')
       params.set('modified_after', filter.modifiedAfter.toISOString().slice(0, 19))
@@ -63,17 +105,35 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
 
     const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders?${params}`, {
       headers: { Authorization: `Basic ${auth}` },
+      signal: AbortSignal.timeout(requestBudgetMs(filter)),
     })
 
     if (!res.ok) throw await wooError(res)
 
     const batch = (await res.json()) as WooOrder[]
     all.push(...batch)
-    if (batch.length < 100) return { orders: all, hasMore: false } // last page
+
+    // Verify the ordering we asked for actually happened. Advancing a watermark
+    // to the last row of an unsorted result would skip every order the store
+    // did not happen to return.
+    if (incremental) {
+      for (const o of batch) {
+        const stamp = o.date_modified_gmt
+        if (!stamp) {
+          sortedByModified = false
+          continue
+        }
+        // Fixed-width GMT strings, so lexical order is chronological order.
+        if (resumeFrom !== undefined && stamp < resumeFrom) sortedByModified = false
+        resumeFrom = stamp
+      }
+    }
+
+    if (batch.length < 100) return { orders: all, hasMore: false, resumeFrom, sortedByModified } // last page
   }
 
   // Every page we were allowed to fetch came back full — more is behind it.
-  return { orders: all, hasMore: true }
+  return { orders: all, hasMore: true, resumeFrom, sortedByModified }
 }
 
 /**
