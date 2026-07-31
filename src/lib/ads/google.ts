@@ -15,8 +15,11 @@ import {
  * Access tokens are short-lived, so each call mints one from the stored OAuth
  * refresh token first. Reports come from GoogleAdsService.SearchStream: a GAQL
  * query against the `customer` resource segmented by date gives one row per
- * calendar day at account level. `cost_micros` is millionths of a whole unit
- * of the account currency, so one minor unit (cent/øre) is 10 000 micros.
+ * calendar day at account level for the daily sync, while a query against
+ * `campaign`, `ad_group` or `ad_group_ad` — totalled over a range instead of
+ * segmented by day — feeds the breakdown table below. `cost_micros` is
+ * millionths of a whole unit of the account currency, so one minor unit
+ * (cent/øre) is 10 000 micros.
  */
 
 const API = 'https://googleads.googleapis.com/v25'
@@ -212,16 +215,27 @@ const BREAKDOWN_GAQL: Record<
   },
 }
 
-/** Pull the level's id/name out of whichever nested resource GAQL returned it under. */
-function mapBreakdownRow(level: BreakdownLevel, r: GoogleResult): BreakdownEntry {
+/**
+ * Pull the level's id/name out of whichever nested resource GAQL returned it
+ * under. Null for a row with no id — a total row, the same reason Meta's own
+ * breakdown parser skips one (meta.ts) — an id-less row has nothing to key on
+ * and would collide with every other id-less row under the same account in
+ * BreakdownTable's `accountId:id` React key.
+ */
+function mapBreakdownRow(level: BreakdownLevel, r: GoogleResult): BreakdownEntry | null {
   const entity =
     level === 'campaign' ? r.campaign : level === 'adset' ? r.adGroup : r.adGroupAd?.ad
+  if (!entity?.id) return null
   const purchases = parseFloat(String(r.metrics?.conversions ?? '0')) || 0
   const purchaseValue =
     parseFloat(String(r.metrics?.conversionsValue ?? r.metrics?.conversions_value ?? '0')) || 0
   return {
-    id: entity?.id ?? '',
-    name: entity?.name ?? '',
+    id: entity.id,
+    // Most modern ad types (responsive search, Performance Max) leave the
+    // ad's own name unset — it is an optional label, not every ad has one.
+    // Falling back to the id, as Meta's breakdown does, beats a blank cell
+    // sitting next to real numbers.
+    name: entity.name || entity.id,
     spend: microsToMinor(r.metrics?.costMicros ?? r.metrics?.cost_micros),
     purchases,
     purchaseValue: toMinor(purchaseValue),
@@ -254,5 +268,7 @@ export async function fetchGoogleBreakdown(
     `FROM ${shape.from} WHERE ${where}`
 
   const rows = await searchStream(creds, target.customerId, query)
-  return rows.map((r) => mapBreakdownRow(target.level, r))
+  return rows
+    .map((r) => mapBreakdownRow(target.level, r))
+    .filter((entry): entry is BreakdownEntry => entry !== null)
 }

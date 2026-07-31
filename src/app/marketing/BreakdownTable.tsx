@@ -92,6 +92,9 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
   const [errors, setErrors] = useState<BreakdownResponse['errors']>([])
   const [accountsChecked, setAccountsChecked] = useState(0)
   const [loadError, setLoadError] = useState('')
+  // Bumped by the retry control to re-run the load effect below without
+  // duplicating its fetch/parse logic.
+  const [reloadTick, setReloadTick] = useState(0)
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
   const [cache, setCache] = useState<Record<string, Expansion>>({})
   // A ref, not state: it must be readable synchronously inside the very click
@@ -114,16 +117,33 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
         setRows(json.rows)
         setErrors(json.errors)
         setAccountsChecked(json.accountsChecked)
+        setLoadError('') // a retry that succeeds must clear the error it is retrying
       })
       .catch((e: Error) => {
         if (e.name !== 'AbortError') setLoadError(e.message)
       })
     return () => ctrl.abort() // a superseded response must never land after a newer one
-  }, [shopId, provider, from, to])
+  }, [shopId, provider, from, to, reloadTick])
+
+  function retryLoad() {
+    setLoadError('') // back to the loading state, not a stale message over a fresh spinner
+    setReloadTick((n) => n + 1)
+  }
 
   function loadChildren(row: BreakdownRow, level: BreakdownLevel, key: string) {
     setCache((prev) => ({ ...prev, [key]: { status: 'loading', rows: [], errors: [] } }))
-    const params = new URLSearchParams({ shopId, provider, level, parentId: row.id, from, to })
+    // A campaign/ad set id belongs to exactly one ad account — scoping the
+    // child request to it is what stops a second account on the same
+    // provider from being asked for the same object id (see breakdown.ts).
+    const params = new URLSearchParams({
+      shopId,
+      provider,
+      level,
+      parentId: row.id,
+      accountId: row.accountId,
+      from,
+      to,
+    })
     readBreakdown(`/api/marketing/breakdown?${params}`)
       .then((json) => {
         setCache((prev) => ({ ...prev, [key]: { status: 'ready', rows: json.rows, errors: json.errors } }))
@@ -139,6 +159,11 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
             errors: [{ accountId: row.accountId, accountName: row.accountName, message: e.message }],
           },
         }))
+        // A transient failure (rate limit, a brief 500, a token blip) must be
+        // retryable by collapsing and re-expanding — leaving this key marked
+        // "fetched" is what would make a failure permanent, the same trap
+        // `toggle`'s own comment names for a successful expansion.
+        fetchedKeys.current.delete(key)
       })
   }
 
@@ -238,7 +263,22 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
 
   return (
     <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
-      {loadError && <div className="border-b border-line px-5 py-3 text-[13px] text-loss">{loadError}</div>}
+      <p className="border-b border-line px-5 py-2.5 text-[12px] text-muted">
+        Live from {PLATFORM_NAME[provider]}, in the ad account’s own currency.
+      </p>
+
+      {loadError && (
+        <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3 text-[13px] text-loss">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={retryLoad}
+            className="shrink-0 rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1 text-[12px] font-medium text-ink transition-colors duration-150 hover:border-faint"
+          >
+            Try again
+          </button>
+        </div>
+      )}
 
       {errors.length > 0 && (
         <div className="space-y-1 border-b border-line px-5 py-3 text-[13px] text-loss">
@@ -251,13 +291,23 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
       )}
 
       {rows === null ? (
-        <p className="px-5 py-8 text-center text-[13px] text-muted">Loading campaigns…</p>
+        // A failed initial load must not sit under its own "Loading…" — the
+        // banner above already says what happened, and Try again is the
+        // only next step, not a spinner that was never going to resolve.
+        loadError ? null : (
+          <p className="px-5 py-8 text-center text-[13px] text-muted">Loading campaigns…</p>
+        )
       ) : accountsChecked === 0 ? (
         // Nothing connected, not merely nothing spent — a different sentence
         // from the one below, checked first so it wins when both are empty.
         <p className="px-5 py-8 text-center text-[13px] text-muted">
           No {PLATFORM_NAME[provider]} ad accounts on this store yet.
         </p>
+      ) : errors.length > 0 && rows.length === 0 ? (
+        // Not "nothing ran" — that is not something we actually know here.
+        // Every account that could have said so failed; its reason is in
+        // the banner above, not a claim about the client's own money.
+        <p className="px-5 py-8 text-center text-[13px] text-muted">Could not read this period.</p>
       ) : rows.length === 0 ? (
         <p className="px-5 py-8 text-center text-[13px] text-muted">No campaigns ran in this period.</p>
       ) : (

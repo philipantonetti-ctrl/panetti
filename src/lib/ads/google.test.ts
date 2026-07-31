@@ -299,5 +299,53 @@ describe('fetchGoogleBreakdown', () => {
       clicks: 216,
     })
   })
+
+  // I5: most modern ad types (responsive search, Performance Max) leave the
+  // ad's own name unset — it is an optional label, not every ad has one.
+  // Meta's breakdown already falls back to the id for a missing name; Google
+  // did neither, so this would have rendered a blank cell next to real
+  // numbers.
+  it('falls back to the id when the entity has no name, matching Meta', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(
+        reply([
+          {
+            adGroupAd: { ad: { id: '999' } }, // no name field at all
+            metrics: { costMicros: '10000000', impressions: '10', clicks: '1' },
+          },
+        ]),
+      ),
+    )
+
+    const [row] = await fetchGoogleBreakdown(
+      CREDS,
+      { level: 'ad', customerId: '1', parentId: '1' },
+      FROM,
+      TO,
+    )
+    expect(row.id).toBe('999')
+    expect(row.name).toBe('999')
+  })
+
+  // I5, the other half: a row with no id at all (a total row, the same shape
+  // Meta's own breakdown parser skips) must be dropped rather than kept with
+  // id: '' — that would collide with every other id-less row under the same
+  // account on BreakdownTable's `accountId:id` React key.
+  it('skips a row with no id, matching Meta', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(
+        reply([
+          { metrics: { costMicros: '10000000' } }, // no campaign object: a total row
+          { campaign: { id: '777', name: 'Brand' }, metrics: { costMicros: '5000000' } },
+        ]),
+      ),
+    )
+
+    const rows = await fetchGoogleBreakdown(CREDS, { level: 'campaign', customerId: '1' }, FROM, TO)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe('777')
+  })
 })
 
