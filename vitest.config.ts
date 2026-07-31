@@ -11,7 +11,9 @@ export default defineConfig(({ mode }) => {
     plugins: [tsconfigPaths(), react()],
     test: {
       environment: 'node',
-      include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+      // scripts/ too: the build's schema-push decision is logic that can break a
+      // deployment, so it is tested like anything else that can.
+      include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'],
       globals: true,
       env: {
         DATABASE_URL: env.DATABASE_URL || 'postgresql://postgres@127.0.0.1:5432/ecom_analytics?schema=public',
