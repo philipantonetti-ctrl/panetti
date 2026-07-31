@@ -142,10 +142,21 @@ test('a single store unlocks the breakdown; a campaign opens into ad sets, an ad
   // ShopFilter's "Only" does not close its own panel — by design, so more
   // boxes can be ticked afterward. Its full-viewport click-away backdrop is
   // still up, and being position:fixed with a z-index above the static page
-  // (globals.css --z-dropdown), it would swallow the very next click rather
-  // than let it land on anything beneath it. Click away to dismiss it, the
-  // same gesture a real user makes.
-  await page.mouse.click(20, 20)
+  // (globals.css --z-dropdown), it sits above everything, including a normal
+  // click target — Playwright's own actionability check would correctly
+  // refuse a plain .click() here as "obscured" and time out. `force: true`
+  // is required to reach past the backdrop, not a shortcut: do NOT "tidy"
+  // this into a plain click. The target is the page heading, chosen because
+  // it is inert (no handler of its own) — if ShopFilter is ever fixed to
+  // close its own panel, this simply clicks a heading that does nothing,
+  // rather than a fixed pixel that might land on something live (e.g. the
+  // sidebar's Wordmark link, one screen-corner over). Either way the click
+  // lands on whichever element is actually topmost at that point, exactly
+  // like a real user's click, which is what dismisses the backdrop.
+  await page.getByRole('heading', { name: 'Marketing' }).click({ force: true })
+  // Confirms the click actually closed the panel, rather than assuming it —
+  // this button only exists while ShopFilter's panel is open.
+  await expect(page.getByRole('button', { name: 'Only Panetti Sweden' })).toHaveCount(0)
 
   // The gate opens: campaigns are listed for the one selected store, ROAS
   // and CTR rendered on the same row as the campaign that earns them.
