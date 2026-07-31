@@ -1,5 +1,6 @@
 ﻿import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  fetchGoogleBreakdown,
   fetchGoogleDaily,
   fetchGoogleDailyBudget,
   googleAccessToken,
@@ -203,6 +204,98 @@ describe('verifyGoogle', () => {
       .mockResolvedValueOnce(json([{ results: [{ customer: {} }] }]))
     vi.stubGlobal('fetch', failMock)
     await expect(verifyGoogle(CREDS, '42')).rejects.toThrow(AdApiError)
+  })
+})
+
+describe('fetchGoogleBreakdown', () => {
+  const FROM = new Date('2026-07-01T00:00:00Z')
+  const TO = new Date('2026-07-31T00:00:00Z')
+
+  const reply = (results: unknown[]) =>
+    new Response(JSON.stringify([{ results }]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+  /**
+   * The GAQL actually sent, from the request body. fetchGoogleBreakdown goes
+   * through searchStream, which mints a fresh access token before every query
+   * (see the fetchGoogleDaily tests above) — so call [0] is always the token
+   * exchange and the query itself is call [1].
+   */
+  const sentQuery = (fetchMock: { mock: { calls: unknown[][] } }) =>
+    JSON.parse(String((fetchMock.mock.calls[1][1] as { body: string }).body)).query as string
+
+  it('reads campaigns from the campaign resource', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchGoogleBreakdown(CREDS, { level: 'campaign', customerId: '111' }, FROM, TO)
+
+    const q = sentQuery(fetchMock)
+    expect(q).toContain('FROM campaign')
+    expect(q).toContain("segments.date BETWEEN '2026-07-01' AND '2026-07-31'")
+    // In SELECT it would segment by day and give us entities x days.
+    expect(q).not.toContain('SELECT segments.date')
+  })
+
+  it('reads ad groups belonging to one campaign', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchGoogleBreakdown(
+      CREDS,
+      { level: 'adset', customerId: '111', parentId: '777' },
+      FROM,
+      TO,
+    )
+
+    const q = sentQuery(fetchMock)
+    expect(q).toContain('FROM ad_group')
+    expect(q).toContain('campaign.id = 777')
+  })
+
+  it('reads ads belonging to one ad group', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchGoogleBreakdown(CREDS, { level: 'ad', customerId: '111', parentId: '888' }, FROM, TO)
+
+    const q = sentQuery(fetchMock)
+    expect(q).toContain('FROM ad_group_ad')
+    expect(q).toContain('ad_group.id = 888')
+  })
+
+  it('converts micros to minor units', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(
+        reply([
+          {
+            campaign: { id: '777', name: 'Brand' },
+            metrics: {
+              costMicros: '2116610000',
+              conversions: 284,
+              conversionsValue: 13482.79,
+              impressions: '12000',
+              clicks: '216',
+            },
+          },
+        ]),
+      ),
+    )
+
+    const [row] = await fetchGoogleBreakdown(CREDS, { level: 'campaign', customerId: '1' }, FROM, TO)
+
+    expect(row).toEqual({
+      id: '777',
+      name: 'Brand',
+      spend: 211661,
+      purchases: 284,
+      purchaseValue: 1348279,
+      impressions: 12000,
+      clicks: 216,
+    })
   })
 })
 
