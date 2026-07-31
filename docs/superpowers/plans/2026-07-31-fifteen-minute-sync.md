@@ -871,9 +871,11 @@ describe('draining a backlog', () => {
     expect(result.more).toBe(true)
 
     const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
-    // The window shrank instead of growing: the watermark moved forward, to a
-    // processed order's modified stamp rather than to now.
-    expect(after.lastSyncAt!.getTime()).toBeGreaterThan(new Date('2026-06-01T00:00:00Z').getTime())
+    // The EXACT stamp of the last order processed, not merely "later than
+    // before". An inequality here is worthless: advancing to `now` would also
+    // satisfy it, while skipping every order between these 100 and the present
+    // — which is the precise failure this whole task exists to prevent.
+    expect(after.lastSyncAt!.toISOString()).toBe('2026-07-01T01:39:00.000Z')
     expect(after.lastError).toBeNull()
   })
 

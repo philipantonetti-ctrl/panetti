@@ -190,6 +190,25 @@ advance to. `lastSyncAt` stays untouched and the run counts as progress-free:
 `lastRunAt` still moves, so the store rotates to the back and gets a full slot
 next run rather than being retried immediately with the same tiny remainder.
 
+**The watermark moves forward or not at all.** Found during Task 5's review, and
+it qualifies the claim above: the window does *not* shrink every run
+unconditionally. Net progress per run is `resumeFrom - previousWatermark`, and
+the next window starts an `OVERLAP` behind the new watermark. So if more orders
+share `date_modified_gmt` values than one run can carry inside that five-minute
+band — a WooCommerce bulk status change over thousands of orders does exactly
+this — the resume point lands at or *behind* the current watermark. Writing it
+would pin the window, or rewind it, and the same page would be fetched forever.
+
+Nothing is skipped in that case: the watermark never passes an order that was
+not stored, so the safety property holds. What fails is the drain, and worse,
+it fails *silently* — the run reports success and the operator sees only "more
+history to fetch", indistinguishable from a legitimately large backfill.
+
+So the advance is conditional on strict forward progress. When there is none,
+`lastSyncAt` is left alone and `lastError` says the store changed more at once
+than one sync can work through. The old code was wrong to refuse, but it was at
+least loud; this keeps the loudness for the one case that still deserves it.
+
 The deadline applies to both paths. A first sync already stops early and
 resumes by design, so it needs no new semantics — only the extra reason to
 stop.
