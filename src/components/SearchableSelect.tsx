@@ -121,7 +121,10 @@ export function SearchableSelect({
                         >
                           <span
                             className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
-                              isSelected ? 'border-violet-600 bg-violet-600' : 'border-line'
+                              // Accent, not violet: purple is the named
+                              // anti-reference in DESIGN.md, and selection is
+                              // exactly what the accent exists for.
+                              isSelected ? 'border-accent bg-accent' : 'border-line'
                             }`}
                           />
                           {option.label}

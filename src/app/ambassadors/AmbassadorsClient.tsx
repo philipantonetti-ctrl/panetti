@@ -665,17 +665,28 @@ function EditModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
       onClick={onClose}
     >
+      {/* The panel is a flex column so the title and the buttons stay put and
+          only the middle scrolls. A ledger grows without limit; Save must not
+          drift below the fold with it. */}
       <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[var(--radius-card)] bg-surface p-5 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-ambassador-name"
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[var(--radius-card)] bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-bold text-ink">{row.name}</h2>
-        <p className="mt-1 text-xs text-muted">{row.email}</p>
+        <div className="shrink-0 border-b border-line px-5 py-4">
+          <h2 id="edit-ambassador-name" className="text-base font-bold text-ink">
+            {row.name}
+          </h2>
+          <p className="mt-0.5 text-xs text-muted">{row.email}</p>
+        </div>
 
-        <label htmlFor="commission" className="mt-4 block text-xs font-medium text-muted">
-          Commission on every order using their code
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <label htmlFor="commission" className="block text-[13px] font-semibold text-ink">
+          Commission
         </label>
-        <div className="mt-1">
+        <div className="mt-2">
           <PercentField
             id="commission"
             ariaLabel="Commission percent"
@@ -684,9 +695,16 @@ function EditModal({
             disabled={busy}
           />
         </div>
+        <p className="mt-1.5 text-[11px] text-faint">
+          Paid on every order placed with one of their codes.
+        </p>
 
-        <p className="mt-4 text-xs font-medium text-muted">Discount codes</p>
-        <div className="mt-1 space-y-1">
+        {/* Sections are separated by a hairline and named in ink, so a heading
+            never reads as just another field label. */}
+        <h3 className="mt-4 border-t border-line pt-4 text-[13px] font-semibold text-ink">
+          Discount codes
+        </h3>
+        <div className="mt-2 space-y-1">
           {row.codes.map((c) => (
             <div
               key={c.id}
@@ -714,7 +732,11 @@ function EditModal({
         </div>
 
         <p className="mt-3 text-[11px] font-medium text-muted">Add a code on a store</p>
-        <div className="mt-1 grid gap-2 sm:grid-cols-[10rem_1fr_auto]">
+        {/* minmax(0,1fr), never a bare 1fr: a grid track's automatic minimum is
+            its content's min-width, and the combobox input's is wide enough to
+            push this row past the modal, clip "Add code" off the right edge and
+            raise a horizontal scrollbar. */}
+        <div className="mt-1 grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto]">
           <select
             aria-label="Code store"
             value={codeShopId}
@@ -755,18 +777,31 @@ function EditModal({
           pending={pending}
           send={send}
         />
+        </div>
 
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-xs text-muted">
-            Cancel
-          </button>
-          <button
-            onClick={saveCommission}
-            disabled={busy}
-            className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
-          >
-            {pending === 'commission' ? 'Saving…' : 'Save'}
-          </button>
+        {/* Save covers the commission alone: everything below it is its own
+            request that already went through. Saying so here, where the button
+            is, is the only place the ambiguity actually arises. */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line px-5 py-3.5">
+          {/* Dropped on phones, where wrapping it to two lines costs more room
+              than the sentence is worth on a screen this admin rarely uses. */}
+          <p className="hidden min-w-0 text-[11px] text-faint sm:block">
+            Codes and products save as you add them.
+          </p>
+          {/* ml-auto, not the row's justify-between: with the hint hidden on a
+              phone these become the only child and would sit left. */}
+          <div className="ml-auto flex shrink-0 gap-2">
+            <button onClick={onClose} className="px-3 py-2 text-xs text-muted">
+              Cancel
+            </button>
+            <button
+              onClick={saveCommission}
+              disabled={busy}
+              className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            >
+              {pending === 'commission' ? 'Saving…' : 'Save'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
