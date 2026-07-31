@@ -30,3 +30,8 @@ test-results/
 
 # Brainstorming visual companion (local only)
 .superpowers/
+
+# Isolated worktrees. Two sessions have shared this folder and moved the
+# checkout under each other; a worktree is how that stops. Its contents are a
+# second copy of the repo and must never be committed into the first.
+.claude/worktrees/
