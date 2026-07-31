@@ -866,8 +866,8 @@ git commit -m "feat: one endpoint serves the breakdown for both platforms"
 Create `src/app/marketing/BreakdownTable.test.tsx` (`// @vitest-environment jsdom`, mocking `next/navigation` as the sibling test files do). Cover:
 
 1. **`lists the campaigns it was given`** — one fetch on mount, rows rendered with name and formatted spend.
-2. **`derives ROAS from spend and value`** — a row with `spend: 100000, purchaseValue: 637000` shows `6,37`; assert the rendered text, not an internal.
-3. **`shows a dash rather than dividing by zero`** — `spend: 0` shows `–` for ROAS, never `Infinity` or `NaN`.
+2. **`derives ROAS from spend and value`** — a row with `spend: 100000, purchaseValue: 637000` shows `6.37×`; assert the rendered text, not an internal. Period, and the `×`, matching `src/components/marketing/MarketingTable.tsx:104` which renders on the same page.
+3. **`shows a dash rather than dividing by zero`** — `spend: 0` shows the em dash `—` for ROAS, never `Infinity` or `NaN`. Em dash, not en: `MarketingTable.tsx:99` uses `—` for an unknown value.
 4. **`expands a campaign into its ad sets`** — pressing a row fetches `level=adset&parentId=<that row's id>` and renders the children indented beneath it.
 5. **`expands an ad set into its ads`** — the same one level deeper.
 6. **`does not refetch a row it has already expanded`** — collapse and re-expand issues no second request.

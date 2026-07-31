@@ -164,12 +164,21 @@ options and a dropdown would hide half of them.
 
 Campaign                     Spend        ROAS   Purch.   Value          CTR
 ────────────────────────────────────────────────────────────────────────────
-▾ KS - Pizzetta Pro UGC     211 661 kr    6,37     284   1 348 279 kr   1,8%
-   ▾ Brief 4 | Thomas        67 923 kr    7,44     104     426 260 kr   1,6%
-        #3 - Brief 4         54 799 kr    8,71      71     305 411 kr   2,0%
-        #1 - Brief 4         13 082 kr    2,15      28      28 129 kr   1,1%
-▸ SALE Pizzetta statics      57 917 kr    7,70      95     445 961 kr   2,1%
+▾ KS - Pizzetta Pro UGC     211 661 kr   6.37×     284   1 348 279 kr   1.8%
+   ▾ Brief 4 | Thomas        67 923 kr   7.44×     104     426 260 kr   1.6%
+        #3 - Brief 4         54 799 kr   8.71×      71     305 411 kr   2.0%
+        #1 - Brief 4         13 082 kr   2.15×      28      28 129 kr   1.1%
+▸ SALE Pizzetta statics      57 917 kr   7.70×      95     445 961 kr   2.1%
 ```
+
+**Numbers follow this app's convention, not Triple Whale's screenshot.** The
+first draft of this design copied `6,37` straight off the competitor's image.
+That was wrong: `src/components/marketing/MarketingTable.tsx:98-112` already
+renders ROAS as `6.28×` and percentages as `1.8%`, with an em dash `—` for
+unknown, and `MarketingStats.tsx:34` agrees — **on the same page**. Two figures
+both labelled ROAS, formatted differently on one screen, is how a client stops
+trusting the numbers. Matching a competitor's screenshot is worth far less than
+this page agreeing with itself.
 
 - A row is expanded by pressing it. Children load on first expansion and stay
   loaded; collapsing does not discard them.
