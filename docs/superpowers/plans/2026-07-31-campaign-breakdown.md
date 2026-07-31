@@ -962,11 +962,27 @@ no unit test can.
 
 - [ ] **Step 1: Write the spec**
 
-Following `e2e/orders.spec.ts` for login and navigation. Stub the platform at the
-network layer with `page.route('**/graph.facebook.com/**', …)` and the Google
-endpoint equivalent, returning fixtures for campaign, adset and ad levels keyed
-on the request's `level` parameter — so the run is deterministic and never
-touches a real ad account.
+Following `e2e/orders.spec.ts` for login and navigation.
+
+**Stub our own endpoint, not the platform's.** The first draft of this plan said
+to intercept `**/graph.facebook.com/**`. That cannot work: the browser never
+calls Meta. The browser calls `/api/marketing/breakdown`, and the **Next.js
+server** calls Meta. `page.route` only sees browser traffic, so a route on
+`graph.facebook.com` would never fire and the test would either reach the real
+API or fail in a way that took an hour to understand.
+
+So intercept `**/api/marketing/breakdown**` and answer from fixtures keyed on
+the request's `level` and `provider` parameters.
+
+What that does and does not prove, stated plainly so nobody mistakes its reach:
+
+- **Proves** the journey — the page renders, a single store gates the table in,
+  a campaign expands into ad sets, an ad set into ads, and the switcher moves to
+  Google. That is the thing no unit test can show, and the thing the user asked
+  for.
+- **Does not prove** the route handler or the two drivers. Those already have
+  DB-backed tests (Task 3) and stubbed-fetch unit tests (Tasks 1 and 2). The
+  division is deliberate: this spec owns the browser, those own the server.
 
 Then: sign in, open Marketing, choose one store, confirm campaigns are listed,
 press a campaign and confirm its ad sets appear beneath it, press an ad set and
