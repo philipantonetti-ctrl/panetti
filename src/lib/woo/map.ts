@@ -17,6 +17,12 @@ export type WooOrder = {
   status: string
   currency: string
   date_created_gmt: string
+  /**
+   * Optional because every store sends it but our own fixtures predate it, and
+   * because a store that somehow omits it must degrade to "cannot resume"
+   * rather than crash. Same shape as date_created_gmt: GMT, no zone suffix.
+   */
+  date_modified_gmt?: string
   discount_total: string
   discount_tax: string
   shipping_total: string

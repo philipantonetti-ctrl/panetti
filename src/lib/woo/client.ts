@@ -41,13 +41,24 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
   const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
 
   for (let page = 1; page <= maxPages; page++) {
+    // An incremental pull is filtered on modified date, so it must be SORTED on
+    // modified date too: that is the only ordering in which a truncated result
+    // has a safe place to resume from. A first sync walks history forwards by
+    // creation date and resumes on that instead.
+    const incremental = Boolean(filter.modifiedAfter)
     const params = new URLSearchParams({
       per_page: '100',
       page: String(page),
-      orderby: 'date',
+      orderby: incremental ? 'modified' : 'date',
       order: 'asc',
     })
-    if (filter.modifiedAfter) params.set('modified_after', filter.modifiedAfter.toISOString().slice(0, 19))
+    // Woo compares date filters against the STORE's local time unless told
+    // otherwise. Ours are UTC, so without this a store at UTC+2 hands back a
+    // two-hour-wider window every single pull.
+    if (filter.modifiedAfter) {
+      params.set('dates_are_gmt', 'true')
+      params.set('modified_after', filter.modifiedAfter.toISOString().slice(0, 19))
+    }
     if (filter.createdAfter) params.set('after', filter.createdAfter.toISOString().slice(0, 19))
 
     const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders?${params}`, {

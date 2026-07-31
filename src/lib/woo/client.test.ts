@@ -64,6 +64,42 @@ describe('fetchOrders', () => {
     expect(url).toContain('after=2024-01-29T00%3A00%3A00')
     expect(url).not.toContain('modified_after')
   })
+
+  // Truncating a modified-filtered list that is sorted by CREATED date leaves
+  // nowhere safe to resume from, which is why the old code could only refuse.
+  it('sorts incremental pulls by modified date, ascending', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchOrders(CREDS, { modifiedAfter: new Date('2026-07-01T10:00:00Z') })
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('orderby=modified')
+    expect(url).toContain('order=asc')
+  })
+
+  // Without this the store reads our UTC timestamp as its own local time. A
+  // store at UTC+2 then hands back a two-hour-wider window on every sync.
+  it('tells the store our dates are GMT', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchOrders(CREDS, { modifiedAfter: new Date('2026-07-01T10:00:00Z') })
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('dates_are_gmt=true')
+  })
+
+  // A first sync walks history forwards by creation date and resumes on it.
+  it('leaves first-sync chunks sorted by created date', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchOrders(CREDS, { createdAfter: new Date('2026-07-01T10:00:00Z') })
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('orderby=date')
+    expect(url).not.toContain('orderby=modified')
+  })
 })
 
 describe('fetchCoupons', () => {
