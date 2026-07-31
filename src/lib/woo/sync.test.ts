@@ -54,6 +54,14 @@ function fullPage(n: number, startId: number) {
   )
 }
 
+/** `n` orders whose modified stamps ascend, as an incremental pull returns them. */
+function fullModifiedPage(n: number, startId: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    ...wooOrder(startId + i, new Date(Date.UTC(2024, 0, 1, 0, startId + i)).toISOString().slice(0, 19)),
+    date_modified_gmt: new Date(Date.UTC(2026, 6, 1, 0, startId + i)).toISOString().slice(0, 19),
+  }))
+}
+
 /** A mappable order that carries a discount code. */
 function wooCouponOrder(id: number, placedAt: string, code: string) {
   return { ...wooOrder(id, placedAt), coupon_lines: [{ code }] }
@@ -332,22 +340,6 @@ describe('syncShop', () => {
     const saved = await db.order.findUniqueOrThrow({ where: { id: legacy.id } })
     expect(saved.customerName).toBe('')
   })
-
-  it('an incremental sync with 5,000+ changed orders stops loudly instead of skipping', async () => {
-    const shop = await connectedShop('Sync inc cap [sync-test]')
-    await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: new Date('2026-07-01') } })
-    const fetchMock = vi.fn().mockImplementation(async () => jsonPage(fullPage(100, 1)))
-    vi.stubGlobal('fetch', fetchMock)
-
-    const result = await syncShop(shop.id)
-    expect(result.ok).toBe(false)
-    expect(result.error).toMatch(/over 5,000/)
-
-    // Nothing stored, watermark unchanged: the next run retries the same window.
-    expect(await db.order.count({ where: { shopId: shop.id } })).toBe(0)
-    const saved = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
-    expect(saved.lastSyncAt!.toISOString()).toBe(new Date('2026-07-01').toISOString())
-  })
 })
 
 describe('run bookkeeping', () => {
@@ -416,6 +408,100 @@ describe('run bookkeeping', () => {
 
     const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
     expect(after.lastError).toContain('Reconnect')
+    expect(after.lastRunAt).not.toBeNull()
+  })
+})
+
+/**
+ * A partial pull, bounded to one page.
+ *
+ * The bounding is not incidental. A mock returning full pages forever runs the
+ * pull to its 50-page ceiling and `storeOrder` then writes 5,000 orders one at a
+ * time — minutes per test. A partial pull is a partial pull whether it stopped
+ * at page 2 or page 50, so one page proves the same thing.
+ *
+ * Bounded by `maxPages` rather than by a deadline on purpose: a deadline is set
+ * before `syncShop` does its own database reads, so on a loaded machine it can
+ * expire before the FIRST fetch and the test then proves nothing. `maxPages` is
+ * the same test-only seam `backfillPages` already provides for the other path.
+ */
+const onePage = (body: unknown) => vi.fn().mockImplementation(async () => jsonPage(body))
+
+describe('draining a backlog', () => {
+  it('advances the watermark to the last order it processed', async () => {
+    const shop = await connectedShop('[sync-test] backlog')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-06-01T00:00:00Z') },
+    })
+
+    vi.stubGlobal('fetch', onePage(fullModifiedPage(100, 0)))
+
+    const result = await syncShop(shop.id, { maxPages: 1 })
+
+    // It is NOT a failure. It is progress with more to come.
+    expect(result.ok).toBe(true)
+    expect(result.more).toBe(true)
+
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    // The window shrank instead of growing: the watermark moved forward, to a
+    // processed order's modified stamp rather than to now.
+    expect(after.lastSyncAt!.getTime()).toBeGreaterThan(new Date('2026-06-01T00:00:00Z').getTime())
+    expect(after.lastError).toBeNull()
+  })
+
+  // The old behaviour: refuse, leave the watermark, and be handed a bigger
+  // window next run. Forever.
+  it('never returns the over-5,000 refusal again', async () => {
+    const shop = await connectedShop('[sync-test] no refusal')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-06-01T00:00:00Z') },
+    })
+
+    vi.stubGlobal('fetch', onePage(fullModifiedPage(100, 0)))
+
+    const result = await syncShop(shop.id, { maxPages: 1 })
+    expect(result.error ?? '').not.toContain('5,000')
+  })
+
+  // Advancing to the last row of an unsorted result would skip everything the
+  // store did not happen to return.
+  it('refuses to advance when the store ignored the ordering', async () => {
+    const shop = await connectedShop('[sync-test] unsorted')
+    const watermark = new Date('2026-06-01T00:00:00Z')
+    await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: watermark } })
+
+    // Full page, modified stamps descending — the opposite of what we asked.
+    // The guard only matters on a PARTIAL pull: a completed one moves its
+    // watermark to the fetch time and needs no resume point, so this must stop
+    // early to be testing anything at all.
+    vi.stubGlobal('fetch', onePage(fullModifiedPage(100, 0).reverse()))
+
+    const result = await syncShop(shop.id, { maxPages: 1 })
+
+    expect(result.ok).toBe(false)
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(after.lastSyncAt!.toISOString()).toBe(watermark.toISOString())
+    expect(after.lastError).toContain('modified date')
+  })
+
+  // The deadline expired before a single page came back: nothing was stored, so
+  // there is nowhere to advance to. The attempt still counts as attention paid.
+  it('leaves the watermark alone when nothing arrived', async () => {
+    const shop = await connectedShop('[sync-test] no time')
+    const watermark = new Date('2026-06-01T00:00:00Z')
+    await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: watermark } })
+
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await syncShop(shop.id, { deadline: Date.now() - 1 })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.ok).toBe(true)
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(after.lastSyncAt!.toISOString()).toBe(watermark.toISOString())
     expect(after.lastRunAt).not.toBeNull()
   })
 })

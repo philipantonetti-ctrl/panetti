@@ -14,7 +14,7 @@ export type SyncResult = {
   shopName: string
   ok: boolean
   ordersSynced: number
-  /** First sync only: this chunk landed, but older history is still behind it. */
+  /** This pull landed, but more is behind it: history, a full page cap, or the deadline. */
   more?: boolean
   error?: string
 }
@@ -36,6 +36,14 @@ const DAY = 24 * 60 * 60 * 1000
  * pulls, and the upserts are idempotent.
  */
 const OVERLAP = 5 * 60 * 1000
+
+/**
+ * A store that hands back orders in some order other than the one we asked for.
+ * We cannot advance the watermark past rows we cannot prove we have seen, so
+ * this store needs a human rather than another identical retry.
+ */
+const UNSORTED_STORE =
+  'This store did not return orders sorted by modified date, so the sync cannot safely resume. Check the store for a plugin that overrides REST API ordering.'
 
 /** How many customer-less legacy orders one sync fills in (5 id-batches). */
 const CUSTOMER_BACKFILL_BATCH = 500
@@ -179,9 +187,14 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
  * backfill ran is caught by the first incremental sync.
  *
  * INCREMENTAL (lastSyncAt set) — only orders changed since five minutes before
- * the last completed sync (see OVERLAP). If that somehow exceeds 5,000 orders,
- * the sync refuses loudly rather than silently skipping; on any failure
- * lastSyncAt is left untouched so the next run retries the same window.
+ * the last completed sync (see OVERLAP). A pull that fills every page it is
+ * allowed stores what it fetched and moves the watermark to the last order it
+ * actually processed, so a backlog drains a little more each run instead of
+ * being handed back the same, wider window forever. That only holds once the
+ * store has proven it honoured `orderby=modified`; if it did not, the sync
+ * stops without advancing and says so, because guessing which rows it never
+ * saw is worse than asking a human to look. On any other failure lastSyncAt is
+ * left untouched so the next run retries the same window.
  *
  * - The watermark records when the FETCH began, not when storing finished — an
  *   order changed while the sync was running must fall inside the next window.
@@ -228,7 +241,12 @@ async function recordRun(
 
 export async function syncShop(
   shopId: string,
-  opts: { backfillPages?: number } = {},
+  /**
+   * `backfillPages` bounds a first-sync chunk, `maxPages` an incremental one —
+   * the same seam for the other half of the function, and the only way a test
+   * can produce a partial incremental pull without fetching 5,000 orders.
+   */
+  opts: { backfillPages?: number; maxPages?: number; deadline?: number } = {},
 ): Promise<SyncResult> {
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } })
   const base = { shopId: shop.id, shopName: shop.name }
@@ -268,20 +286,16 @@ export async function syncShop(
     }
 
     const fetchStartedAt = new Date()
-    const { orders, hasMore } = await fetchOrders(
+    const { orders, hasMore, resumeFrom, sortedByModified } = await fetchOrders(
       creds,
       firstSync
-        ? { createdAfter, maxPages: opts.backfillPages ?? BACKFILL_PAGES }
-        : { modifiedAfter: new Date(shop.lastSyncAt!.getTime() - OVERLAP) },
+        ? { createdAfter, maxPages: opts.backfillPages ?? BACKFILL_PAGES, deadline: opts.deadline }
+        : {
+            modifiedAfter: new Date(shop.lastSyncAt!.getTime() - OVERLAP),
+            maxPages: opts.maxPages,
+            deadline: opts.deadline,
+          },
     )
-
-    if (!firstSync && hasMore) {
-      // lastSyncAt is deliberately NOT updated, so the next run retries this window.
-      const error =
-        'This store returned over 5,000 changed orders in one pull. Sync stopped so nothing is skipped silently.'
-      await recordRun(shop.id, { error })
-      return { ...base, ok: false, ordersSynced: 0, error }
-    }
 
     const byCode = await codeBookFor(shop.id)
 
@@ -291,11 +305,31 @@ export async function syncShop(
       synced++
     }
 
-    if (firstSync && hasMore) {
-      // The chunk landed, but older history is still behind it. The watermark
-      // stays unset so the next press resumes instead of going incremental.
-      await recordRun(shop.id, { error: null })
-      return { ...base, ok: true, ordersSynced: synced, more: true }
+    if (hasMore) {
+      // A partial pull: the page cap or the deadline stopped us. The best-effort
+      // work below belongs to a completed sync, and if the deadline is what
+      // stopped us there is no time for it anyway.
+      //
+      // A first sync's watermark stays unset so the next run resumes the
+      // backfill instead of going incremental. An incremental pull moves its
+      // watermark to the last order it actually processed — that is what makes
+      // a backlog drain instead of being handed back, bigger, every run.
+      const canResume = !firstSync && sortedByModified && resumeFrom !== undefined
+      const unsorted = !firstSync && !sortedByModified
+
+      const error = unsorted ? UNSORTED_STORE : null
+      await recordRun(shop.id, {
+        ...(canResume ? { lastSyncAt: new Date(resumeFrom + 'Z') } : {}),
+        error,
+      })
+
+      return {
+        ...base,
+        ok: !unsorted,
+        ordersSynced: synced,
+        more: true,
+        ...(error ? { error } : {}),
+      }
     }
 
     // Best-effort on a COMPLETED sync only: refresh each known product's own
