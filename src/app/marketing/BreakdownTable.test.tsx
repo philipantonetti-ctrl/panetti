@@ -313,12 +313,19 @@ describe('BreakdownTable', () => {
 
   // Also beyond the nine: "What to build" requires a refetch on every prop
   // change, not just on mount, and a stale campaign's cached children must
-  // not survive into the new list.
+  // not survive into the new list. The same campaign id recurring in both
+  // months (a real campaign that ran in both) is the case that would expose
+  // a July expansion leaking into August under the "same" row — asserting
+  // only that new rows appear is not enough to catch that; a component that
+  // refetches rows but forgets to drop the child cache would still pass a
+  // weaker version of this test.
   it('refetches when the date range changes, and drops the old cache', async () => {
-    const julyCampaign = row({ id: 'c1', name: 'July Campaign', accountId: 'acc1' })
-    const augustCampaign = row({ id: 'c2', name: 'August Campaign', accountId: 'acc1' })
+    const julyCampaign = row({ id: 'c1', name: 'Recurring Campaign', accountId: 'acc1' })
+    const augustCampaign = row({ id: 'c1', name: 'Recurring Campaign', accountId: 'acc1' })
+    const julyAdSet = row({ id: 'as-july', name: 'July Ad Set', accountId: 'acc1' })
     const fetchMock = vi.fn((url: string) => {
       const u = String(url)
+      if (u.includes('parentId=c1')) return Promise.resolve(jsonResponse({ rows: [julyAdSet], errors: [] }))
       if (u.includes('from=2026-08-01')) return Promise.resolve(jsonResponse({ rows: [augustCampaign], errors: [] }))
       return Promise.resolve(jsonResponse({ rows: [julyCampaign], errors: [] }))
     })
@@ -327,13 +334,20 @@ describe('BreakdownTable', () => {
     const { rerender } = render(
       <BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />,
     )
-    await waitFor(() => expect(screen.getByText('July Campaign')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Recurring Campaign')).toBeTruthy())
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    rerender(<BreakdownTable shopId="shop1" provider="meta" from="2026-08-01" to="2026-08-31" />)
-    await waitFor(() => expect(screen.getByText('August Campaign')).toBeTruthy())
-
+    fireEvent.click(screen.getByText('Recurring Campaign'))
+    await waitFor(() => expect(screen.getByText('July Ad Set')).toBeTruthy())
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(screen.queryByText('July Campaign')).toBeNull()
+
+    rerender(<BreakdownTable shopId="shop1" provider="meta" from="2026-08-01" to="2026-08-31" />)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3)) // the new top-level fetch
+
+    // The same campaign id reappears under the new range. It must come back
+    // collapsed, not still showing July's ad set as if it were August's.
+    await waitFor(() => expect(screen.getByText('Recurring Campaign')).toBeTruthy())
+    expect(screen.queryByText('July Ad Set')).toBeNull()
+    expect(screen.getByRole('button', { name: /Recurring Campaign/ }).getAttribute('aria-expanded')).toBe('false')
   })
 })
