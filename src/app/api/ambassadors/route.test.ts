@@ -184,3 +184,86 @@ describe('POST /api/ambassadors', () => {
     expect(String(row.commissionPercent)).toBe('7')
   })
 })
+
+describe('POST /api/ambassadors with products', () => {
+  // Synthetic SKUs, never a real catalogue one: the seed gifts real products,
+  // and a test that counted those would pass or fail on someone else's data.
+  const SKU_A = 'CREATE-TEST-SKU-A'
+  const SKU_B = 'CREATE-TEST-SKU-B'
+
+  it('records what the new ambassador was sent, in the same write', async () => {
+    await asAdmin()
+    const res = await post({
+      name: 'Gifted', email: EMAIL, commissionPercent: 10, shopId, code: 'GIFT10',
+      products: [
+        { sku: SKU_A, name: 'Chair', quantity: 2, receivedAt: '2026-03-12', note: 'launch batch' },
+        { sku: SKU_B, name: 'Gun', quantity: 1, receivedAt: '2026-04-01' },
+      ],
+    })
+    expect(res.status).toBe(200)
+
+    const amb = await db.ambassador.findUnique({
+      where: { email: EMAIL },
+      include: { products: { orderBy: { sku: 'asc' } } },
+    })
+    expect(amb!.products).toHaveLength(2)
+    expect(amb!.products[0]).toMatchObject({ sku: SKU_A, name: 'Chair', quantity: 2, note: 'launch batch' })
+    // UTC midnight, the convention every dated value here follows.
+    expect(amb!.products[0].receivedAt.toISOString()).toBe('2026-03-12T00:00:00.000Z')
+    // An omitted note is null, not the string "undefined".
+    expect(amb!.products[1].note).toBeNull()
+  })
+
+  it('creates an ambassador with no products exactly as it always did', async () => {
+    await asAdmin()
+    const res = await post({ name: 'Plain', email: EMAIL, commissionPercent: 10, shopId, code: 'PLAIN10' })
+    expect(res.status).toBe(200)
+
+    const amb = await db.ambassador.findUnique({ where: { email: EMAIL }, include: { products: true } })
+    expect(amb!.products).toHaveLength(0)
+  })
+
+  it('refuses a quantity below one, and names the field rather than the form', async () => {
+    await asAdmin()
+    const res = await post({
+      name: 'Bad', email: EMAIL, commissionPercent: 10, shopId, code: 'BADQTY10',
+      products: [{ sku: SKU_A, name: 'Chair', quantity: 0, receivedAt: '2026-03-12' }],
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Quantity must be at least 1')
+    // Refused before anything was written.
+    expect(await db.ambassador.findUnique({ where: { email: EMAIL } })).toBeNull()
+  })
+
+  it('refuses a date it cannot read, rather than storing Invalid Date', async () => {
+    await asAdmin()
+    const res = await post({
+      name: 'Bad', email: EMAIL, commissionPercent: 10, shopId, code: 'BADDATE10',
+      products: [{ sku: SKU_A, name: 'Chair', quantity: 1, receivedAt: 'the other tuesday' }],
+    })
+    expect(res.status).toBe(400)
+    expect(await db.ambassador.findUnique({ where: { email: EMAIL } })).toBeNull()
+  })
+
+  it('leaves nothing behind when the code is already taken', async () => {
+    // A refused create writes neither the ambassador nor its gifts. Note what
+    // this does and does not prove: the 409 comes from the ambassador insert
+    // itself, so a two-step create-then-gift version would pass this too. The
+    // failure a single nested write actually rules out is the other order —
+    // ambassador written, gifts fail, 500 returned, and the retry meets "that
+    // email is taken" with no way to finish the job. That one is prevented by
+    // construction, not by this test.
+    await asAdmin()
+    await post({ name: 'First', email: OTHER_EMAIL, commissionPercent: 10, shopId, code: 'TAKEN10' })
+
+    const before = await db.ambassadorProduct.count({ where: { sku: SKU_A } })
+    const res = await post({
+      name: 'Second', email: EMAIL, commissionPercent: 10, shopId, code: 'TAKEN10',
+      products: [{ sku: SKU_A, name: 'Chair', quantity: 1, receivedAt: '2026-03-12' }],
+    })
+
+    expect(res.status).toBe(409)
+    expect(await db.ambassadorProduct.count({ where: { sku: SKU_A } })).toBe(before)
+    expect(await db.ambassador.findUnique({ where: { email: EMAIL } })).toBeNull()
+  })
+})

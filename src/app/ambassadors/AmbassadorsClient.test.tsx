@@ -23,6 +23,14 @@ function renderPage(ambassadors: unknown[] = [], role: 'ADMIN' | 'MARKETING' = '
     if (init?.method === 'POST') return json({ ok: true, id: 'new' })
     if (u.includes('/api/shops')) return json({ shops: [{ id: 's1', name: 'Norway' }, { id: 's2', name: 'Sweden' }] })
     if (u.includes('/api/coupons')) return json({ codes: ['JOHN10', 'SUMMER'] })
+    // Before the /api/ambassadors branch on purpose. It does not currently
+    // match ("ambassador-products" is not "ambassadors"), but the two differ by
+    // one character and the next person should not have to notice that.
+    if (u.includes('/api/ambassador-products'))
+      return json({
+        overview: [],
+        catalogue: [{ sku: 'MACBL661', name: 'Advanced Comfort' }, { sku: 'MPX-001', name: 'Pro X' }],
+      })
     if (u.includes('/api/ambassadors/stats'))
       return json({
         leaderboard: [
@@ -123,5 +131,114 @@ describe('AmbassadorsClient store-scoped codes', () => {
     ])
     await waitFor(() => expect(screen.getByText('JOHN10')).toBeTruthy())
     expect(screen.getByText(/· Norway/)).toBeTruthy()
+  })
+})
+
+describe('recording products while the ambassador is being created', () => {
+  /** Fills everything the submit button insists on, leaving products alone. */
+  async function fillRequiredFields() {
+    await waitFor(() => expect(screen.getByText('Add an ambassador')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'New Person' } })
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@x.local' } })
+    fireEvent.change(screen.getByLabelText('Store'), { target: { value: 's1' } })
+    fireEvent.change(screen.getByLabelText('Discount code'), { target: { value: 'NEW10' } })
+  }
+
+  async function addProduct(label: string, quantity: string) {
+    // SearchableSelect is a button that opens a list of buttons. The wait is
+    // load-bearing: the catalogue arrives from its own fetch, so the option
+    // does not exist on the first render and clicking blind is a race.
+    fireEvent.click(screen.getByRole('button', { name: 'Product' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: label })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: label }))
+    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: quantity } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add to list' }))
+  }
+
+  /** The body of the one POST the form made. */
+  function postedBody() {
+    const calls = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls
+    const post = calls.find(([, init]) => init?.method === 'POST')
+    return post ? JSON.parse(String(post[1].body)) : null
+  }
+
+  it('stays out of the way until asked for', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Add an ambassador')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: 'Add to list' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add products they got from us' }))
+    expect(screen.getByRole('button', { name: 'Add to list' })).toBeTruthy()
+  })
+
+  it('sends the listed products with the create, as one request', async () => {
+    renderPage()
+    await fillRequiredFields()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add products they got from us' }))
+    await addProduct('Advanced Comfort', '2')
+
+    // It shows as a chip before anything is sent.
+    expect(screen.getByRole('button', { name: 'Remove item 1: Advanced Comfort' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add ambassador' }))
+
+    await waitFor(() => {
+      const body = postedBody()
+      expect(body).toBeTruthy()
+      expect(body.products).toHaveLength(1)
+      // The NAME travels with the SKU: the record is a snapshot, so renaming a
+      // shop's listing later never rewrites what we handed over.
+      expect(body.products[0]).toMatchObject({
+        sku: 'MACBL661',
+        name: 'Advanced Comfort',
+        quantity: 2,
+      })
+    })
+  })
+
+  it('numbers the chips so two of the same product are still tellable apart', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Add an ambassador')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: '+ Add products they got from us' }))
+    await addProduct('Pro X', '1')
+    await addProduct('Pro X', '1')
+
+    // getByRole throws on more than one match, so this fails outright if both
+    // chips carry the same name.
+    expect(screen.getByRole('button', { name: 'Remove item 1: Pro X' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Remove item 2: Pro X' })).toBeTruthy()
+  })
+
+  it('drops a product from the list, and never sends it', async () => {
+    renderPage()
+    await fillRequiredFields()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add products they got from us' }))
+    await addProduct('Advanced Comfort', '1')
+    await addProduct('Pro X', '3')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove item 1: Advanced Comfort' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add ambassador' }))
+
+    await waitFor(() => {
+      const body = postedBody()
+      expect(body).toBeTruthy()
+      expect(body.products).toHaveLength(1)
+      expect(body.products[0]).toMatchObject({ sku: 'MPX-001', quantity: 3 })
+    })
+  })
+
+  it('omits products entirely when none were added, so the old body is unchanged', async () => {
+    renderPage()
+    await fillRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: 'Add ambassador' }))
+
+    await waitFor(() => {
+      const body = postedBody()
+      expect(body).toBeTruthy()
+      expect(body.name).toBe('New Person')
+      expect('products' in body).toBe(false)
+    })
   })
 })

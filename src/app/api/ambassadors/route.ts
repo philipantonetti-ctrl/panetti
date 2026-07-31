@@ -5,6 +5,19 @@ import { assertStaff, AuthError } from '@/lib/auth/guard'
 import { signInvite } from '@/lib/auth/invite'
 import { attributeExistingOrders } from '@/lib/attribution'
 import { db } from '@/lib/db'
+import { utcDay } from '@/lib/dates'
+
+/**
+ * One gift, described exactly as POST /api/ambassador-products describes it, so
+ * both doors into the ledger accept and refuse the same things.
+ */
+const Gift = z.object({
+  sku: z.string().trim().min(1, 'Pick a product'),
+  name: z.string().trim().min(1, 'Pick a product'),
+  quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+  receivedAt: z.string().min(1, 'Pick the date they got it'),
+  note: z.string().trim().max(200, 'Keep the note under 200 characters').optional(),
+})
 
 const Body = z.object({
   name: z.string().min(1),
@@ -13,6 +26,8 @@ const Body = z.object({
   commissionPercent: z.number().min(0).max(100),
   shopId: z.string().min(1),
   code: z.string().min(1),
+  // A sanity bound on a list assembled by hand, not a business rule.
+  products: z.array(Gift).max(50, 'That is a lot of products for one person').optional(),
 })
 
 function isUniqueViolation(e: unknown): boolean {
@@ -88,13 +103,26 @@ export async function POST(req: Request) {
 
     const parsed = Body.safeParse(await req.json())
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Check the name, email, rate and code' }, { status: 400 })
+      // The first issue's own message, because "Quantity must be at least 1"
+      // tells you where to look and "Check the name, email, rate and code"
+      // does not, now that products come through here too.
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? 'Check the name, email, rate and code' },
+        { status: 400 },
+      )
     }
-    const { name, email, commissionPercent, shopId, code } = parsed.data
+    const { name, email, commissionPercent, shopId, code, products } = parsed.data
 
     // A friendlier answer than a raw foreign-key failure if the store is gone.
     const shop = await db.shop.findUnique({ where: { id: shopId } })
     if (!shop) return NextResponse.json({ error: 'Pick a valid store for the code' }, { status: 400 })
+
+    // Checked before the write, so an unreadable date is a 400 and not a row
+    // holding Invalid Date.
+    const gifts = (products ?? []).map((p) => ({ ...p, on: new Date(p.receivedAt) }))
+    if (gifts.some((g) => Number.isNaN(g.on.getTime()))) {
+      return NextResponse.json({ error: 'Pick the date they got it' }, { status: 400 })
+    }
 
     // An email that already has a login (e.g. the admin's own) is deliberately
     // allowed: the same person can be an admin AND an ambassador. The code is
@@ -102,12 +130,28 @@ export async function POST(req: Request) {
     // dashboard. Only onboarding (setting a second password) is skipped — the
     // invite route says so plainly if they ever open the link.
 
+    // One nested write, not a create followed by N gift POSTs. A duplicate code
+    // is a 409 the moment it is discovered, and this way it takes the gifts
+    // down with it rather than leaving rows behind for an ambassador who was
+    // never created.
     const ambassador = await db.ambassador.create({
       data: {
         name,
         email: email.toLowerCase(),
         commissionRate: commissionPercent / 100,
         codes: { create: { code: code.toUpperCase(), shopId } },
+        ...(gifts.length > 0 && {
+          products: {
+            create: gifts.map((g) => ({
+              sku: g.sku,
+              name: g.name,
+              quantity: g.quantity,
+              // UTC midnight, the convention every dated value here follows.
+              receivedAt: utcDay(g.on),
+              note: g.note || null,
+            })),
+          },
+        }),
       },
     })
 

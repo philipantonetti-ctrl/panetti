@@ -9,6 +9,7 @@ import { PRESET_LABELS, type Preset } from '@/lib/dates'
 import type { LeaderboardRow } from '@/lib/metrics/ambassadors'
 import { ProductOverview, type ProductSummaryRow } from '@/components/ambassadors/ProductOverview'
 import { ProductLedger, type CatalogueItem, type Gift } from '@/components/ambassadors/ProductLedger'
+import { GiftFields, type GiftDraft } from '@/components/ambassadors/GiftFields'
 
 type Code = { id: string; code: string; shopId: string; shopName: string }
 type Shop = { id: string; name: string }
@@ -188,6 +189,12 @@ export function AmbassadorsClient({
   const [newCode, setNewCode] = useState('')
   const { codes: newCodes, loading: newCodesLoading } = useShopCoupons(newShopId)
 
+  // What we are sending the new ambassador. Held here, not written yet: there is
+  // no ambassador to attach a gift to until the form is submitted, so these ride
+  // along with the create as one request.
+  const [showNewProducts, setShowNewProducts] = useState(false)
+  const [newProducts, setNewProducts] = useState<GiftDraft[]>([])
+
   // The statistics above the roster: who sold, filtered by shop and period.
   const [stats, setStats] = useState<Stats | null>(null)
   const [statShop, setStatShop] = useState('') // '' = all shops
@@ -338,6 +345,9 @@ export function AmbassadorsClient({
       commissionPercent: Number(newPercent),
       shopId: newShopId,
       code: newCode.trim(),
+      // Omitted entirely when empty, so a create with no gifts sends exactly
+      // the body it always did.
+      ...(newProducts.length > 0 && { products: newProducts }),
     })
     if (!ok) return
 
@@ -346,6 +356,8 @@ export function AmbassadorsClient({
     setNewPercent('10')
     setNewShopId('')
     setNewCode('')
+    setNewProducts([])
+    setShowNewProducts(false)
   }
 
   /**
@@ -487,6 +499,80 @@ export function AmbassadorsClient({
               {pending === 'add' ? 'Saving…' : 'Add ambassador'}
             </button>
           </div>
+
+          {/* Collapsed by default: most of the time this card is a name and a
+              code, and the four gift fields would be four fields of nothing. */}
+          {!showNewProducts ? (
+            <button
+              type="button"
+              onClick={() => setShowNewProducts(true)}
+              className="mt-3 text-[11px] font-semibold text-accent hover:underline"
+            >
+              + Add products they got from us
+            </button>
+          ) : (
+            <div className="mt-4 border-t border-line pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[12px] font-semibold text-ink">Products they got from us</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowNewProducts(false)}
+                  className="shrink-0 text-[11px] text-muted hover:underline"
+                >
+                  Hide
+                </button>
+              </div>
+
+              {newProducts.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {/* Index keys are safe here and nowhere else in this file:
+                      these chips hold no state of their own, so React has
+                      nothing to carry to the wrong row when one is removed. */}
+                  {newProducts.map((p, i) => (
+                    <span
+                      key={i}
+                      className="flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-ink"
+                    >
+                      <span className="font-semibold">{p.name}</span>
+                      <span className="whitespace-nowrap text-faint">
+                        ×{p.quantity} · {p.receivedAt}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNewProducts((list) => list.filter((_, n) => n !== i))}
+                        // Numbered, because the ledger deliberately allows the
+                        // same product twice and position is the only thing
+                        // that tells two identical chips apart.
+                        aria-label={`Remove item ${i + 1}: ${p.name}`}
+                        className="font-semibold text-loss hover:underline"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* The one place in this program where add does NOT write: there
+                  is no ambassador to attach it to yet. */}
+              <p className="mt-2 text-[11px] text-faint">
+                Saved when you press Add ambassador.
+              </p>
+
+              <div className="mt-2">
+                <GiftFields
+                  catalogue={catalogue}
+                  idPrefix="new-gift"
+                  addLabel="Add to list"
+                  disabled={busy}
+                  onAdd={(gift) => {
+                    setNewProducts((list) => [...list, gift])
+                    return true
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </form>
 
         <ProductOverview rows={overview} />

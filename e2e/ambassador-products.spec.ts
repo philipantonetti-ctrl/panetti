@@ -53,7 +53,9 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   const qty = page.getByLabel('Quantity')
   await qty.fill('2')
   await page.getByLabel('Note').fill('sent for the summer campaign')
-  await page.getByRole('button', { name: /Add product/ }).click()
+  // exact: true, or this also matches the create form's "+ Add products they
+  // got from us" toggle sitting above the modal.
+  await page.getByRole('button', { name: 'Add product', exact: true }).click()
 
   // The modal stays open and the ledger refreshes in place.
   await expect(page.getByText('sent for the summer campaign')).toBeVisible()
@@ -76,6 +78,60 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   await expect(page.getByText('sent for the summer campaign')).toHaveCount(0)
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(johan).not.toContainText('Mazzetti Lite Comfort - Massasjestol (Beige)')
+})
+
+test('an admin records products while creating the ambassador', async ({ page }) => {
+  const NAME = 'E2E Create With Products'
+  const EMAIL = 'e2e-create-products@example.test'
+  const CODE = 'E2ECREATE1'
+
+  // window.confirm guards Delete, and an unhandled dialog blocks the click.
+  page.on('dialog', (d) => void d.accept())
+
+  async function removeIfPresent() {
+    const row = page.getByTestId('ambassador-row').filter({ hasText: NAME })
+    if ((await row.count()) === 0) return
+    await row.first().getByRole('button', { name: 'Delete' }).click()
+    await expect(page.getByTestId('ambassador-row').filter({ hasText: NAME })).toHaveCount(0)
+  }
+
+  await signIn(page, 'admin@ecom.test')
+  await page.goto('/ambassadors')
+
+  // A run that died before its cleanup would otherwise leave a 409 behind and
+  // this spec would never pass again.
+  await removeIfPresent()
+
+  const form = page.getByTestId('add-ambassador')
+  await form.getByLabel('Name').fill(NAME)
+  await form.getByLabel('Email').fill(EMAIL)
+  await form.getByLabel('Store').selectOption({ label: 'Panetti Norway' })
+  await form.getByLabel('Discount code').fill(CODE)
+
+  // The fields are collapsed until asked for — that is the point of the toggle.
+  await expect(page.getByRole('button', { name: 'Add to list' })).toHaveCount(0)
+  await page.getByRole('button', { name: '+ Add products they got from us' }).click()
+
+  // exact: true, because Playwright's getByRole name matching is SUBSTRING by
+  // default and a bare 'Product' also matches 'Add products they got from us'.
+  await page.getByRole('button', { name: 'Product', exact: true }).click()
+  await page.getByRole('button', { name: 'Massasjepistol Pro X', exact: true }).click()
+  await page.getByLabel('Quantity').fill('2')
+  await page.getByRole('button', { name: 'Add to list' }).click()
+
+  // Listed, but deliberately not saved yet: there is no ambassador to hang it on.
+  await expect(page.getByRole('button', { name: 'Remove item 1: Massasjepistol Pro X' })).toBeVisible()
+
+  await form.getByRole('button', { name: 'Add ambassador' }).click()
+
+  const row = page.getByTestId('ambassador-row').filter({ hasText: NAME })
+  await expect(row).toContainText('Massasjepistol Pro X')
+  await expect(row).toContainText('×2')
+
+  // The form resets and collapses again.
+  await expect(page.getByRole('button', { name: 'Add to list' })).toHaveCount(0)
+
+  await removeIfPresent()
 })
 
 test('an ambassador sees what we sent them, and cannot change it', async ({ page }) => {
