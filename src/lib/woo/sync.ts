@@ -193,6 +193,39 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
  *   refresh, legacy orders get their customer filled in, and the store's
  *   webhooks are (re)registered so changes stream in live between syncs.
  */
+/**
+ * Record one attempt on a store.
+ *
+ * `lastRunAt` moves on EVERY attempt, including failures. This is what keeps
+ * the rotation in `syncAllShops` fair: a permanently broken store whose
+ * `lastRunAt` never moved would sit at the front of the queue and burn a slot
+ * on every single run. Moving it costs a broken store one slot, then it goes to
+ * the back.
+ *
+ * `lastSyncAt` moves only when a caller passes one, so a window that failed is
+ * retried unchanged rather than skipped.
+ *
+ * Never throws. If the database is what broke, the caller's own error is the
+ * one worth reporting — not a second, more confusing one from the bookkeeping.
+ */
+async function recordRun(
+  shopId: string,
+  outcome: { lastSyncAt?: Date; error?: string | null },
+): Promise<void> {
+  try {
+    await db.shop.update({
+      where: { id: shopId },
+      data: {
+        lastRunAt: new Date(),
+        lastError: outcome.error ?? null,
+        ...(outcome.lastSyncAt ? { lastSyncAt: outcome.lastSyncAt } : {}),
+      },
+    })
+  } catch {
+    // Bookkeeping is never worth failing a sync over.
+  }
+}
+
 export async function syncShop(
   shopId: string,
   opts: { backfillPages?: number } = {},
@@ -201,7 +234,9 @@ export async function syncShop(
   const base = { shopId: shop.id, shopName: shop.name }
 
   if (!shop.wooUrl || !shop.wooKey || !shop.wooSecret) {
-    return { ...base, ok: false, ordersSynced: 0, error: 'No WooCommerce credentials for this shop' }
+    const error = 'No WooCommerce credentials for this shop'
+    await recordRun(shop.id, { error })
+    return { ...base, ok: false, ordersSynced: 0, error }
   }
 
   let key: string
@@ -211,7 +246,9 @@ export async function syncShop(
     secret = decryptSecret(shop.wooSecret)
   } catch {
     // Only possible if AUTH_SECRET changed after the shop was connected.
-    return { ...base, ok: false, ordersSynced: 0, error: "Saved keys can't be read. Reconnect this shop." }
+    const error = "Saved keys can't be read. Reconnect this shop."
+    await recordRun(shop.id, { error })
+    return { ...base, ok: false, ordersSynced: 0, error }
   }
   const creds: WooCredentials = { url: shop.wooUrl, key, secret }
 
@@ -240,13 +277,10 @@ export async function syncShop(
 
     if (!firstSync && hasMore) {
       // lastSyncAt is deliberately NOT updated, so the next run retries this window.
-      return {
-        ...base,
-        ok: false,
-        ordersSynced: 0,
-        error:
-          'This store returned over 5,000 changed orders in one pull. Sync stopped so nothing is skipped silently.',
-      }
+      const error =
+        'This store returned over 5,000 changed orders in one pull. Sync stopped so nothing is skipped silently.'
+      await recordRun(shop.id, { error })
+      return { ...base, ok: false, ordersSynced: 0, error }
     }
 
     const byCode = await codeBookFor(shop.id)
@@ -260,6 +294,7 @@ export async function syncShop(
     if (firstSync && hasMore) {
       // The chunk landed, but older history is still behind it. The watermark
       // stays unset so the next press resumes instead of going incremental.
+      await recordRun(shop.id, { error: null })
       return { ...base, ok: true, ordersSynced: synced, more: true }
     }
 
@@ -301,20 +336,17 @@ export async function syncShop(
     // Only now — after everything landed — does the watermark move. It moves to
     // when the FETCH began (a completed backfill starts a day back), so nothing
     // changed while we worked can slip between two windows.
-    await db.shop.update({
-      where: { id: shop.id },
-      data: { lastSyncAt: firstSync ? new Date(Date.now() - DAY) : fetchStartedAt },
+    await recordRun(shop.id, {
+      lastSyncAt: firstSync ? new Date(Date.now() - DAY) : fetchStartedAt,
+      error: null,
     })
 
     return { ...base, ok: true, ordersSynced: synced }
   } catch (e) {
+    const error = e instanceof Error ? e.message : 'Sync failed'
     // lastSyncAt is deliberately NOT updated, so the next run retries this window.
-    return {
-      ...base,
-      ok: false,
-      ordersSynced: 0,
-      error: e instanceof Error ? e.message : 'Sync failed',
-    }
+    await recordRun(shop.id, { error })
+    return { ...base, ok: false, ordersSynced: 0, error }
   }
 }
 

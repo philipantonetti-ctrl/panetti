@@ -349,3 +349,73 @@ describe('syncShop', () => {
     expect(saved.lastSyncAt!.toISOString()).toBe(new Date('2026-07-01').toISOString())
   })
 })
+
+describe('run bookkeeping', () => {
+  it('records why a store failed, and leaves the watermark alone', async () => {
+    const shop = await connectedShop('[sync-test] refuses')
+    const watermark = new Date('2026-07-01T00:00:00Z')
+    await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: watermark } })
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('nope', { status: 401 }),
+    ))
+
+    const result = await syncShop(shop.id)
+    expect(result.ok).toBe(false)
+
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    // The window is retried unchanged, so the watermark must not move...
+    expect(after.lastSyncAt?.toISOString()).toBe(watermark.toISOString())
+    // ...but the attempt is on the record, with its reason.
+    expect(after.lastError).toContain('401')
+    expect(after.lastRunAt).not.toBeNull()
+  })
+
+  // A store that always fails must not hold the front of the queue forever.
+  it('moves lastRunAt even when the attempt failed', async () => {
+    const shop = await connectedShop('[sync-test] always fails')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-07-01T00:00:00Z'), lastRunAt: new Date('2020-01-01T00:00:00Z') },
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 500 })))
+    await syncShop(shop.id)
+
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(after.lastRunAt!.getTime()).toBeGreaterThan(new Date('2020-01-01T00:00:00Z').getTime())
+  })
+
+  it('clears the error once the store answers again', async () => {
+    const shop = await connectedShop('[sync-test] recovers')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-07-01T00:00:00Z'), lastError: 'something old' },
+    })
+
+    // One empty page: nothing changed since the watermark, which is a success.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => emptyPage()))
+    const result = await syncShop(shop.id)
+
+    expect(result.ok).toBe(true)
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(after.lastError).toBeNull()
+    expect(after.lastRunAt).not.toBeNull()
+  })
+
+  it('records the reason when the saved keys cannot be read', async () => {
+    const shop = await connectedShop('[sync-test] bad keys')
+    // Ciphertext this deployment's AUTH_SECRET cannot open.
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { wooKey: 'enc:v1:AAAAAAAAAAAAAAAA:BBBBBBBBBBBBBBBBBBBBBBBBBBBB' },
+    })
+
+    const result = await syncShop(shop.id)
+    expect(result.ok).toBe(false)
+
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(after.lastError).toContain('Reconnect')
+    expect(after.lastRunAt).not.toBeNull()
+  })
+})
