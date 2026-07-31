@@ -251,7 +251,9 @@ describe('fetchGoogleBreakdown', () => {
     )
 
     const q = sentQuery(fetchMock)
-    expect(q).toContain('FROM ad_group')
+    // 'FROM ad_group' alone is a prefix of 'FROM ad_group_ad' too, so it would
+    // still pass if this level wrongly queried the ad resource instead.
+    expect(q).toContain('FROM ad_group WHERE')
     expect(q).toContain('campaign.id = 777')
   })
 

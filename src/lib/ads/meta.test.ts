@@ -221,7 +221,9 @@ describe('fetchMetaBreakdown', () => {
 
     const url = String(fetchMock.mock.calls[0][0])
     expect(url).toContain('/888/insights')
-    expect(url).toContain('level=ad')
+    // 'level=ad' is also a substring of 'level=adset', so it can't tell the two
+    // apart; read the parsed param instead of the raw string.
+    expect(new URL(url).searchParams.get('level')).toBe('ad')
   })
 
   it('asks for exactly the range it was given', async () => {
