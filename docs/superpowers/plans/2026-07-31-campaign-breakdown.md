@@ -163,7 +163,10 @@ describe('fetchMetaBreakdown', () => {
 
     const url = String(fetchMock.mock.calls[0][0])
     expect(url).toContain('/888/insights')
-    expect(url).toContain('level=ad')
+    // Read the parsed value, not a substring: 'level=ad' is a prefix of
+    // 'level=adset', so `toContain` here would pass for the wrong level and the
+    // test would exist without being able to fail.
+    expect(new URL(url).searchParams.get('level')).toBe('ad')
   })
 
   it('asks for exactly the range it was given', async () => {
@@ -449,12 +452,23 @@ describe('fetchGoogleBreakdown', () => {
       headers: { 'Content-Type': 'application/json' },
     })
 
-  /** The GAQL actually sent, from the request body. */
+  /**
+   * The GAQL actually sent — from the SECOND call, not the first.
+   *
+   * `searchStream` calls `googleAccessToken` before it queries anything, so
+   * call 0 is the token exchange and call 1 is the query. Every pre-existing
+   * test in this file already indexes `calls[1]` for the same reason
+   * (`google.test.ts:121,140,176`). Reading `calls[0]` fails with "Google
+   * sign-in failed" rather than an assertion error, which is a confusing way
+   * to learn this.
+   */
   const sentQuery = (fetchMock: { mock: { calls: unknown[][] } }) =>
-    JSON.parse(String((fetchMock.mock.calls[0][1] as { body: string }).body)).query as string
+    JSON.parse(String((fetchMock.mock.calls[1][1] as { body: string }).body)).query as string
 
   it('reads campaigns from the campaign resource', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(reply([]))
+    // A Response body reads once, so chain the two calls rather than sharing
+    // one resolved value: first the token exchange, then the query.
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(CREDS, { level: 'campaign', customerId: '111' }, FROM, TO)
@@ -467,7 +481,9 @@ describe('fetchGoogleBreakdown', () => {
   })
 
   it('reads ad groups belonging to one campaign', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(reply([]))
+    // A Response body reads once, so chain the two calls rather than sharing
+    // one resolved value: first the token exchange, then the query.
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(
@@ -478,12 +494,17 @@ describe('fetchGoogleBreakdown', () => {
     )
 
     const q = sentQuery(fetchMock)
-    expect(q).toContain('FROM ad_group')
+    // 'FROM ad_group' is a prefix of 'FROM ad_group_ad', so the bare substring
+    // would pass even if this level wrongly used the ad resource — a plausible
+    // copy-paste between adjacent rows of BREAKDOWN_GAQL. The WHERE pins it.
+    expect(q).toContain('FROM ad_group WHERE')
     expect(q).toContain('campaign.id = 777')
   })
 
   it('reads ads belonging to one ad group', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(reply([]))
+    // A Response body reads once, so chain the two calls rather than sharing
+    // one resolved value: first the token exchange, then the query.
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(CREDS, { level: 'ad', customerId: '111', parentId: '888' }, FROM, TO)
@@ -845,8 +866,8 @@ git commit -m "feat: one endpoint serves the breakdown for both platforms"
 Create `src/app/marketing/BreakdownTable.test.tsx` (`// @vitest-environment jsdom`, mocking `next/navigation` as the sibling test files do). Cover:
 
 1. **`lists the campaigns it was given`** — one fetch on mount, rows rendered with name and formatted spend.
-2. **`derives ROAS from spend and value`** — a row with `spend: 100000, purchaseValue: 637000` shows `6,37`; assert the rendered text, not an internal.
-3. **`shows a dash rather than dividing by zero`** — `spend: 0` shows `–` for ROAS, never `Infinity` or `NaN`.
+2. **`derives ROAS from spend and value`** — a row with `spend: 100000, purchaseValue: 637000` shows `6.37×`; assert the rendered text, not an internal. Period, and the `×`, matching `src/components/marketing/MarketingTable.tsx:104` which renders on the same page.
+3. **`shows a dash rather than dividing by zero`** — `spend: 0` shows the em dash `—` for ROAS, never `Infinity` or `NaN`. Em dash, not en: `MarketingTable.tsx:99` uses `—` for an unknown value.
 4. **`expands a campaign into its ad sets`** — pressing a row fetches `level=adset&parentId=<that row's id>` and renders the children indented beneath it.
 5. **`expands an ad set into its ads`** — the same one level deeper.
 6. **`does not refetch a row it has already expanded`** — collapse and re-expand issues no second request.
@@ -941,11 +962,27 @@ no unit test can.
 
 - [ ] **Step 1: Write the spec**
 
-Following `e2e/orders.spec.ts` for login and navigation. Stub the platform at the
-network layer with `page.route('**/graph.facebook.com/**', …)` and the Google
-endpoint equivalent, returning fixtures for campaign, adset and ad levels keyed
-on the request's `level` parameter — so the run is deterministic and never
-touches a real ad account.
+Following `e2e/orders.spec.ts` for login and navigation.
+
+**Stub our own endpoint, not the platform's.** The first draft of this plan said
+to intercept `**/graph.facebook.com/**`. That cannot work: the browser never
+calls Meta. The browser calls `/api/marketing/breakdown`, and the **Next.js
+server** calls Meta. `page.route` only sees browser traffic, so a route on
+`graph.facebook.com` would never fire and the test would either reach the real
+API or fail in a way that took an hour to understand.
+
+So intercept `**/api/marketing/breakdown**` and answer from fixtures keyed on
+the request's `level` and `provider` parameters.
+
+What that does and does not prove, stated plainly so nobody mistakes its reach:
+
+- **Proves** the journey — the page renders, a single store gates the table in,
+  a campaign expands into ad sets, an ad set into ads, and the switcher moves to
+  Google. That is the thing no unit test can show, and the thing the user asked
+  for.
+- **Does not prove** the route handler or the two drivers. Those already have
+  DB-backed tests (Task 3) and stubbed-fetch unit tests (Tasks 1 and 2). The
+  division is deliberate: this spec owns the browser, those own the server.
 
 Then: sign in, open Marketing, choose one store, confirm campaigns are listed,
 press a campaign and confirm its ad sets appear beneath it, press an ad set and

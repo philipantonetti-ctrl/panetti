@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchMetaDaily, fetchMetaDailyBudget, parseMetaInsights, verifyMeta } from './meta'
+import {
+  fetchMetaBreakdown,
+  fetchMetaDaily,
+  fetchMetaDailyBudget,
+  parseMetaInsights,
+  verifyMeta,
+} from './meta'
 import { AdApiError } from './types'
 
 const json = (body: unknown, status = 200) =>
@@ -157,5 +163,181 @@ describe('verifyMeta', () => {
   it('refuses an answer without a currency', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ name: 'X' })))
     await expect(verifyMeta({ accessToken: 't' }, '123')).rejects.toThrow(AdApiError)
+  })
+})
+
+describe('fetchMetaBreakdown', () => {
+  const CREDS = { accessToken: 'tok' }
+  const FROM = new Date('2026-07-01T00:00:00Z')
+  const TO = new Date('2026-07-31T00:00:00Z')
+
+  const page = (rows: unknown[]) =>
+    new Response(JSON.stringify({ data: rows }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+  it('hangs campaign insights off the ad account', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchMetaBreakdown(CREDS, { level: 'campaign', accountExternalId: '123' }, FROM, TO)
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('/act_123/insights')
+    expect(url).toContain('level=campaign')
+    expect(url).toContain('campaign_id')
+    // Aggregated over the range: a per-day breakdown would be a different table.
+    expect(url).not.toContain('time_increment')
+  })
+
+  it('hangs ad sets off the campaign they belong to', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchMetaBreakdown(
+      CREDS,
+      { level: 'adset', accountExternalId: '123', parentId: '777' },
+      FROM,
+      TO,
+    )
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('/777/insights')
+    expect(url).toContain('level=adset')
+    expect(url).not.toContain('act_123')
+  })
+
+  it('hangs ads off the ad set they belong to', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchMetaBreakdown(
+      CREDS,
+      { level: 'ad', accountExternalId: '123', parentId: '888' },
+      FROM,
+      TO,
+    )
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('/888/insights')
+    // 'level=ad' is also a substring of 'level=adset', so it can't tell the two
+    // apart; read the parsed param instead of the raw string.
+    expect(new URL(url).searchParams.get('level')).toBe('ad')
+  })
+
+  it('asks for exactly the range it was given', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchMetaBreakdown(CREDS, { level: 'campaign', accountExternalId: '123' }, FROM, TO)
+
+    const url = decodeURIComponent(String(fetchMock.mock.calls[0][0]))
+    expect(url).toContain('"since":"2026-07-01"')
+    expect(url).toContain('"until":"2026-07-31"')
+  })
+
+  it('maps a row, taking purchases the same way the daily sync does', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        page([
+          {
+            campaign_id: '777',
+            campaign_name: 'KS - Pizzetta Pro UGC',
+            spend: '2116.61',
+            impressions: '12000',
+            clicks: '216',
+            actions: [{ action_type: 'omni_purchase', value: '284' }],
+            action_values: [{ action_type: 'omni_purchase', value: '13482.79' }],
+          },
+        ]),
+      ),
+    )
+
+    const [row] = await fetchMetaBreakdown(
+      CREDS,
+      { level: 'campaign', accountExternalId: '123' },
+      FROM,
+      TO,
+    )
+
+    expect(row).toEqual({
+      id: '777',
+      name: 'KS - Pizzetta Pro UGC',
+      spend: 211661,
+      purchases: 284,
+      purchaseValue: 1348279,
+      impressions: 12000,
+      clicks: 216,
+    })
+  })
+
+  // Older accounts report `purchase` where newer ones report `omni_purchase`.
+  // The daily sync already handles both; this must not diverge from it.
+  it('falls back to the older purchase action, as the daily sync does', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        page([
+          {
+            campaign_id: '1',
+            campaign_name: 'Old',
+            spend: '10.00',
+            actions: [{ action_type: 'purchase', value: '3' }],
+            action_values: [{ action_type: 'purchase', value: '99.00' }],
+          },
+        ]),
+      ),
+    )
+
+    const [row] = await fetchMetaBreakdown(
+      CREDS,
+      { level: 'campaign', accountExternalId: '1' },
+      FROM,
+      TO,
+    )
+    expect(row.purchases).toBe(3)
+    expect(row.purchaseValue).toBe(9900)
+  })
+
+  it('follows paging', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [{ campaign_id: '1', campaign_name: 'A', spend: '1.00' }],
+            paging: { next: 'https://graph.facebook.com/v25.0/next-page' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(page([{ campaign_id: '2', campaign_name: 'B', spend: '2.00' }]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rows = await fetchMetaBreakdown(
+      CREDS,
+      { level: 'campaign', accountExternalId: '1' },
+      FROM,
+      TO,
+    )
+    expect(rows.map((r) => r.name)).toEqual(['A', 'B'])
+  })
+
+  it('turns a refusal into the platform’s own words', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: 'Invalid OAuth token' } }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+
+    await expect(
+      fetchMetaBreakdown(CREDS, { level: 'campaign', accountExternalId: '1' }, FROM, TO),
+    ).rejects.toThrow(/Invalid OAuth token/)
   })
 })

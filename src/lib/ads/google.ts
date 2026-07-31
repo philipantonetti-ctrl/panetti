@@ -1,6 +1,13 @@
 import { utcDay } from '../dates'
 import { toMinor } from '../money'
-import { AdApiError, type DailyRow, type GoogleCredentials, type VerifiedAccount } from './types'
+import {
+  AdApiError,
+  type BreakdownEntry,
+  type BreakdownLevel,
+  type DailyRow,
+  type GoogleCredentials,
+  type VerifiedAccount,
+} from './types'
 
 /**
  * Google Ads API v25 over REST.
@@ -35,6 +42,9 @@ type GoogleResult = {
   }
   campaignBudget?: { resourceName?: string; resource_name?: string; amountMicros?: string; amount_micros?: string }
   campaign_budget?: { resourceName?: string; resource_name?: string; amountMicros?: string; amount_micros?: string }
+  campaign?: { id?: string; name?: string }
+  adGroup?: { id?: string; name?: string }
+  adGroupAd?: { ad?: { id?: string; name?: string } }
 }
 type Chunk = { results?: GoogleResult[] }
 
@@ -185,4 +195,64 @@ export async function verifyGoogle(
     name: c?.descriptiveName ?? c?.descriptive_name ?? `Google Ads ${customerId}`,
     currency,
   }
+}
+
+/** Resource, id/name columns and parent column for each level. */
+const BREAKDOWN_GAQL: Record<
+  BreakdownLevel,
+  { from: string; id: string; name: string; parent?: string }
+> = {
+  campaign: { from: 'campaign', id: 'campaign.id', name: 'campaign.name' },
+  adset: { from: 'ad_group', id: 'ad_group.id', name: 'ad_group.name', parent: 'campaign.id' },
+  ad: {
+    from: 'ad_group_ad',
+    id: 'ad_group_ad.ad.id',
+    name: 'ad_group_ad.ad.name',
+    parent: 'ad_group.id',
+  },
+}
+
+/** Pull the level's id/name out of whichever nested resource GAQL returned it under. */
+function mapBreakdownRow(level: BreakdownLevel, r: GoogleResult): BreakdownEntry {
+  const entity =
+    level === 'campaign' ? r.campaign : level === 'adset' ? r.adGroup : r.adGroupAd?.ad
+  const purchases = parseFloat(String(r.metrics?.conversions ?? '0')) || 0
+  const purchaseValue =
+    parseFloat(String(r.metrics?.conversionsValue ?? r.metrics?.conversions_value ?? '0')) || 0
+  return {
+    id: entity?.id ?? '',
+    name: entity?.name ?? '',
+    spend: microsToMinor(r.metrics?.costMicros ?? r.metrics?.cost_micros),
+    purchases,
+    purchaseValue: toMinor(purchaseValue),
+    impressions: parseInt(String(r.metrics?.impressions ?? '0'), 10) || 0,
+    clicks: parseInt(String(r.metrics?.clicks ?? '0'), 10) || 0,
+  }
+}
+
+/**
+ * One row per campaign, ad group or ad, totalled over the range.
+ *
+ * `segments.date` appears in the WHERE and never in the SELECT: in the SELECT it
+ * segments the result by day, which is a different table and a far larger one.
+ */
+export async function fetchGoogleBreakdown(
+  creds: GoogleCredentials,
+  target: { level: BreakdownLevel; customerId: string; parentId?: string },
+  from: Date,
+  to: Date,
+): Promise<BreakdownEntry[]> {
+  const shape = BREAKDOWN_GAQL[target.level]
+  const where = [
+    `segments.date BETWEEN '${day(from)}' AND '${day(to)}'`,
+    ...(shape.parent && target.parentId ? [`${shape.parent} = ${target.parentId}`] : []),
+  ].join(' AND ')
+
+  const query =
+    `SELECT ${shape.id}, ${shape.name}, metrics.cost_micros, metrics.conversions, ` +
+    `metrics.conversions_value, metrics.impressions, metrics.clicks ` +
+    `FROM ${shape.from} WHERE ${where}`
+
+  const rows = await searchStream(creds, target.customerId, query)
+  return rows.map((r) => mapBreakdownRow(target.level, r))
 }
