@@ -4,6 +4,27 @@ import { configuredProviders } from '@/lib/ads/platform-app'
 import { db } from '@/lib/db'
 import { AdAccountsClient } from './AdAccountsClient'
 
+type LoginRow = { provider: string; label: string; expiresAt: Date | null }
+
+/**
+ * The login in force for one platform, or null when there has never been one.
+ *
+ * At module scope, and reading the clock itself, deliberately. A component may
+ * not read the clock while it renders — the answer would change under a
+ * re-render nobody asked for — and whether a token has expired is a question
+ * only the server can answer honestly anyway: the browser receives a rendered
+ * answer, not a live one. `now` is a parameter so a test can pin it.
+ */
+export function loginFor(logins: LoginRow[], provider: string, now = new Date()) {
+  const found = logins.find((l) => l.provider === provider)
+  if (!found) return null
+  return {
+    label: found.label,
+    expiresAt: found.expiresAt?.toISOString() ?? null,
+    expired: found.expiresAt ? found.expiresAt.getTime() <= now.getTime() : false,
+  }
+}
+
 export default async function AdAccountsPage({
   searchParams,
 }: {
@@ -15,7 +36,7 @@ export default async function AdAccountsPage({
 
   const { picker, error, notice } = await searchParams
 
-  const [accounts, shops, platform] = await Promise.all([
+  const [accounts, shops, platform, logins] = await Promise.all([
     db.adAccount.findMany({
       include: { shop: { select: { name: true } }, connection: { select: { label: true } } },
       orderBy: { createdAt: 'asc' },
@@ -26,7 +47,15 @@ export default async function AdAccountsPage({
       orderBy: { name: 'asc' },
     }),
     configuredProviders(),
+    // Newest first, so `find` below picks the login in force. Older rows are
+    // leftovers from earlier logins; nothing deletes them and nothing needs to.
+    db.adConnection.findMany({
+      select: { provider: true, label: true, expiresAt: true },
+      orderBy: { createdAt: 'desc' },
+    }),
   ])
+
+  const logIn = (provider: string) => loginFor(logins, provider)
 
   return (
     <AdAccountsClient
@@ -45,6 +74,7 @@ export default async function AdAccountsPage({
         lastError: a.lastError,
       }))}
       platform={platform}
+      connections={{ meta: logIn('meta'), google: logIn('google') }}
       picker={picker ?? null}
       initialError={error ?? null}
       initialNotice={notice ?? null}

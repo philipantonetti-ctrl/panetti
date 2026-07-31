@@ -3,7 +3,12 @@ import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ToastProvider } from '@/components/toast/ToastProvider'
-import { AdAccountsClient, type PlatformSetup, type Row } from './AdAccountsClient'
+import {
+  AdAccountsClient,
+  type Connections,
+  type PlatformSetup,
+  type Row,
+} from './AdAccountsClient'
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/settings/ad-accounts',
@@ -36,9 +41,16 @@ const account = (over: Partial<Row>): Row => ({
   ...over,
 })
 
+const NO_LOGINS: Connections = { meta: null, google: null }
+
 function renderPage(
   accounts: Row[],
-  opts: { platform?: PlatformSetup; picker?: string | null; notice?: string | null } = {},
+  opts: {
+    platform?: PlatformSetup
+    picker?: string | null
+    notice?: string | null
+    connections?: Connections
+  } = {},
 ) {
   return render(
     <ToastProvider>
@@ -47,6 +59,7 @@ function renderPage(
         shops={SHOPS}
         accounts={accounts}
         platform={opts.platform ?? READY}
+        connections={opts.connections ?? NO_LOGINS}
         picker={opts.picker ?? null}
         initialError={null}
         initialNotice={opts.notice ?? null}
@@ -54,6 +67,70 @@ function renderPage(
     </ToastProvider>,
   )
 }
+
+describe('which login is in use', () => {
+  // The buttons cannot say this: "Connect with Facebook" reads identically
+  // whether nothing is connected or nine accounts are, and the only other clue
+  // is the small "via" line under each account name. Someone who has just
+  // connected looks at the same button they pressed and wonders whether it
+  // worked.
+  it('names the Facebook login, so the page says it is connected', () => {
+    renderPage([account({})], {
+      connections: {
+        meta: { label: 'Jacob Kjos Hanssen', expiresAt: '2026-09-29T00:00:00.000Z', expired: false },
+        google: null,
+      },
+    })
+    expect(screen.getByText(/Facebook: connected as Jacob Kjos Hanssen/)).toBeTruthy()
+  })
+
+  // A Meta token lasts about 60 days and then every sync fails. The date is the
+  // only warning anyone gets before that.
+  it('says when the login has to be renewed', () => {
+    const at = '2026-09-29T00:00:00.000Z'
+    renderPage([account({})], {
+      connections: {
+        meta: { label: 'Jacob Kjos Hanssen', expiresAt: at, expired: false },
+        google: null,
+      },
+    })
+    expect(
+      screen.getByText(new RegExp(`Renew by ${new Date(at).toLocaleDateString()}`)),
+    ).toBeTruthy()
+  })
+
+  it('leads with the expiry once it has passed, since that is why syncs fail', () => {
+    renderPage([account({})], {
+      connections: {
+        meta: { label: 'Jacob Kjos Hanssen', expiresAt: '2026-06-01T00:00:00.000Z', expired: true },
+        google: null,
+      },
+    })
+    expect(screen.getByText(/login expired/)).toBeTruthy()
+    expect(screen.queryByText(/connected as Jacob Kjos Hanssen/)).toBeNull()
+  })
+
+  // A Google refresh token does not expire while the client stays published,
+  // so there is no date to promise.
+  it('names Google without inventing a renewal date', () => {
+    renderPage([account({ provider: 'google' })], {
+      connections: {
+        meta: null,
+        google: { label: 'Philip Antonetti', expiresAt: null, expired: false },
+      },
+    })
+    expect(screen.getByText(/Google: connected as Philip Antonetti/)).toBeTruthy()
+    expect(screen.queryByText(/Renew by/)).toBeNull()
+  })
+
+  // Two lines of "not connected" would be noise: the button says what to do and
+  // the empty table says it too.
+  it('says nothing at all when neither platform is connected', () => {
+    renderPage([])
+    expect(screen.queryByText(/connected as/)).toBeNull()
+    expect(screen.getByText(/Nothing connected yet/)).toBeTruthy()
+  })
+})
 
 describe('AdAccountsClient', () => {
   it('lists accounts with an honest status badge and who connected them', () => {

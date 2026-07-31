@@ -25,7 +25,30 @@ type ShopOption = { id: string; name: string }
  * them. */
 export type PlatformSetup = { meta: boolean; google: boolean }
 
+/**
+ * The login behind each platform, if there is one.
+ *
+ * Read from the connections themselves rather than inferred from the accounts,
+ * so a login someone made but never ticked an account on still says it exists —
+ * which is exactly the state that looks most broken.
+ */
+export type ConnectionSummary = {
+  label: string
+  expiresAt: string | null
+  /**
+   * Decided on the server, where the clock lives. Reading `Date.now()` while
+   * rendering is impure — the answer would change under a re-render nobody
+   * asked for — and the server is already the thing that knows what time this
+   * page was built.
+   */
+  expired: boolean
+}
+export type Connections = { meta: ConnectionSummary | null; google: ConnectionSummary | null }
+
 const PROVIDER_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google' }
+
+/** What the person pressing the button calls it, which is not what we call it. */
+const PLATFORM_NAME = { meta: 'Facebook', google: 'Google' } as const
 
 const field = 'mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-sm'
 const label = 'mt-3 block text-xs font-medium text-muted'
@@ -39,6 +62,7 @@ export function AdAccountsClient({
   shops,
   accounts,
   platform,
+  connections,
   picker,
   initialError,
   initialNotice,
@@ -47,6 +71,7 @@ export function AdAccountsClient({
   shops: ShopOption[]
   accounts: Row[]
   platform: PlatformSetup
+  connections: Connections
   picker: string | null
   initialError: string | null
   initialNotice: string | null
@@ -140,6 +165,8 @@ export function AdAccountsClient({
       </PageHeader>
 
       <PageBody>
+        <SignedInAs connections={connections} />
+
         {message && (
           <div className="mt-4 rounded-[var(--radius-control)] bg-panel px-4 py-3 text-xs text-ink">
             {message}
@@ -262,6 +289,52 @@ export function AdAccountsClient({
       )}
     </AppShell>
   )
+}
+
+/**
+ * Which logins exist, in words, directly under the buttons.
+ *
+ * The buttons cannot say this themselves: "Connect with Facebook" reads exactly
+ * the same whether nothing is connected or nine accounts are, and the only other
+ * clue is the small "via" line under each account name. Someone who has just
+ * connected is looking at the very button they pressed, so asking "did that
+ * work?" is the reasonable reading, not a careless one.
+ *
+ * A platform with no login says nothing at all. The button already tells that
+ * story, and lines reading "not connected" would be noise on a page whose empty
+ * table says it too.
+ */
+function SignedInAs({ connections }: { connections: Connections }) {
+  const lines = (['meta', 'google'] as const).flatMap((provider) => {
+    const conn = connections[provider]
+    if (!conn) return []
+
+    const name = PLATFORM_NAME[provider]
+    const expiry = conn.expiresAt ? new Date(conn.expiresAt) : null
+
+    // An expired login is the reason every sync for that platform starts
+    // failing, so it replaces the reassurance rather than trailing after it.
+    if (expiry && conn.expired) {
+      return [
+        <span key={provider} className="block text-loss">
+          {name}: login expired {expiry.toLocaleDateString()}. Press “Connect with {name}” to renew
+          it.
+        </span>,
+      ]
+    }
+
+    // Meta tokens last about 60 days; a Google refresh token does not expire
+    // while the client stays published, so there is no date to promise.
+    return [
+      <span key={provider} className="block">
+        {name}: connected as {conn.label}.
+        {expiry ? ` Renew by ${expiry.toLocaleDateString()}.` : ''}
+      </span>,
+    ]
+  })
+
+  if (!lines.length) return null
+  return <div className="mt-4 space-y-1 text-xs text-muted">{lines}</div>
 }
 
 function ConnectButton({ provider, ready }: { provider: 'meta' | 'google'; ready: boolean }) {
