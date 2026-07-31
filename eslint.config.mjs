@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Isolated worktrees live here. Each is a second checkout of this same
+    // repo, so without this every source file is linted twice and `npm run
+    // lint` reports thousands of problems that are all one file.
+    ".claude/**",
   ]),
 ]);
 
