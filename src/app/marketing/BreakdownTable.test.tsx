@@ -396,4 +396,142 @@ describe('BreakdownTable', () => {
     await waitFor(() => expect(screen.getByText('No campaigns ran in this period.')).toBeTruthy())
     expect(screen.queryByText(/No Meta ad accounts/)).toBeNull()
   })
+
+  // C1: a campaign id belongs to exactly one ad account. The row being
+  // expanded knows which one (row.accountId), so a child request must carry
+  // it — otherwise a second account on the same connection gets asked the
+  // same object id and its ad sets come back mislabelled as the first
+  // account's (see breakdown.ts / meta.ts). The top-level request must NOT
+  // carry it: campaign level is the one place the fan-out across every
+  // account is the point.
+  it("sends the row's own accountId when expanding into children, and omits it from the top-level request", async () => {
+    const campaign = row({ id: 'c1', name: 'Campaign One', accountId: 'acc1' })
+    const adset = row({ id: 'as1', name: 'Ad Set A', accountId: 'acc1' })
+    const fetchMock = vi.fn((url: string) => {
+      if (String(url).includes('level=adset')) return Promise.resolve(jsonResponse({ rows: [adset], errors: [] }))
+      return Promise.resolve(jsonResponse({ rows: [campaign], errors: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() => expect(screen.getByText('Campaign One')).toBeTruthy())
+
+    const topUrl = new URL(String(fetchMock.mock.calls[0][0]), 'http://x')
+    expect(topUrl.searchParams.has('accountId')).toBe(false)
+
+    fireEvent.click(screen.getByText('Campaign One'))
+    await waitFor(() => expect(screen.getByText('Ad Set A')).toBeTruthy())
+
+    const childUrl = new URL(String(fetchMock.mock.calls[1][0]), 'http://x')
+    expect(childUrl.searchParams.get('accountId')).toBe('acc1')
+  })
+
+  // I3: `toggle` marks a row "fetched" before the request resolves and never
+  // un-marks it, so a failed expansion used to be stuck that way forever —
+  // collapsing and re-expanding replayed the same cached error instead of
+  // asking again. Transient failures (rate limits, a brief 500, a token
+  // blip) are exactly what a live platform read hits.
+  it('retries a failed expansion when collapsed and re-expanded', async () => {
+    const campaign = row({ id: 'c1', name: 'Campaign One', accountId: 'acc1' })
+    const adset = row({ id: 'as1', name: 'Ad Set A', accountId: 'acc1' })
+    let childCalls = 0
+    const fetchMock = vi.fn((url: string) => {
+      if (String(url).includes('level=adset')) {
+        childCalls++
+        if (childCalls === 1) return Promise.resolve(jsonResponse({ error: 'Meta answered 500' }, 500))
+        return Promise.resolve(jsonResponse({ rows: [adset], errors: [] }))
+      }
+      return Promise.resolve(jsonResponse({ rows: [campaign], errors: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() => expect(screen.getByText('Campaign One')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Campaign One')) // expand -> the child request fails
+    await waitFor(() => expect(screen.getByText(/Meta answered 500/)).toBeTruthy())
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByText('Campaign One')) // collapse
+    await waitFor(() => expect(screen.queryByText(/Meta answered 500/)).toBeNull())
+
+    fireEvent.click(screen.getByText('Campaign One')) // re-expand: must ask again, not replay the cached failure
+    await waitFor(() => expect(screen.getByText('Ad Set A')).toBeTruthy())
+
+    expect(fetchMock).toHaveBeenCalledTimes(3) // proves the retry actually re-fetched
+  })
+
+  // I2: the catch handler used to set loadError while leaving rows === null
+  // forever, so the red error banner and "Loading campaigns…" rendered at
+  // the same time, permanently, with no way out. A session expiring in an
+  // open tab (a 403 from the route) is the mundane, everyday trigger.
+  it('does not show Loading… underneath the error banner when the initial load fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Session expired'))))
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() => expect(screen.getByText('Session expired')).toBeTruthy())
+
+    expect(screen.queryByText('Loading campaigns…')).toBeNull()
+  })
+
+  it('retries the initial load when Try again is pressed', async () => {
+    const campaign = row({ id: 'c1', name: 'Campaign One', accountId: 'acc1' })
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Session expired'))
+      .mockResolvedValueOnce(jsonResponse({ rows: [campaign], errors: [], accountsChecked: 1 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() => expect(screen.getByText('Session expired')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(screen.getByText('Campaign One')).toBeTruthy())
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('Session expired')).toBeNull()
+  })
+
+  // I4: accountsChecked === 1 and rows.length === 0 used to always render "No
+  // campaigns ran in this period" — a false claim about the client's own
+  // money when the real reason is that the only account errored, not that it
+  // spent nothing. The per-account reason (from `errors`) stays visible in
+  // the banner above; only the false claim underneath it is suppressed.
+  it('does not claim nothing ran when the only account errored', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            rows: [],
+            errors: [{ accountId: 'acc1', accountName: 'Account One', message: 'Facebook login expired.' }],
+            accountsChecked: 1,
+          }),
+        ),
+      ),
+    )
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() => expect(screen.getByText(/Facebook login expired/)).toBeTruthy())
+
+    expect(screen.getByText('Could not read this period.')).toBeTruthy()
+    expect(screen.queryByText('No campaigns ran in this period.')).toBeNull()
+  })
+
+  // I8: the breakdown is live from one platform, in the ad account's own
+  // currency, while MarketingTable above it is consolidated stored data —
+  // both right, but nothing else on the page says why the two spend figures
+  // can differ for the same store.
+  it('captions the table with where the numbers come from, naming the platform actually selected', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ rows: [], errors: [], accountsChecked: 1 }))),
+    )
+
+    render(<BreakdownTable shopId="shop1" provider="google" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() =>
+      expect(screen.getByText('Live from Google, in the ad account’s own currency.')).toBeTruthy(),
+    )
+    expect(screen.queryByText(/Live from Meta/)).toBeNull()
+  })
 })

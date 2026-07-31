@@ -12,10 +12,13 @@ import {
 /**
  * Meta Marketing API (Graph v25.0), Insights endpoint.
  *
- * One row per calendar day at account level: spend arrives as a decimal string
- * in the ad account's own currency. Auth is a system-user access token with
- * ads_read, which Meta lets us send as a Bearer header — so the token never
- * appears in a URL, and the paging.next links Meta hands back stay clean too.
+ * One row per calendar day at account level for the daily sync, or one row
+ * per campaign, ad set or ad totalled over a range for the breakdown table
+ * below — same endpoint, a different `level` and no `time_increment`. Spend
+ * arrives as a decimal string in the ad account's own currency. Auth is a
+ * system-user access token with ads_read, which Meta lets us send as a Bearer
+ * header — so the token never appears in a URL, and the paging.next links
+ * Meta hands back stay clean too.
  */
 
 const GRAPH = 'https://graph.facebook.com/v25.0'

@@ -9,6 +9,9 @@ import type { BreakdownLevel } from '@/lib/ads/types'
 const LEVELS = ['campaign', 'adset', 'ad'] as const
 const PROVIDERS = ['meta', 'google'] as const
 
+/** N sequential platform calls, one per ad account, can outlive the default budget. */
+export const maxDuration = 60
+
 export async function GET(req: Request) {
   try {
     assertAdmin(await currentUser())
@@ -17,6 +20,11 @@ export async function GET(req: Request) {
     const shopId = params.get('shopId')
     const level = params.get('level') ?? 'campaign'
     const provider = params.get('provider') ?? 'meta'
+    // Optional: BreakdownTable.tsx sends it on every child request (the row
+    // being expanded knows its own account) and omits it at campaign level on
+    // purpose — see loadBreakdown for why that omission is what keeps the
+    // union across a shop's accounts working.
+    const accountId = params.get('accountId')
 
     // Validated before anything is called: a typo must not reach a platform.
     if (!shopId) return NextResponse.json({ error: 'Pick a shop' }, { status: 400 })
@@ -42,6 +50,7 @@ export async function GET(req: Request) {
         provider: provider as (typeof PROVIDERS)[number],
         level: level as BreakdownLevel,
         ...(params.get('parentId') ? { parentId: params.get('parentId')! } : {}),
+        ...(accountId ? { accountId } : {}),
         from,
         to,
       }),

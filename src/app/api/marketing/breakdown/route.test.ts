@@ -63,15 +63,19 @@ async function makeAccount(over: Record<string, unknown> = {}) {
       provider: 'meta',
       externalId: `bd-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: `Account ${MARK}`,
-      currency: 'NOK',
+      // Deliberately not the shop's own currency (NOK, set in beforeEach):
+      // same value on both sides would let "currency comes from the account"
+      // pass even if the route read it off the shop instead.
+      currency: 'SEK',
       credentials: JSON.stringify({ accessToken: 'seed' }),
       ...over,
     },
   })
 }
 
-/** A minimal, valid BreakdownEntry — only the id varies between tests. */
-const entry = (id: string) => ({
+/** A minimal, valid BreakdownEntry — the id varies, and a test may override
+ * any other field (e.g. spend, to check ordering). */
+const entry = (id: string, over: Record<string, unknown> = {}) => ({
   id,
   name: `Campaign ${id}`,
   spend: 1000,
@@ -79,6 +83,7 @@ const entry = (id: string) => ({
   purchaseValue: 5000,
   impressions: 100,
   clicks: 10,
+  ...over,
 })
 
 beforeEach(async () => {
@@ -159,6 +164,80 @@ describe('GET /api/marketing/breakdown', () => {
     expect(metaBreakdown).toHaveBeenCalledTimes(2)
   })
 
+  // C1: campaign level has no accountId — asking every account is the whole
+  // point there, and this must survive the fix below that scopes deeper
+  // levels to one. Each account is made to return ITS OWN row (rather than
+  // sharing one fixture, as the union test above does) so a fix that
+  // accidentally filtered by the first account's id, or otherwise dropped
+  // one account, would be caught by a row going missing rather than merely
+  // an array length staying the same by coincidence.
+  it('still fans out to every account at campaign level when no accountId is given', async () => {
+    const accountA = await makeAccount({ externalId: `bd-a-${Date.now()}` })
+    const accountB = await makeAccount({ externalId: `bd-b-${Date.now()}` })
+    metaBreakdown.mockImplementation(
+      async (_creds: unknown, target: { accountExternalId: string }) => [
+        entry(target.accountExternalId === accountA.externalId ? 'a1' : 'b1'),
+      ],
+    )
+
+    const res = await get(`shopId=${shopId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    expect(metaBreakdown).toHaveBeenCalledTimes(2)
+    const queried = (metaBreakdown.mock.calls as [unknown, { accountExternalId: string }][]).map(
+      (c) => c[1].accountExternalId,
+    )
+    expect(queried.sort()).toEqual([accountA.externalId, accountB.externalId].sort())
+    expect(body.rows.map((r: { accountId: string }) => r.accountId).sort()).toEqual(
+      [accountA.id, accountB.id].sort(),
+    )
+  })
+
+  // C1's fix, the critical finding: a campaign id belongs to exactly one ad
+  // account, so a deeper level with an accountId must be scoped to it —
+  // exactly one driver call, for that account, and nothing attributed to the
+  // other. Before the fix this fanned out to both, so account B's driver
+  // call would have run too and its row would have been stamped onto the
+  // response as if it belonged to account A.
+  it('scopes to one account when accountId is given: one driver call, no rows from the other account', async () => {
+    const accountA = await makeAccount({ externalId: `bd-a-${Date.now()}` })
+    const accountB = await makeAccount({ externalId: `bd-b-${Date.now()}` })
+    metaBreakdown.mockImplementation(
+      async (_creds: unknown, target: { accountExternalId: string }) => [
+        entry(target.accountExternalId === accountA.externalId ? 'a1' : 'b1'),
+      ],
+    )
+
+    const res = await get(`shopId=${shopId}&level=adset&parentId=777&accountId=${accountA.id}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    expect(metaBreakdown).toHaveBeenCalledTimes(1)
+    const [, target] = metaBreakdown.mock.calls[0] as [unknown, { accountExternalId: string }]
+    expect(target.accountExternalId).toBe(accountA.externalId)
+
+    expect(body.accountsChecked).toBe(1)
+    expect(body.rows).toHaveLength(1)
+    expect(body.rows[0].accountId).toBe(accountA.id)
+    expect(body.rows.some((r: { accountId: string }) => r.accountId === accountB.id)).toBe(false)
+  })
+
+  // I6: platform order carries no meaning on a page used to judge spending —
+  // matches MarketingTable's own default sort (highest spend first).
+  it('sorts rows by spend, richest first', async () => {
+    await makeAccount()
+    metaBreakdown.mockResolvedValue([
+      entry('low', { spend: 100 }),
+      entry('high', { spend: 5000 }),
+      entry('mid', { spend: 900 }),
+    ])
+
+    const res = await get(`shopId=${shopId}`)
+    const body = await res.json()
+    expect(body.rows.map((r: { id: string }) => r.id)).toEqual(['high', 'mid', 'low'])
+  })
+
   it('says so when the store has no accounts on that provider', async () => {
     const res = await get(`shopId=${shopId}`)
     expect(res.status).toBe(200)
@@ -224,6 +303,16 @@ describe('GET /api/marketing/breakdown', () => {
   it('refuses an unknown level before calling anyone', async () => {
     await makeAccount()
     const res = await get(`shopId=${shopId}&level=banana`)
+    expect(res.status).toBe(400)
+    expect(metaBreakdown).not.toHaveBeenCalled()
+    expect(googleBreakdown).not.toHaveBeenCalled()
+  })
+
+  // The provider check was the one branch of the four with no test of its
+  // own, despite deciding which platform gets called.
+  it('refuses an unknown provider before calling anyone', async () => {
+    await makeAccount()
+    const res = await get(`shopId=${shopId}&provider=tiktok`)
     expect(res.status).toBe(400)
     expect(metaBreakdown).not.toHaveBeenCalled()
     expect(googleBreakdown).not.toHaveBeenCalled()

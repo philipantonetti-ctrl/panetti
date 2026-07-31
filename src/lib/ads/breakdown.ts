@@ -44,11 +44,24 @@ export async function loadBreakdown(opts: {
   provider: 'meta' | 'google'
   level: BreakdownLevel
   parentId?: string
+  /**
+   * Scopes the query to one ad account. A campaign id — and everything
+   * beneath it — belongs to exactly one account, never every account the
+   * shop has on this provider. Omit this only at campaign level, where
+   * asking every account is the point: that is how the union across a
+   * shop's accounts gets built in the first place.
+   */
+  accountId?: string
   from: Date
   to: Date
 }): Promise<BreakdownResponse> {
   const accounts = await db.adAccount.findMany({
-    where: { active: true, shopId: opts.shopId, provider: opts.provider },
+    where: {
+      active: true,
+      shopId: opts.shopId,
+      provider: opts.provider,
+      ...(opts.accountId ? { id: opts.accountId } : {}),
+    },
     include: { connection: { select: { provider: true, secret: true, expiresAt: true } } },
   })
 
@@ -97,6 +110,10 @@ export async function loadBreakdown(opts: {
       })
     }
   }
+
+  // Highest spend first, matching MarketingTable's own default sort — the
+  // platform's own order carries no meaning on a page used to judge spending.
+  rows.sort((a, b) => b.spend - a.spend)
 
   // Every account in the loop above was consulted, whether it produced rows,
   // came back empty, or errored — accountsChecked is that count, never
