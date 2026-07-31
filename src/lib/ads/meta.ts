@@ -1,6 +1,13 @@
 import { toMinor } from '../money'
 import { utcDay } from '../dates'
-import { AdApiError, type DailyRow, type MetaCredentials, type VerifiedAccount } from './types'
+import {
+  AdApiError,
+  type BreakdownEntry,
+  type BreakdownLevel,
+  type DailyRow,
+  type MetaCredentials,
+  type VerifiedAccount,
+} from './types'
 
 /**
  * Meta Marketing API (Graph v25.0), Insights endpoint.
@@ -29,20 +36,46 @@ type InsightRow = {
   video_thruplay_watched_actions?: ActionEntry[]
 }
 
+type BreakdownInsightRow = InsightRow & {
+  campaign_id?: string
+  campaign_name?: string
+  adset_id?: string
+  adset_name?: string
+  ad_id?: string
+  ad_name?: string
+}
+
 /** Purchases and video views arrive as action lists keyed by action_type. */
 const action = (list: ActionEntry[] | undefined, type: string): number =>
   parseFloat(list?.find((a) => a.action_type === type)?.value ?? '0') || 0
 
 const count = (value: string | undefined): number => parseInt(value ?? '0', 10) || 0
 
+/**
+ * Purchases and their value, from Meta's action lists.
+ *
+ * Shared by the daily sync and the breakdown table on purpose. If these drifted
+ * apart, one screen would say a campaign made 284 purchases and another would
+ * say something else, and both would be citing Meta.
+ */
+export function purchasesFrom(row: {
+  actions?: ActionEntry[]
+  action_values?: ActionEntry[]
+}): { purchases: number; purchaseValue: number } {
+  // omni_purchase spans web + app + shop; older accounts only report purchase.
+  return {
+    purchases: action(row.actions, 'omni_purchase') || action(row.actions, 'purchase'),
+    purchaseValue: toMinor(
+      String(action(row.action_values, 'omni_purchase') || action(row.action_values, 'purchase')),
+    ),
+  }
+}
+
 export function parseMetaInsights(rows: InsightRow[]): DailyRow[] {
   const out: DailyRow[] = []
   for (const row of rows) {
     if (!row.date_start) continue
-    // omni_purchase spans web + app + shop; older accounts only report purchase.
-    const conversions = action(row.actions, 'omni_purchase') || action(row.actions, 'purchase')
-    const value =
-      action(row.action_values, 'omni_purchase') || action(row.action_values, 'purchase')
+    const { purchases, purchaseValue } = purchasesFrom(row)
     const thruplays =
       action(row.video_thruplay_watched_actions, 'video_view') ||
       parseFloat(row.video_thruplay_watched_actions?.[0]?.value ?? '0') ||
@@ -53,8 +86,8 @@ export function parseMetaInsights(rows: InsightRow[]): DailyRow[] {
       impressions: count(row.impressions),
       clicks: count(row.clicks),
       linkClicks: count(row.inline_link_clicks),
-      conversions,
-      conversionValue: toMinor(value),
+      conversions: purchases,
+      conversionValue: purchaseValue,
       videoViews3s: action(row.actions, 'video_view'),
       thruplays,
       reach: count(row.reach),
@@ -95,6 +128,62 @@ export async function fetchMetaDaily(
       creds.accessToken,
     )
     rows.push(...parseMetaInsights(body.data ?? []))
+    url = body.paging?.next
+  }
+  return rows
+}
+
+/** Which id and name field each level reports itself under. */
+const BREAKDOWN_FIELDS: Record<BreakdownLevel, { id: string; name: string }> = {
+  campaign: { id: 'campaign_id', name: 'campaign_name' },
+  adset: { id: 'adset_id', name: 'adset_name' },
+  ad: { id: 'ad_id', name: 'ad_name' },
+}
+
+/**
+ * One row per campaign, ad set or ad, totalled over the range.
+ *
+ * Meta serves insights off any object id, so a drill-down needs no filter
+ * syntax: ad sets are asked of the campaign, ads of the ad set. Deliberately no
+ * `time_increment` — this table shows a total for the chosen period, and asking
+ * per day would return entities × days and page for a very long time.
+ */
+export async function fetchMetaBreakdown(
+  creds: MetaCredentials,
+  target: { level: BreakdownLevel; accountExternalId: string; parentId?: string },
+  from: Date,
+  to: Date,
+): Promise<BreakdownEntry[]> {
+  const fields = BREAKDOWN_FIELDS[target.level]
+  const params = new URLSearchParams({
+    level: target.level,
+    time_range: JSON.stringify({ since: day(from), until: day(to) }),
+    fields: `${fields.id},${fields.name},spend,impressions,clicks,actions,action_values`,
+    limit: String(PAGE_LIMIT),
+  })
+
+  // Campaigns hang off the account; everything deeper hangs off its parent.
+  const object = target.parentId ? target.parentId : `act_${target.accountExternalId}`
+
+  let url: string | undefined = `${GRAPH}/${object}/insights?${params}`
+  const rows: BreakdownEntry[] = []
+  for (let page = 0; url && page < MAX_PAGES; page++) {
+    const body: { data?: BreakdownInsightRow[]; paging?: { next?: string } } = await metaJson(
+      url,
+      creds.accessToken,
+    )
+    for (const row of body.data ?? []) {
+      const id = row[fields.id as keyof BreakdownInsightRow]
+      if (typeof id !== 'string') continue // a total row, not an entity
+      rows.push({
+        id,
+        name: String(row[fields.name as keyof BreakdownInsightRow] ?? id),
+        spend: toMinor(row.spend ?? '0'),
+        impressions: count(row.impressions),
+        clicks: count(row.clicks),
+        ...purchasesFrom(row),
+      })
+    }
     url = body.paging?.next
   }
   return rows
