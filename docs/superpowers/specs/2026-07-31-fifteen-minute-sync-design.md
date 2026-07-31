@@ -245,15 +245,24 @@ A failing store never stops the loop; the next store is attempted regardless.
 `wooError` already truncates response bodies to 300 characters, which is what
 `lastError` stores.
 
-## Migration
+## Schema change
 
-Two nullable columns, plus one line so the first run starts in a sensible order
-rather than an arbitrary one:
+There is no migrations directory. `package.json` builds with
+`prisma db push --skip-generate`, so the schema is reconciled at deploy time.
+Two nullable columns are purely additive and need nothing else:
 
-```sql
-ALTER TABLE "Shop" ADD COLUMN "lastRunAt" TIMESTAMP, ADD COLUMN "lastError" TEXT;
-UPDATE "Shop" SET "lastRunAt" = "lastSyncAt";
+```prisma
+lastRunAt DateTime?
+lastError String?
 ```
+
+**No data backfill**, and none is wanted. `lastRunAt` is null for every store on
+the first run, so that one run visits them in arbitrary order. Every store it
+reaches gets a timestamp, and `NULLS FIRST` puts the ones it missed at the very
+front of the next run. Rotation is exact from the second run onward, which is a
+better starting state than copying `lastSyncAt` across would have produced —
+a store frozen for a fortnight and a store synced a minute ago both start equal,
+and one run sorts them.
 
 ## Testing
 
