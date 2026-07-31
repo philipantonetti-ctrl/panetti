@@ -7,7 +7,7 @@ import { useToast } from '@/components/toast/useToast'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { allCurrencies } from '@/lib/currencies'
 
-type Row = {
+export type Row = {
   id: string
   name: string
   currency: string
@@ -16,6 +16,52 @@ type Row = {
   lastSyncAt: string | null
   /** Orders stored while lastSyncAt is still unset = a history import mid-way. */
   hasOrders: boolean
+  /** When we last gave this shop attention, successful or not. */
+  lastRunAt: string | null
+  /** Why the last attempt failed; null when it succeeded. */
+  lastError: string | null
+}
+
+/**
+ * How far the watermark may trail the last run before we call it catching up
+ * rather than current. A healthy incremental sync sets them within a second of
+ * each other, so an hour is slack, not a threshold anyone will hit by accident.
+ */
+const BEHIND_MS = 3_600_000
+
+/**
+ * What one shop's sync state actually is. A bare date cannot say it: a shop
+ * draining a backlog moves its watermark to an old order's stamp on purpose, so
+ * the date alone would read as dead when the sync is working perfectly.
+ */
+function SyncState({ shop }: { shop: Row }) {
+  if (shop.lastError) {
+    return (
+      <div>
+        <div className="font-semibold text-loss">Sync failed</div>
+        <div className="mt-0.5 text-[11px] text-muted">{shop.lastError}</div>
+      </div>
+    )
+  }
+
+  if (!shop.lastSyncAt) return <>{shop.hasOrders ? 'Importing history…' : 'Never'}</>
+
+  const behind = shop.lastRunAt
+    ? new Date(shop.lastRunAt).getTime() - new Date(shop.lastSyncAt).getTime()
+    : 0
+
+  if (behind > BEHIND_MS) {
+    return (
+      <div>
+        <div>{new Date(shop.lastRunAt!).toLocaleString()}</div>
+        <div className="mt-0.5 text-[11px] text-muted">
+          Catching up, data through {new Date(shop.lastSyncAt).toLocaleString()}
+        </div>
+      </div>
+    )
+  }
+
+  return <>{new Date(shop.lastSyncAt).toLocaleString()}</>
 }
 
 export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
@@ -145,11 +191,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-muted">
-                    {s.lastSyncAt
-                      ? new Date(s.lastSyncAt).toLocaleString()
-                      : s.hasOrders
-                        ? 'Importing history…'
-                        : 'Never'}
+                    <SyncState shop={s} />
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-3">

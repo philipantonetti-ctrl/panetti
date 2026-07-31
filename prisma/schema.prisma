@@ -21,7 +21,14 @@ model Shop {
   // store's webhooks, stored encrypted like the API keys.
   wooWebhookSecret String?
   active     Boolean  @default(true)
+  // How far through this store's change stream we have read.
   lastSyncAt DateTime?
+  // When we last gave this store attention, successful or not. Ordering the
+  // sync by this is what stops a slow or broken store from starving the rest.
+  lastRunAt  DateTime?
+  // Why the last attempt failed; null when it succeeded. Without this a frozen
+  // store shows a stale date and no reason at all.
+  lastError  String?
   createdAt  DateTime @default(now())
 
   // Per-shop standards and formats; null falls back to the workspace Setting.

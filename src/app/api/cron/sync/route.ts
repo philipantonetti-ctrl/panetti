@@ -5,11 +5,24 @@ import { ensureRates } from '@/lib/fx/rates'
 import { db } from '@/lib/db'
 
 /**
- * Pulling eight stores takes well over the default budget, so ask for the
- * headroom explicitly. A run that still overruns is safe: `syncShop` only moves
- * a shop's watermark on success, so anything missed is simply retried next hour.
+ * Vercel's default maximum duration is 300 seconds on every plan, and this run
+ * needs all of it: the stores are pulled one after another, so a lower ceiling
+ * kills the invocation part-way and the stores it never reached stay frozen.
+ * This once said 60, which is where that bug came from.
+ *
+ * A run that still overruns is safe: syncShop only moves a shop's watermark on
+ * success, so anything missed is simply retried next run. A deadline inside
+ * syncAllShops will stop it well before this ceiling.
  */
-export const maxDuration = 60
+export const maxDuration = 300
+
+/**
+ * The stores stop here, leaving the rest of the 300s ceiling for the ad sync and
+ * the rate top-up that follow. A store cut off by this deadline is not an error:
+ * it stored what it fetched, moved its watermark to match, and goes to the front
+ * of the next run.
+ */
+const SHOPS_DEADLINE_MS = 240_000
 
 /**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
@@ -33,7 +46,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Not allowed' }, { status: 401 })
   }
 
-  const results = await syncAllShops()
+  const results = await syncAllShops({ deadline: Date.now() + SHOPS_DEADLINE_MS })
   const failed = results.filter((r) => !r.ok).map((r) => r.shopName)
 
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts

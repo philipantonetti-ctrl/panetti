@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchCoupons, fetchOrders } from './client'
+import { fetchCoupons, fetchOrders, requestBudgetMs } from './client'
 
 const CREDS = { url: 'https://shop.example', key: 'ck', secret: 'cs' }
 
@@ -100,6 +100,19 @@ describe('fetchOrders', () => {
     expect(url).toContain('orderby=date')
     expect(url).not.toContain('orderby=modified')
   })
+
+  // The guard that stops a future call site inside this loop being added
+  // without a timeout — one unresponsive store must never spend the budget of
+  // every store waiting behind it.
+  it('gives every request a signal', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchOrders(CREDS, {})
+
+    const opts = fetchMock.mock.calls[0][1] as RequestInit
+    expect(opts.signal).toBeInstanceOf(AbortSignal)
+  })
 })
 
 describe('fetchCoupons', () => {
@@ -129,5 +142,143 @@ describe('fetchCoupons', () => {
   it('throws when the store rejects the request', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 401 })))
     await expect(fetchCoupons(CREDS)).rejects.toThrow(/401/)
+  })
+})
+
+describe('bounded pulls', () => {
+  // A store that never answers must cost this run, not every run behind it.
+  it('stops before a fetch once the deadline has passed', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => page(100))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { orders, hasMore } = await fetchOrders(CREDS, {
+      modifiedAfter: new Date('2026-07-01T10:00:00Z'),
+      deadline: Date.now() - 1,
+    })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(orders).toHaveLength(0)
+    // Nothing was read, so there is certainly more.
+    expect(hasMore).toBe(true)
+  })
+
+  it('stops between pages when the deadline arrives mid-pull', async () => {
+    const deadline = Date.now() + 40
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 30))
+      return page(100)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { hasMore } = await fetchOrders(CREDS, {
+      modifiedAfter: new Date('2026-07-01T10:00:00Z'),
+      deadline,
+    })
+
+    expect(hasMore).toBe(true)
+    // Far fewer than the 50-page ceiling: it stopped on time, not on the cap.
+    expect(fetchMock.mock.calls.length).toBeLessThan(5)
+  })
+
+  it('gives one request the lesser of the ceiling and what is left', () => {
+    const now = 1_000_000
+    // Plenty of deadline left: the ceiling wins.
+    expect(requestBudgetMs({ deadline: now + 90_000 }, now)).toBe(30_000)
+    // Nearly out of deadline: what is left wins.
+    expect(requestBudgetMs({ deadline: now + 5_000 }, now)).toBe(5_000)
+    // No deadline at all: the ceiling.
+    expect(requestBudgetMs({}, now)).toBe(30_000)
+    // Never zero or negative — an already-expired budget must still be a valid
+    // timeout, and the page loop is what actually stops.
+    expect(requestBudgetMs({ deadline: now - 10_000 }, now)).toBe(1)
+  })
+
+  // requestBudgetMs deliberately leaves the LAST request only whatever time is
+  // left of the deadline — sometimes a couple hundred ms — so a timeout here is
+  // this clamp's NORMAL outcome. Discarding the pages already fetched would
+  // turn a merely-slow store into a reported failure with zero progress.
+  it('returns the pages already fetched when a request times out, instead of throwing', async () => {
+    const timeout = Object.assign(new Error('The operation was aborted due to timeout'), {
+      name: 'TimeoutError',
+    })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(page(100))
+      .mockResolvedValueOnce(page(100))
+      .mockRejectedValueOnce(timeout)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { orders, hasMore } = await fetchOrders(CREDS, {
+      modifiedAfter: new Date('2026-07-01T10:00:00Z'),
+    })
+
+    expect(orders).toHaveLength(200)
+    expect(hasMore).toBe(true)
+  })
+
+  // Only a timeout is a stopping condition. A real network failure must still
+  // surface as a genuine failure rather than be silently reported as progress.
+  it('still throws on a non-timeout failure', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(page(100))
+      .mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND shop.example'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      fetchOrders(CREDS, { modifiedAfter: new Date('2026-07-01T10:00:00Z') }),
+    ).rejects.toThrow(/ENOTFOUND/)
+  })
+})
+
+describe('resume points', () => {
+  const modifiedPage = (stamps: string[]) =>
+    new Response(
+      JSON.stringify(stamps.map((date_modified_gmt, i) => ({ id: i, date_modified_gmt }))),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+
+  it('reports the last modified stamp it saw', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () =>
+      modifiedPage(['2026-07-01T10:00:00', '2026-07-01T11:00:00']),
+    ))
+
+    const res = await fetchOrders(CREDS, { modifiedAfter: new Date('2026-07-01T09:00:00Z') })
+    expect(res.resumeFrom).toBe('2026-07-01T11:00:00')
+    expect(res.sortedByModified).toBe(true)
+  })
+
+  // If the store ignored orderby=modified, advancing to the last row would skip
+  // every order it did not happen to return. Say so instead.
+  it('refuses to vouch for a store that did not sort by modified date', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () =>
+      modifiedPage(['2026-07-01T11:00:00', '2026-07-01T10:00:00']),
+    ))
+
+    const res = await fetchOrders(CREDS, { modifiedAfter: new Date('2026-07-01T09:00:00Z') })
+    expect(res.sortedByModified).toBe(false)
+  })
+
+  it('treats a missing modified stamp as unsortable', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify([{ id: 1 }]), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }),
+    ))
+
+    const res = await fetchOrders(CREDS, { modifiedAfter: new Date('2026-07-01T09:00:00Z') })
+    expect(res.sortedByModified).toBe(false)
+  })
+
+  // A first sync is sorted by CREATED date, so modified stamps are legitimately
+  // out of order. Checking them there would raise a false alarm every time.
+  it('does not judge the ordering of a first-sync chunk', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () =>
+      modifiedPage(['2026-07-01T11:00:00', '2026-07-01T10:00:00']),
+    ))
+
+    const res = await fetchOrders(CREDS, { createdAfter: new Date('2026-07-01T09:00:00Z') })
+    expect(res.sortedByModified).toBe(true)
+    expect(res.resumeFrom).toBeUndefined()
   })
 })

@@ -190,6 +190,25 @@ advance to. `lastSyncAt` stays untouched and the run counts as progress-free:
 `lastRunAt` still moves, so the store rotates to the back and gets a full slot
 next run rather than being retried immediately with the same tiny remainder.
 
+**The watermark moves forward or not at all.** Found during Task 5's review, and
+it qualifies the claim above: the window does *not* shrink every run
+unconditionally. Net progress per run is `resumeFrom - previousWatermark`, and
+the next window starts an `OVERLAP` behind the new watermark. So if more orders
+share `date_modified_gmt` values than one run can carry inside that five-minute
+band — a WooCommerce bulk status change over thousands of orders does exactly
+this — the resume point lands at or *behind* the current watermark. Writing it
+would pin the window, or rewind it, and the same page would be fetched forever.
+
+Nothing is skipped in that case: the watermark never passes an order that was
+not stored, so the safety property holds. What fails is the drain, and worse,
+it fails *silently* — the run reports success and the operator sees only "more
+history to fetch", indistinguishable from a legitimately large backfill.
+
+So the advance is conditional on strict forward progress. When there is none,
+`lastSyncAt` is left alone and `lastError` says the store changed more at once
+than one sync can work through. The old code was wrong to refuse, but it was at
+least loud; this keeps the loudness for the one case that still deserves it.
+
 The deadline applies to both paths. A first sync already stops early and
 resumes by design, so it needs no new semantics — only the extra reason to
 stop.
@@ -198,6 +217,39 @@ stop.
 `date_modified_gmt`; the field is added to the type. Woo returns GMT timestamps
 without a suffix, so it is parsed as `new Date(o.date_modified_gmt + 'Z')`,
 matching how `mapOrder` already handles `date_created_gmt`.
+
+### Known limitation: offset paging over a mutable sort key
+
+Found by the whole-branch review, deliberately deferred, recorded here so nobody
+rediscovers it as a mystery.
+
+Sorting on `modified` sorts on a key that **changes while we page**. The pull
+uses offset pagination (`page=N&per_page=100`). If an order on page 1 is edited
+during the second or so between two page fetches, its `modified` becomes now and
+it moves to the end of the ascending order — every later row shifts down one, and
+the row that was first on page 2 is never returned. The monotonicity guard cannot
+see it, because the sequence it does receive is still non-decreasing. The
+watermark then advances past that row's stamp and the order is missed until
+something modifies it again.
+
+`orderby=date` was immune to this by accident: creation date never changes, so a
+re-modified order re-enters the filtered set at an early position and produces a
+harmless duplicate rather than a skip. We traded a safe failure mode for an
+unsafe one, and that qualifies the claim above that draining never skips.
+
+Why it is deferred rather than fixed: it needs a modification landing inside the
+gap between two page fetches of a **multi-page** pull, and most incremental
+windows are a single page — multi-page pulls happen during catch-up. The missed
+row is also, by construction, an order that was just modified, so the webhook
+stream carries it at that moment. That last point is reassuring but circular
+(the scheduled sync is documented as the webhooks' safety net), so this is a
+real exposure, not a non-issue.
+
+The fix, when it is wanted: keyset paging on the incremental path. Instead of
+incrementing `page`, re-issue with `modified_after = <last stamp> - 1s` and
+`page=1`. A re-modified row then simply reappears later and the idempotent
+upsert absorbs it. The one-second step handles ties, and more than 100 orders
+sharing one second is already the stalled-store condition above.
 
 ### The drain validates its own precondition
 
