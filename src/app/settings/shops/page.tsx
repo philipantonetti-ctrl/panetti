@@ -23,6 +23,8 @@ export default async function ShopsPage() {
         wooUrl: s.wooUrl ?? '',
         connected: Boolean(s.wooUrl && s.wooKey && s.wooSecret),
         lastSyncAt: s.lastSyncAt?.toISOString() ?? null,
+        lastRunAt: s.lastRunAt?.toISOString() ?? null,
+        lastError: s.lastError,
         hasOrders: s._count.orders > 0,
       }))}
     />

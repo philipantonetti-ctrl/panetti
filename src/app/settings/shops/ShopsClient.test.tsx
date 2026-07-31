@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { ShopsClient } from './ShopsClient'
+import { ShopsClient, type Row } from './ShopsClient'
 import { ToastProvider } from '@/components/toast/ToastProvider'
 
 vi.mock('next/navigation', () => ({
@@ -20,10 +20,10 @@ afterEach(() => vi.unstubAllGlobals())
 
 const SHOP = {
   id: 's1', name: 'Panetti Norway', currency: 'NOK', wooUrl: '', connected: false, lastSyncAt: null,
-  hasOrders: false,
+  hasOrders: false, lastRunAt: null, lastError: null,
 }
 
-function renderShops(shops = [SHOP]) {
+function renderShops(shops: Row[] = [SHOP]) {
   return render(
     <ToastProvider>
       <ShopsClient email="admin@test.local" shops={shops} />
@@ -184,5 +184,49 @@ describe('ShopsClient', () => {
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: 'Add shop' })).toBeNull()
     })
+  })
+})
+
+describe('what the Last sync column says', () => {
+  it('gives the reason a store stopped, instead of a stale date', () => {
+    renderShops([{
+      ...SHOP,
+      connected: true,
+      lastSyncAt: '2026-07-19T22:03:00.000Z',
+      lastRunAt: '2026-07-31T14:47:00.000Z',
+      lastError: 'WooCommerce responded 401: bad key',
+    }])
+
+    expect(screen.getByText(/401/)).toBeTruthy()
+    expect(screen.getByText('Sync failed')).toBeTruthy()
+  })
+
+  // A draining backlog moves the watermark to an OLD order's stamp on purpose.
+  // Showing that alone would call a healthy run a dead one.
+  it('reads a catching-up store as catching up, not as stopped', () => {
+    renderShops([{
+      ...SHOP,
+      connected: true,
+      lastSyncAt: '2026-07-19T22:03:00.000Z',
+      lastRunAt: '2026-07-31T14:47:00.000Z',
+      lastError: null,
+    }])
+
+    expect(screen.getByText(/Catching up/)).toBeTruthy()
+    expect(screen.queryByText('Sync failed')).toBeNull()
+  })
+
+  it('shows a healthy store just its sync time', () => {
+    const at = '2026-07-31T14:47:00.000Z'
+    renderShops([{ ...SHOP, connected: true, lastSyncAt: at, lastRunAt: at, lastError: null }])
+
+    expect(screen.queryByText(/Catching up/)).toBeNull()
+    expect(screen.queryByText('Sync failed')).toBeNull()
+    expect(screen.getByText(new Date(at).toLocaleString())).toBeTruthy()
+  })
+
+  it('still says Never for a store that has never synced', () => {
+    renderShops([{ ...SHOP, connected: true }])
+    expect(screen.getByText('Never')).toBeTruthy()
   })
 })
