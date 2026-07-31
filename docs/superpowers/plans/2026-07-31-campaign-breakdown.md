@@ -163,7 +163,10 @@ describe('fetchMetaBreakdown', () => {
 
     const url = String(fetchMock.mock.calls[0][0])
     expect(url).toContain('/888/insights')
-    expect(url).toContain('level=ad')
+    // Read the parsed value, not a substring: 'level=ad' is a prefix of
+    // 'level=adset', so `toContain` here would pass for the wrong level and the
+    // test would exist without being able to fail.
+    expect(new URL(url).searchParams.get('level')).toBe('ad')
   })
 
   it('asks for exactly the range it was given', async () => {
@@ -491,7 +494,10 @@ describe('fetchGoogleBreakdown', () => {
     )
 
     const q = sentQuery(fetchMock)
-    expect(q).toContain('FROM ad_group')
+    // 'FROM ad_group' is a prefix of 'FROM ad_group_ad', so the bare substring
+    // would pass even if this level wrongly used the ad resource — a plausible
+    // copy-paste between adjacent rows of BREAKDOWN_GAQL. The WHERE pins it.
+    expect(q).toContain('FROM ad_group WHERE')
     expect(q).toContain('campaign.id = 777')
   })
 
