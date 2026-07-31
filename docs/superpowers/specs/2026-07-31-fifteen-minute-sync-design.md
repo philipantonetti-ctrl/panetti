@@ -383,3 +383,33 @@ Webhook deliveries call `storeOrder` but never touch `lastSyncAt`, so orders
 can be arriving live while that column looks frozen. `lastRunAt` does not fix
 that either; if distinguishing the two mechanisms on the page ever matters, a
 `lastWebhookAt` column is the way, and it is out of scope here.
+
+## Known follow-ups, shipped deliberately
+
+Each of these was found by review, judged, and accepted rather than missed.
+
+**A slow response body still discards the pages already fetched.**
+`client.ts` wraps the `fetch()` call so an aborted request returns what it had
+instead of throwing — but `res.json()` sits outside that catch, and `fetch()`
+resolves when the *headers* arrive, not when the body finishes. A store that
+answers promptly and then streams slowly therefore aborts at `res.json()`, and
+the rejection escapes uncaught. That reproduces the original bug for that one
+case. It was verified against a real local HTTP server, not argued.
+
+Why it shipped: the rotation cannot starve, because `lastRunAt` is claimed at
+the *start* of every attempt, independently of anything `fetchOrders` does. The
+store hard-fails one attempt with a clear error, leaves its watermark alone, and
+rotates to the back for a full-budget attempt next run. Fix is to extend that
+same catch over `res.json()` and the `!res.ok` check.
+
+**A shop deleted mid-run aborts the whole loop.** `findUniqueOrThrow` at the top
+of `syncShop` is outside any try/catch, so a shop removed between
+`syncAllShops`'s listing query and that call throws past the loop, costing every
+remaining store its turn. Pre-existing, and a narrow race.
+
+**Sharing one local Postgres across checkouts silently breaks the suite.**
+`prisma db push` reconciles the database *to* whatever schema it is handed, so
+running it from a checkout without these columns DROPS them, and the next test
+run fails in the hundreds with no obvious cause. This happened during this work.
+If a red suite appears without a code change, introspect the database before
+believing it.
