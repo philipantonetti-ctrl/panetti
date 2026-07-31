@@ -24,12 +24,15 @@ export function ProductLedger({
   ambassadorId,
   gifts,
   catalogue,
+  storeNames,
   pending,
   send,
 }: {
   ambassadorId: string
   gifts: Gift[]
   catalogue: CatalogueItem[]
+  /** The stores this ambassador's codes live on, named for the caption. */
+  storeNames: string[]
   pending: string | null
   send: (key: string, url: string, method: string, body: unknown) => Promise<boolean>
 }) {
@@ -41,6 +44,16 @@ export function ProductLedger({
   return (
     <section className="mt-4 border-t border-line pt-4">
       <h3 className="text-[13px] font-semibold text-ink">Products they got from us</h3>
+
+      {/* The picker IS filtered to their store, but every store currently sells
+          the same six products, so the filter is invisible in the list itself.
+          Saying which store it is scoped to is the only way anyone can tell the
+          difference between "narrowed to Norway" and "not narrowed at all". */}
+      <p className="mt-0.5 text-[11px] text-faint">
+        {storeNames.length === 0
+          ? 'They have no code on any store yet, so there are no products to choose from.'
+          : `Only products sold on ${storeNames.join(' and ')}.`}
+      </p>
 
       <div className="mt-2 mb-3 space-y-1">
         {gifts.length === 0 && (

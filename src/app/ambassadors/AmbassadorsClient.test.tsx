@@ -138,6 +138,39 @@ describe('AmbassadorsClient store-scoped codes', () => {
   })
 })
 
+describe('the Edit window offers only their own store products', () => {
+  /** s2 sells Pro X only; s1 sells both. */
+  const onShop = (shopId: string) => [
+    {
+      id: 'a1', name: 'Solo Store', email: 'solo@x.local', commissionPercent: 10, active: true,
+      onboarded: false, invitePath: '/invite/x', products: [],
+      codes: [{ id: 'c1', code: 'SOLO10', shopId, shopName: shopId }],
+    },
+  ]
+
+  async function openEditAndPicker(shopId: string) {
+    renderPage(onShop(shopId))
+    await waitFor(() => expect(screen.getByText('SOLO10')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    // The catalogue arrives from its own fetch; clicking blind is a race.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Product' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Product' }))
+  }
+
+  it('hides a product their store does not sell', async () => {
+    await openEditAndPicker('s2')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pro X' })).toBeTruthy())
+    // s2 does not sell it, so it must not be offered.
+    expect(screen.queryByRole('button', { name: 'Advanced Comfort' })).toBeNull()
+  })
+
+  it('offers both when their store sells both', async () => {
+    await openEditAndPicker('s1')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pro X' })).toBeTruthy())
+    expect(screen.getByRole('button', { name: 'Advanced Comfort' })).toBeTruthy()
+  })
+})
+
 describe('recording products while the ambassador is being created', () => {
   /** Fills everything except the products. */
   async function fillRequiredFields(shop = 's1') {
@@ -172,6 +205,12 @@ describe('recording products while the ambassador is being created', () => {
     renderPage()
     await waitFor(() => expect(screen.getByText(/Pick a store first/)).toBeTruthy())
     expect(screen.queryByTestId('product-ticks')).toBeNull()
+  })
+
+  it('names the store the list came from', async () => {
+    renderPage()
+    await fillRequiredFields('s1')
+    expect(screen.getByText('Showing products sold on Norway.')).toBeTruthy()
   })
 
   it('offers only the products that store sells', async () => {

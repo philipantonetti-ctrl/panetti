@@ -522,7 +522,7 @@ export function AmbassadorsClient({
 
           <ProductTickList
             catalogue={forShop(catalogue, newShopId ? [newShopId] : [])}
-            storeChosen={Boolean(newShopId)}
+            storeName={shops.find((s) => s.id === newShopId)?.name ?? null}
             selected={newSkus}
             onToggle={(sku) =>
               setNewSkus((list) =>
@@ -830,6 +830,7 @@ function EditModal({
           // The same rule the Add form follows, applied where the store is
           // already known rather than chosen: only what their own stores sell.
           catalogue={forShop(catalogue, row.codes.map((c) => c.shopId))}
+          storeNames={[...new Set(row.codes.map((c) => c.shopName))]}
           pending={pending}
           send={send}
         />

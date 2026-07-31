@@ -19,6 +19,7 @@ const setup = (gifts: Gift[] = GIFTS) => {
       ambassadorId="amb-1"
       gifts={gifts}
       catalogue={CATALOGUE}
+      storeNames={['Panetti Norway']}
       pending={null}
       send={send}
     />,
@@ -111,6 +112,30 @@ describe('ProductLedger', () => {
   it('still shows a quantity that is greater than one, so old records stay true', () => {
     setup() // the fixture gift carries 2
     expect(screen.getByText(/×2/)).toBeTruthy()
+  })
+
+  it('names the store the picker is narrowed to', () => {
+    // Every store currently sells the same six products, so the filter cannot
+    // be seen in the list itself. Without this line there is no way to tell
+    // "narrowed to Norway" from "not narrowed at all", which is exactly how a
+    // working filter gets reported as missing.
+    setup()
+    expect(screen.getByText('Only products sold on Panetti Norway.')).toBeTruthy()
+  })
+
+  it('says plainly when they hold no code on any store', () => {
+    const send = vi.fn().mockResolvedValue(true)
+    render(
+      <ProductLedger
+        ambassadorId="amb-1"
+        gifts={[]}
+        catalogue={[]}
+        storeNames={[]}
+        pending={null}
+        send={send}
+      />,
+    )
+    expect(screen.getByText(/no code on any store yet/i)).toBeTruthy()
   })
 
   it('shows no ×1 on a single-product gift', () => {

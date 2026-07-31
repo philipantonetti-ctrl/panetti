@@ -21,7 +21,7 @@ const LABEL = 'block text-[11px] font-medium text-muted'
  */
 export function ProductTickList({
   catalogue,
-  storeChosen,
+  storeName,
   selected,
   onToggle,
   receivedAt,
@@ -32,7 +32,8 @@ export function ProductTickList({
 }: {
   /** Already narrowed to the chosen store. */
   catalogue: CatalogueItem[]
-  storeChosen: boolean
+  /** The chosen store's name, or null when none is chosen yet. */
+  storeName: string | null
   selected: string[]
   onToggle: (sku: string) => void
   receivedAt: string
@@ -47,17 +48,22 @@ export function ProductTickList({
         Products they got from us <span className="font-normal text-faint">· required</span>
       </h3>
 
-      {!storeChosen ? (
+      {!storeName ? (
         // The list is a function of the store, so it cannot come first.
         <p className="mt-2 text-[11px] text-faint">Pick a store first to see its products.</p>
       ) : catalogue.length === 0 ? (
         // Products are discovered from orders, so a store that has never sold
         // anything has nothing to offer. Saying why beats an empty box.
         <p className="mt-2 text-[11px] text-faint">
-          No products found for this store yet. They appear here once the store has sold them.
+          No products found for {storeName} yet. They appear here once the store has sold them.
         </p>
       ) : (
         <>
+          {/* Every store currently sells the same products, so the filter is
+              invisible in the list itself. Naming the store is the only way
+              anyone can tell it narrowed at all. */}
+          <p className="mt-0.5 text-[11px] text-faint">Showing products sold on {storeName}.</p>
+
           <div
             data-testid="product-ticks"
             className="mt-2 max-h-44 space-y-0.5 overflow-y-auto rounded-[var(--radius-control)] border border-line p-1"
