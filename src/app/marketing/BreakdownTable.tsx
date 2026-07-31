@@ -27,15 +27,21 @@ function rowKey(row: Pick<BreakdownRow, 'accountId' | 'id'>): string {
   return `${row.accountId}:${row.id}`
 }
 
-/** A ratio with nothing to divide by is unknown, never a number pretending to be one. */
+/**
+ * A ratio with nothing to divide by is unknown, never a number pretending to
+ * be one. Formatted to match MarketingTable.tsx's own `cellText` ('roas' and
+ * 'pct' cases, and its null dash) rather than inventing a second convention —
+ * this table sits on the same page, and a client should never see the same
+ * ROAS labelled two different ways within one screen.
+ */
 function roasText(spend: number, purchaseValue: number): string {
-  if (spend === 0) return '–'
-  return (purchaseValue / spend).toFixed(2).replace('.', ',')
+  if (spend === 0) return '—'
+  return `${(purchaseValue / spend).toFixed(2)}×`
 }
 
 function ctrText(clicks: number, impressions: number): string {
-  if (impressions === 0) return '–'
-  return `${((clicks / impressions) * 100).toFixed(1).replace('.', ',')}%`
+  if (impressions === 0) return '—'
+  return `${((clicks / impressions) * 100).toFixed(1)}%`
 }
 
 /** Google reports fractional conversions; whole numbers stay whole. */

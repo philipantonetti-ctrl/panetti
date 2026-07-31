@@ -62,7 +62,7 @@ describe('BreakdownTable', () => {
     render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
     await waitFor(() => expect(screen.getByText('Campaign One')).toBeTruthy())
 
-    expect(screen.getByText('6,37')).toBeTruthy()
+    expect(screen.getByText('6.37×')).toBeTruthy()
   })
 
   it('shows a dash rather than dividing by zero', async () => {
@@ -76,7 +76,7 @@ describe('BreakdownTable', () => {
     await waitFor(() => expect(screen.getByText('No spend yet')).toBeTruthy())
 
     const roasCell = screen.getByText('No spend yet').closest('tr')!.children[2] as HTMLElement
-    expect(roasCell.textContent).toBe('–')
+    expect(roasCell.textContent).toBe('—')
     expect(roasCell.textContent).not.toContain('Infinity')
     expect(roasCell.textContent).not.toContain('NaN')
   })
@@ -92,7 +92,7 @@ describe('BreakdownTable', () => {
     await waitFor(() => expect(screen.getByText('No impressions')).toBeTruthy())
 
     const ctrCell = screen.getByText('No impressions').closest('tr')!.children[5] as HTMLElement
-    expect(ctrCell.textContent).toBe('–')
+    expect(ctrCell.textContent).toBe('—')
   })
 
   it('expands a campaign into its ad sets', async () => {
