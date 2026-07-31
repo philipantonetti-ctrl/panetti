@@ -718,9 +718,19 @@ everything after the opening brace) with:
       orderby: incremental ? 'modified' : 'date',
       order: 'asc',
     })
+    // Woo compares date filters against the STORE's local time unless told
+    // otherwise. Ours are UTC, so without this a store at UTC+2 hands back a
+    // two-hour-wider window every single pull.
+    //
+    // `dates_are_gmt` is set FIRST deliberately. It leaves `modified_after`
+    // last in the query string, and the pre-existing test at
+    // `client.test.ts:54` asserts `not.toContain('after=<value>&')` — swap the
+    // two and `"after=…&"` becomes a substring of `"modified_after=…&"`, and
+    // that assertion flips. Param order is meaningless to WooCommerce, so keep
+    // the order that keeps the test honest.
     if (filter.modifiedAfter) {
-      params.set('modified_after', filter.modifiedAfter.toISOString().slice(0, 19))
       params.set('dates_are_gmt', 'true')
+      params.set('modified_after', filter.modifiedAfter.toISOString().slice(0, 19))
     }
     if (filter.createdAfter) params.set('after', filter.createdAfter.toISOString().slice(0, 19))
 
