@@ -465,7 +465,7 @@ describe('fetchGoogleBreakdown', () => {
   it('reads campaigns from the campaign resource', async () => {
     // A Response body reads once, so chain the two calls rather than sharing
     // one resolved value: first the token exchange, then the query.
-    const fetchMock = vi.fn().mockResolvedValueOnce(tokenReply()).mockResolvedValueOnce(reply([]))
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(CREDS, { level: 'campaign', customerId: '111' }, FROM, TO)
@@ -480,7 +480,7 @@ describe('fetchGoogleBreakdown', () => {
   it('reads ad groups belonging to one campaign', async () => {
     // A Response body reads once, so chain the two calls rather than sharing
     // one resolved value: first the token exchange, then the query.
-    const fetchMock = vi.fn().mockResolvedValueOnce(tokenReply()).mockResolvedValueOnce(reply([]))
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(
@@ -498,7 +498,7 @@ describe('fetchGoogleBreakdown', () => {
   it('reads ads belonging to one ad group', async () => {
     // A Response body reads once, so chain the two calls rather than sharing
     // one resolved value: first the token exchange, then the query.
-    const fetchMock = vi.fn().mockResolvedValueOnce(tokenReply()).mockResolvedValueOnce(reply([]))
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(CREDS, { level: 'ad', customerId: '111', parentId: '888' }, FROM, TO)
