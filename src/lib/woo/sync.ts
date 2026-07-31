@@ -45,6 +45,15 @@ const OVERLAP = 5 * 60 * 1000
 const UNSORTED_STORE =
   'This store did not return orders sorted by modified date, so the sync cannot safely resume. Check the store for a plugin that overrides REST API ordering.'
 
+/**
+ * More orders share one moment than a single run can carry, so the resume point
+ * never clears the overlap we reach back through and the window would be
+ * refetched forever. Nothing is skipped — the watermark refuses to move
+ * backwards — but only a human can clear it.
+ */
+const STALLED_STORE =
+  'This store changed more orders at once than one sync can work through, so the sync cannot move past them. Check the store for a bulk update, then sync again.'
+
 /** How many customer-less legacy orders one sync fills in (5 id-batches). */
 const CUSTOMER_BACKFILL_BATCH = 500
 
@@ -187,14 +196,16 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
  * backfill ran is caught by the first incremental sync.
  *
  * INCREMENTAL (lastSyncAt set) — only orders changed since five minutes before
- * the last completed sync (see OVERLAP). A pull that fills every page it is
- * allowed stores what it fetched and moves the watermark to the last order it
- * actually processed, so a backlog drains a little more each run instead of
- * being handed back the same, wider window forever. That only holds once the
- * store has proven it honoured `orderby=modified`; if it did not, the sync
- * stops without advancing and says so, because guessing which rows it never
- * saw is worse than asking a human to look. On any other failure lastSyncAt is
- * left untouched so the next run retries the same window.
+ * the last completed sync (see OVERLAP). A pull the page cap or the deadline
+ * cut short stores what it fetched, then — only if the store proved it
+ * honoured `orderby=modified` AND the resume point actually lands ahead of
+ * where we started — moves the watermark there, so a backlog drains a little
+ * more each run instead of being handed back the same, wider window forever.
+ * A cut-short pull that fails either check stops without advancing and says
+ * why: an unsorted result cannot be trusted, and a resume point that never
+ * clears OVERLAP (more orders sharing one moment than a run can carry) would
+ * refetch the same page forever. On any other failure lastSyncAt is left
+ * untouched so the next run retries the same window.
  *
  * - The watermark records when the FETCH began, not when storing finished — an
  *   order changed while the sync was running must fall inside the next window.
@@ -312,20 +323,40 @@ export async function syncShop(
       //
       // A first sync's watermark stays unset so the next run resumes the
       // backfill instead of going incremental. An incremental pull moves its
-      // watermark to the last order it actually processed — that is what makes
-      // a backlog drain instead of being handed back, bigger, every run.
-      const canResume = !firstSync && sortedByModified && resumeFrom !== undefined
+      // watermark to the last order it actually processed, when it can trust
+      // that resume point — that is what makes a backlog drain instead of
+      // being handed back, bigger, every run.
+      //
+      // Only an incremental pull has a resume point, and only a store that
+      // honoured the ordering has one worth trusting.
       const unsorted = !firstSync && !sortedByModified
+      const candidate =
+        !firstSync && sortedByModified && resumeFrom ? new Date(resumeFrom + 'Z') : null
 
-      const error = unsorted ? UNSORTED_STORE : null
+      // A stamp we cannot parse is not a watermark. An Invalid Date is truthy,
+      // so it would reach Prisma, throw inside recordRun, and be swallowed by
+      // its own catch — losing lastRunAt too, the one thing recordRun exists to
+      // guarantee.
+      const parsed = candidate && !Number.isNaN(candidate.getTime()) ? candidate : null
+
+      // The watermark moves forward or not at all. If more orders share a moment
+      // than one run can carry, the resume point lands inside the OVERLAP we
+      // already reach back through, and writing it would pin — or rewind — the
+      // window so the same page is refetched forever. That is not a skip, but it
+      // is a standstill, and a standstill reported as success is worse than the
+      // refusal this replaced.
+      const advanced = parsed !== null && (!shop.lastSyncAt || parsed > shop.lastSyncAt)
+      const stalled = parsed !== null && !advanced
+
+      const error = unsorted ? UNSORTED_STORE : stalled ? STALLED_STORE : null
       await recordRun(shop.id, {
-        ...(canResume ? { lastSyncAt: new Date(resumeFrom + 'Z') } : {}),
+        ...(advanced ? { lastSyncAt: parsed } : {}),
         error,
       })
 
       return {
         ...base,
-        ok: !unsorted,
+        ok: !unsorted && !stalled,
         ordersSynced: synced,
         more: true,
         ...(error ? { error } : {}),

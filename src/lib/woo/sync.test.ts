@@ -444,10 +444,30 @@ describe('draining a backlog', () => {
     expect(result.more).toBe(true)
 
     const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
-    // The window shrank instead of growing: the watermark moved forward, to a
-    // processed order's modified stamp rather than to now.
-    expect(after.lastSyncAt!.getTime()).toBeGreaterThan(new Date('2026-06-01T00:00:00Z').getTime())
+    // The exact stamp of the last order processed, not merely "later than
+    // before": advancing to `now` would also satisfy an inequality, while
+    // skipping every order between these 100 and the present.
+    expect(after.lastSyncAt!.toISOString()).toBe('2026-07-01T01:39:00.000Z')
     expect(after.lastError).toBeNull()
+  })
+
+  it('resumes the next pull from where the last one stopped', async () => {
+    const shop = await connectedShop('[sync-test] resumes')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-06-01T00:00:00Z') },
+    })
+
+    vi.stubGlobal('fetch', onePage(fullModifiedPage(100, 0)))
+    await syncShop(shop.id, { maxPages: 1 })
+
+    // Second run: whatever it asks for is the proof there is no gap.
+    const second = vi.fn().mockImplementation(async () => emptyPage())
+    vi.stubGlobal('fetch', second)
+    await syncShop(shop.id)
+
+    // 01:39:00 minus the five-minute OVERLAP.
+    expect(String(second.mock.calls[0][0])).toContain('modified_after=2026-07-01T01%3A34%3A00')
   })
 
   // The old behaviour: refuse, leave the watermark, and be handed a bigger
@@ -463,6 +483,8 @@ describe('draining a backlog', () => {
 
     const result = await syncShop(shop.id, { maxPages: 1 })
     expect(result.error ?? '').not.toContain('5,000')
+    expect(result.ok).toBe(true)
+    expect(result.more).toBe(true)
   })
 
   // Advancing to the last row of an unsorted result would skip everything the
@@ -503,5 +525,27 @@ describe('draining a backlog', () => {
     const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
     expect(after.lastSyncAt!.toISOString()).toBe(watermark.toISOString())
     expect(after.lastRunAt).not.toBeNull()
+  })
+
+  // A burst of orders sharing one moment can leave the resume point BEHIND
+  // where we started: more changed in one instant than one run can carry.
+  // Writing that watermark would pin (or rewind) the window, refetching the
+  // same page forever — a standstill, not a skip, but it must not be reported
+  // as success.
+  it('refuses to advance when the resume point cannot clear the overlap', async () => {
+    const shop = await connectedShop('[sync-test] stalled')
+    // After the fixture's newest stamp (01:39:00), so the resume point this
+    // pull produces lands BEHIND this watermark instead of ahead of it.
+    const watermark = new Date('2026-07-01T02:00:00Z')
+    await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: watermark } })
+
+    vi.stubGlobal('fetch', onePage(fullModifiedPage(100, 0)))
+
+    const result = await syncShop(shop.id, { maxPages: 1 })
+
+    expect(result.ok).toBe(false)
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(after.lastSyncAt!.toISOString()).toBe(watermark.toISOString())
+    expect(after.lastError).toContain('cannot move past')
   })
 })
