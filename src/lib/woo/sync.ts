@@ -54,6 +54,14 @@ const UNSORTED_STORE =
 const STALLED_STORE =
   'This store changed more orders at once than one sync can work through, so the sync cannot move past them. Check the store for a bulk update, then sync again.'
 
+/**
+ * A resume point we cannot read is not a resume point. Left unflagged this is
+ * the silent freeze the branch exists to remove: no advance, no error, and a
+ * page that says "Catching up" forever.
+ */
+const UNREADABLE_STAMP =
+  'This store sent a last-modified date the sync could not read, so it cannot tell where to resume. Check the store for a plugin altering order dates.'
+
 /** How many customer-less legacy orders one sync fills in (5 id-batches). */
 const CUSTOMER_BACKFILL_BATCH = 500
 
@@ -184,6 +192,39 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
 }
 
 /**
+ * Record one attempt on a store.
+ *
+ * `lastRunAt` moves on EVERY attempt, including failures. This is what keeps
+ * the rotation in `syncAllShops` fair: a permanently broken store whose
+ * `lastRunAt` never moved would sit at the front of the queue and burn a slot
+ * on every single run. Moving it costs a broken store one slot, then it goes to
+ * the back.
+ *
+ * `lastSyncAt` moves only when a caller passes one, so a window that failed is
+ * retried unchanged rather than skipped.
+ *
+ * Never throws. If the database is what broke, the caller's own error is the
+ * one worth reporting — not a second, more confusing one from the bookkeeping.
+ */
+async function recordRun(
+  shopId: string,
+  outcome: { lastSyncAt?: Date; error?: string | null },
+): Promise<void> {
+  try {
+    await db.shop.update({
+      where: { id: shopId },
+      data: {
+        lastRunAt: new Date(),
+        lastError: outcome.error ?? null,
+        ...(outcome.lastSyncAt ? { lastSyncAt: outcome.lastSyncAt } : {}),
+      },
+    })
+  } catch {
+    // Bookkeeping is never worth failing a sync over.
+  }
+}
+
+/**
  * Pull a shop's orders and store them.
  *
  * Two phases, decided by `lastSyncAt`:
@@ -217,39 +258,6 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
  *   refresh, legacy orders get their customer filled in, and the store's
  *   webhooks are (re)registered so changes stream in live between syncs.
  */
-/**
- * Record one attempt on a store.
- *
- * `lastRunAt` moves on EVERY attempt, including failures. This is what keeps
- * the rotation in `syncAllShops` fair: a permanently broken store whose
- * `lastRunAt` never moved would sit at the front of the queue and burn a slot
- * on every single run. Moving it costs a broken store one slot, then it goes to
- * the back.
- *
- * `lastSyncAt` moves only when a caller passes one, so a window that failed is
- * retried unchanged rather than skipped.
- *
- * Never throws. If the database is what broke, the caller's own error is the
- * one worth reporting — not a second, more confusing one from the bookkeeping.
- */
-async function recordRun(
-  shopId: string,
-  outcome: { lastSyncAt?: Date; error?: string | null },
-): Promise<void> {
-  try {
-    await db.shop.update({
-      where: { id: shopId },
-      data: {
-        lastRunAt: new Date(),
-        lastError: outcome.error ?? null,
-        ...(outcome.lastSyncAt ? { lastSyncAt: outcome.lastSyncAt } : {}),
-      },
-    })
-  } catch {
-    // Bookkeeping is never worth failing a sync over.
-  }
-}
-
 export async function syncShop(
   shopId: string,
   /**
@@ -261,6 +269,23 @@ export async function syncShop(
 ): Promise<SyncResult> {
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } })
   const base = { shopId: shop.id, shopName: shop.name }
+
+  // Claim the attempt BEFORE any work. Every exit below records it too, but an
+  // exit is only reached if we get there — an invocation killed mid-store, by
+  // the platform ceiling or a slow catalog fetch or a long storing loop, would
+  // otherwise leave lastRunAt untouched. This store would then stay at the head
+  // of `lastRunAt ASC NULLS FIRST` forever, re-do the same work every run, and
+  // starve every store behind it. That is the outage this whole branch exists
+  // to fix, so the invariant has to hold unconditionally, not just on the paths
+  // that return.
+  //
+  // lastError is deliberately NOT touched: the previous reason stands until
+  // this attempt actually has an outcome.
+  await db.shop
+    .update({ where: { id: shop.id }, data: { lastRunAt: new Date() } })
+    .catch(() => {
+      // Bookkeeping is never worth failing a sync over — same rule as recordRun.
+    })
 
   if (!shop.wooUrl || !shop.wooKey || !shop.wooSecret) {
     const error = 'No WooCommerce credentials for this shop'
@@ -339,6 +364,11 @@ export async function syncShop(
       // guarantee.
       const parsed = candidate && !Number.isNaN(candidate.getTime()) ? candidate : null
 
+      // A resume point we cannot read is not a resume point. Left unflagged this
+      // is the silent freeze the branch exists to remove: no advance, no error,
+      // and a page that says "catching up" forever.
+      const unreadable = candidate !== null && parsed === null
+
       // The watermark moves forward or not at all. If more orders share a moment
       // than one run can carry, the resume point lands inside the OVERLAP we
       // already reach back through, and writing it would pin — or rewind — the
@@ -348,7 +378,7 @@ export async function syncShop(
       const advanced = parsed !== null && (!shop.lastSyncAt || parsed > shop.lastSyncAt)
       const stalled = parsed !== null && !advanced
 
-      const error = unsorted ? UNSORTED_STORE : stalled ? STALLED_STORE : null
+      const error = unsorted ? UNSORTED_STORE : unreadable ? UNREADABLE_STAMP : stalled ? STALLED_STORE : null
       await recordRun(shop.id, {
         ...(advanced ? { lastSyncAt: parsed } : {}),
         error,
@@ -356,46 +386,52 @@ export async function syncShop(
 
       return {
         ...base,
-        ok: !unsorted && !stalled,
+        ok: !unsorted && !stalled && !unreadable,
         ordersSynced: synced,
         more: true,
         ...(error ? { error } : {}),
       }
     }
 
-    // Best-effort on a COMPLETED sync only: refresh each known product's own
-    // listed price (incl. VAT). A failure here never fails the sync — order
-    // data is the priority, and the next completed sync simply retries.
-    try {
-      const catalog = await fetchCatalogPrices(creds)
-      if (catalog.size) {
-        const known = await db.product.findMany({
-          where: { shopId: shop.id },
-          select: { id: true, externalId: true, catalogPrice: true },
-        })
-        for (const p of known) {
-          const price = catalog.get(p.externalId)
-          if (price !== undefined && price !== p.catalogPrice) {
-            await db.product.update({ where: { id: p.id }, data: { catalogPrice: price } })
+    // These three are best-effort refinements of a sync that already succeeded.
+    // When the deadline has passed there is no time for them, and running them
+    // anyway risks the invocation being killed before the watermark below is
+    // written — losing the whole run's progress to work that could have waited.
+    if (opts.deadline === undefined || Date.now() < opts.deadline) {
+      // Best-effort on a COMPLETED sync only: refresh each known product's own
+      // listed price (incl. VAT). A failure here never fails the sync — order
+      // data is the priority, and the next completed sync simply retries.
+      try {
+        const catalog = await fetchCatalogPrices(creds)
+        if (catalog.size) {
+          const known = await db.product.findMany({
+            where: { shopId: shop.id },
+            select: { id: true, externalId: true, catalogPrice: true },
+          })
+          for (const p of known) {
+            const price = catalog.get(p.externalId)
+            if (price !== undefined && price !== p.catalogPrice) {
+              await db.product.update({ where: { id: p.id }, data: { catalogPrice: price } })
+            }
           }
         }
+      } catch {
+        // Retried on the next completed sync.
       }
-    } catch {
-      // Retried on the next completed sync.
-    }
 
-    // Best-effort: orders from before customers were stored get theirs filled.
-    try {
-      await backfillCustomers(shop.id, creds)
-    } catch {
-      // The queue is durable — whatever is left fills on the next sync.
-    }
+      // Best-effort: orders from before customers were stored get theirs filled.
+      try {
+        await backfillCustomers(shop.id, creds)
+      } catch {
+        // The queue is durable — whatever is left fills on the next sync.
+      }
 
-    // Best-effort: keep the store streaming changes to us between syncs.
-    try {
-      await ensureWebhooks(shop.id, creds)
-    } catch {
-      // Live updates degrade to the scheduled sync; repaired next run.
+      // Best-effort: keep the store streaming changes to us between syncs.
+      try {
+        await ensureWebhooks(shop.id, creds)
+      } catch {
+        // Live updates degrade to the scheduled sync; repaired next run.
+      }
     }
 
     // Only now — after everything landed — does the watermark move. It moves to

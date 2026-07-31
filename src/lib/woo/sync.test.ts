@@ -548,6 +548,28 @@ describe('draining a backlog', () => {
     expect(after.lastSyncAt!.toISOString()).toBe(watermark.toISOString())
     expect(after.lastError).toContain('cannot move past')
   })
+
+  // An unparseable stamp is not a resume point. Left unflagged this is the
+  // silent freeze the branch exists to remove: no advance, no error, and a
+  // page that says "Catching up" forever.
+  it('stops and explains itself when the resume stamp cannot be parsed', async () => {
+    const shop = await connectedShop('[sync-test] unreadable stamp')
+    const watermark = new Date('2026-06-01T00:00:00Z')
+    await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: watermark } })
+
+    // A full page, genuinely sorted ascending, but the LAST stamp — the one
+    // that would become the resume point — is garbage a plugin might send.
+    const orders = fullModifiedPage(100, 0)
+    orders[orders.length - 1].date_modified_gmt = 'not-a-real-date'
+    vi.stubGlobal('fetch', onePage(orders))
+
+    const result = await syncShop(shop.id, { maxPages: 1 })
+
+    expect(result.ok).toBe(false)
+    const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(after.lastSyncAt!.toISOString()).toBe(watermark.toISOString())
+    expect(after.lastError).toContain('could not read')
+  })
 })
 
 describe('rotation', () => {

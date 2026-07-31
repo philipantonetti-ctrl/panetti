@@ -66,6 +66,19 @@ async function wooError(res: Response): Promise<Error> {
 }
 
 /**
+ * True for the error AbortSignal.timeout produces when it fires. Node/undici
+ * raise it directly; some wrappers surface it one level down as `cause`.
+ */
+function isTimeoutAbort(err: unknown): boolean {
+  const named = (e: unknown, name: string) => e instanceof Error && e.name === name
+  return (
+    named(err, 'TimeoutError') ||
+    named(err, 'AbortError') ||
+    (err instanceof Error && (named(err.cause, 'TimeoutError') || named(err.cause, 'AbortError')))
+  )
+}
+
+/**
  * Fetch orders one page at a time, oldest first. WooCommerce caps `per_page` at 100.
  *
  * Stops on a short page (the end), at `maxPages`, or once the caller's deadline
@@ -106,10 +119,25 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
     }
     if (filter.createdAfter) params.set('after', filter.createdAfter.toISOString().slice(0, 19))
 
-    const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders?${params}`, {
-      headers: { Authorization: `Basic ${auth}` },
-      signal: AbortSignal.timeout(requestBudgetMs(filter)),
-    })
+    let res: Response
+    try {
+      res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders?${params}`, {
+        headers: { Authorization: `Basic ${auth}` },
+        signal: AbortSignal.timeout(requestBudgetMs(filter)),
+      })
+    } catch (err) {
+      // A timeout is a stopping condition, not a failure: the pages already
+      // fetched are real, and the caller can resume from here next run.
+      // requestBudgetMs deliberately hands the LAST request whatever is left of
+      // the deadline — sometimes a couple hundred ms — so this is the clamp's
+      // NORMAL outcome, not a rare edge case. Anything else (DNS, connection
+      // refused, a real network failure) still throws, so the store still
+      // reports a genuine failure.
+      if (isTimeoutAbort(err)) {
+        return { orders: all, hasMore: true, resumeFrom, sortedByModified }
+      }
+      throw err
+    }
 
     if (!res.ok) throw await wooError(res)
 
@@ -154,8 +182,12 @@ export async function fetchOrdersByIds(creds: WooCredentials, ids: string[]): Pr
       include: ids.slice(i, i + 100).join(','),
       per_page: '100',
     })
+    // A store that never answers must cost this run, not every store behind
+    // it — every request from here down carries this same budget, the way
+    // fetchOrders already does for the sync's main page loop.
     const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders?${params}`, {
       headers: { Authorization: `Basic ${auth}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
     if (!res.ok) throw await wooError(res)
     all.push(...((await res.json()) as WooOrder[]))
@@ -176,7 +208,7 @@ export async function fetchWebhooks(creds: WooCredentials): Promise<WooWebhook[]
   const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
   const res = await fetch(
     `${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/webhooks?per_page=100&status=all`,
-    { headers: { Authorization: `Basic ${auth}` } },
+    { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
   )
   if (!res.ok) throw await wooError(res)
   return (await res.json()) as WooWebhook[]
@@ -191,6 +223,7 @@ export async function createWebhook(
   const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/webhooks`, {
     method: 'POST',
     headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       name: webhook.name,
       topic: webhook.topic,
@@ -212,6 +245,7 @@ export async function activateWebhook(
   const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/webhooks/${id}`, {
     method: 'PUT',
     headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     body: JSON.stringify({ status: 'active', secret }),
   })
   if (!res.ok) throw await wooError(res)
@@ -253,6 +287,7 @@ export async function fetchCatalogPrices(creds: WooCredentials): Promise<Map<str
     const params = new URLSearchParams({ per_page: '100', page: String(page) })
     const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/products?${params}`, {
       headers: { Authorization: `Basic ${auth}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
     if (!res.ok) throw await wooError(res)
 

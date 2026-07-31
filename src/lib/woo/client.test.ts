@@ -100,6 +100,19 @@ describe('fetchOrders', () => {
     expect(url).toContain('orderby=date')
     expect(url).not.toContain('orderby=modified')
   })
+
+  // The guard that stops a future call site inside this loop being added
+  // without a timeout — one unresponsive store must never spend the budget of
+  // every store waiting behind it.
+  it('gives every request a signal', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchOrders(CREDS, {})
+
+    const opts = fetchMock.mock.calls[0][1] as RequestInit
+    expect(opts.signal).toBeInstanceOf(AbortSignal)
+  })
 })
 
 describe('fetchCoupons', () => {
@@ -178,6 +191,43 @@ describe('bounded pulls', () => {
     // Never zero or negative — an already-expired budget must still be a valid
     // timeout, and the page loop is what actually stops.
     expect(requestBudgetMs({ deadline: now - 10_000 }, now)).toBe(1)
+  })
+
+  // requestBudgetMs deliberately leaves the LAST request only whatever time is
+  // left of the deadline — sometimes a couple hundred ms — so a timeout here is
+  // this clamp's NORMAL outcome. Discarding the pages already fetched would
+  // turn a merely-slow store into a reported failure with zero progress.
+  it('returns the pages already fetched when a request times out, instead of throwing', async () => {
+    const timeout = Object.assign(new Error('The operation was aborted due to timeout'), {
+      name: 'TimeoutError',
+    })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(page(100))
+      .mockResolvedValueOnce(page(100))
+      .mockRejectedValueOnce(timeout)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { orders, hasMore } = await fetchOrders(CREDS, {
+      modifiedAfter: new Date('2026-07-01T10:00:00Z'),
+    })
+
+    expect(orders).toHaveLength(200)
+    expect(hasMore).toBe(true)
+  })
+
+  // Only a timeout is a stopping condition. A real network failure must still
+  // surface as a genuine failure rather than be silently reported as progress.
+  it('still throws on a non-timeout failure', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(page(100))
+      .mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND shop.example'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      fetchOrders(CREDS, { modifiedAfter: new Date('2026-07-01T10:00:00Z') }),
+    ).rejects.toThrow(/ENOTFOUND/)
   })
 })
 
