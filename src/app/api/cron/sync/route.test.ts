@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // The real stores are never called here; we test the guard and the reporting.
 const syncAllShops = vi.fn()
-vi.mock('@/lib/woo/sync', () => ({ syncAllShops: () => syncAllShops() }))
+vi.mock('@/lib/woo/sync', () => ({ syncAllShops: (...args: unknown[]) => syncAllShops(...args) }))
 
 // Nor is the real currency API: the route tops up FX rates best-effort after a
 // sync, and a unit test must not depend on a third-party service being up.
@@ -78,6 +78,19 @@ describe('the scheduled sync endpoint', () => {
   it('claims the full platform duration, never less', async () => {
     const { maxDuration } = await import('./route')
     expect(maxDuration).toBe(300)
+  })
+
+  // Without a deadline the run keeps starting stores until the platform kills
+  // it mid-store, which is the shape of the original bug.
+  it('bounds the stores well inside the function ceiling', async () => {
+    process.env.CRON_SECRET = 'shhh'
+    const before = Date.now()
+    await call('Bearer shhh')
+
+    const [opts] = syncAllShops.mock.calls[0] as [{ deadline: number }]
+    expect(opts.deadline).toBeGreaterThanOrEqual(before + 240_000)
+    // Comfortably under maxDuration, leaving room for the ads and rates after.
+    expect(opts.deadline).toBeLessThan(before + 300_000)
   })
 })
 

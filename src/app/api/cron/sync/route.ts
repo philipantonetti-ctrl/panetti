@@ -17,6 +17,14 @@ import { db } from '@/lib/db'
 export const maxDuration = 300
 
 /**
+ * The stores stop here, leaving the rest of the 300s ceiling for the ad sync and
+ * the rate top-up that follow. A store cut off by this deadline is not an error:
+ * it stored what it fetched, moved its watermark to match, and goes to the front
+ * of the next run.
+ */
+const SHOPS_DEADLINE_MS = 240_000
+
+/**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
  * dashboard see new sales without anyone pressing a button.
  *
@@ -38,7 +46,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Not allowed' }, { status: 401 })
   }
 
-  const results = await syncAllShops()
+  const results = await syncAllShops({ deadline: Date.now() + SHOPS_DEADLINE_MS })
   const failed = results.filter((r) => !r.ok).map((r) => r.shopName)
 
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts

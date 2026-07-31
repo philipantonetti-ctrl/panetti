@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { syncShop } from './sync'
+import { syncAllShops, syncShop } from './sync'
 import { encryptSecret } from '../secrets'
 import { db } from '../db'
 
@@ -547,5 +547,73 @@ describe('draining a backlog', () => {
     const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
     expect(after.lastSyncAt!.toISOString()).toBe(watermark.toISOString())
     expect(after.lastError).toContain('cannot move past')
+  })
+})
+
+describe('rotation', () => {
+  it('serves the longest-ignored store first', async () => {
+    const fresh = await connectedShop('[sync-test] rot fresh')
+    const stale = await connectedShop('[sync-test] rot stale')
+    await db.shop.update({
+      where: { id: fresh.id },
+      data: { lastSyncAt: new Date('2026-07-01T00:00:00Z'), lastRunAt: new Date('2026-07-31T00:00:00Z') },
+    })
+    await db.shop.update({
+      where: { id: stale.id },
+      data: { lastSyncAt: new Date('2026-07-01T00:00:00Z'), lastRunAt: new Date('2026-07-02T00:00:00Z') },
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => emptyPage()))
+    const results = await syncAllShops()
+
+    const ours = results.filter((r) => r.shopName.startsWith('[sync-test] rot'))
+    expect(ours[0].shopName).toBe('[sync-test] rot stale')
+  })
+
+  // Never run = most stale of all, and Postgres sorts nulls LAST by default.
+  it('puts a never-run store at the very front', async () => {
+    const never = await connectedShop('[sync-test] rot never')
+    expect(never.lastRunAt).toBeNull() // the precondition this test rests on
+    const ran = await connectedShop('[sync-test] rot ran')
+    await db.shop.update({
+      where: { id: ran.id },
+      data: { lastSyncAt: new Date('2026-07-01T00:00:00Z'), lastRunAt: new Date('2026-07-02T00:00:00Z') },
+    })
+
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => emptyPage()))
+    const results = await syncAllShops()
+
+    const ours = results.filter((r) => r.shopName.startsWith('[sync-test] rot'))
+    expect(ours[0].shopName).toBe('[sync-test] rot never')
+  })
+
+  it('starts no store once the deadline has passed', async () => {
+    await connectedShop('[sync-test] deadline a')
+    await connectedShop('[sync-test] deadline b')
+
+    const fetchMock = vi.fn().mockImplementation(async () => emptyPage())
+    vi.stubGlobal('fetch', fetchMock)
+
+    const results = await syncAllShops({ deadline: Date.now() - 1 })
+
+    expect(results.filter((r) => r.shopName.startsWith('[sync-test] deadline'))).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // One store failing must never cost the stores behind it their turn.
+  it('carries on to the next store after one fails', async () => {
+    await connectedShop('[sync-test] pair one')
+    await connectedShop('[sync-test] pair two')
+
+    let call = 0
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
+      call++
+      return call === 1 ? new Response('down', { status: 500 }) : emptyPage()
+    }))
+
+    const results = await syncAllShops()
+    const ours = results.filter((r) => r.shopName.startsWith('[sync-test] pair'))
+    expect(ours).toHaveLength(2)
+    expect(ours.some((r) => r.ok)).toBe(true)
   })
 })

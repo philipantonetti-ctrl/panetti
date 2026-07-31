@@ -415,9 +415,32 @@ export async function syncShop(
   }
 }
 
-export async function syncAllShops(): Promise<SyncResult[]> {
-  const shops = await db.shop.findMany({ where: { active: true, wooUrl: { not: null } } })
+/**
+ * Every active, connected store, longest-ignored first.
+ *
+ * The ordering is the whole point. With no `orderBy` nothing gave a store that
+ * missed out last run any priority on the next one, so once the work outgrew the
+ * budget the stores at the far end simply stopped being reached. Ordered by
+ * `lastRunAt`, a run that serves K stores serves every store within ⌈N/K⌉ runs,
+ * whatever N is — and because `recordRun` moves `lastRunAt` even when a store
+ * fails, a permanently broken store costs one slot per run instead of holding
+ * the front of the queue forever.
+ *
+ * Without a deadline this runs to completion, which is what the tests and any
+ * one-off caller want. The scheduled route always passes one.
+ */
+export async function syncAllShops(opts: { deadline?: number } = {}): Promise<SyncResult[]> {
+  const shops = await db.shop.findMany({
+    where: { active: true, wooUrl: { not: null } },
+    orderBy: { lastRunAt: { sort: 'asc', nulls: 'first' } },
+    select: { id: true },
+  })
   const results: SyncResult[] = []
-  for (const shop of shops) results.push(await syncShop(shop.id))
+  for (const shop of shops) {
+    // Checked before the store, not after: starting one we cannot finish takes
+    // the budget from a store that is already further behind.
+    if (opts.deadline !== undefined && Date.now() >= opts.deadline) break
+    results.push(await syncShop(shop.id, opts))
+  }
   return results
 }
