@@ -828,23 +828,19 @@ function fullModifiedPage(n: number, startId: number) {
 }
 
 /**
- * One full page, delivered slowly enough that the caller's deadline has passed
- * by the time the loop would ask for a second.
+ * A partial pull, bounded to one page.
  *
- * The bounding is not incidental. A mock that returns full pages forever runs
- * the pull to its 50-page ceiling, and `storeOrder` then writes 5,000 orders one
- * at a time — minutes per test. A partial pull is a partial pull whether it
- * stopped at page 2 or page 50, so one page proves exactly the same thing.
- * The stubbed fetch ignores the abort signal, so the sleep always completes.
+ * The bounding is not incidental. A mock returning full pages forever runs the
+ * pull to its 50-page ceiling and `storeOrder` then writes 5,000 orders one at a
+ * time — minutes per test. A partial pull is a partial pull whether it stopped
+ * at page 2 or page 50, so one page proves the same thing.
+ *
+ * Bounded by `maxPages` rather than by a deadline on purpose: a deadline is set
+ * before `syncShop` does its own database reads, so on a loaded machine it can
+ * expire before the FIRST fetch and the test then proves nothing. `maxPages` is
+ * the same test-only seam `backfillPages` already provides for the other path.
  */
-function onePageThenOutOfTime(body: unknown) {
-  return vi.fn().mockImplementation(async () => {
-    await new Promise((r) => setTimeout(r, 200))
-    return jsonPage(body)
-  })
-}
-/** Paired with the helper above: comfortably shorter than its sleep. */
-const SOON = () => Date.now() + 50
+const onePage = (body: unknown) => vi.fn().mockImplementation(async () => jsonPage(body))
 
 describe('draining a backlog', () => {
   it('advances the watermark to the last order it processed', async () => {
@@ -854,9 +850,9 @@ describe('draining a backlog', () => {
       data: { lastSyncAt: new Date('2026-06-01T00:00:00Z') },
     })
 
-    vi.stubGlobal('fetch', onePageThenOutOfTime(fullModifiedPage(100, 0)))
+    vi.stubGlobal('fetch', onePage(fullModifiedPage(100, 0)))
 
-    const result = await syncShop(shop.id, { deadline: SOON() })
+    const result = await syncShop(shop.id, { maxPages: 1 })
 
     // It is NOT a failure. It is progress with more to come.
     expect(result.ok).toBe(true)
@@ -878,9 +874,9 @@ describe('draining a backlog', () => {
       data: { lastSyncAt: new Date('2026-06-01T00:00:00Z') },
     })
 
-    vi.stubGlobal('fetch', onePageThenOutOfTime(fullModifiedPage(100, 0)))
+    vi.stubGlobal('fetch', onePage(fullModifiedPage(100, 0)))
 
-    const result = await syncShop(shop.id, { deadline: SOON() })
+    const result = await syncShop(shop.id, { maxPages: 1 })
     expect(result.error ?? '').not.toContain('5,000')
   })
 
@@ -895,9 +891,9 @@ describe('draining a backlog', () => {
     // The guard only matters on a PARTIAL pull: a completed one moves its
     // watermark to the fetch time and needs no resume point, so this must stop
     // early to be testing anything at all.
-    vi.stubGlobal('fetch', onePageThenOutOfTime(fullModifiedPage(100, 0).reverse()))
+    vi.stubGlobal('fetch', onePage(fullModifiedPage(100, 0).reverse()))
 
-    const result = await syncShop(shop.id, { deadline: SOON() })
+    const result = await syncShop(shop.id, { maxPages: 1 })
 
     expect(result.ok).toBe(false)
     const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
@@ -931,14 +927,19 @@ describe('draining a backlog', () => {
 Run: `npx vitest run src/lib/woo/sync.test.ts -t "draining a backlog"`
 Expected: FAIL — the first test gets `ok: false` and the over-5,000 error.
 
-- [ ] **Step 3: Accept a deadline and pass it to the pull**
+- [ ] **Step 3: Accept a deadline and a page bound, and pass both to the pull**
 
 In `src/lib/woo/sync.ts`, change the `syncShop` signature (line 196-199):
 
 ```ts
 export async function syncShop(
   shopId: string,
-  opts: { backfillPages?: number; deadline?: number } = {},
+  /**
+   * `backfillPages` bounds a first-sync chunk, `maxPages` an incremental one —
+   * the same seam for the other half of the function, and the only way a test
+   * can produce a partial incremental pull without fetching 5,000 orders.
+   */
+  opts: { backfillPages?: number; maxPages?: number; deadline?: number } = {},
 ): Promise<SyncResult> {
 ```
 
@@ -950,9 +951,16 @@ and the `fetchOrders` call (lines 234-239):
       creds,
       firstSync
         ? { createdAfter, maxPages: opts.backfillPages ?? BACKFILL_PAGES, deadline: opts.deadline }
-        : { modifiedAfter: new Date(shop.lastSyncAt!.getTime() - OVERLAP), deadline: opts.deadline },
+        : {
+            modifiedAfter: new Date(shop.lastSyncAt!.getTime() - OVERLAP),
+            maxPages: opts.maxPages,
+            deadline: opts.deadline,
+          },
     )
 ```
+
+`maxPages: undefined` leaves `fetchOrders` on its own 50-page default, so
+production behaviour is unchanged.
 
 - [ ] **Step 4: Replace both partial-pull exits with one**
 
