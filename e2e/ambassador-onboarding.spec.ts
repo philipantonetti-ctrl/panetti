@@ -38,6 +38,10 @@ test('an admin creates an ambassador, who claims a login and sees only their own
   // A code belongs to a store: choose one, which unlocks the code field.
   await form.getByLabel('Store').selectOption({ index: 1 })
   await form.getByPlaceholder('Discount code').fill(CODE)
+  // A product is required now, and the list is that store's own products.
+  const ticks = page.getByTestId('product-ticks')
+  await expect(ticks).toBeVisible()
+  await ticks.getByRole('checkbox').first().check()
   await form.getByRole('button', { name: 'Add ambassador' }).click()
 
   const row = page.getByTestId('ambassador-row').filter({ hasText: EMAIL })

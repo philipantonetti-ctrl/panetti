@@ -3,15 +3,21 @@
 import { useState } from 'react'
 import { SearchableSelect } from '@/components/SearchableSelect'
 
-export type CatalogueItem = { sku: string; name: string }
+/** A product, and every shop that sells it, so a picker can narrow to one. */
+export type CatalogueItem = { sku: string; name: string; shopIds: string[] }
 
 /** One gift as the form describes it, before anything has been written down. */
 export type GiftDraft = {
   sku: string
   name: string
-  quantity: number
   receivedAt: string // yyyy-mm-dd
   note?: string
+}
+
+/** The products a given store sells, in catalogue order. */
+export function forShop(catalogue: CatalogueItem[], shopIds: string[]): CatalogueItem[] {
+  if (shopIds.length === 0) return []
+  return catalogue.filter((c) => c.shopIds.some((id) => shopIds.includes(id)))
 }
 
 const INPUT =
@@ -52,7 +58,6 @@ export function GiftFields({
   onAdd: (gift: GiftDraft) => Promise<boolean> | boolean
 }) {
   const [sku, setSku] = useState('')
-  const [quantity, setQuantity] = useState('1')
   const [receivedAt, setReceivedAt] = useState(today())
   const [note, setNote] = useState('')
 
@@ -66,52 +71,33 @@ export function GiftFields({
     const accepted = await onAdd({
       sku: chosen.sku,
       name: chosen.name,
-      quantity: Number(quantity),
       receivedAt,
       note: note.trim() || undefined,
     })
     if (accepted) {
       setSku('')
-      setQuantity('1')
       setNote('')
     }
   }
 
   return (
     <>
-      {/* minmax(0,1fr), never a bare 1fr: a grid track's automatic minimum is
-          its content's min-width, and an input's is wide enough to push this
-          row past its container and raise a horizontal scrollbar. */}
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_5.5rem]">
-        <div>
-          <span className={LABEL}>Product</span>
-          <div className="mt-1">
-            <SearchableSelect
-              value={sku}
-              onChange={setSku}
-              options={catalogue.map((c) => ({ value: c.sku, label: c.name }))}
-              ariaLabel="Product"
-              placeholder="Pick a product"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label htmlFor={`${idPrefix}-quantity`} className={LABEL}>
-            Quantity
-          </label>
-          <input
-            id={`${idPrefix}-quantity`}
-            type="number"
-            min="1"
-            step="1"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            className={`num mt-1 ${INPUT}`}
+      <div>
+        <span className={LABEL}>Product</span>
+        <div className="mt-1">
+          <SearchableSelect
+            value={sku}
+            onChange={setSku}
+            options={catalogue.map((c) => ({ value: c.sku, label: c.name }))}
+            ariaLabel="Product"
+            placeholder={catalogue.length === 0 ? 'No products for their store' : 'Pick a product'}
           />
         </div>
       </div>
 
+      {/* minmax(0,1fr), never a bare 1fr: a grid track's automatic minimum is
+          its content's min-width, and an input's is wide enough to push this
+          row past its container and raise a horizontal scrollbar. */}
       <div className="mt-2.5 grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)]">
         <div>
           <label htmlFor={`${idPrefix}-date`} className={LABEL}>
@@ -147,7 +133,7 @@ export function GiftFields({
         <button
           type="button"
           onClick={add}
-          disabled={disabled || !chosen || Number(quantity) < 1}
+          disabled={disabled || !chosen}
           className="rounded-[var(--radius-control)] border border-line px-3 py-2 text-xs font-semibold text-ink transition-colors duration-150 hover:bg-panel disabled:opacity-60"
         >
           {pendingLabel ?? addLabel}

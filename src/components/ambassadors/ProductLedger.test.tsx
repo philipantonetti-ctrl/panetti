@@ -4,8 +4,8 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { ProductLedger, type Gift, type CatalogueItem } from './ProductLedger'
 
 const CATALOGUE: CatalogueItem[] = [
-  { sku: 'MACBL661', name: 'Advanced Comfort' },
-  { sku: 'MPX-001', name: 'Pro X' },
+  { sku: 'MACBL661', name: 'Advanced Comfort', shopIds: ['s1'] },
+  { sku: 'MPX-001', name: 'Pro X', shopIds: ['s1', 's2'] },
 ]
 
 const GIFTS: Gift[] = [
@@ -80,8 +80,6 @@ describe('ProductLedger', () => {
     // SearchableSelect is a button that opens a list of buttons.
     fireEvent.click(screen.getByRole('button', { name: 'Product' }))
     fireEvent.click(screen.getByRole('button', { name: 'Advanced Comfort' }))
-
-    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '3' } })
     fireEvent.click(screen.getByRole('button', { name: /Add product/ }))
 
     expect(send).toHaveBeenCalledWith(
@@ -92,8 +90,31 @@ describe('ProductLedger', () => {
         ambassadorId: 'amb-1',
         sku: 'MACBL661',
         name: 'Advanced Comfort',
-        quantity: 3,
       }),
     )
+  })
+
+  it('never asks for a quantity, because a gift is one product', () => {
+    // Someone who also got accessories ticks the accessories; they do not type
+    // a 3 against the chair. The server defaults the column to 1.
+    const { send } = setup()
+    expect(screen.queryByLabelText('Quantity')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Product' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced Comfort' }))
+    fireEvent.click(screen.getByRole('button', { name: /Add product/ }))
+
+    const body = send.mock.calls[0][3] as Record<string, unknown>
+    expect('quantity' in body).toBe(false)
+  })
+
+  it('still shows a quantity that is greater than one, so old records stay true', () => {
+    setup() // the fixture gift carries 2
+    expect(screen.getByText(/×2/)).toBeTruthy()
+  })
+
+  it('shows no ×1 on a single-product gift', () => {
+    setup([{ id: 'g9', sku: 'MPX-001', name: 'Pro X', quantity: 1, receivedAt: '2026-03-12T00:00:00.000Z', note: null }])
+    expect(screen.queryByText(/×1/)).toBeNull()
   })
 })

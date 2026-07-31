@@ -50,11 +50,12 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   // second run onward.
   await page.getByRole('button', { name: 'Mazzetti Lite Comfort - Massasjestol (Beige)', exact: true }).click()
 
-  const qty = page.getByLabel('Quantity')
-  await qty.fill('2')
+  // No quantity box any more: a gift is one product, and an ambassador who
+  // also got accessories records the accessories.
+  await expect(page.getByLabel('Quantity')).toHaveCount(0)
   await page.getByLabel('Note').fill('sent for the summer campaign')
-  // exact: true, or this also matches the create form's "+ Add products they
-  // got from us" toggle sitting above the modal.
+  // exact: true, because Playwright's getByRole name matching is substring by
+  // default and the page carries other buttons containing these words.
   await page.getByRole('button', { name: 'Add product', exact: true }).click()
 
   // The modal stays open and the ledger refreshes in place.
@@ -80,7 +81,7 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   await expect(johan).not.toContainText('Mazzetti Lite Comfort - Massasjestol (Beige)')
 })
 
-test('an admin records products while creating the ambassador', async ({ page }) => {
+test('an admin ticks products while creating the ambassador', async ({ page }) => {
   const NAME = 'E2E Create With Products'
   const EMAIL = 'e2e-create-products@example.test'
   const CODE = 'E2ECREATE1'
@@ -103,35 +104,55 @@ test('an admin records products while creating the ambassador', async ({ page })
   await removeIfPresent()
 
   const form = page.getByTestId('add-ambassador')
+  const submit = form.getByRole('button', { name: 'Add ambassador' })
+
+  // The section is there without being asked for, and says what it wants.
+  await expect(page.getByText(/Products they got from us/).first()).toBeVisible()
+  await expect(page.getByText(/Pick a store first/)).toBeVisible()
+
   await form.getByLabel('Name').fill(NAME)
   await form.getByLabel('Email').fill(EMAIL)
   await form.getByLabel('Store').selectOption({ label: 'Panetti Norway' })
   await form.getByLabel('Discount code').fill(CODE)
 
-  // The fields are collapsed until asked for — that is the point of the toggle.
-  await expect(page.getByRole('button', { name: 'Add to list' })).toHaveCount(0)
-  await page.getByRole('button', { name: '+ Add products they got from us' }).click()
+  // Everything else is filled, so only the missing product is holding it shut.
+  await expect(submit).toBeDisabled()
 
-  // exact: true, because Playwright's getByRole name matching is SUBSTRING by
-  // default and a bare 'Product' also matches 'Add products they got from us'.
-  await page.getByRole('button', { name: 'Product', exact: true }).click()
-  await page.getByRole('button', { name: 'Massasjepistol Pro X', exact: true }).click()
-  await page.getByLabel('Quantity').fill('2')
-  await page.getByRole('button', { name: 'Add to list' }).click()
+  const ticks = page.getByTestId('product-ticks')
+  await expect(ticks).toBeVisible()
+  await ticks.getByRole('checkbox', { name: 'Massasjepistol Pro X' }).check()
+  await ticks.getByRole('checkbox', { name: 'Mazzetti Lite Comfort - Massasjestol (Beige)' }).check()
 
-  // Listed, but deliberately not saved yet: there is no ambassador to hang it on.
-  await expect(page.getByRole('button', { name: 'Remove item 1: Massasjepistol Pro X' })).toBeVisible()
+  await expect(submit).toBeEnabled()
+  await submit.click()
 
-  await form.getByRole('button', { name: 'Add ambassador' }).click()
-
+  // Both ticked products land on the roster, and neither wears a quantity.
   const row = page.getByTestId('ambassador-row').filter({ hasText: NAME })
   await expect(row).toContainText('Massasjepistol Pro X')
-  await expect(row).toContainText('×2')
-
-  // The form resets and collapses again.
-  await expect(page.getByRole('button', { name: 'Add to list' })).toHaveCount(0)
+  await expect(row).toContainText('Mazzetti Lite Comfort - Massasjestol (Beige)')
+  await expect(row).not.toContainText('×1')
 
   await removeIfPresent()
+})
+
+test('the product list follows the store that was chosen', async ({ page }) => {
+  await signIn(page, 'admin@ecom.test')
+  await page.goto('/ambassadors')
+
+  const form = page.getByTestId('add-ambassador')
+  const ticks = page.getByTestId('product-ticks')
+
+  await form.getByLabel('Store').selectOption({ label: 'Panetti Norway' })
+  await expect(ticks).toBeVisible()
+  const norway = await ticks.getByRole('checkbox').count()
+  expect(norway).toBeGreaterThan(0)
+
+  // Ticking, then switching store, must not carry the choice across: those
+  // products belong to the store that offered them.
+  await ticks.getByRole('checkbox').first().check()
+  await form.getByLabel('Store').selectOption({ label: 'Panetti Sweden' })
+  await expect(ticks.getByRole('checkbox', { checked: true })).toHaveCount(0)
+  await expect(form.getByRole('button', { name: 'Add ambassador' })).toBeDisabled()
 })
 
 test('an ambassador sees what we sent them, and cannot change it', async ({ page }) => {

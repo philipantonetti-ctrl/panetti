@@ -59,7 +59,8 @@ export function ProductLedger({
                     wraps must not leave the date stranded on its own line
                     behind an orphaned separator. */}
                 <span className="whitespace-nowrap">
-                  ×{g.quantity} · {g.receivedAt.slice(0, 10)}
+                  {g.quantity > 1 ? `×${g.quantity} · ` : ''}
+                  {g.receivedAt.slice(0, 10)}
                 </span>
                 {g.note ? ` · ${g.note}` : ''}
               </span>

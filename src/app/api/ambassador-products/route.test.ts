@@ -167,7 +167,40 @@ describe('GET /api/ambassador-products', () => {
       data: { shopId: shopB.id, externalId: '1', sku: 'DUP-1', name: 'Duplicated Chair' },
     })
 
-    const body = (await (await GET()).json()) as { catalogue: { sku: string }[] }
-    expect(body.catalogue.filter((c) => c.sku === 'DUP-1')).toHaveLength(1)
+    const body = (await (await GET()).json()) as {
+      catalogue: { sku: string; name: string; shopIds: string[] }[]
+    }
+    const rows = body.catalogue.filter((c) => c.sku === 'DUP-1')
+    expect(rows).toHaveLength(1)
+
+    // One row, but it names BOTH shops, which is what lets the form narrow the
+    // picker to the store being chosen without splitting one chair into two.
+    expect([...rows[0].shopIds].sort()).toEqual([shopA.id, shopB.id].sort())
+  })
+
+  it('reports only the shop that actually sells a single-shop product', async () => {
+    const only = await db.shop.create({ data: { name: `Only ${MARK}`, currency: 'DKK' } })
+    const other = await db.shop.create({ data: { name: `Other ${MARK}`, currency: 'SEK' } })
+    await db.product.create({
+      data: { shopId: only.id, externalId: '9', sku: 'SOLO-1', name: 'Solo Chair' },
+    })
+
+    const body = (await (await GET()).json()) as {
+      catalogue: { sku: string; shopIds: string[] }[]
+    }
+    const row = body.catalogue.find((c) => c.sku === 'SOLO-1')
+    expect(row!.shopIds).toEqual([only.id])
+    expect(row!.shopIds).not.toContain(other.id)
+  })
+
+  it('defaults quantity to 1 when the form does not send one', async () => {
+    await asAdmin()
+    const res = await post({
+      ambassadorId, sku: 'QTY-DEFAULT-1', name: 'Chair', receivedAt: '2026-03-12',
+    })
+    expect(res.status).toBe(200)
+
+    const row = await db.ambassadorProduct.findFirst({ where: { sku: 'QTY-DEFAULT-1' } })
+    expect(row!.quantity).toBe(1)
   })
 })

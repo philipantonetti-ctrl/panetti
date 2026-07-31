@@ -14,7 +14,9 @@ import { utcDay } from '@/lib/dates'
 const Gift = z.object({
   sku: z.string().trim().min(1, 'Pick a product'),
   name: z.string().trim().min(1, 'Pick a product'),
-  quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+  // Optional and defaulted: the form no longer asks, because a gift is one
+  // product and an ambassador who also got accessories ticks the accessories.
+  quantity: z.number().int().min(1, 'Quantity must be at least 1').optional().default(1),
   receivedAt: z.string().min(1, 'Pick the date they got it'),
   note: z.string().trim().max(200, 'Keep the note under 200 characters').optional(),
 })
