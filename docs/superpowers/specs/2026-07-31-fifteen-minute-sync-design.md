@@ -218,6 +218,39 @@ stop.
 without a suffix, so it is parsed as `new Date(o.date_modified_gmt + 'Z')`,
 matching how `mapOrder` already handles `date_created_gmt`.
 
+### Known limitation: offset paging over a mutable sort key
+
+Found by the whole-branch review, deliberately deferred, recorded here so nobody
+rediscovers it as a mystery.
+
+Sorting on `modified` sorts on a key that **changes while we page**. The pull
+uses offset pagination (`page=N&per_page=100`). If an order on page 1 is edited
+during the second or so between two page fetches, its `modified` becomes now and
+it moves to the end of the ascending order — every later row shifts down one, and
+the row that was first on page 2 is never returned. The monotonicity guard cannot
+see it, because the sequence it does receive is still non-decreasing. The
+watermark then advances past that row's stamp and the order is missed until
+something modifies it again.
+
+`orderby=date` was immune to this by accident: creation date never changes, so a
+re-modified order re-enters the filtered set at an early position and produces a
+harmless duplicate rather than a skip. We traded a safe failure mode for an
+unsafe one, and that qualifies the claim above that draining never skips.
+
+Why it is deferred rather than fixed: it needs a modification landing inside the
+gap between two page fetches of a **multi-page** pull, and most incremental
+windows are a single page — multi-page pulls happen during catch-up. The missed
+row is also, by construction, an order that was just modified, so the webhook
+stream carries it at that moment. That last point is reassuring but circular
+(the scheduled sync is documented as the webhooks' safety net), so this is a
+real exposure, not a non-issue.
+
+The fix, when it is wanted: keyset paging on the incremental path. Instead of
+incrementing `page`, re-issue with `modified_after = <last stamp> - 1s` and
+`page=1`. A re-modified row then simply reappears later and the idempotent
+upsert absorbs it. The one-second step handles ties, and more than 100 orders
+sharing one second is already the stalled-store condition above.
+
 ### The drain validates its own precondition
 
 Advancing to the last row is only safe if the store honoured
