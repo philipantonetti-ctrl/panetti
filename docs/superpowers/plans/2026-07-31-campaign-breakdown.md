@@ -449,12 +449,23 @@ describe('fetchGoogleBreakdown', () => {
       headers: { 'Content-Type': 'application/json' },
     })
 
-  /** The GAQL actually sent, from the request body. */
+  /**
+   * The GAQL actually sent — from the SECOND call, not the first.
+   *
+   * `searchStream` calls `googleAccessToken` before it queries anything, so
+   * call 0 is the token exchange and call 1 is the query. Every pre-existing
+   * test in this file already indexes `calls[1]` for the same reason
+   * (`google.test.ts:121,140,176`). Reading `calls[0]` fails with "Google
+   * sign-in failed" rather than an assertion error, which is a confusing way
+   * to learn this.
+   */
   const sentQuery = (fetchMock: { mock: { calls: unknown[][] } }) =>
-    JSON.parse(String((fetchMock.mock.calls[0][1] as { body: string }).body)).query as string
+    JSON.parse(String((fetchMock.mock.calls[1][1] as { body: string }).body)).query as string
 
   it('reads campaigns from the campaign resource', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(reply([]))
+    // A Response body reads once, so chain the two calls rather than sharing
+    // one resolved value: first the token exchange, then the query.
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenReply()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(CREDS, { level: 'campaign', customerId: '111' }, FROM, TO)
@@ -467,7 +478,9 @@ describe('fetchGoogleBreakdown', () => {
   })
 
   it('reads ad groups belonging to one campaign', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(reply([]))
+    // A Response body reads once, so chain the two calls rather than sharing
+    // one resolved value: first the token exchange, then the query.
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenReply()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(
@@ -483,7 +496,9 @@ describe('fetchGoogleBreakdown', () => {
   })
 
   it('reads ads belonging to one ad group', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(reply([]))
+    // A Response body reads once, so chain the two calls rather than sharing
+    // one resolved value: first the token exchange, then the query.
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenReply()).mockResolvedValueOnce(reply([]))
     vi.stubGlobal('fetch', fetchMock)
 
     await fetchGoogleBreakdown(CREDS, { level: 'ad', customerId: '111', parentId: '888' }, FROM, TO)
