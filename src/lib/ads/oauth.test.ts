@@ -20,6 +20,32 @@ describe('auth URLs', () => {
     expect(google).toContain('access_type=offline')
     expect(google).toContain('prompt=consent')
   })
+
+  /**
+   * The adwords scope alone cannot read the OpenID userinfo endpoint, and
+   * that endpoint is where `exchangeGoogleCode` gets the connection's label.
+   * Google answers 401, the `.catch` below it swallows the failure, and every
+   * Google login comes back labelled "Google Ads".
+   *
+   * That is not cosmetic. The callback dedupes on `{ provider, label }`
+   * (api/ads/oauth/[provider]/callback), so one constant label means a second
+   * Google login OVERWRITES the first one's refresh token, and the accounts
+   * still pointing at that connection start syncing with a login that may not
+   * reach them.
+   *
+   * Google's own client library requests exactly these three beside adwords.
+   */
+  it('asks for the identity scopes the connection label depends on', () => {
+    const scopes = (
+      new URL(buildGoogleAuthUrl('app-2', REDIRECT, 'st-2')).searchParams.get('scope') ?? ''
+    ).split(' ')
+
+    expect(scopes).toContain('openid')
+    expect(scopes).toContain('https://www.googleapis.com/auth/userinfo.email')
+    expect(scopes).toContain('https://www.googleapis.com/auth/userinfo.profile')
+    // Still there: the identity scopes are additions, not a replacement.
+    expect(scopes).toContain('https://www.googleapis.com/auth/adwords')
+  })
 })
 
 // ensureMetaApp was tested here at length: the domain write, the "healed"

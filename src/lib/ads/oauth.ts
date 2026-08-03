@@ -28,13 +28,28 @@ async function readJson<T>(res: Response): Promise<T & { error?: { message?: str
   return (await res.json().catch(() => ({}))) as T & { error?: { message?: string } }
 }
 
+/**
+ * adwords reads the ad accounts. The other three are what the OpenID userinfo
+ * endpoint needs, and `exchangeGoogleCode` below reads the connection's label
+ * from it — with adwords alone Google answers 401 there and every Google login
+ * lands as "Google Ads". The callback dedupes connections on that label, so a
+ * constant one lets a second Google login overwrite the first one's refresh
+ * token. Google's own client library sends this same set.
+ */
+const GOOGLE_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/adwords',
+].join(' ')
+
 export function buildGoogleAuthUrl(clientId: string, redirectUri: string, state: string): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     state,
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/adwords',
+    scope: GOOGLE_SCOPES,
     // Offline + consent: without both, Google hands back no refresh token.
     access_type: 'offline',
     prompt: 'consent',
