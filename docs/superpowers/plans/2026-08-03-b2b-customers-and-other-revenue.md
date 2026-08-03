@@ -681,7 +681,9 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
 - [ ] **Step 5: Run them to verify they fail**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: FAIL on all three — COGS comes back 242000, fees 2650, fulfillment 9900.
+Expected: FAIL on all three — COGS comes back 24200 (22000 × the EUR→USD rate
+of 1.1, because `convert()` multiplies by the *from* currency's rate), fees
+2650, fulfillment 9900.
 
 - [ ] **Step 6: Make the three changes in `engine.ts`**
 

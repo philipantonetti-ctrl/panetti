@@ -58,11 +58,20 @@ const line = item.quantity * (cost.costPerItem + cost.handlingCost)
 return conv(line, order)   // …but conv() converts from ORDER currency
 ```
 
-Put a EUR order on a NOK shop and a 500 NOK cost is read as 500 EUR, then
-converted — COGS lands roughly ten times too high and the order shows a large
-false loss. The same assumption sits in `fulfillmentOn()` (a `FulfillmentRate`
-is documented "minor units, shop currency" and is likewise converted from the
-order's) and is hand-copied into `src/app/api/orders/route.ts:176-189`.
+Put a EUR order on a NOK shop and a NOK cost is read as though it were EUR.
+`convert()` multiplies by the *from* currency's USD rate, so how wrong the
+answer is depends on which view you are in:
+
+| view | display currency | correct | buggy | error |
+|---|---|---|---|---|
+| One shop selected | NOK | 22000 (unconverted) | 22000 × 1.1 = 24200 | 10% too high |
+| Consolidated | USD | 22000 × 0.1 = 2200 | 22000 × 1.1 = 24200 | **11× too high** |
+
+The consolidated case is the headline Dashboard figure, and there the order
+shows a large false loss. The same assumption sits in `fulfillmentOn()` (a
+`FulfillmentRate` is documented "minor units, shop currency" and is likewise
+converted from the order's) and is hand-copied into
+`src/app/api/orders/route.ts:176-189`.
 
 We fix the assumption rather than avoid it. Storing the order converted was
 rejected: `prisma/schema.prisma:10-11` states the rule the whole product rests
