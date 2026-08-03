@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { formatMoney } from '@/lib/money'
-import { ToastContext } from '@/components/toast/useToast'
+import { useToast } from '@/components/toast/useToast'
 import type { Shop } from '@/components/filters/ShopFilter'
 
 export type Customer = {
@@ -39,11 +39,7 @@ const RECENT_DAYS = 90
 const day = (d: Date) => d.toISOString().slice(0, 10)
 
 export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
-  // useContext directly, not the useToast() hook: this page's own test renders
-  // B2bClient without a ToastProvider ancestor, and useToast() throws in that
-  // case. The one thing that must hold — the delete flow reporting its own
-  // outcome — does not depend on the toast being present.
-  const toast = useContext(ToastContext)
+  const toast = useToast()
   const [shopId, setShopId] = useState('') // '' = every shop
   const [customers, setCustomers] = useState<Customer[]>([])
   const [orders, setOrders] = useState<B2bOrder[]>([])
@@ -88,13 +84,18 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
   const noShops = shops.length === 0
 
   async function removeCustomer(c: Customer) {
-    const res = await fetch(`/api/b2b/customers/${c.id}`, { method: 'DELETE' }).catch(() => null)
-    if (!res?.ok) {
-      toast?.error((await res?.json().catch(() => null))?.error ?? 'Could not delete that customer')
-      return
+    try {
+      const res = await fetch(`/api/b2b/customers/${c.id}`, { method: 'DELETE' }).catch(() => null)
+      if (!res?.ok) {
+        toast.error((await res?.json().catch(() => null))?.error ?? 'Could not delete that customer')
+        return
+      }
+      toast.success(`${c.name} removed`)
+    } finally {
+      // Reload either way — the reload is what shows the true, post-delete
+      // state, matching ExpensesClient.remove()'s ground-truth reload.
+      load()
     }
-    toast?.success(`${c.name} removed`)
-    load()
   }
 
   return (
