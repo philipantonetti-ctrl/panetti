@@ -163,8 +163,11 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ order }, { headers: NO_STORE })
       } catch (e) {
-        const raced =
-          e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002' && attempt === 0
+        // Any attempt may race a collision, not just the first — the loop
+        // bound above (attempt < 2) is what caps the retries. Gating this on
+        // attempt === 0 left a second collision to re-throw uncaught into the
+        // generic 500 below, when it should fall through to the honest 409.
+        const raced = e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002'
         if (!raced) throw e
       }
     }

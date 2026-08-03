@@ -22,14 +22,15 @@ type Ctx = { params: Promise<{ id: string }> }
 
 /** Only orders this app owns. A synced order is not ours to rewrite. */
 const ownB2bOrder = (id: string) =>
-  db.order.findFirst({ where: { id, b2bCustomerId: { not: null } }, select: { id: true } })
+  db.order.findFirst({ where: { id, b2bCustomerId: { not: null } }, select: { id: true, shopId: true } })
 
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
     assertAdmin(await currentUser())
     const { id } = await params
 
-    if (!(await ownB2bOrder(id)))
+    const existing = await ownB2bOrder(id)
+    if (!existing)
       return NextResponse.json({ error: 'No such B2B order' }, { status: 404, headers: NO_STORE })
 
     const parsed = Body.safeParse(await req.json())
@@ -37,6 +38,18 @@ export async function PATCH(req: Request, { params }: Ctx) {
       return NextResponse.json({ error: 'Invalid order' }, { status: 400, headers: NO_STORE })
 
     const w = await buildOrderWrite(parsed.data)
+
+    // An order's shop is fixed at creation, exactly like a B2B customer's own
+    // shop: its history was reported under it. Refuse silently re-homing it —
+    // the update below never writes shopId, so without this check the order
+    // would keep its old shop while its customer and line items' products
+    // belong to another.
+    if (w.customer.shopId !== existing.shopId) {
+      return NextResponse.json(
+        { error: 'That customer belongs to a different shop. Delete this order and enter it under the right customer.' },
+        { status: 400, headers: NO_STORE },
+      )
+    }
 
     // Lines are rewritten, not diffed — storeOrder()'s rule. `number` and
     // `externalId` are deliberately untouched: an edit is the same order.

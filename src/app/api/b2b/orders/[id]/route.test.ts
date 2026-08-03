@@ -36,6 +36,7 @@ let otherShopId = ''
 let productId = ''
 let otherProductId = ''
 let customerId = ''
+let otherCustomerId = ''
 
 // FK-safe order: Order.b2bCustomer is onDelete: Restrict, so orders must go
 // before their B2B customers, which must go before the shops they belong to.
@@ -62,6 +63,9 @@ beforeEach(async () => {
       email: 'buyer@nordic.test',
       prices: { create: [{ productId, unitPrice: 8900 }] },
     },
+  })).id
+  otherCustomerId = (await db.b2bCustomer.create({
+    data: { shopId: otherShopId, name: `Other ${TAG}`, currency: 'SEK', vatPercent: 0 },
   })).id
 })
 afterEach(cleanup)
@@ -114,10 +118,20 @@ describe('PATCH /api/b2b/orders/[id]', () => {
     // earning, so free text here would quietly earn forever.
     await asAdmin()
     const id = await createOrder()
+    const before = await db.order.findUniqueOrThrow({ where: { id }, include: { items: true } })
+
     expect((await patch(id, {
       customerId, placedAt: '2026-07-01', status: 'invoiced-ish',
       lines: [{ productId, quantity: 1, unitPrice: 89 }],
     })).status).toBe(400)
+
+    // A validation failure must write nothing — the original 10-line order,
+    // not a half-applied rewrite with the rejected status ignored.
+    const after = await db.order.findUniqueOrThrow({ where: { id }, include: { items: true } })
+    expect(after.status).toBe(before.status)
+    expect(after.items).toHaveLength(before.items.length)
+    expect(after.items[0].quantity).toBe(before.items[0].quantity)
+    expect(after.grossSales).toBe(before.grossSales)
   })
 
   it('refuses to touch a webshop order', async () => {
@@ -132,6 +146,34 @@ describe('PATCH /api/b2b/orders/[id]', () => {
     expect((await patch(woo.id, {
       customerId, placedAt: '2026-07-01', lines: [{ productId, quantity: 1, unitPrice: 89 }],
     })).status).toBe(404)
+
+    // Still exactly the webshop order it was — no B2B fields leaked onto it.
+    const after = await db.order.findUniqueOrThrow({ where: { id: woo.id } })
+    expect(after.b2bCustomerId).toBeNull()
+    expect(after.grossSales).toBe(1000)
+    expect(after.number).toBe('9001')
+  })
+
+  it('refuses to move an order to a customer on a different shop', async () => {
+    // The update never writes shopId, so silently accepting this would strand
+    // the order on its old shop while its customer belongs to another —
+    // per-shop revenue is the whole point of this product.
+    await asAdmin()
+    const id = await createOrder()
+    const before = await db.order.findUniqueOrThrow({ where: { id } })
+
+    const res = await patch(id, {
+      customerId: otherCustomerId, placedAt: '2026-07-01',
+      lines: [{ productId: otherProductId, quantity: 1, unitPrice: 10 }],
+    })
+    expect(res.status).toBe(400)
+
+    const after = await db.order.findUniqueOrThrow({ where: { id } })
+    expect(after.shopId).toBe(before.shopId)
+    expect(after.b2bCustomerId).toBe(before.b2bCustomerId)
+    expect(after.grossSales).toBe(before.grossSales)
+    expect(after.netSales).toBe(before.netSales)
+    expect(after.total).toBe(before.total)
   })
 })
 

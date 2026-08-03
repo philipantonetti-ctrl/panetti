@@ -104,6 +104,37 @@ describe('POST /api/b2b/orders', () => {
     expect((await db.order.findFirstOrThrow({ where: { number: 'B-0002' } })).externalId).toBe('b2b:B-0002')
   })
 
+  it('meets a real collision with a clean 409, not a crash', async () => {
+    // nextB2bNumber() is a pure function of committed rows, so a collision it
+    // cannot see its way past will be proposed again, unchanged, on the
+    // retry — this deterministically exhausts both attempts, no mocking and
+    // no timing-dependent race required to trigger a real P2002.
+    //
+    // This row occupies "b2b:B-0001" without registering as a B2B order to
+    // nextB2bNumber(), which reads the `number` column, not externalId: an
+    // unparseable number contributes nothing to its max-scan, so it still
+    // computes "B-0001" — landing the real POST below on a genuine unique
+    // constraint collision on attempt 0, and again, identically, on attempt 1.
+    await asAdmin()
+    await db.order.create({
+      data: {
+        shopId, externalId: 'b2b:B-0001', number: 'CUSTOM-1', placedAt: new Date('2026-06-01'),
+        status: 'completed', currency: 'EUR', grossSales: 0, discountTotal: 0, netSales: 0,
+        shippingCharged: 0, taxTotal: 0, total: 0, b2bCustomerId: customerId,
+      },
+    })
+
+    const res = await post({ customerId, placedAt: '2026-07-01', lines: [{ productId, quantity: 1, unitPrice: 89 }] })
+
+    // Gating the P2002 catch to attempt === 0 would let this exact second
+    // collision escape uncaught into the generic 500 below — this is the
+    // scenario that turns that dead branch live.
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe('Could not pick an order number. Try again.')
+    // Both attempts failed cleanly: nothing besides the phantom row exists.
+    expect(await db.order.count({ where: { b2bCustomerId: customerId } })).toBe(1)
+  })
+
   it('fills in the customer name so the WooCommerce backfill never chases it', async () => {
     // backfillCustomers() hunts every order with customerName null and asks
     // WooCommerce who it was. For a b2b: id it would ask forever.
@@ -131,6 +162,27 @@ describe('POST /api/b2b/orders', () => {
     expect(item.unitPrice).toBe(8900)     // BEFORE discount, as mapOrder() stores it
     expect(item.lineNetTotal).toBe(80100) // after
     expect(item.sku).toBe('SKU-1')        // snapshot, from the product
+  })
+
+  it('converts an AMOUNT discount to minor units, same as every other money field', async () => {
+    // Every other accepted-order test here uses PERCENT, which never touches
+    // toMinor at all (it is a plain number, not money). If the AMOUNT branch
+    // of that ternary lost its toMinor — storing 20 instead of 2000 — this is
+    // the only test that would notice.
+    await asAdmin()
+    await post({
+      customerId, placedAt: '2026-07-01',
+      lines: [{ productId, quantity: 4, unitPrice: 245, discountValue: 20, discountKind: 'AMOUNT' }],
+    })
+
+    const saved = await db.order.findFirstOrThrow({ where: { b2bCustomerId: customerId } })
+    expect(saved.grossSales).toBe(98000)   // 4 x 245.00
+    expect(saved.discountTotal).toBe(8000) // 4 x 20.00 off each unit
+    expect(saved.netSales).toBe(90000)
+
+    const item = await db.orderItem.findFirstOrThrow({ where: { productId } })
+    expect(item.discountValue).toBe(2000) // minor units — 20.00, not 20
+    expect(item.discountKind).toBe('AMOUNT')
   })
 
   it('saves a new agreed price only when asked to', async () => {
