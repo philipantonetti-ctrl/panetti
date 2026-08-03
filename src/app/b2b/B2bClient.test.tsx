@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom/vitest'
 import { ToastProvider } from '@/components/toast/ToastProvider'
 import { formatMoney } from '@/lib/money'
@@ -116,5 +117,38 @@ describe('B2bClient', () => {
     const liveRow = screen.getByText('#1001').closest('tr') as HTMLElement
     const liveProfitCell = liveRow.querySelectorAll('td')[5]
     expect(liveProfitCell.textContent).toBe(formatMoney(12000, 'EUR'))
+  })
+
+  it('opens the add-customer form and warns about a currency we hold no rate for', async () => {
+    const user = userEvent.setup()
+    mockFetch([])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    await user.click(await screen.findByRole('button', { name: /add customer/i }))
+    expect(screen.getByRole('heading', { name: /add business customer/i })).toBeInTheDocument()
+
+    // The shop's own currency is the sensible default and IS convertible.
+    expect(screen.queryByText(/we have no exchange rate/i)).toBeNull()
+  })
+
+  it('shows the exchange-rate warning once a currency we hold no rate for is picked', async () => {
+    // Pairs with the test above: that one only proves the warning is absent
+    // for a convertible default, which a deleted warning block would also
+    // pass. This one proves the warning is wired to isConvertible by actually
+    // triggering it — AED is a real ISO currency but is not on the ECB list
+    // src/lib/currencies.ts holds rates for, so it must switch the warning on.
+    const user = userEvent.setup()
+    mockFetch([])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    await user.click(await screen.findByRole('button', { name: /add customer/i }))
+    await user.click(screen.getByRole('button', { name: 'Currency' }))
+    await user.type(screen.getByRole('textbox', { name: 'Search Currency' }), 'AED')
+    await user.click(await screen.findByRole('button', { name: /^AED\b/ }))
+
+    expect(await screen.findByText(/we have no exchange rate/i)).toBeInTheDocument()
+    // The warning must name the actual currency chosen, not a generic message
+    // that would read the same for any unconvertible code.
+    expect(screen.getByText('AED')).toBeInTheDocument()
   })
 })

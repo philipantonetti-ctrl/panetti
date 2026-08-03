@@ -6,6 +6,7 @@ import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { formatMoney } from '@/lib/money'
 import { useToast } from '@/components/toast/useToast'
 import type { Shop } from '@/components/filters/ShopFilter'
+import { CustomerModal } from './CustomerModal'
 
 export type Customer = {
   id: string
@@ -44,6 +45,8 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [orders, setOrders] = useState<B2bOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [customerOpen, setCustomerOpen] = useState(false)
   // A page-load failure is not an action: a toast fades and would leave an
   // empty table reading as "you have no customers" — a lie. Say it in place.
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -126,7 +129,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
             </div>
             {!noShops && (
               <button
-                onClick={() => {}} // Tasks 10 and 11 wire these two up
+                onClick={() => { setEditingCustomer(null); setCustomerOpen(true) }}
                 className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
               >
                 + Add customer
@@ -190,6 +193,12 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                         {formatMoney(c.revenue, c.currency)}
                       </td>
                       <td className="px-3 py-3 text-right">
+                        <button
+                          onClick={() => { setEditingCustomer(c); setCustomerOpen(true) }}
+                          className="rounded px-2 py-1 text-[11px] text-ink hover:bg-panel"
+                        >
+                          Edit
+                        </button>
                         {c.orderCount === 0 && (
                           <button
                             onClick={() => removeCustomer(c)}
@@ -279,7 +288,14 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
         </div>
       </PageBody>
 
-      {/* Task 10 mounts CustomerModal here; Task 11 mounts OrderModal. */}
+      {customerOpen && (
+        <CustomerModal
+          shops={shops}
+          customer={editingCustomer}
+          onClose={() => setCustomerOpen(false)}
+          onSaved={() => { setCustomerOpen(false); load() }}
+        />
+      )}
     </AppShell>
   )
 }
