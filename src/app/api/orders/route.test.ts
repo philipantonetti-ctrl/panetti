@@ -15,6 +15,7 @@ const MARK = '[orders-test]'
 let shopA = ''
 let shopB = ''
 let prodA = ''
+let shopId = ''
 
 const asAdmin = async () => {
   cookieValue.current = await signSession({
@@ -23,6 +24,10 @@ const asAdmin = async () => {
 }
 
 async function wipe() {
+  // FK-safe order: Order.b2bCustomer is onDelete: Restrict, so orders must go
+  // before their B2B customers, which must go before the shops they belong to.
+  await db.order.deleteMany({ where: { shop: { name: { contains: MARK } } } })
+  await db.b2bCustomer.deleteMany({ where: { shop: { name: { contains: MARK } } } })
   await db.shop.deleteMany({ where: { name: { contains: MARK } } })
   await db.ambassador.deleteMany({ where: { email: { contains: 'orders-test' } } })
   await db.processingFee.deleteMany({ where: { gateway: 'Dintero Checkout' } })
@@ -52,6 +57,27 @@ beforeEach(async () => {
   shopB = (await db.shop.create({ data: { name: `B ${MARK}`, currency: 'NOK' } })).id
   prodA = (await db.product.create({ data: { shopId: shopA, externalId: 'pa', sku: 'PA', name: 'PA', lastPrice: 5000, imageUrl: 'https://img.example/pa.jpg' } })).id
   const prodB = (await db.product.create({ data: { shopId: shopB, externalId: 'pb', sku: 'PB', name: 'PB', lastPrice: 5000 } })).id
+
+  shopId = (await db.shop.create({ data: { name: `B2B ${MARK}`, currency: 'NOK' } })).id
+  const customer = await db.b2bCustomer.create({
+    data: { shopId, name: 'Nordic Retail [orders-test]', currency: 'NOK', vatPercent: 0 },
+  })
+  await db.order.create({
+    data: {
+      shopId, externalId: 'b2b:B-0001', number: 'B-0001', placedAt: new Date('2026-07-05'),
+      status: 'completed', currency: 'NOK', grossSales: 10000, discountTotal: 0,
+      netSales: 10000, shippingCharged: 0, taxTotal: 0, total: 10000,
+      customerName: 'Nordic Retail [orders-test]', customerEmail: '',
+      b2bCustomerId: customer.id, fulfillmentCost: 4200,
+    },
+  })
+  await db.order.create({
+    data: {
+      shopId, externalId: '9001', number: '9001', placedAt: new Date('2026-07-06'),
+      status: 'completed', currency: 'NOK', grossSales: 10000, discountTotal: 0,
+      netSales: 10000, shippingCharged: 0, taxTotal: 0, total: 12500,
+    },
+  })
 
   await order(shopA, prodA, 'A-mar20', '2026-03-20T12:00:00Z', [
     { name: 'Massage Chair', sku: 'CHAIR-1', quantity: 1 },
@@ -218,5 +244,39 @@ describe('GET /api/orders', () => {
 
     expect(voided.figures).toBeNull()
     expect(live.figures).not.toBeNull()
+  })
+})
+
+describe('B2B orders in the order list', () => {
+  it('marks a hand-entered order as B2B and names its customer', async () => {
+    await asAdmin()
+    const res = await get(`from=2026-07-01&to=2026-07-31&shops=${shopId}`)
+    const body = await res.json()
+
+    const b2b = body.orders.find((o: { number: string }) => o.number === 'B-0001')
+    expect(b2b.source).toBe('b2b')
+    expect(b2b.customer).toBe('Nordic Retail [orders-test]')
+
+    const webshop = body.orders.find((o: { number: string }) => o.number === '9001')
+    expect(webshop.source).toBe('webshop')
+    expect(webshop.customer).toBeNull()
+  })
+
+  it('filters to one source or the other', async () => {
+    await asAdmin()
+
+    const onlyB2b = await (await get(`from=2026-07-01&to=2026-07-31&shops=${shopId}&source=b2b`)).json()
+    expect(onlyB2b.orders.map((o: { number: string }) => o.number)).toEqual(['B-0001'])
+
+    const onlyWebshop = await (await get(`from=2026-07-01&to=2026-07-31&shops=${shopId}&source=webshop`)).json()
+    expect(onlyWebshop.orders.map((o: { number: string }) => o.number)).toEqual(['9001'])
+  })
+
+  it('charges a B2B order no gateway fee and its own shipping cost', async () => {
+    await asAdmin()
+    const body = await (await get(`from=2026-07-01&to=2026-07-31&shops=${shopId}&source=b2b`)).json()
+
+    expect(body.orders[0].figures.fee).toBe(0)
+    expect(body.orders[0].figures.fulfillment).toBe(4200)
   })
 })
