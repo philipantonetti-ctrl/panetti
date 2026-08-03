@@ -29,11 +29,11 @@ const patch = (id: string, body: unknown) =>
     params(id),
   )
 
-const b2bOrder = (customerId: string) =>
+const b2bOrder = (customerId: string, status = 'completed') =>
   db.order.create({
     data: {
       shopId, externalId: 'b2b:B-0001', number: 'B-0001', placedAt: new Date('2026-07-01'),
-      status: 'completed', currency: 'EUR', grossSales: 1000, discountTotal: 0,
+      status, currency: 'EUR', grossSales: 1000, discountTotal: 0,
       netSales: 1000, shippingCharged: 0, taxTotal: 0, total: 1000,
       customerName: 'x', customerEmail: '', b2bCustomerId: customerId,
     },
@@ -45,8 +45,11 @@ let otherShopId = ''
 let productId = ''
 let otherProductId = ''
 
-// Shops cascade to their products, customers and orders, so one delete is enough.
+// FK-safe order: Order.b2bCustomer is onDelete: Restrict, so orders must go
+// before their B2B customers, which must go before the shops they belong to.
 async function cleanup() {
+  await db.order.deleteMany({ where: { shop: { name: { contains: TAG } } } })
+  await db.b2bCustomer.deleteMany({ where: { shop: { name: { contains: TAG } } } })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
 }
 
@@ -91,6 +94,23 @@ describe('GET /api/b2b/customers/[id]', () => {
     await asAdmin()
     expect((await GET(new Request('http://localhost/x'), params('nope'))).status).toBe(404)
   })
+
+  it('locks the shop on a refunded order too, not just an earning one', async () => {
+    // A refunded order is still history reported under this shop — canChangeShop
+    // must come from an UNFILTERED count, not the revenue aggregate, which
+    // deliberately excludes refunds. This is what tells the two apart.
+    await asAdmin()
+    const c = await db.b2bCustomer.create({ data: { shopId, name: `Refunded ${TAG}`, currency: 'EUR' } })
+    await b2bOrder(c.id, 'refunded')
+
+    const body = await (await GET(new Request('http://localhost/x'), params(c.id))).json()
+    expect(body.customer.canChangeShop).toBe(false)
+  })
+
+  it('refuses an anonymous caller', async () => {
+    cookieValue.current = undefined
+    expect((await GET(new Request('http://localhost/x'), params('anything'))).status).toBe(403)
+  })
 })
 
 describe('PATCH /api/b2b/customers/[id]', () => {
@@ -131,6 +151,52 @@ describe('PATCH /api/b2b/customers/[id]', () => {
     expect((await db.b2bCustomer.findUniqueOrThrow({ where: { id: c.id } })).shopId).toBe(shopId)
   })
 
+  it('refuses to move a customer whose only order was refunded', async () => {
+    // A refunded order is still history reported under the old shop — the
+    // move guard must key off ANY order, not just an earning one.
+    await asAdmin()
+    const c = await db.b2bCustomer.create({
+      data: { shopId, name: `RefundSettled ${TAG}`, currency: 'EUR' },
+    })
+    await b2bOrder(c.id, 'refunded')
+
+    expect((await patch(c.id, {
+      shopId: otherShopId, name: `RefundSettled ${TAG}`, currency: 'EUR', vatPercent: 0, prices: [],
+    })).status).toBe(400)
+    expect((await db.b2bCustomer.findUniqueOrThrow({ where: { id: c.id } })).shopId).toBe(shopId)
+  })
+
+  it('refuses a price for a product from another shop, leaving the existing prices untouched', async () => {
+    // The same rule POST enforces on create, exercised on edit: PATCH must
+    // never write a price list that points outside the customer's own shop.
+    await asAdmin()
+    const c = await db.b2bCustomer.create({
+      data: {
+        shopId, name: `Guarded ${TAG}`, currency: 'EUR',
+        prices: { create: [{ productId, unitPrice: 8900 }] },
+      },
+    })
+
+    const res = await patch(c.id, {
+      name: `Guarded ${TAG}`, currency: 'EUR', vatPercent: 0,
+      prices: [{ productId: otherProductId, unitPrice: 10 }],
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('That product does not belong to this shop')
+
+    // Proves the whole write was refused, not partially applied.
+    const after = await db.b2bPrice.findMany({ where: { customerId: c.id } })
+    expect(after).toHaveLength(1)
+    expect(after[0]).toMatchObject({ productId, unitPrice: 8900 })
+  })
+
+  it('refuses an anonymous caller', async () => {
+    cookieValue.current = undefined
+    expect((await patch('anything', {
+      name: 'X', currency: 'EUR', vatPercent: 0, prices: [],
+    })).status).toBe(403)
+  })
+
   it('deactivates without touching anything they bought', async () => {
     await asAdmin()
     const c = await db.b2bCustomer.create({ data: { shopId, name: `Gone ${TAG}`, currency: 'EUR' } })
@@ -145,6 +211,11 @@ describe('PATCH /api/b2b/customers/[id]', () => {
 })
 
 describe('DELETE /api/b2b/customers/[id]', () => {
+  it('refuses an anonymous caller', async () => {
+    cookieValue.current = undefined
+    expect((await DELETE(new Request('http://localhost/x'), params('anything'))).status).toBe(403)
+  })
+
   it('deletes a customer who never ordered', async () => {
     await asAdmin()
     const c = await db.b2bCustomer.create({ data: { shopId, name: `Unused ${TAG}`, currency: 'EUR' } })

@@ -32,8 +32,11 @@ let otherShopId = ''
 let productId = ''
 let otherProductId = ''
 
-// Shops cascade to their products, customers and orders, so one delete is enough.
+// FK-safe order: Order.b2bCustomer is onDelete: Restrict, so orders must go
+// before their B2B customers, which must go before the shops they belong to.
 async function cleanup() {
+  await db.order.deleteMany({ where: { shop: { name: { contains: TAG } } } })
+  await db.b2bCustomer.deleteMany({ where: { shop: { name: { contains: TAG } } } })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
 }
 
