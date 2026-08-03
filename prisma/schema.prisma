@@ -368,7 +368,6 @@ model B2bCustomer {
   orders Order[]
 
   @@unique([shopId, name])
-  @@index([shopId])
 }
 
 // This customer's agreed price for one product, in the CUSTOMER'S currency,
