@@ -21,7 +21,8 @@ const PLATFORM_NAME: Record<'meta' | 'google', string> = { meta: 'Meta', google:
 const INDENT = ['pl-4', 'pl-8', 'pl-12']
 const CHILD_INDENT = ['pl-8', 'pl-12', 'pl-12']
 
-const COLUMNS = 6
+/** Campaign, then the eight figures. The colSpan of every full-width row. */
+const COLUMNS = 9
 
 /** Two accounts can each own an entity with the same platform id. */
 function rowKey(row: Pick<BreakdownRow, 'accountId' | 'id'>): string {
@@ -43,6 +44,37 @@ function roasText(spend: number, purchaseValue: number): string {
 function ctrText(clicks: number, impressions: number): string {
   if (impressions === 0) return '—'
   return `${((clicks / impressions) * 100).toFixed(1)}%`
+}
+
+/**
+ * Spend per attributed purchase — what Ads Manager calls "Cost per purchase",
+ * and what marketing.ts calls `costPerPurchase`. Deliberately NOT the `cpa`
+ * of the table above, which is spend per paid STORE order: a store order
+ * carries no campaign id, so that figure cannot be told apart campaign by
+ * campaign and every row here would print the same number.
+ *
+ * Zero spend dashes as well as zero purchases, matching `ratios()` in
+ * marketing.ts. Both tables sit on one screen and must not describe the same
+ * state two different ways.
+ */
+function cpaText(spend: number, purchases: number, currency: string): string {
+  if (spend === 0 || purchases === 0) return '—'
+  return formatMoney(Math.round(spend / purchases), currency)
+}
+
+/** Cost per thousand impressions. */
+function cpmText(spend: number, impressions: number, currency: string): string {
+  if (impressions === 0) return '—'
+  return formatMoney(Math.round((spend / impressions) * 1000), currency)
+}
+
+/**
+ * No dash for zero, unlike every ratio beside it: a campaign that ran and was
+ * shown to nobody has a true answer here, and hiding it behind a dash would
+ * read as "unknown" when it is known and it is none.
+ */
+function impressionsText(impressions: number): string {
+  return Math.round(impressions).toLocaleString('en-US')
 }
 
 /** Google reports fractional conversions; whole numbers stay whole. */
@@ -219,11 +251,18 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
           </td>
           <td className="num px-4 py-2 text-right text-[13px] text-ink">{formatMoney(row.spend, row.currency)}</td>
           <td className="num px-4 py-2 text-right text-[13px] text-ink">{roasText(row.spend, row.purchaseValue)}</td>
+          <td className="num px-4 py-2 text-right text-[13px] text-ink">
+            {cpaText(row.spend, row.purchases, row.currency)}
+          </td>
           <td className="num px-4 py-2 text-right text-[13px] text-ink">{purchasesText(row.purchases)}</td>
           <td className="num px-4 py-2 text-right text-[13px] text-ink">
             {formatMoney(row.purchaseValue, row.currency)}
           </td>
+          <td className="num px-4 py-2 text-right text-[13px] text-ink">
+            {cpmText(row.spend, row.impressions, row.currency)}
+          </td>
           <td className="num px-4 py-2 text-right text-[13px] text-ink">{ctrText(row.clicks, row.impressions)}</td>
+          <td className="num px-4 py-2 text-right text-[13px] text-ink">{impressionsText(row.impressions)}</td>
         </tr>
 
         {childLevel && isOpen && (!child || child.status === 'loading') && (
@@ -318,9 +357,16 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
                 <th className="px-4 py-2">Campaign</th>
                 <th className="px-4 py-2 text-right">Spend</th>
                 <th className="px-4 py-2 text-right">ROAS</th>
+                <th className="px-4 py-2 text-right" title="Spend per attributed purchase">
+                  CPA
+                </th>
                 <th className="px-4 py-2 text-right">Purch.</th>
                 <th className="px-4 py-2 text-right">Value</th>
+                <th className="px-4 py-2 text-right" title="Cost per 1,000 impressions">
+                  CPM
+                </th>
                 <th className="px-4 py-2 text-right">CTR</th>
+                <th className="px-4 py-2 text-right">Impr.</th>
               </tr>
             </thead>
             <tbody>{rows.map((r) => renderRow(r, 'campaign', 0))}</tbody>

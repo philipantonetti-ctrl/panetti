@@ -32,6 +32,17 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status }) // fresh Response per call — a body reads once
 }
 
+/**
+ * Every cell of the row that carries this name, in order.
+ *
+ * Positional `children[n]` lookups are what made inserting a column break
+ * tests that had nothing to say about it. Reading the whole row at once
+ * asserts the value AND its place in one line, and says out loud which column
+ * order the test expects.
+ */
+const cellsOf = (name: string): string[] =>
+  [...screen.getByText(name).closest('tr')!.querySelectorAll('td')].map((td) => td.textContent ?? '')
+
 describe('BreakdownTable', () => {
   it('lists the campaigns it was given', async () => {
     const campaign = row({ id: 'c1', name: 'Summer Sale', spend: 120000 })
@@ -49,7 +60,10 @@ describe('BreakdownTable', () => {
     expect(url).toContain('level=campaign')
     expect(url).not.toContain('parentId')
 
-    expect(screen.getByText('$1,200.00')).toBeTruthy() // formatted spend
+    // The spend cell by position, not by text: the fixture's 1,000 impressions
+    // make CPM come out to the same money as spend, so a bare getByText would
+    // match two cells and fail on the coincidence rather than on the spend.
+    expect(cellsOf('Summer Sale')[1]).toBe('$1,200.00')
   })
 
   it('derives ROAS from spend and value', async () => {
@@ -91,7 +105,8 @@ describe('BreakdownTable', () => {
     render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
     await waitFor(() => expect(screen.getByText('No impressions')).toBeTruthy())
 
-    const ctrCell = screen.getByText('No impressions').closest('tr')!.children[5] as HTMLElement
+    // Index 7, not 5: CPA and CPM sit ahead of CTR now.
+    const ctrCell = screen.getByText('No impressions').closest('tr')!.children[7] as HTMLElement
     expect(ctrCell.textContent).toBe('—')
   })
 
@@ -533,5 +548,158 @@ describe('BreakdownTable', () => {
       expect(screen.getByText('Live from Google, in the ad account’s own currency.')).toBeTruthy(),
     )
     expect(screen.queryByText(/Live from Meta/)).toBeNull()
+  })
+})
+
+/**
+ * CPA, CPM and Impressions — the three the client asked for on top of the
+ * five that were already here. Nothing new is fetched for them: impressions
+ * were always in the response and only CTR ever read them.
+ */
+describe('cost and delivery columns', () => {
+  function showing(over: Partial<BreakdownRow>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ rows: [row(over)], errors: [], accountsChecked: 1 }))),
+    )
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+  }
+
+  it('reads in the order the client asked for', async () => {
+    showing({ name: 'Campaign One' })
+    await waitFor(() => expect(screen.getByText('Campaign One')).toBeTruthy())
+
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'Campaign',
+      'Spend',
+      'ROAS',
+      'CPA',
+      'Purch.',
+      'Value',
+      'CPM',
+      'CTR',
+      'Impr.',
+    ])
+  })
+
+  // 478395 / 7 = 68342.14…, which is not a whole number of øre. Money in this
+  // app is an integer number of minor units (money.ts), so it rounds before
+  // it formats — otherwise Intl silently truncates and the column drifts a
+  // half-øre from the same figure computed anywhere else.
+  it('divides spend by purchases for CPA, rounded to whole minor units', async () => {
+    showing({ name: 'Brief 4', spend: 478395, purchases: 7 })
+    await waitFor(() => expect(screen.getByText('Brief 4')).toBeTruthy())
+
+    expect(cellsOf('Brief 4')[3]).toBe('$683.42')
+  })
+
+  it('dashes CPA rather than dividing by no purchases', async () => {
+    showing({ name: 'Nothing sold', spend: 478395, purchases: 0 })
+    await waitFor(() => expect(screen.getByText('Nothing sold')).toBeTruthy())
+
+    const cpa = cellsOf('Nothing sold')[3]
+    expect(cpa).toBe('—')
+    expect(cpa).not.toContain('Infinity')
+    expect(cpa).not.toContain('NaN')
+  })
+
+  // marketing.ts's own `ratios()` guards costPerPurchase on spend > 0 as well
+  // as purchases > 0. Both tables sit on one screen; a client must not read
+  // "$0.00 per purchase" here and a dash there for the same state.
+  it('dashes CPA when nothing was spent, matching the table above it', async () => {
+    showing({ name: 'Free somehow', spend: 0, purchases: 5 })
+    await waitFor(() => expect(screen.getByText('Free somehow')).toBeTruthy())
+
+    expect(cellsOf('Free somehow')[3]).toBe('—')
+  })
+
+  it('costs CPM per thousand impressions, not per impression', async () => {
+    showing({ name: 'Brief 4', spend: 478395, impressions: 81920 })
+    await waitFor(() => expect(screen.getByText('Brief 4')).toBeTruthy())
+
+    // 478395 / 81920 * 1000 = 5839.83… -> 5840 øre. Per impression it would
+    // read $0.06, which is the mistake this asserts against.
+    expect(cellsOf('Brief 4')[6]).toBe('$58.40')
+  })
+
+  it('dashes CPM when nothing was ever shown', async () => {
+    showing({ name: 'No impressions', spend: 478395, impressions: 0 })
+    await waitFor(() => expect(screen.getByText('No impressions')).toBeTruthy())
+
+    expect(cellsOf('No impressions')[6]).toBe('—')
+  })
+
+  it('groups impressions in thousands', async () => {
+    showing({ name: 'Wide reach', impressions: 1234567 })
+    await waitFor(() => expect(screen.getByText('Wide reach')).toBeTruthy())
+
+    expect(cellsOf('Wide reach')[8]).toBe('1,234,567')
+  })
+
+  // Unlike every ratio beside it, zero impressions is a true statement about
+  // delivery — the campaign ran and was shown to nobody — not a division with
+  // nothing to divide by. A dash here would hide a real answer.
+  it('prints zero impressions as zero, not as a dash', async () => {
+    showing({ name: 'Never delivered', impressions: 0 })
+    await waitFor(() => expect(screen.getByText('Never delivered')).toBeTruthy())
+
+    expect(cellsOf('Never delivered')[8]).toBe('0')
+  })
+
+  // Campaign, ad set and ad share one renderRow, so this should be free — but
+  // "should be free" is exactly the assumption worth pinning, and the child
+  // rows are the half of the table the tests above never reach.
+  it('carries the new columns down into an expanded ad set', async () => {
+    const campaign = row({ id: 'c1', name: 'Campaign One', accountId: 'acc1' })
+    const adset = row({
+      id: 'as1',
+      name: 'Ad Set A',
+      accountId: 'acc1',
+      spend: 478395,
+      purchases: 7,
+      impressions: 81920,
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          String(url).includes('level=adset')
+            ? jsonResponse({ rows: [adset], errors: [], accountsChecked: 1 })
+            : jsonResponse({ rows: [campaign], errors: [], accountsChecked: 1 }),
+        ),
+      ),
+    )
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() => expect(screen.getByText('Campaign One')).toBeTruthy())
+    fireEvent.click(screen.getByText('Campaign One'))
+    await waitFor(() => expect(screen.getByText('Ad Set A')).toBeTruthy())
+
+    const cells = cellsOf('Ad Set A')
+    expect(cells[3]).toBe('$683.42') // CPA
+    expect(cells[6]).toBe('$58.40') // CPM
+    expect(cells[8]).toBe('81,920') // Impr.
+  })
+
+  // The colSpan behind "Loading…", the "Ad set" label and the per-account
+  // error line is a hand-maintained constant. Left at 6 it silently stops
+  // short of the table's real width and those rows stop lining up.
+  it('spans every column when a child level is still loading', async () => {
+    const campaign = row({ id: 'c1', name: 'Campaign One', accountId: 'acc1' })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        String(url).includes('level=adset')
+          ? new Promise(() => {}) // never resolves: hold it in the loading state
+          : Promise.resolve(jsonResponse({ rows: [campaign], errors: [], accountsChecked: 1 })),
+      ),
+    )
+
+    render(<BreakdownTable shopId="shop1" provider="meta" from="2026-07-01" to="2026-07-31" />)
+    await waitFor(() => expect(screen.getByText('Campaign One')).toBeTruthy())
+    fireEvent.click(screen.getByText('Campaign One'))
+
+    await waitFor(() => expect(screen.getByText('Loading…')).toBeTruthy())
+    expect(screen.getByText('Loading…').closest('td')!.getAttribute('colspan')).toBe('9')
   })
 })
