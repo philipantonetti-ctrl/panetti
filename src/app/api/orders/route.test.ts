@@ -16,6 +16,10 @@ let shopA = ''
 let shopB = ''
 let prodA = ''
 let shopId = ''
+// A fixed day used only by the cross-currency COGS test's FxRate fixtures —
+// never used as an order date anywhere else in this file, so cleaning up by
+// this exact date can never touch a row another test depends on.
+const FX_DATE = new Date('2026-07-20')
 
 const asAdmin = async () => {
   cookieValue.current = await signSession({
@@ -31,6 +35,9 @@ async function wipe() {
   await db.shop.deleteMany({ where: { name: { contains: MARK } } })
   await db.ambassador.deleteMany({ where: { email: { contains: 'orders-test' } } })
   await db.processingFee.deleteMany({ where: { gateway: 'Dintero Checkout' } })
+  // Scoped to the exact date and currencies this file seeds — never a blanket
+  // wipe of FxRate, which other tests and real data depend on.
+  await db.fxRate.deleteMany({ where: { date: FX_DATE, base: { in: ['NOK', 'EUR'] }, quote: 'USD' } })
 }
 
 const order = (
@@ -221,6 +228,20 @@ describe('GET /api/orders', () => {
     await order(shopA, prodA, 'A-figured', '2026-03-25T12:00:00Z', [{ name: 'Gun', sku: 'G', quantity: 2 }], {
       ambassadorId: amb.id, couponCode: 'EMMA10',
     })
+    // Same gateway fee, same shop, same day — but hand-entered for a business
+    // customer. Proves the fee gate itself discriminates: a feeRow exists and
+    // still charges A-figured above, yet charges this order nothing.
+    const b2bOnA = await db.b2bCustomer.create({
+      data: { shopId: shopA, name: 'Depot Buyer [orders-test]', currency: 'DKK', vatPercent: 0 },
+    })
+    await db.order.create({
+      data: {
+        shopId: shopA, externalId: 'b2b:A-figured-b2b', number: 'A-figured-B2B', placedAt: new Date('2026-03-25T12:00:00Z'),
+        status: 'completed', currency: 'DKK', grossSales: 5000, discountTotal: 0,
+        netSales: 5000, shippingCharged: 0, taxTotal: 0, total: 5000,
+        b2bCustomerId: b2bOnA.id, fulfillmentCost: 0,
+      },
+    })
 
     const body = await (await get(`from=2026-03-25&to=2026-03-25&shops=${shopA}`)).json()
     const o = body.orders.find((x: { number: string }) => x.number === 'A-figured')
@@ -232,6 +253,12 @@ describe('GET /api/orders', () => {
     expect(o.figures.commission).toBe(1000) // 10% of net sales
     expect(o.figures.profit).toBe(10000 + 2000 - 6400 - 1500 - 290 - 1000) // 2810
     expect(o.figures.margin).toBeCloseTo(2810 / 12000, 5)
+
+    // Reverting the gate to the old unconditional "feeRow ? ... : 0" would
+    // make this fail while A-figured's fee above kept passing — the pairing
+    // is what proves the gate, not just an absent fee row, zeroes it.
+    const b2b = body.orders.find((x: { number: string }) => x.number === 'A-figured-B2B')
+    expect(b2b.figures.fee).toBe(0)
   })
 
   it('a voided order gets null figures — it earns nothing, and the list never pretends otherwise', async () => {
@@ -274,9 +301,65 @@ describe('B2B orders in the order list', () => {
 
   it('charges a B2B order no gateway fee and its own shipping cost', async () => {
     await asAdmin()
+    // No ProcessingFee row exists here, so a zero fee alone doesn't prove the
+    // gate discriminates — that's proven where a live fee actually applies,
+    // in "computes each order figure ... exactly like the engine" above
+    // (that test's B2B order pays 0 under the very feeRow its webshop
+    // sibling pays 290 under). This test confirms the other half: a B2B
+    // order's own shipping cost wins over the shop's standing rate.
     const body = await (await get(`from=2026-07-01&to=2026-07-31&shops=${shopId}&source=b2b`)).json()
 
     expect(body.orders[0].figures.fee).toBe(0)
     expect(body.orders[0].figures.fulfillment).toBe(4200)
+  })
+
+  it("converts COGS from the shop's currency, not the order's — a EUR order on a NOK shop", async () => {
+    await asAdmin()
+    // Every other fixture in this file has costCurrency === order currency,
+    // so crossConvert takes its from===to identity short-circuit (fx.ts:110)
+    // and would stay green even if the cost basis reverted to the order's own
+    // currency, or crossConvert's arguments were swapped. This order's
+    // currency (EUR) differs from its shop's (NOK) to rule both out.
+    await db.fxRate.upsert({
+      where: { date_base_quote: { date: FX_DATE, base: 'NOK', quote: 'USD' } },
+      create: { date: FX_DATE, base: 'NOK', quote: 'USD', rate: 0.1 },
+      update: { rate: 0.1 },
+    })
+    await db.fxRate.upsert({
+      where: { date_base_quote: { date: FX_DATE, base: 'EUR', quote: 'USD' } },
+      create: { date: FX_DATE, base: 'EUR', quote: 'USD', rate: 1.1 },
+      update: { rate: 1.1 },
+    })
+
+    const prod = await db.product.create({
+      data: { shopId, externalId: 'eur-item', sku: 'EUR-1', name: 'Eur Item' },
+    })
+    // The cost is in the SHOP's currency (NOK): 100.00 kr per item, no handling.
+    await db.productCost.create({
+      data: { productId: prod.id, costPerItem: 10000, handlingCost: 0, effectiveFrom: new Date('2026-07-01') },
+    })
+    const eurCustomer = await db.b2bCustomer.create({
+      data: { shopId, name: 'Continental Buyer [orders-test]', currency: 'EUR', vatPercent: 0 },
+    })
+    await db.order.create({
+      data: {
+        shopId, externalId: 'b2b:B-0002', number: 'B-0002', placedAt: FX_DATE,
+        status: 'completed', currency: 'EUR', grossSales: 9090, discountTotal: 0,
+        netSales: 9090, shippingCharged: 0, taxTotal: 0, total: 9090,
+        customerName: 'Continental Buyer [orders-test]', customerEmail: '',
+        b2bCustomerId: eurCustomer.id, fulfillmentCost: 0,
+        items: {
+          create: [{ productId: prod.id, name: 'Eur Item', sku: 'EUR-1', quantity: 1, unitPrice: 9090, lineNetTotal: 9090 }],
+        },
+      },
+    })
+
+    const body = await (await get(`from=2026-07-20&to=2026-07-20&shops=${shopId}`)).json()
+    const o = body.orders.find((x: { number: string }) => x.number === 'B-0002')
+
+    // 10000 NOK -> EUR at (0.1 / 1.1) = crossConvert's real output, 909 — a
+    // wrong-basis or swapped-argument bug would instead leave this at the
+    // raw 10000 (EUR -> EUR is crossConvert's identity short-circuit).
+    expect(o.figures.cogs).toBe(909)
   })
 })
