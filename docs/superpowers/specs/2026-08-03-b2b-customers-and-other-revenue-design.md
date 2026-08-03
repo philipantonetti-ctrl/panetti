@@ -272,8 +272,10 @@ holds a hand-copy of this arithmetic for its per-order figures.
 `needsRates` today reads shop and expense currencies plus the gateway fee's, so
 a EUR order on a NOK shop would never trigger a rate fetch and would pass
 through unconverted. It becomes: gather every currency in play — display, shops,
-orders, expenses, the fee — and fetch when the set holds more than one. Shorter
-than the two-clause condition it replaces, and it cannot miss a case.
+orders, expenses, the fee — and fetch when the set holds more than one. One set
+and one size check, in place of two independently-reasoned clauses: simpler to
+reason about and unable to miss a case. (Simpler, not shorter — it is a few
+lines longer than what it replaces.)
 
 ## Screens
 
