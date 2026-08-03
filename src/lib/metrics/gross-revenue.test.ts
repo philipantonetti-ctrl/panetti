@@ -16,6 +16,7 @@ const costs: CostBook = new Map()
 function order(): EngineOrder {
   return {
     id: 'o1', shopId: 's1', placedAt: new Date('2026-03-10'), status: 'completed', currency: 'USD',
+    costCurrency: 'USD',
     grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 500,
     taxTotal: 2625, total: 13125, ambassadorId: null, commissionRate: 0, items: [],
   }

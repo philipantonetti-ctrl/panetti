@@ -26,6 +26,7 @@ function order(over: Partial<EngineOrder> = {}): EngineOrder {
     placedAt: new Date('2026-07-01'),
     status: 'completed',
     currency: 'NOK',
+    costCurrency: 'NOK',
     grossSales: 100000, // 1000.00 kr before discount
     discountTotal: 10000, //  100.00 kr discount
     netSales: 90000, //  900.00 kr  <- commission base
@@ -260,5 +261,73 @@ describe('computeMetrics', () => {
     const se = res.byShop.find((s) => s.shopId === 'se')!
     expect(no.orders).toBe(1) // counts on 1 July in Oslo
     expect(se.orders).toBe(0) // still 30 June in UTC
+  })
+
+  // A business customer invoiced in EUR, buying from a NOK shop. Product costs
+  // live in the SHOP's currency, so reading them as the order's would multiply
+  // COGS by the EUR/NOK rate — about tenfold — and show a large false loss.
+  it('reads product costs in the SHOP currency, not the order currency', () => {
+    const res = computeMetrics({
+      shops: [shops[0]],
+      orders: [order({ currency: 'EUR', costCurrency: 'NOK' })],
+      expenses: [],
+      costs,
+      rates: buildRateTable([
+        { date: new Date('2026-07-01'), currency: 'NOK', rate: 0.1 },
+        { date: new Date('2026-07-01'), currency: 'EUR', rate: 1.1 },
+      ]),
+      displayCurrency: 'NOK',
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-01'),
+    })
+
+    // 2 x (100.00 + 10.00) kr = 220.00 kr, displayed in kr — unchanged.
+    // Converted from EUR it would have been 2 420.00 kr.
+    expect(res.total.cogs).toBe(22000)
+  })
+
+  it('charges an invoiced B2B order no gateway fee', () => {
+    const input = {
+      shops: [shops[0]],
+      expenses: [],
+      costs,
+      rates,
+      displayCurrency: 'NOK',
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-01'),
+      processingFee: { percent: 2, fixedMinor: 300, currency: 'NOK' },
+    }
+
+    const webshop = computeMetrics({ ...input, orders: [order()] })
+    expect(webshop.total.transactionFees).toBe(2650) // 2% of 1175.00 + 3.00
+
+    const b2b = computeMetrics({ ...input, orders: [order({ chargesGatewayFee: false })] })
+    expect(b2b.total.transactionFees).toBe(0)
+    // The fee it did not pay is profit it keeps.
+    expect(b2b.total.netProfit).toBe(webshop.total.netProfit + 2650)
+  })
+
+  it('uses a B2B order’s own shipping cost instead of the shop’s rate', () => {
+    const input = {
+      shops: [shops[0]],
+      expenses: [],
+      costs,
+      rates,
+      displayCurrency: 'NOK',
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-01'),
+      fulfillmentRates: new Map([
+        ['no', [{ perOrder: 9900, effectiveFrom: new Date('2026-01-01') }]],
+      ]),
+    }
+
+    expect(computeMetrics({ ...input, orders: [order()] }).total.fulfillment).toBe(9900)
+    expect(
+      computeMetrics({ ...input, orders: [order({ fulfillmentCost: 45000 })] }).total.fulfillment,
+    ).toBe(45000)
+    // Zero is a real answer — "we did not ship it" — not "fall back to the rate".
+    expect(
+      computeMetrics({ ...input, orders: [order({ fulfillmentCost: 0 })] }).total.fulfillment,
+    ).toBe(0)
   })
 })

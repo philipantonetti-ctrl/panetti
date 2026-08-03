@@ -46,6 +46,10 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const starts = zones.map((z) => zoneDayStartUtc(fromDay, z).getTime())
   const ends = zones.map((z) => zoneDayEndUtc(toDay, z).getTime())
 
+  // A shop's costs are in ITS currency. An order need not share it — a B2B
+  // customer can be invoiced in EUR from a NOK store.
+  const currencyByShop = new Map(shopRows.map((s) => [s.id, s.currency]))
+
   // Commission rate per ambassador, looked up in memory. Joining the whole
   // ambassador row onto every order made the query haul the same handful of
   // people thousands of times; the map is a few dozen rows fetched once.
@@ -86,6 +90,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     placedAt: o.placedAt,
     status: o.status,
     currency: o.currency,
+    costCurrency: currencyByShop.get(o.shopId) ?? o.currency,
     grossSales: o.grossSales,
     discountTotal: o.discountTotal,
     netSales: o.netSales,
