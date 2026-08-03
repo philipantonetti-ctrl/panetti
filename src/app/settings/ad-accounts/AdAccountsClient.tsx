@@ -165,7 +165,7 @@ export function AdAccountsClient({
       </PageHeader>
 
       <PageBody>
-        <SignedInAs connections={connections} />
+        <SignedInAs connections={connections} platform={platform} />
 
         {message && (
           <div className="mt-4 rounded-[var(--radius-control)] bg-panel px-4 py-3 text-xs text-ink">
@@ -304,13 +304,34 @@ export function AdAccountsClient({
  * story, and lines reading "not connected" would be noise on a page whose empty
  * table says it too.
  */
-function SignedInAs({ connections }: { connections: Connections }) {
+function SignedInAs({
+  connections,
+  platform,
+}: {
+  connections: Connections
+  platform: PlatformSetup
+}) {
   const lines = (['meta', 'google'] as const).flatMap((provider) => {
     const conn = connections[provider]
-    if (!conn) return []
-
     const name = PLATFORM_NAME[provider]
-    const expiry = conn.expiresAt ? new Date(conn.expiresAt) : null
+    const expiry = conn?.expiresAt ? new Date(conn.expiresAt) : null
+
+    // A platform the server cannot log into is the one "not connected" worth
+    // printing, and it goes first: the button beside it is disabled, and a
+    // disabled control with no stated reason is its own dead end. Said here
+    // rather than in a toast because a toast has to be provoked and then
+    // leaves — which is how the client came to press the dead button eight
+    // times. It also says whose problem it is, so the answer to "what do I do"
+    // is "nothing", not "press it again".
+    if (!platform[provider]) {
+      return [
+        <span key={provider} className="block">
+          {name}: not connected yet. Setup is on our side, nothing to do here.
+        </span>,
+      ]
+    }
+
+    if (!conn) return []
 
     // An expired login is the reason every sync for that platform starts
     // failing, so it replaces the reassurance rather than trailing after it.
@@ -338,17 +359,20 @@ function SignedInAs({ connections }: { connections: Connections }) {
 }
 
 function ConnectButton({ provider, ready }: { provider: 'meta' | 'google'; ready: boolean }) {
-  const toast = useToast()
   const text = provider === 'meta' ? 'Connect with Facebook' : 'Connect with Google'
   if (!ready) {
-    // A button that cannot be pressed and cannot say why is a dead end. There
-    // is nowhere on the page to send anyone now: the credentials are server
-    // config, so a missing one is ours to fix, not the reader's.
-    const platform = provider === 'meta' ? 'Facebook' : 'Google'
+    // Disabled, not merely inert. This used to be an ordinary enabled button
+    // wearing the same class as "Sync now" beside it, which answered every
+    // press with a toast and nothing else — so it read as a working control
+    // that kept refusing, and the client pressed it eight times in a row.
+    // The credentials are server config: a missing one is ours to fix, and
+    // SignedInAs above says so in words that stay on the page.
     return (
       <button
-        onClick={() => toast.error(`${platform} connect is not set up on the server yet.`)}
-        className={quietBtn}
+        type="button"
+        disabled
+        title={`${PLATFORM_NAME[provider]} is not set up on the server yet.`}
+        className={`${quietBtn} cursor-not-allowed opacity-50`}
       >
         {text}
       </button>

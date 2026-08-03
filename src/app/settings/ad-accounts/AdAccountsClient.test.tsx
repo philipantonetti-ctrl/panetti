@@ -165,35 +165,45 @@ describe('AdAccountsClient', () => {
   // exactly, so keeping them proved nothing a break in that test would not
   // already catch.
 
-  it('says so plainly when a platform is not configured on the server', async () => {
+  // The client pressed this control eight times on the live site and collected
+  // eight identical red toasts. It was an enabled <button> wearing the same
+  // class as the working "Sync now" beside it, so nothing about it read as
+  // unavailable, and its only answer was transient and phrased as a fact about
+  // our server. Pressing again was the only move the page left him.
+  it('shows an unavailable platform as disabled instead of a button that argues back', () => {
     renderPage([], { platform: { meta: false, google: true } })
 
-    // Not a link: pressing it would only bounce off Facebook with a worse error.
-    expect(screen.getByText('Connect with Facebook').closest('a')).toBeNull()
-    fireEvent.click(screen.getByText('Connect with Facebook'))
-    await waitFor(() =>
-      expect(
-        screen.getByText('Facebook connect is not set up on the server yet.'),
-      ).toBeTruthy(),
-    )
-    // Google is unaffected.
+    const facebook = screen.getByText('Connect with Facebook').closest('button')
+    expect(facebook).toBeTruthy()
+    expect(facebook!.disabled).toBe(true)
+    // Google is unaffected and still a real link.
     expect(screen.getByText('Connect with Google').closest('a')).toBeTruthy()
   })
 
-  it('says so plainly when Google is not configured on the server', async () => {
-    // The Meta case above proves the not-ready branch works; this proves the
-    // provider === 'meta' ? 'Facebook' : 'Google' ternary inside it actually
-    // switches — without this, ConnectButton could say "Facebook" for every
-    // platform and the suite would stay green.
+  it('says on the page, and keeps saying, that the platform needs nothing from the reader', () => {
     renderPage([], { platform: { meta: true, google: false } })
 
-    expect(screen.getByText('Connect with Google').closest('a')).toBeNull()
-    fireEvent.click(screen.getByText('Connect with Google'))
-    await waitFor(() =>
-      expect(screen.getByText('Google connect is not set up on the server yet.')).toBeTruthy(),
-    )
-    // Facebook is unaffected.
+    // Present with no click at all: the old toast only appeared once pressed,
+    // and vanished, which is why pressing again looked like the way forward.
+    expect(
+      screen.getByText('Google: not connected yet. Setup is on our side, nothing to do here.'),
+    ).toBeTruthy()
+    // Names the platform actually missing, not a hardcoded "Facebook".
+    expect(screen.queryByText(/^Facebook: not connected yet/)).toBeNull()
     expect(screen.getByText('Connect with Facebook').closest('a')).toBeTruthy()
+  })
+
+  it('does not stack a new message every time the dead control is pressed', () => {
+    renderPage([], { platform: { meta: true, google: false } })
+
+    const google = screen.getByText('Connect with Google')
+    fireEvent.click(google)
+    fireEvent.click(google)
+    fireEvent.click(google)
+
+    expect(
+      screen.getAllByText('Google: not connected yet. Setup is on our side, nothing to do here.'),
+    ).toHaveLength(1)
   })
 
   it('asks for the token nowhere on the page any more', () => {
