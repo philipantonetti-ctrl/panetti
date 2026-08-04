@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
-import { formatMoney } from '@/lib/money'
+import { formatMoney, toMajor } from '@/lib/money'
 import { useToast } from '@/components/toast/useToast'
 import type { Shop } from '@/components/filters/ShopFilter'
 import { CustomerModal } from './CustomerModal'
@@ -49,6 +49,8 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [customerOpen, setCustomerOpen] = useState(false)
   const [orderOpen, setOrderOpen] = useState(false)
+  const [editingOrder, setEditingOrder] = useState<{ id: string } | null>(null)
+  const [orderMenuFor, setOrderMenuFor] = useState<string | null>(null)
   // A page-load failure is not an action: a toast fades and would leave an
   // empty table reading as "you have no customers" — a lie. Say it in place.
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -101,6 +103,64 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
       // state, matching ExpensesClient.remove()'s ground-truth reload.
       load()
     }
+  }
+
+  /**
+   * Void = the order happened and earns nothing, which is what a refunded
+   * webshop order already means. PATCH takes the whole order, so this reads
+   * it back and returns it unchanged but for the status — two round trips,
+   * rather than widening a contract that is already tested.
+   */
+  async function setOrderStatus(o: B2bOrder, status: 'refunded' | 'cancelled') {
+    setOrderMenuFor(null)
+    try {
+      const loaded = await fetch(`/api/b2b/orders/${o.id}`).then((r) => (r.ok ? r.json() : null))
+      if (!loaded?.order) {
+        toast.error('Could not load that order')
+        return
+      }
+      const d = loaded.order
+      const res = await fetch(`/api/b2b/orders/${o.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: d.customerId,
+          placedAt: d.placedAt,
+          shippingCharged: toMajor(d.shippingCharged),
+          fulfillmentCost: toMajor(d.fulfillmentCost),
+          status,
+          lines: d.lines.map((l: { productId: string; quantity: number; unitPrice: number; discountValue: number; discountKind: string }) => ({
+            productId: l.productId,
+            quantity: l.quantity,
+            unitPrice: toMajor(l.unitPrice),
+            discountValue: l.discountKind === 'PERCENT' ? l.discountValue : toMajor(l.discountValue),
+            discountKind: l.discountKind,
+          })),
+        }),
+      })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not change that order')
+        return
+      }
+      toast.success(`${o.number} marked ${status}`)
+      load()
+    } catch {
+      toast.error('Could not reach the server')
+    }
+  }
+
+  /** The only irreversible action here, and it moves a reported figure. */
+  async function removeOrder(o: B2bOrder) {
+    setOrderMenuFor(null)
+    if (!window.confirm(`Delete order ${o.number}? Its revenue and profit leave your figures.`)) return
+
+    const res = await fetch(`/api/b2b/orders/${o.id}`, { method: 'DELETE' }).catch(() => null)
+    if (!res?.ok) {
+      toast.error('Could not delete that order')
+      return
+    }
+    toast.success(`${o.number} deleted`)
+    load()
   }
 
   return (
@@ -251,14 +311,15 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   <th className="px-3 py-2.5 text-right font-medium">Net sales</th>
                   <th className="px-3 py-2.5 text-right font-medium">Profit</th>
+                  <th className="px-3 py-2.5" />
                 </tr>
               </thead>
               <tbody className="text-ink">
                 {loading ? (
-                  <tr><td colSpan={6} className="px-3 py-10 text-center text-faint">Loading…</td></tr>
+                  <tr><td colSpan={7} className="px-3 py-10 text-center text-faint">Loading…</td></tr>
                 ) : orders.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-10 text-center text-faint">
+                    <td colSpan={7} className="px-3 py-10 text-center text-faint">
                       No B2B orders in the last {RECENT_DAYS} days.
                     </td>
                   </tr>
@@ -281,6 +342,44 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                       >
                         {o.figures ? formatMoney(o.figures.profit, o.currency) : '—'}
                       </td>
+                      <td className="relative px-3 py-3 text-right">
+                        <button
+                          onClick={() => setEditingOrder({ id: o.id })}
+                          aria-label={`Edit order ${o.number}`}
+                          className="rounded px-2 py-1 text-[11px] text-ink hover:bg-panel"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          aria-label={`Actions for ${o.number}`}
+                          onClick={() => setOrderMenuFor(orderMenuFor === o.id ? null : o.id)}
+                          className="rounded px-2 py-1 text-faint hover:bg-panel hover:text-ink"
+                        >
+                          ⋯
+                        </button>
+                        {orderMenuFor === o.id && (
+                          <div className="absolute right-3 z-10 mt-1 w-36 rounded-[var(--radius-control)] border border-line bg-surface py-1 text-left shadow-lg">
+                            <button
+                              onClick={() => setOrderStatus(o, 'refunded')}
+                              className="block w-full px-3 py-2 text-left text-xs text-ink hover:bg-panel"
+                            >
+                              Mark refunded
+                            </button>
+                            <button
+                              onClick={() => setOrderStatus(o, 'cancelled')}
+                              className="block w-full px-3 py-2 text-left text-xs text-ink hover:bg-panel"
+                            >
+                              Mark cancelled
+                            </button>
+                            <button
+                              onClick={() => removeOrder(o)}
+                              className="block w-full px-3 py-2 text-left text-xs text-loss hover:bg-warn-soft"
+                            >
+                              Delete order
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -299,11 +398,12 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
         />
       )}
 
-      {orderOpen && (
+      {(orderOpen || editingOrder) && (
         <OrderModal
           customers={customers}
-          onClose={() => setOrderOpen(false)}
-          onSaved={() => { setOrderOpen(false); load() }}
+          order={editingOrder}
+          onClose={() => { setOrderOpen(false); setEditingOrder(null) }}
+          onSaved={() => { setOrderOpen(false); setEditingOrder(null); load() }}
         />
       )}
     </AppShell>

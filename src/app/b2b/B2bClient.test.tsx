@@ -35,13 +35,46 @@ const customer = {
   priceCount: 4, orderCount: 12, revenue: 1422000,
 }
 
+// The orders-card row shape, as `/api/orders?source=b2b` answers it.
+const b2bOrder = {
+  id: 'o1', number: 'B-0001', placedAt: '2026-05-01T00:00:00.000Z', status: 'completed',
+  currency: 'EUR', netSales: 50000, customer: 'Nordic Retail AS', figures: { profit: 12000 },
+}
+
+// The form shape `GET /api/b2b/orders/[id]` answers — what edit and void both load.
+const b2bOrderDetail = {
+  id: 'o1', number: 'B-0001', status: 'completed', placedAt: '2026-05-01',
+  customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
+  shippingCharged: 500, fulfillmentCost: 200,
+  lines: [{ productId: 'p1', quantity: 2, unitPrice: 5000, discountValue: 10, discountKind: 'PERCENT' }],
+}
+
 function mockFetch(customers: unknown[], orders: unknown[] = []) {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) =>
-    new Response(
-      JSON.stringify(url.includes('/api/b2b/customers') ? { customers } : { orders, total: orders.length }),
-      { status: 200 },
-    ),
-  ))
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/api/b2b/customers')) return new Response(JSON.stringify({ customers }), { status: 200 })
+    // Order-detail GET, hit when an order is opened for editing.
+    if (url.includes('/api/b2b/orders/')) return new Response(JSON.stringify({ order: b2bOrderDetail }), { status: 200 })
+    return new Response(JSON.stringify({ orders, total: orders.length }), { status: 200 })
+  }))
+}
+
+// Like mockFetch, but records every call's URL, method and body so a test can
+// assert what actually went out over the wire, not just what the screen shows.
+function mockFetchCapturing(
+  calls: { url: string; method?: string; body?: string }[],
+  customers: unknown[],
+  orders: unknown[] = [],
+) {
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, method: init?.method, body: init?.body as string | undefined })
+    if (url.includes('/api/b2b/customers')) return new Response(JSON.stringify({ customers }), { status: 200 })
+    if (url.includes('/api/b2b/orders/')) {
+      const method = init?.method ?? 'GET'
+      if (method === 'PATCH' || method === 'DELETE') return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      return new Response(JSON.stringify({ order: b2bOrderDetail }), { status: 200 })
+    }
+    return new Response(JSON.stringify({ orders, total: orders.length }), { status: 200 })
+  }))
 }
 
 beforeEach(() => vi.useRealTimers())
@@ -150,5 +183,45 @@ describe('B2bClient', () => {
     // The warning must name the actual currency chosen, not a generic message
     // that would read the same for any unconvertible code.
     expect(screen.getByText('AED')).toBeInTheDocument()
+  })
+
+  it('opens an order for editing from the card', async () => {
+    mockFetch([customer], [b2bOrder])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /edit order B-0001/i }))
+    expect(await screen.findByRole('heading', { name: /edit order/i })).toBeInTheDocument()
+  })
+
+  it('voids an order by re-sending it with the new status', async () => {
+    // PATCH takes the whole order, so voiding loads it first and returns it
+    // unchanged but for the status. Assert the request, not just the click.
+    const calls: { url: string; method?: string; body?: string }[] = []
+    mockFetchCapturing(calls, [customer], [b2bOrder])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /actions for B-0001/i }))
+    fireEvent.click(screen.getByRole('button', { name: /mark refunded/i }))
+
+    await waitFor(() => {
+      const patch = calls.find((c) => c.method === 'PATCH')
+      expect(patch?.url).toMatch(/\/api\/b2b\/orders\/o1$/)
+      expect(JSON.parse(patch!.body!).status).toBe('refunded')
+    })
+  })
+
+  it('asks before deleting, because the Dashboard moves', async () => {
+    const calls: { url: string; method?: string }[] = []
+    mockFetchCapturing(calls, [customer], [b2bOrder])
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /actions for B-0001/i }))
+    fireEvent.click(screen.getByRole('button', { name: /delete order/i }))
+
+    expect(confirm).toHaveBeenCalled()
+    // Declined means nothing was sent.
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
+    confirm.mockRestore()
   })
 })
