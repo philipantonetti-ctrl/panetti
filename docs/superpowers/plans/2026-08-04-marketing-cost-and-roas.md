@@ -661,8 +661,8 @@ const row: ShopFigures = {
   grossRevenue: 118750, // net revenue + VAT = what the customer paid
   cogs: 24795, // 26.10% of net revenue
   marketing: 25000, // 250.00 kr of ads -> 118,750 / 25,000 = 4.75x
-  netProfit: 48000, // 95000 - 24795 - 25000, rounded off for a readable fixture
-  netMargin: 48000 / 95000,
+  netProfit: 45205, // 95000 net revenue - 24795 cogs - 25000 marketing
+  netMargin: 45205 / 95000,
 }
 ```
 
