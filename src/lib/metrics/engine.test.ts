@@ -405,4 +405,17 @@ describe('computeMetrics', () => {
     expect(res.total.netSales).toBe(0)
     expect(res.total.orders).toBe(0)
   })
+
+  it('reports no average on a day that only saw a refund', () => {
+    // orders is 0 that day, so an "average order value" of anything is a lie.
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [order({ status: 'refunded', voidedAt: new Date('2026-07-08') })],
+      expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-08'), to: new Date('2026-07-08'),
+    })
+    expect(res.byShop[0].orders).toBe(0)
+    expect(res.byShop[0].avgOrderValue).toBe(0)
+    // The reversal itself is still real.
+    expect(res.byShop[0].netRevenue).toBe(-95000)
+  })
 })

@@ -194,11 +194,14 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const netProfit =
       netRevenue - cogs - fulfillment - transactionFees - operationalExpenses - commission
 
+    // A reversal is not an un-placed order, so only the sale side counts —
+    // for the tally AND for what it divides.
+    const placed = shopOrders.filter((e) => e.sign === 1).length
+
     return {
       shopId: shop.id,
       shopName: shop.name,
-      // A reversal is not an un-placed order, so only the sale side counts.
-      orders: shopOrders.filter((e) => e.sign === 1).length,
+      orders: placed,
       grossSales,
       discounts,
       netSales,
@@ -214,7 +217,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       commission,
       netProfit,
       netMargin: netRevenue === 0 ? 0 : netProfit / netRevenue,
-      avgOrderValue: shopOrders.length === 0 ? 0 : Math.round(netRevenue / shopOrders.length),
+      avgOrderValue: placed === 0 ? 0 : Math.round(netRevenue / placed),
       ambassadorSales,
     }
   })
