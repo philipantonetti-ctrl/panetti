@@ -309,15 +309,20 @@ export function OrderModal({
 
               <div>
                 <label htmlFor="b2b-fulfil" className="block text-xs font-medium text-ink">
-                  Shipping we paid ({shopCurrency || customer.currency})
+                  {/* Never fall back to the customer's currency here: that is a
+                      different currency, and this field is a cost. Until the
+                      shop's own currency has actually arrived — including if
+                      the fetch never comes back — say so instead of guessing. */}
+                  Shipping we paid {shopCurrency ? `(${shopCurrency})` : '(…)'}
                 </label>
                 <p className="text-[11px] text-muted">
                   A cost, so it is in the shop&apos;s currency like every other cost.
                 </p>
                 <input
                   id="b2b-fulfil" type="number" step="0.01" min="0" value={fulfillmentCost}
+                  disabled={!shopCurrency}
                   onChange={(e) => setFulfillmentCost(e.target.value)}
-                  className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink"
+                  className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink disabled:cursor-not-allowed disabled:bg-panel disabled:text-muted"
                 />
               </div>
             </div>

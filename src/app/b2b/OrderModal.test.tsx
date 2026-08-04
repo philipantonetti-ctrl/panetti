@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ToastProvider } from '@/components/toast/ToastProvider'
 import { OrderModal } from './OrderModal'
@@ -46,33 +45,29 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('OrderModal', () => {
   it('fills in the agreed price and shows the line total as you type', async () => {
-    const user = userEvent.setup()
     mockFetch()
     renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
 
-    await user.selectOptions(await screen.findByLabelText('Customer'), 'c1')
-    await user.click(await screen.findByRole('button', { name: /add a line/i }))
-    await user.selectOptions(await screen.findByLabelText('Product 1'), 'p1')
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+    fireEvent.click(await screen.findByRole('button', { name: /add a line/i }))
+    fireEvent.change(await screen.findByLabelText('Product 1'), { target: { value: 'p1' } })
 
     // The agreed 89.00 arrives on its own — the whole point of the price book.
     expect(await screen.findByLabelText('Unit price 1')).toHaveValue(89)
 
-    await user.clear(screen.getByLabelText('Quantity 1'))
-    await user.type(screen.getByLabelText('Quantity 1'), '10')
+    fireEvent.change(screen.getByLabelText('Quantity 1'), { target: { value: '10' } })
     expect(await screen.findByTestId('line-total-1')).toHaveTextContent('890.00')
   })
 
   it('takes a percentage discount and shows the VAT and total it produces', async () => {
-    const user = userEvent.setup()
     mockFetch()
     renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
 
-    await user.selectOptions(await screen.findByLabelText('Customer'), 'c1')
-    await user.click(await screen.findByRole('button', { name: /add a line/i }))
-    await user.selectOptions(await screen.findByLabelText('Product 1'), 'p1')
-    await user.clear(await screen.findByLabelText('Quantity 1'))
-    await user.type(screen.getByLabelText('Quantity 1'), '10')
-    await user.type(screen.getByLabelText('Discount 1'), '10')
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+    fireEvent.click(await screen.findByRole('button', { name: /add a line/i }))
+    fireEvent.change(await screen.findByLabelText('Product 1'), { target: { value: 'p1' } })
+    fireEvent.change(await screen.findByLabelText('Quantity 1'), { target: { value: '10' } })
+    fireEvent.change(screen.getByLabelText('Discount 1'), { target: { value: '10' } })
 
     expect(await screen.findByTestId('total-net-sales')).toHaveTextContent('801.00')
     expect(screen.getByTestId('total-vat')).toHaveTextContent('200.25') // 25% of 801.00
@@ -80,12 +75,11 @@ describe('OrderModal', () => {
   })
 
   it('labels the fixed discount per unit, and the shipping cost in the SHOP’s currency', async () => {
-    const user = userEvent.setup()
     mockFetch()
     renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
 
-    await user.selectOptions(await screen.findByLabelText('Customer'), 'c1')
-    await user.click(await screen.findByRole('button', { name: /add a line/i }))
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+    fireEvent.click(await screen.findByRole('button', { name: /add a line/i }))
 
     // The customer pays EUR; the shipping we paid is a cost, and costs are NOK.
     expect(await screen.findByText(/shipping we paid \(NOK\)/i)).toBeInTheDocument()
@@ -93,20 +87,59 @@ describe('OrderModal', () => {
 
     const kind = screen.getByLabelText('Discount kind 1')
     expect(kind).toHaveValue('PERCENT')
-    await user.selectOptions(kind, 'AMOUNT')
+    fireEvent.change(kind, { target: { value: 'AMOUNT' } })
     expect(screen.getByLabelText('Discount kind 1')).toHaveValue('AMOUNT')
   })
 
   it('highlights a product with no agreed price and offers to remember it', async () => {
-    const user = userEvent.setup()
     mockFetch()
     renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
 
-    await user.selectOptions(await screen.findByLabelText('Customer'), 'c1')
-    await user.click(await screen.findByRole('button', { name: /add a line/i }))
-    await user.selectOptions(await screen.findByLabelText('Product 1'), 'p2') // no agreed price
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+    fireEvent.click(await screen.findByRole('button', { name: /add a line/i }))
+    fireEvent.change(await screen.findByLabelText('Product 1'), { target: { value: 'p2' } }) // no agreed price
 
     expect(await screen.findByLabelText('Unit price 1')).toHaveValue(null)
     expect(screen.getByLabelText('Save price 1')).toBeInTheDocument()
+  })
+
+  it('computes an AMOUNT discount per unit, distinct from what a PERCENT reading or a dropped toMinor would give', async () => {
+    // The brief's own worked example: 4 units at 245.00, with 20.00 off EACH
+    // ONE. A 20%-of-the-line reading would land on net 784.00 instead of
+    // 900.00; a discount that skipped toMinor would apply 0.80 instead of
+    // 80.00 and land on net 979.20. Both are visibly distinct from 900.00, so
+    // this only passes if the AMOUNT branch is both per-unit and in minor units.
+    mockFetch()
+    renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
+
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+    fireEvent.click(await screen.findByRole('button', { name: /add a line/i }))
+    fireEvent.change(await screen.findByLabelText('Product 1'), { target: { value: 'p2' } }) // no agreed price, so the price is free to type
+    fireEvent.change(await screen.findByLabelText('Unit price 1'), { target: { value: '245' } })
+    fireEvent.change(screen.getByLabelText('Quantity 1'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText('Discount kind 1'), { target: { value: 'AMOUNT' } })
+    fireEvent.change(screen.getByLabelText('Discount 1'), { target: { value: '20' } })
+
+    expect(await screen.findByTestId('total-discount')).toHaveTextContent('80.00')
+    expect(screen.getByTestId('total-net-sales')).toHaveTextContent('900.00')
+  })
+
+  it('never labels the shipping-cost field with the customer’s currency, and disables it, while the shop’s own currency is unknown', async () => {
+    // The customer-detail fetch fails outright, so shopCurrency never arrives
+    // — not just "hasn't arrived yet". The component's own .catch() only
+    // toasts and never recovers a value, so a `shopCurrency || customer.currency`
+    // fallback would show the WRONG currency (the customer's, EUR) forever,
+    // with nothing on screen to say anything went wrong.
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/b2b/customers/')) throw new Error('network down')
+      return new Response(JSON.stringify(catalogue), { status: 200 })
+    }))
+    renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
+
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+
+    const label = await screen.findByText(/shipping we paid/i)
+    expect(label).not.toHaveTextContent('EUR')
+    expect(screen.getByLabelText(/shipping we paid/i)).toBeDisabled()
   })
 })
