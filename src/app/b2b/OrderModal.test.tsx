@@ -142,4 +142,49 @@ describe('OrderModal', () => {
     expect(label).not.toHaveTextContent('EUR')
     expect(screen.getByLabelText(/shipping we paid/i)).toBeDisabled()
   })
+
+  it('clears the previous shop’s currency the moment you switch customers, rather than showing it until the new one loads', async () => {
+    const twoShops = [
+      customers[0],
+      {
+        id: 'c2', name: 'Bergen Distro', shopId: 's2', shopName: 'Distro.se',
+        currency: 'EUR', vatPercent: 25, email: null, note: null, active: true,
+        priceCount: 0, orderCount: 0, revenue: 0,
+      },
+    ]
+    const detailTwo = {
+      customer: { id: 'c2', shopCurrency: 'SEK', currency: 'EUR', vatPercent: 25, prices: [] },
+    }
+
+    // c1's own detail resolves normally; c2's is held open, so the moment
+    // right after switching — before c2's fetch has answered — can be
+    // inspected directly. That gap is exactly what the reset must cover.
+    let resolveC2Detail: (r: Response) => void = () => {}
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/api/products')) return new Response(JSON.stringify(catalogue), { status: 200 })
+      if (url.includes('/api/b2b/customers/c2'))
+        return new Promise<Response>((resolve) => { resolveC2Detail = resolve })
+      return new Response(JSON.stringify(detail), { status: 200 }) // c1
+    }))
+
+    renderWithToast(<OrderModal customers={twoShops} onClose={() => {}} onSaved={() => {}} />)
+
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+    // Prove NOK is genuinely showing first — otherwise clearing it on switch
+    // would prove nothing about a real previous value being wiped.
+    expect(await screen.findByText(/shipping we paid \(NOK\)/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Customer'), { target: { value: 'c2' } })
+
+    // c2's detail fetch has not resolved yet. The label must not still read
+    // c1's NOK, and the field must not be left enabled on c1's answer.
+    const label = screen.getByText(/shipping we paid/i)
+    expect(label).not.toHaveTextContent('NOK')
+    expect(screen.getByLabelText(/shipping we paid/i)).toBeDisabled()
+
+    // Letting c2's own answer land shows its OWN shop currency, proving the
+    // reset does not break the real load — only the stale gap before it.
+    resolveC2Detail(new Response(JSON.stringify(detailTwo), { status: 200 }))
+    expect(await screen.findByText(/shipping we paid \(SEK\)/i)).toBeInTheDocument()
+  })
 })

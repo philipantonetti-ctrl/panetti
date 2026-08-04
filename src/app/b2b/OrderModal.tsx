@@ -98,6 +98,26 @@ export function OrderModal({
 
   const currency = customer?.currency ?? ''
 
+  /**
+   * Switching customers must drop everything the PREVIOUS one's fetch left
+   * behind, not just the rows. Otherwise, switching to a customer on a
+   * different shop shows the old shop's currency on the shipping-cost field
+   * — and leaves it enabled — until the new fetch resolves: the same
+   * wrong-currency defect closed for the never-loads case, reached by a
+   * second path. Agreed prices reset for the same reason: `agreed = []` is
+   * what "no agreed price yet" already looks like on this form, so this
+   * borrows an existing, honest empty state rather than ever risking someone
+   * else's price. The product catalogue resets too, so a line added
+   * mid-switch cannot offer the old shop's SKUs.
+   */
+  function pickCustomer(id: string) {
+    setCustomerId(id)
+    setRows([])
+    setShopCurrency('')
+    setAgreed([])
+    setProducts([])
+  }
+
   function setRow(i: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   }
@@ -168,7 +188,7 @@ export function OrderModal({
             <label htmlFor="b2b-customer" className="block text-xs font-medium text-ink">Customer</label>
             <select
               id="b2b-customer" aria-label="Customer" value={customerId}
-              onChange={(e) => { setCustomerId(e.target.value); setRows([]) }}
+              onChange={(e) => pickCustomer(e.target.value)}
               className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink"
             >
               <option value="">Choose a customer…</option>
