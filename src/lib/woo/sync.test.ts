@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { syncAllShops, syncShop } from './sync'
+import { storeOrder, syncAllShops, syncShop } from './sync'
 import { encryptSecret } from '../secrets'
 import { db } from '../db'
 
@@ -569,6 +569,74 @@ describe('draining a backlog', () => {
     const after = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
     expect(after.lastSyncAt!.toISOString()).toBe(watermark.toISOString())
     expect(after.lastError).toContain('could not read')
+  })
+})
+
+describe('voidedAt', () => {
+  let shopId: string
+  beforeEach(async () => {
+    shopId = (await connectedShop('Sync voided [sync-test]')).id
+  })
+
+  // Shadows the outer, positional wooOrder(id, placedAt) for this block only:
+  // these tests care about status transitions, not dates, and need a builder
+  // that takes an object with `id` and `status`. The file has no such builder.
+  /** Minimal, mappable WooCommerce order: only id and status vary. */
+  function wooOrder({ id, status }: { id: number; status: string }) {
+    return {
+      id,
+      number: String(id),
+      status,
+      currency: 'NOK',
+      date_created_gmt: '2026-07-01T00:00:00',
+      discount_total: '0.00',
+      discount_tax: '0.00',
+      shipping_total: '0.00',
+      shipping_tax: '0.00',
+      total_tax: '0.00',
+      total: '0.00',
+      coupon_lines: [],
+      line_items: [],
+    }
+  }
+
+  it('stamps when an order we already hold becomes refunded', async () => {
+    await storeOrder(shopId, wooOrder({ id: 7001, status: 'completed' }), new Map())
+    expect((await db.order.findFirstOrThrow({ where: { externalId: '7001' } })).voidedAt).toBeNull()
+
+    await storeOrder(shopId, wooOrder({ id: 7001, status: 'refunded' }), new Map())
+    const after = await db.order.findFirstOrThrow({ where: { externalId: '7001' } })
+    expect(after.voidedAt).toBeInstanceOf(Date)
+  })
+
+  it('does NOT stamp an order that arrives already refunded', async () => {
+    // A first sync, a backfill, a newly connected store. We do not know when
+    // it was refunded, and a guessed date would put a reversal on a wrong day.
+    await storeOrder(shopId, wooOrder({ id: 7002, status: 'refunded' }), new Map())
+    expect((await db.order.findFirstOrThrow({ where: { externalId: '7002' } })).voidedAt).toBeNull()
+  })
+
+  it('does not move the stamp when a refunded order is seen again', async () => {
+    await storeOrder(shopId, wooOrder({ id: 7003, status: 'completed' }), new Map())
+    await storeOrder(shopId, wooOrder({ id: 7003, status: 'refunded' }), new Map())
+    const first = (await db.order.findFirstOrThrow({ where: { externalId: '7003' } })).voidedAt
+
+    await storeOrder(shopId, wooOrder({ id: 7003, status: 'refunded' }), new Map())
+    const second = (await db.order.findFirstOrThrow({ where: { externalId: '7003' } })).voidedAt
+    expect(second?.getTime()).toBe(first?.getTime())
+  })
+
+  it('clears the stamp if the store un-refunds an order', async () => {
+    await storeOrder(shopId, wooOrder({ id: 7004, status: 'completed' }), new Map())
+    await storeOrder(shopId, wooOrder({ id: 7004, status: 'refunded' }), new Map())
+    await storeOrder(shopId, wooOrder({ id: 7004, status: 'completed' }), new Map())
+    expect((await db.order.findFirstOrThrow({ where: { externalId: '7004' } })).voidedAt).toBeNull()
+  })
+
+  it('does not stamp an unpaid order — pending is not a refund', async () => {
+    await storeOrder(shopId, wooOrder({ id: 7005, status: 'completed' }), new Map())
+    await storeOrder(shopId, wooOrder({ id: 7005, status: 'on-hold' }), new Map())
+    expect((await db.order.findFirstOrThrow({ where: { externalId: '7005' } })).voidedAt).toBeNull()
   })
 })
 

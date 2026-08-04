@@ -202,6 +202,52 @@ describe('DELETE /api/b2b/orders/[id]', () => {
   })
 })
 
+describe('voidedAt on a hand-entered order', () => {
+  it('stamps when the status is set to refunded', async () => {
+    await asAdmin()
+    const id = await createOrder()
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).voidedAt).toBeNull()
+
+    await patch(id, {
+      customerId, placedAt: '2026-07-01', status: 'refunded',
+      lines: [{ productId, quantity: 1, unitPrice: 89 }],
+    })
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).voidedAt).toBeInstanceOf(Date)
+  })
+
+  it('clears the stamp when the order is set back to completed', async () => {
+    // The edit form can un-void, so the reversal must be able to disappear.
+    await asAdmin()
+    const id = await createOrder()
+    await patch(id, {
+      customerId, placedAt: '2026-07-01', status: 'cancelled',
+      lines: [{ productId, quantity: 1, unitPrice: 89 }],
+    })
+    await patch(id, {
+      customerId, placedAt: '2026-07-01', status: 'completed',
+      lines: [{ productId, quantity: 1, unitPrice: 89 }],
+    })
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).voidedAt).toBeNull()
+  })
+
+  it('does not move the stamp when a refunded order is edited again', async () => {
+    await asAdmin()
+    const id = await createOrder()
+    await patch(id, {
+      customerId, placedAt: '2026-07-01', status: 'refunded',
+      lines: [{ productId, quantity: 1, unitPrice: 89 }],
+    })
+    const first = (await db.order.findUniqueOrThrow({ where: { id } })).voidedAt
+
+    await patch(id, {
+      customerId, placedAt: '2026-07-01', status: 'refunded',
+      lines: [{ productId, quantity: 2, unitPrice: 89 }],
+    })
+    const second = (await db.order.findUniqueOrThrow({ where: { id } })).voidedAt
+    expect(second?.getTime()).toBe(first?.getTime())
+  })
+})
+
 describe('GET /api/b2b/orders/[id]', () => {
   it('returns the order in the shape the form needs to reopen it', async () => {
     await asAdmin()

@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { VOIDED_STATUSES } from '../metrics/types'
 import { decryptSecret } from '../secrets'
 import {
   fetchCatalogPrices,
@@ -115,12 +116,31 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
     productIds.set(item.externalProductId, product.id)
   }
 
+  // Was this order already voided in our own records? The stamp marks a
+  // TRANSITION, so an order that arrives already refunded keeps a null date —
+  // we do not know when it happened, and the engine leaves such an order out
+  // entirely rather than reversing it on a guessed day.
+  const held = await db.order.findUnique({
+    where: { shopId_externalId: { shopId, externalId: o.externalId } },
+    select: { status: true, voidedAt: true },
+  })
+  const wasVoided = held ? VOIDED_STATUSES.includes(held.status.toLowerCase() as never) : false
+  const isVoided = VOIDED_STATUSES.includes(o.status.toLowerCase() as never)
+
+  const voidedAt = isVoided
+    // Newly voided by a store we were already watching: now is the moment.
+    // Already voided: keep whatever stamp we had, so a re-sync cannot move it.
+    ? (wasVoided ? held!.voidedAt : held ? new Date() : null)
+    // Back to life. The reversal must disappear with the status.
+    : null
+
   const data = {
     shopId,
     externalId: o.externalId,
     number: o.number,
     placedAt: o.placedAt,
     status: o.status,
+    voidedAt,
     currency: o.currency,
     grossSales: o.grossSales,
     discountTotal: o.discountTotal,

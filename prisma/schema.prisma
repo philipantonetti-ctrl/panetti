@@ -106,6 +106,15 @@ model Order {
   // uses the shop's standing rate instead.
   fulfillmentCost Int?
 
+  // When this order entered a refunded or cancelled state, so the reversal can
+  // land on the day the money actually went back rather than silently rewriting
+  // the day it was placed. Stamped ONLY on a live -> voided transition: an
+  // order that arrives already refunded gets null, because we genuinely do not
+  // know when it happened and a guessed date in a profit figure is worse than
+  // an honest gap. Null therefore means "never voided, or voided before we
+  // started recording" — and such an order contributes nothing, anywhere.
+  voidedAt DateTime?
+
   // Who bought, from Woo's billing details. null = synced before we stored
   // customers (backfill pending); '' = checked, the store has none on file.
   customerName    String?
