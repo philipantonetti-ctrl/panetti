@@ -1,7 +1,7 @@
 ﻿import { describe, it, expect } from 'vitest'
 import { computeMetrics } from './engine'
 import { buildRateTable } from './fx'
-import type { CostBook, EngineExpense, EngineOrder, EngineShop } from './types'
+import type { CostBook, EngineAdSpend, EngineExpense, EngineOrder, EngineShop } from './types'
 
 const shops: EngineShop[] = [
   { id: 'no', name: 'Mazzetti.no', currency: 'NOK' },
@@ -329,5 +329,87 @@ describe('computeMetrics', () => {
     expect(
       computeMetrics({ ...input, orders: [order({ fulfillmentCost: 0 })] }).total.fulfillment,
     ).toBe(0)
+  })
+})
+
+describe('computeMetrics and ad spend', () => {
+  // Two USD shops and no orders, so every figure below is the ad spend and
+  // nothing else. NOK moves between the two days, which is how "converted at
+  // its own day's rate" gets proved rather than assumed.
+  const adShops: EngineShop[] = [
+    { id: 's1', name: 'Shop one', currency: 'USD' },
+    { id: 's2', name: 'Shop two', currency: 'USD' },
+  ]
+  const adRates = buildRateTable([
+    { date: new Date('2026-07-01'), currency: 'USD', rate: 1 },
+    { date: new Date('2026-07-01'), currency: 'NOK', rate: 0.1 },
+    { date: new Date('2026-07-02'), currency: 'NOK', rate: 0.2 },
+  ])
+
+  const spend = (over: Partial<EngineAdSpend> = {}): EngineAdSpend => ({
+    shopId: 's1',
+    date: new Date('2026-07-01'),
+    spend: 10000, // 100.00 kr
+    currency: 'NOK',
+    ...over,
+  })
+
+  const run = (adSpend?: EngineAdSpend[]) =>
+    computeMetrics({
+      shops: adShops,
+      orders: [],
+      expenses: [],
+      costs: new Map(),
+      rates: adRates,
+      adSpend,
+      displayCurrency: 'USD',
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-02'),
+    })
+
+  it('converts each day of spend at that day’s own rate', () => {
+    const res = run([spend(), spend({ date: new Date('2026-07-02') })])
+    // 100.00 kr at 0.10 = $10.00; the same 100.00 kr next day at 0.20 = $20.00.
+    // A single range-wide rate would give $20.00 or $40.00, never $30.00.
+    expect(res.byShop[0].marketing).toBe(3000)
+  })
+
+  it('takes marketing straight out of net profit', () => {
+    const res = run([spend()])
+    expect(res.total.marketing).toBe(1000)
+    expect(res.total.netProfit).toBe(-1000) // nothing sold: the spend is the whole loss
+  })
+
+  it('gives a shop with no ad account a zero, not a missing figure', () => {
+    const res = run([spend()])
+    expect(res.byShop[1].shopId).toBe('s2')
+    expect(res.byShop[1].marketing).toBe(0)
+  })
+
+  it('ignores spend outside the range', () => {
+    const res = run([
+      spend({ date: new Date('2026-06-30') }), // the day before
+      spend({ date: new Date('2026-07-03') }), // the day after
+      spend(),
+    ])
+    expect(res.total.marketing).toBe(1000)
+  })
+
+  it('never lets one shop’s spend land on another', () => {
+    const res = run([spend({ shopId: 's2', spend: 50000 })])
+    expect(res.byShop[0].marketing).toBe(0)
+    expect(res.byShop[1].marketing).toBe(5000)
+  })
+
+  it('sums marketing across shops in the total', () => {
+    const res = run([spend(), spend({ shopId: 's2', spend: 20000 })])
+    expect(res.total.marketing).toBe(1000 + 2000)
+  })
+
+  it('is zero when no ad spend is supplied at all', () => {
+    // Every existing caller passes no adSpend. Their profit must not move.
+    const res = run(undefined)
+    expect(res.total.marketing).toBe(0)
+    expect(res.total.netProfit).toBe(0)
   })
 })

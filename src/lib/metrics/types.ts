@@ -79,6 +79,18 @@ export type EngineExpense = {
   active: boolean
 }
 
+/**
+ * One day of one ad account's spend, in the ACCOUNT's own billing currency —
+ * which need not be its shop's: a Norwegian store can run a EUR ad account.
+ * `date` is plain UTC midnight, the way Meta and Google report a day.
+ */
+export type EngineAdSpend = {
+  shopId: string
+  date: Date
+  spend: number
+  currency: string
+}
+
 export type EngineShop = {
   id: string
   name: string
@@ -104,6 +116,7 @@ export type Figures = {
   netRevenue: number
   grossRevenue: number // net revenue + VAT = what customers actually paid (Nordic "brutto")
   cogs: number // product cost + handling combined
+  marketing: number // Meta and Google ad spend, at each day's own rate
   operationalExpenses: number
   commission: number
   netProfit: number
@@ -132,6 +145,7 @@ export const ZERO_FIGURES: Figures = {
   netRevenue: 0,
   grossRevenue: 0,
   cogs: 0,
+  marketing: 0,
   operationalExpenses: 0,
   commission: 0,
   netProfit: 0,

@@ -8,6 +8,7 @@ import {
   EXCLUDED_STATUSES,
   ZERO_FIGURES,
   type CostBook,
+  type EngineAdSpend,
   type EngineExpense,
   type EngineOrder,
   type EngineResult,
@@ -33,6 +34,11 @@ export type MetricsInput = {
   fulfillmentRates?: Map<string, FulfillmentPoint[]>
   /** The one global gateway fee, or null when none is configured. */
   processingFee?: ProcessingFeeRule | null
+  /**
+   * One row per ad account per day. Absent means no ads ran (or the caller does
+   * not care), which makes marketing 0 and leaves net profit exactly as it was.
+   */
+  adSpend?: EngineAdSpend[]
   /** Workspace timezone for day boundaries. Defaults to UTC. */
   timezone?: string
   /** Per-shop overrides: a shop's orders bucket days in ITS zone. */
@@ -51,6 +57,15 @@ export function fulfillmentOn(points: FulfillmentPoint[], date: Date): number {
     }
   }
   return chosen
+}
+
+/**
+ * Ad spend is dated by plain UTC day, the way the platforms report it — unlike
+ * an order, which belongs to its shop's own calendar day.
+ */
+function spendInRange(date: Date, from: Date, to: Date): boolean {
+  const d = utcDay(date).getTime()
+  return d >= utcDay(from).getTime() && d <= utcDay(to).getTime()
 }
 
 /** An order that contributes nothing — voided (refunded, cancelled, failed) or not yet paid. */
@@ -73,7 +88,8 @@ function inRange(order: EngineOrder, from: Date, to: Date, tz: string): boolean 
  *   commission   = rate x net sales, for attributed orders only
  *   fulfillment  = fixed per-order cost, at the rate in force on the order's day
  *   fees         = gateway % of the charged total + fixed part, per order
- *   net profit   = net revenue - cogs - fulfillment - fees - operational expenses - commission
+ *   marketing    = Meta + Google spend, at each day's own rate
+ *   net profit   = net revenue - cogs - fulfillment - fees - marketing - operational expenses - commission
  *
  * Money arrives in each shop's own currency and is converted to `displayCurrency`
  * using the rate from the order's own date, so history never shifts.
@@ -84,6 +100,16 @@ export function computeMetrics(input: MetricsInput): EngineResult {
   const tz = input.timezone ?? 'UTC'
   const tzFor = (shopId: string) => input.shopTimezones?.get(shopId) ?? tz
   const live = orders.filter((o) => counts(o) && inRange(o, from, to, tzFor(o.shopId)))
+
+  // Grouped once, not per shop per day: dailySeries calls this function for
+  // every day in the range over these same rows, so a filter nested inside the
+  // shop loop is shops x rows x days of work for one number.
+  const spendByShop = new Map<string, EngineAdSpend[]>()
+  for (const row of input.adSpend ?? []) {
+    const list = spendByShop.get(row.shopId)
+    if (list) list.push(row)
+    else spendByShop.set(row.shopId, [row])
+  }
 
   const byShop: ShopFigures[] = shops.map((shop) => {
     const shopOrders = live.filter((o) => o.shopId === shop.id)
@@ -129,6 +155,17 @@ export function computeMetrics(input: MetricsInput): EngineResult {
               return conv(pctPart + fixedPart, o)
             }),
         )
+
+    // Ad spend converts at ITS OWN day's rate, exactly as an order does, so a
+    // rate move never rewrites last month's marketing cost. crossConvert, not
+    // convert, because an account can bill in a currency that is neither the
+    // shop's nor USD — and because buildMarketing converts the same rows the
+    // same way, which is what keeps this page and the Marketing page agreeing.
+    const marketing = sum(
+      (spendByShop.get(shop.id) ?? [])
+        .filter((r) => spendInRange(r.date, from, to))
+        .map((r) => crossConvert(r.spend, r.currency, displayCurrency, r.date, rates)),
+    )
     const netRevenue = netSales + shippingCharged
 
     const cogs = sum(
@@ -157,7 +194,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     )
 
     const netProfit =
-      netRevenue - cogs - fulfillment - transactionFees - operationalExpenses - commission
+      netRevenue - cogs - fulfillment - transactionFees - marketing - operationalExpenses - commission
 
     return {
       shopId: shop.id,
@@ -172,6 +209,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       // What the customer actually paid: net revenue plus the VAT collected.
       grossRevenue: netRevenue + taxes,
       cogs,
+      marketing,
       fulfillment,
       transactionFees,
       operationalExpenses,
@@ -208,6 +246,7 @@ function totalOf(rows: ShopFigures[]): Figures {
     netRevenue,
     grossRevenue: add((r) => r.grossRevenue),
     cogs: add((r) => r.cogs),
+    marketing: add((r) => r.marketing),
     operationalExpenses: add((r) => r.operationalExpenses),
     commission: add((r) => r.commission),
     netProfit,
