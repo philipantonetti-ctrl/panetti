@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ToastProvider } from '@/components/toast/ToastProvider'
 import { OrderModal } from './OrderModal'
@@ -32,13 +32,29 @@ const detail = {
 
 const catalogue = { products: [{ id: 'p1', sku: 'SKU-1', name: 'Massage gun' }, { id: 'p2', sku: 'SKU-2', name: 'Belt' }] }
 
-function mockFetch() {
-  vi.stubGlobal('fetch', vi.fn(async (url: string) =>
-    new Response(
-      JSON.stringify(url.includes('/api/products') ? catalogue : detail),
-      { status: 200 },
-    ),
-  ))
+// Optionally answers `GET /api/b2b/orders/<id>` too, for edit-mode tests —
+// the create-mode tests above never pass this, so `/api/b2b/orders/` is left
+// unrouted for them exactly as before.
+function mockFetch(orderResponse?: { order: Record<string, unknown> } | null) {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('/api/products')) return new Response(JSON.stringify(catalogue), { status: 200 })
+    if (url.includes('/api/b2b/orders/')) return new Response(JSON.stringify(orderResponse ?? null), { status: 200 })
+    return new Response(JSON.stringify(detail), { status: 200 })
+  }))
+}
+
+// Like mockFetch, but records every call's URL and method so a save test can
+// assert which HTTP verb actually went out, not just what the screen shows.
+function mockFetchCapturing(
+  calls: { url: string; method?: string }[],
+  orderResponse: { order: Record<string, unknown> },
+) {
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, method: init?.method })
+    if (url.includes('/api/products')) return new Response(JSON.stringify(catalogue), { status: 200 })
+    if (url.includes('/api/b2b/orders/')) return new Response(JSON.stringify(orderResponse), { status: 200 })
+    return new Response(JSON.stringify(detail), { status: 200 })
+  }))
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -186,5 +202,90 @@ describe('OrderModal', () => {
     // reset does not break the real load — only the stale gap before it.
     resolveC2Detail(new Response(JSON.stringify(detailTwo), { status: 200 }))
     expect(await screen.findByText(/shipping we paid \(SEK\)/i)).toBeInTheDocument()
+  })
+})
+
+describe('OrderModal in edit mode', () => {
+  it('loads the order and prefills every field', async () => {
+    mockFetch({ order: {
+      id: 'o1', number: 'B-0007', status: 'completed', placedAt: '2026-07-05',
+      customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
+      shippingCharged: 5000, fulfillmentCost: 42000,
+      lines: [{ productId: 'p1', quantity: 10, unitPrice: 8900, discountValue: 10, discountKind: 'PERCENT' }],
+    } })
+
+    renderWithToast(<OrderModal customers={customers} order={{ id: 'o1' }} onClose={() => {}} onSaved={() => {}} />)
+
+    // Minor units on the wire, major in the fields — toMajor, not /100. If the
+    // load skipped toMajor (or fed 8900 straight to the field), this would
+    // read 8900, not 89.
+    expect(await screen.findByLabelText('Unit price 1')).toHaveValue(89)
+    expect(screen.getByLabelText('Quantity 1')).toHaveValue(10)
+    expect(screen.getByLabelText('Discount 1')).toHaveValue(10)
+    expect(screen.getByLabelText('Shipping charged (EUR)')).toHaveValue(50)
+    // The heading says which order you are editing — proves `loaded` (from
+    // the GET response) reached the form, not just the id passed in as a prop.
+    expect(screen.getByRole('heading', { name: /B-0007/ })).toBeInTheDocument()
+  })
+
+  it('converts an AMOUNT discount back to major units, and a PERCENT one not at all', async () => {
+    // 2000 minor = 20.00 per unit. A PERCENT 10 must stay 10, not become 0.1.
+    // This is the discriminating test: a wholesale toMajor applied to both
+    // kinds would still pass an AMOUNT-only assertion, and skipping toMajor
+    // entirely would still pass a PERCENT-only assertion. Only the correct,
+    // kind-conditional conversion passes both lines below at once.
+    mockFetch({ order: {
+      id: 'o2', number: 'B-0008', status: 'completed', placedAt: '2026-07-05',
+      customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
+      shippingCharged: 0, fulfillmentCost: 0,
+      lines: [{ productId: 'p1', quantity: 4, unitPrice: 24500, discountValue: 2000, discountKind: 'AMOUNT' }],
+    } })
+
+    renderWithToast(<OrderModal customers={customers} order={{ id: 'o2' }} onClose={() => {}} onSaved={() => {}} />)
+
+    expect(await screen.findByLabelText('Discount 1')).toHaveValue(20)
+    expect(screen.getByLabelText('Discount kind 1')).toHaveValue('AMOUNT')
+  })
+
+  it('locks the customer picker, because the server refuses moving an order', async () => {
+    mockFetch({ order: {
+      id: 'o3', number: 'B-0009', status: 'completed', placedAt: '2026-07-05',
+      customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
+      shippingCharged: 0, fulfillmentCost: 0,
+      lines: [{ productId: 'p1', quantity: 1, unitPrice: 8900, discountValue: 0, discountKind: 'PERCENT' }],
+    } })
+
+    renderWithToast(<OrderModal customers={customers} order={{ id: 'o3' }} onClose={() => {}} onSaved={() => {}} />)
+    // Waits for the load to complete first, so this cannot pass merely
+    // because the select renders disabled before any data has arrived.
+    expect(await screen.findByLabelText('Unit price 1')).toHaveValue(89)
+    expect(screen.getByLabelText('Customer')).toBeDisabled()
+  })
+
+  it('saves with PATCH to the order, not POST to the collection', async () => {
+    const calls: { url: string; method?: string }[] = []
+    mockFetchCapturing(calls, { order: {
+      id: 'o4', number: 'B-0010', status: 'completed', placedAt: '2026-07-05',
+      customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
+      shippingCharged: 0, fulfillmentCost: 0,
+      lines: [{ productId: 'p1', quantity: 1, unitPrice: 8900, discountValue: 0, discountKind: 'PERCENT' }],
+    } })
+
+    renderWithToast(<OrderModal customers={customers} order={{ id: 'o4' }} onClose={() => {}} onSaved={() => {}} />)
+
+    // Wait for the load to actually land, and for the fields it populates to
+    // show up, before clicking — Save stays disabled until then (see the
+    // component's own comment on that button), so clicking any earlier would
+    // hit a no-op and prove nothing about which verb a real save uses.
+    await screen.findByLabelText('Discount 1')
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    // Assert the request itself, not the render: an implementation that still
+    // POSTed a new order (creating a duplicate) would leave the screen looking
+    // identical, so only inspecting the actual calls catches it.
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/api/b2b/orders/o4') && c.method === 'PATCH')).toBe(true),
+    )
+    expect(calls.some((c) => c.method === 'POST')).toBe(false)
   })
 })

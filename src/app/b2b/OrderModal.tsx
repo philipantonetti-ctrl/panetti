@@ -28,18 +28,31 @@ const emptyRow = (): Row => ({
   savePrice: false,
 })
 
+/** One line as `GET /api/b2b/orders/[id]` returns it — minor units on the wire. */
+type LoadedLine = {
+  productId: string
+  quantity: number
+  unitPrice: number
+  discountValue: number
+  discountKind: DiscountKind
+}
+
 const today = () => new Date().toISOString().slice(0, 10)
 
 export function OrderModal({
   customers,
+  order,
   onClose,
   onSaved,
 }: {
   customers: Customer[]
+  /** Absent = creating. Present = editing that order. */
+  order?: { id: string } | null
   onClose: () => void
   onSaved: () => void
 }) {
   const toast = useToast()
+  const editing = order != null
 
   const [customerId, setCustomerId] = useState('')
   const [placedAt, setPlacedAt] = useState(today())
@@ -50,6 +63,11 @@ export function OrderModal({
   const [agreed, setAgreed] = useState<AgreedPrice[]>([])
   const [shopCurrency, setShopCurrency] = useState('')
   const [busy, setBusy] = useState(false)
+  // Editing only: the order's own number, once it has actually loaded — used
+  // both for the heading and to gate Save so it cannot fire on a still-empty
+  // form while the fetch is in flight (the same defect `pickCustomer`'s
+  // comment above describes, one step later).
+  const [loaded, setLoaded] = useState<{ number: string } | null>(null)
 
   const customer = customers.find((c) => c.id === customerId) ?? null
 
@@ -118,6 +136,47 @@ export function OrderModal({
     setProducts([])
   }
 
+  // Editing: pull the order back in the shape this form speaks. pickCustomer
+  // clears the rows by design (see its comment above), so it runs first and
+  // the loaded lines land after — never the other way round, or they would
+  // be wiped the instant they were set.
+  useEffect(() => {
+    if (!order) return
+    fetch(`/api/b2b/orders/${order.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.order) {
+          toast.error('Could not load that order')
+          return
+        }
+        const o = d.order
+        pickCustomer(o.customerId)
+        setPlacedAt(o.placedAt)
+        setShippingCharged(String(toMajor(o.shippingCharged)))
+        setFulfillmentCost(String(toMajor(o.fulfillmentCost)))
+        setRows(
+          o.lines.map((l: LoadedLine) => ({
+            productId: l.productId,
+            quantity: String(l.quantity),
+            unitPrice: String(toMajor(l.unitPrice)),
+            // PERCENT is a plain number and must not be divided; AMOUNT is
+            // money in minor units and must go through toMajor. Getting this
+            // backwards is a silent 100x error on every discounted line.
+            discountValue:
+              l.discountKind === 'PERCENT' ? String(l.discountValue) : String(toMajor(l.discountValue)),
+            discountKind: l.discountKind,
+            // These prices are already what was agreed, or already a
+            // recorded one-off; re-saving them as the standing price on an
+            // edit would be a surprise nobody asked for.
+            savePrice: false,
+          })),
+        )
+        setLoaded({ number: o.number })
+      })
+      .catch(() => toast.error('Could not load that order'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id])
+
   function setRow(i: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   }
@@ -137,26 +196,29 @@ export function OrderModal({
     if (!customer) return
     setBusy(true)
     try {
-      const res = await fetch('/api/b2b/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId: customer.id,
-          placedAt,
-          shippingCharged: parseFloat(shippingCharged) || 0,
-          fulfillmentCost: parseFloat(fulfillmentCost) || 0,
-          lines: rows
-            .filter((r) => r.productId)
-            .map((r) => ({
-              productId: r.productId,
-              quantity: parseInt(r.quantity, 10) || 0,
-              unitPrice: parseFloat(r.unitPrice) || 0,
-              discountValue: parseFloat(r.discountValue) || 0,
-              discountKind: r.discountKind,
-              savePrice: r.savePrice,
-            })),
-        }),
-      })
+      const res = await fetch(
+        editing ? `/api/b2b/orders/${order!.id}` : '/api/b2b/orders',
+        {
+          method: editing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerId: customer.id,
+            placedAt,
+            shippingCharged: parseFloat(shippingCharged) || 0,
+            fulfillmentCost: parseFloat(fulfillmentCost) || 0,
+            lines: rows
+              .filter((r) => r.productId)
+              .map((r) => ({
+                productId: r.productId,
+                quantity: parseInt(r.quantity, 10) || 0,
+                unitPrice: parseFloat(r.unitPrice) || 0,
+                discountValue: parseFloat(r.discountValue) || 0,
+                discountKind: r.discountKind,
+                savePrice: r.savePrice,
+              })),
+          }),
+        },
+      )
 
       if (!res.ok) {
         // Keep the form open — closing would discard everything typed while
@@ -164,7 +226,14 @@ export function OrderModal({
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the order')
         return
       }
-      toast.success(`Order ${(await res.json()).order.number} added`)
+      // PATCH answers `{ ok: true }`, not the order — an edit is still the
+      // same order, so its number is the one already loaded, not something
+      // to read back off this response.
+      toast.success(
+        editing
+          ? `Order ${loaded?.number ?? ''} saved`
+          : `Order ${(await res.json()).order.number} added`,
+      )
       onSaved()
     } catch {
       toast.error('Could not reach the server')
@@ -181,15 +250,18 @@ export function OrderModal({
         className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[var(--radius-card)] bg-surface p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="border-b border-line pb-3 text-base font-bold text-ink">Add other revenue</h2>
+        <h2 className="border-b border-line pb-3 text-base font-bold text-ink">
+          {editing ? `Edit order ${loaded?.number ?? ''}` : 'Add other revenue'}
+        </h2>
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="b2b-customer" className="block text-xs font-medium text-ink">Customer</label>
             <select
               id="b2b-customer" aria-label="Customer" value={customerId}
+              disabled={editing}
               onChange={(e) => pickCustomer(e.target.value)}
-              className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink"
+              className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink disabled:cursor-not-allowed disabled:bg-panel disabled:text-muted"
             >
               <option value="">Choose a customer…</option>
               {customers.filter((c) => c.active).map((c) => (
@@ -374,7 +446,12 @@ export function OrderModal({
           <button onClick={onClose} className="px-3 py-2 text-xs text-ink">Cancel</button>
           <button
             onClick={save}
-            disabled={busy || !customer || usable.length === 0}
+            // Editing: PATCH rewrites every line wholesale, so Save must wait
+            // for the real lines to actually land — the same reason
+            // CustomerModal's own Save gates on `pricesLoaded`. Without this,
+            // a click landing before the fetch resolves would save over the
+            // order with an empty form.
+            disabled={busy || !customer || usable.length === 0 || (editing && !loaded)}
             className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
           >
             {busy ? 'Saving…' : 'Save order'}
