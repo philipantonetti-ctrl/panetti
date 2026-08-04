@@ -33,6 +33,14 @@ Every revenue figure **excludes VAT** — VAT was never our money.
 
 Refunded and cancelled orders count for nothing — no revenue, no commission.
 
+Orders from business customers are entered by hand under **B2B**. They are
+ordinary orders — same revenue, same COGS, same profit — with three
+differences: they are invoiced, so they pay no payment-gateway fee; they carry
+the shipping cost you type rather than the shop's per-order rate; and they are
+priced and invoiced in the customer's own currency, which need not be the
+shop's. Their order numbers are their own sequence (B-0001), so nothing can
+collide with WooCommerce.
+
 ## Where things live
 
 - `src/lib/metrics/` — all the money maths. Pure functions, heavily tested. **Start here.**
