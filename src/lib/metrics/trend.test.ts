@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { previousRange, deltaPct, dailySeries } from './trend'
 import { buildRateTable } from './fx'
+import { computeMetrics } from './engine'
 import type { CostBook, EngineOrder, EngineShop } from './types'
 
 const day = (d: Date) => d.toISOString().slice(0, 10)
@@ -88,6 +89,35 @@ describe('dailySeries', () => {
     const series = dailySeries(input)
     expect(series[0].netProfit).toBe(20000 - 2000) // 2 x 1000 cogs
     expect(series[2].netProfit).toBe(10000 - 1000)
+  })
+
+  it('charges each day only its own ad spend', () => {
+    // The chart sits directly above the table. If a day's profit point did not
+    // carry that day's spend, the line and the Net profit column would disagree
+    // on the same screen.
+    const series = dailySeries({
+      ...input,
+      adSpend: [
+        { shopId: 's1', date: new Date('2026-07-01'), spend: 5000, currency: 'USD' },
+        { shopId: 's1', date: new Date('2026-07-03'), spend: 3000, currency: 'USD' },
+      ],
+    })
+
+    expect(series[0].netProfit).toBe(20000 - 2000 - 5000) // two orders, their cogs, its ads
+    expect(series[1].netProfit).toBe(0) // quiet day: no orders and no spend
+    expect(series[2].netProfit).toBe(10000 - 1000 - 3000)
+  })
+
+  it('adds the daily profit points up to the whole-range profit', () => {
+    const withAds = {
+      ...input,
+      adSpend: [
+        { shopId: 's1', date: new Date('2026-07-01'), spend: 5000, currency: 'USD' },
+        { shopId: 's1', date: new Date('2026-07-03'), spend: 3000, currency: 'USD' },
+      ],
+    }
+    const summed = dailySeries(withAds).reduce((n, p) => n + p.netProfit, 0)
+    expect(computeMetrics(withAds).total.netProfit).toBe(summed)
   })
 
   it('adds up to the same total as the whole-range figure', () => {
