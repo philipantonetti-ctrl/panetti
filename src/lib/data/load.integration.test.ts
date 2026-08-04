@@ -187,4 +187,79 @@ describe('loadMetricsInput and B2B orders', () => {
 
     expect(ensureRates).not.toHaveBeenCalled()
   })
+
+  it('loads a shop’s ad spend, in the ACCOUNT’s currency and not the shop’s', async () => {
+    // A NOK shop running a EUR ad account. Reading the spend as NOK would be a
+    // tenfold error in the largest cost line on the dashboard.
+    const shop = await db.shop.create({
+      data: { name: 'Ad spend [load-test]', currency: 'NOK' },
+    })
+    const account = await db.adAccount.create({
+      data: {
+        shopId: shop.id, provider: 'meta', externalId: 'load-test-ads-1',
+        name: 'Ads [load-test]', currency: 'EUR',
+      },
+    })
+    await db.adSpend.create({
+      data: {
+        accountId: account.id, date: new Date('2026-07-01T00:00:00Z'),
+        spend: 5000, impressions: 100, clicks: 10,
+      },
+    })
+
+    const input = await loadMetricsInput({
+      shopIds: [shop.id], from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+
+    expect(input.adSpend).toEqual([
+      { shopId: shop.id, date: new Date('2026-07-01T00:00:00Z'), spend: 5000, currency: 'EUR' },
+    ])
+  })
+
+  it('does not load ad spend from outside the range', async () => {
+    const shop = await db.shop.create({
+      data: { name: 'Ad range [load-test]', currency: 'NOK' },
+    })
+    const account = await db.adAccount.create({
+      data: {
+        shopId: shop.id, provider: 'google', externalId: 'load-test-ads-2',
+        name: 'Ads [load-test]', currency: 'NOK',
+      },
+    })
+    await db.adSpend.createMany({
+      data: [
+        { accountId: account.id, date: new Date('2026-06-30T00:00:00Z'), spend: 1000, impressions: 1, clicks: 0 },
+        { accountId: account.id, date: new Date('2026-07-01T00:00:00Z'), spend: 2000, impressions: 1, clicks: 0 },
+        { accountId: account.id, date: new Date('2026-07-02T00:00:00Z'), spend: 4000, impressions: 1, clicks: 0 },
+      ],
+    })
+
+    const input = await loadMetricsInput({
+      shopIds: [shop.id], from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+
+    expect(input.adSpend?.map((r) => r.spend)).toEqual([2000])
+  })
+
+  it('fetches rates for an ad account’s currency, which no shop need trade in', async () => {
+    // A lone NOK shop needs no consolidation, so nothing else would ask for a
+    // rate — and its EUR ad spend would then convert on whatever stale rate
+    // happened to be lying around.
+    const shop = await db.shop.create({
+      data: { name: 'Ad FX [load-test]', currency: 'NOK' },
+    })
+    await db.adAccount.create({
+      data: {
+        shopId: shop.id, provider: 'meta', externalId: 'load-test-ads-3',
+        name: 'Ads [load-test]', currency: 'EUR',
+      },
+    })
+
+    await loadMetricsInput({
+      shopIds: [shop.id], from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+
+    expect(ensureRates).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(ensureRates).mock.calls[0][2]).toEqual(expect.arrayContaining(['NOK', 'EUR']))
+  })
 })

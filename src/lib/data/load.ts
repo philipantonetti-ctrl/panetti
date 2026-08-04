@@ -4,7 +4,7 @@ import { utcDay } from '../dates'
 import { zoneDayEndUtc, zoneDayStartUtc } from '../tz'
 import { buildRateTable } from '../metrics/fx'
 import { ensureRates, loadRates } from '../fx/rates'
-import type { CostBook, EngineExpense, EngineOrder, EngineShop, Recurrence } from '../metrics/types'
+import type { CostBook, EngineAdSpend, EngineExpense, EngineOrder, EngineShop, Recurrence } from '../metrics/types'
 import type { MetricsInput } from '../metrics/engine'
 
 export type LoadArgs = {
@@ -147,6 +147,31 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     fulfillmentRates.set(r.shopId, list)
   }
 
+  // Ad spend, so the engine can charge marketing to profit. The account carries
+  // the shop and the billing currency; the spend row carries only a day and an
+  // amount, so the two are joined in memory the way ambassador rates are.
+  const adAccounts = await db.adAccount.findMany({
+    where: { active: true, shopId: { in: shopIds } },
+    select: { id: true, shopId: true, currency: true },
+  })
+  const accountById = new Map(adAccounts.map((a) => [a.id, a]))
+  const spendRows = adAccounts.length
+    ? await db.adSpend.findMany({
+        // Platforms report a plain UTC day, so the window is a UTC day window —
+        // the same one /api/marketing uses, so the two screens see the same rows.
+        where: {
+          accountId: { in: adAccounts.map((a) => a.id) },
+          date: { gte: utcDay(from), lte: utcDay(to) },
+        },
+        select: { accountId: true, date: true, spend: true },
+        orderBy: { date: 'asc' },
+      })
+    : []
+  const adSpend: EngineAdSpend[] = spendRows.map((r) => {
+    const account = accountById.get(r.accountId)!
+    return { shopId: account.shopId, date: r.date, spend: r.spend, currency: account.currency }
+  })
+
   const feeRow = await db.processingFee.findFirst({
     where: { gateway: ACTIVE_GATEWAY, active: true, noFeesApply: false },
   })
@@ -163,6 +188,9 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     ...shops.map((s) => s.currency),
     ...orders.map((o) => o.currency),
     ...expenses.map((e) => e.currency),
+    // An ad account can bill in a currency no shop trades in, and its spend is
+    // now a cost against profit — an unfetched rate is real money mis-stated.
+    ...adAccounts.map((a) => a.currency),
     ...(processingFee ? [processingFee.currency] : []),
   ])
   if (inPlay.size > 1) {
@@ -173,6 +201,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     shops,
     orders,
     expenses,
+    adSpend,
     costs,
     rates: buildRateTable(await loadRates()),
     displayCurrency,
