@@ -5,7 +5,8 @@ import { costOn } from './costs'
 import { expenseInRange } from './expenses'
 import { convert, crossConvert } from './fx'
 import {
-  EXCLUDED_STATUSES,
+  UNPAID_STATUSES,
+  VOIDED_STATUSES,
   ZERO_FIGURES,
   type CostBook,
   type EngineAdSpend,
@@ -68,15 +69,45 @@ function spendInRange(date: Date, from: Date, to: Date): boolean {
   return d >= utcDay(from).getTime() && d <= utcDay(to).getTime()
 }
 
-/** An order that contributes nothing — voided (refunded, cancelled, failed) or not yet paid. */
-function counts(order: EngineOrder): boolean {
-  return !EXCLUDED_STATUSES.includes(order.status.toLowerCase() as never)
+/** Membership by CALENDAR DAY in the workspace timezone (from/to name calendar days). */
+function inRange(when: Date, from: Date, to: Date, tz: string): boolean {
+  const day = zonedDayStr(when, tz)
+  return day >= utcDay(from).toISOString().slice(0, 10) && day <= utcDay(to).toISOString().slice(0, 10)
 }
 
-/** Membership by CALENDAR DAY in the workspace timezone (from/to name calendar days). */
-function inRange(order: EngineOrder, from: Date, to: Date, tz: string): boolean {
-  const day = zonedDayStr(order.placedAt, tz)
-  return day >= utcDay(from).toISOString().slice(0, 10) && day <= utcDay(to).toISOString().slice(0, 10)
+/**
+ * An order as the period sees it. A sale is one entry at +1. A refund is TWO:
+ * the original sale still stands on the day it happened, and the whole order
+ * comes back off on the day the money did. Every figure below is multiplied by
+ * `sign`, so the reversal is the same arithmetic rather than a second set of
+ * rules that could drift from it.
+ */
+type Entry = { order: EngineOrder; sign: 1 | -1 }
+
+function entriesIn(orders: EngineOrder[], from: Date, to: Date, tzFor: (id: string) => string): Entry[] {
+  const out: Entry[] = []
+
+  for (const order of orders) {
+    const status = order.status.toLowerCase()
+    // Not paid yet is not the same as paid and given back: an unpaid order
+    // simply does not count until it is paid, and never reverses.
+    if (UNPAID_STATUSES.includes(status as never)) continue
+
+    const tz = tzFor(order.shopId)
+
+    if (!VOIDED_STATUSES.includes(status as never)) {
+      if (inRange(order.placedAt, from, to, tz)) out.push({ order, sign: 1 })
+      continue
+    }
+
+    // Voided but we never learned when — leave every existing figure alone.
+    if (!order.voidedAt) continue
+
+    if (inRange(order.placedAt, from, to, tz)) out.push({ order, sign: 1 })
+    if (inRange(order.voidedAt, from, to, tz)) out.push({ order, sign: -1 })
+  }
+
+  return out
 }
 
 /**
@@ -99,7 +130,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
 
   const tz = input.timezone ?? 'UTC'
   const tzFor = (shopId: string) => input.shopTimezones?.get(shopId) ?? tz
-  const live = orders.filter((o) => counts(o) && inRange(o, from, to, tzFor(o.shopId)))
+  const live = entriesIn(orders, from, to, tzFor)
 
   // Grouped once, not per shop per day: dailySeries calls this function for
   // every day in the range over these same rows, so a filter nested inside the
@@ -112,7 +143,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
   }
 
   const byShop: ShopFigures[] = shops.map((shop) => {
-    const shopOrders = live.filter((o) => o.shopId === shop.id)
+    const shopOrders = live.filter((e) => e.order.shopId === shop.id)
 
     // Convert an amount from this order's currency into the display currency,
     // at the rate that applied on the day the order was placed.
@@ -124,18 +155,18 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const convCost = (amount: number, order: EngineOrder) =>
       convert(amount, order.costCurrency, order.placedAt, displayCurrency, rates)
 
-    const grossSales = sum(shopOrders.map((o) => conv(o.grossSales, o)))
-    const discounts = sum(shopOrders.map((o) => conv(o.discountTotal, o)))
-    const netSales = sum(shopOrders.map((o) => conv(o.netSales, o)))
-    const shippingCharged = sum(shopOrders.map((o) => conv(o.shippingCharged, o)))
-    const taxes = sum(shopOrders.map((o) => conv(o.taxTotal, o)))
+    const grossSales = sum(shopOrders.map((e) => e.sign * conv(e.order.grossSales, e.order)))
+    const discounts = sum(shopOrders.map((e) => e.sign * conv(e.order.discountTotal, e.order)))
+    const netSales = sum(shopOrders.map((e) => e.sign * conv(e.order.netSales, e.order)))
+    const shippingCharged = sum(shopOrders.map((e) => e.sign * conv(e.order.shippingCharged, e.order)))
+    const taxes = sum(shopOrders.map((e) => e.sign * conv(e.order.taxTotal, e.order)))
 
     // Fulfillment: what this order actually cost to ship when it says so — a
     // hand-entered B2B order does — otherwise the shop's rate on its day.
     const ratesForShop = input.fulfillmentRates?.get(shop.id) ?? []
     const fulfillment = sum(
-      shopOrders.map((o) =>
-        convCost(o.fulfillmentCost ?? fulfillmentOn(ratesForShop, o.placedAt), o),
+      shopOrders.map((e) =>
+        e.sign * convCost(e.order.fulfillmentCost ?? fulfillmentOn(ratesForShop, e.order.placedAt), e.order),
       ),
     )
 
@@ -148,11 +179,11 @@ export function computeMetrics(input: MetricsInput): EngineResult {
           shopOrders
             // An invoiced order never went through the gateway, so the gateway
             // took nothing. Charging it anyway quietly shaves profit off every one.
-            .filter((o) => o.chargesGatewayFee !== false)
-            .map((o) => {
-              const pctPart = Math.round((o.total * fee.percent) / 100)
-              const fixedPart = crossConvert(fee.fixedMinor, fee.currency, o.currency, o.placedAt, rates)
-              return conv(pctPart + fixedPart, o)
+            .filter((e) => e.order.chargesGatewayFee !== false)
+            .map((e) => {
+              const pctPart = Math.round((e.order.total * fee.percent) / 100)
+              const fixedPart = crossConvert(fee.fixedMinor, fee.currency, e.order.currency, e.order.placedAt, rates)
+              return e.sign * conv(pctPart + fixedPart, e.order)
             }),
         )
 
@@ -169,12 +200,12 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const netRevenue = netSales + shippingCharged
 
     const cogs = sum(
-      shopOrders.map((order) =>
+      shopOrders.map((e) =>
+        e.sign *
         sum(
-          order.items.map((item) => {
-            const cost = costOn(costs.get(item.productId) ?? [], order.placedAt)
-            const line = item.quantity * (cost.costPerItem + cost.handlingCost)
-            return convCost(line, order)
+          e.order.items.map((item) => {
+            const cost = costOn(costs.get(item.productId) ?? [], e.order.placedAt)
+            return convCost(item.quantity * (cost.costPerItem + cost.handlingCost), e.order)
           }),
         ),
       ),
@@ -182,9 +213,13 @@ export function computeMetrics(input: MetricsInput): EngineResult {
 
     // Commission is a percentage of NET SALES — after discount, before shipping, excl VAT.
     const commission = sum(
-      shopOrders.map((o) => (o.ambassadorId ? conv(pct(o.netSales, o.commissionRate), o) : 0)),
+      shopOrders.map((e) =>
+        e.order.ambassadorId ? e.sign * conv(pct(e.order.netSales, e.order.commissionRate), e.order) : 0,
+      ),
     )
-    const ambassadorSales = sum(shopOrders.map((o) => (o.ambassadorId ? conv(o.netSales, o) : 0)))
+    const ambassadorSales = sum(
+      shopOrders.map((e) => (e.order.ambassadorId ? e.sign * conv(e.order.netSales, e.order) : 0)),
+    )
 
     // Expenses are dated by day, not by order, so they convert at the range's start.
     const operationalExpenses = sum(
@@ -196,10 +231,14 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const netProfit =
       netRevenue - cogs - fulfillment - transactionFees - marketing - operationalExpenses - commission
 
+    // A reversal is not an un-placed order, so only the sale side counts —
+    // for the tally AND for what it divides.
+    const placed = shopOrders.filter((e) => e.sign === 1).length
+
     return {
       shopId: shop.id,
       shopName: shop.name,
-      orders: shopOrders.length,
+      orders: placed,
       grossSales,
       discounts,
       netSales,
@@ -216,7 +255,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       commission,
       netProfit,
       netMargin: netRevenue === 0 ? 0 : netProfit / netRevenue,
-      avgOrderValue: shopOrders.length === 0 ? 0 : Math.round(netRevenue / shopOrders.length),
+      avgOrderValue: placed === 0 ? 0 : Math.round(netRevenue / placed),
       ambassadorSales,
     }
   })

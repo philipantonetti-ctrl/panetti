@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
+import { VOIDED_STATUSES } from '@/lib/metrics/types'
 import { toMinor } from '@/lib/money'
 import { buildOrderWrite, OrderBody, saveStandingPrices } from '../route'
 
@@ -22,7 +23,10 @@ type Ctx = { params: Promise<{ id: string }> }
 
 /** Only orders this app owns. A synced order is not ours to rewrite. */
 const ownB2bOrder = (id: string) =>
-  db.order.findFirst({ where: { id, b2bCustomerId: { not: null } }, select: { id: true, shopId: true } })
+  db.order.findFirst({
+    where: { id, b2bCustomerId: { not: null } },
+    select: { id: true, shopId: true, status: true, voidedAt: true },
+  })
 
 /**
  * One B2B order, in the shape the ORDER FORM speaks rather than the shape the
@@ -114,6 +118,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
       )
     }
 
+    // Same transition rule as the WooCommerce path: stamp when it becomes
+    // voided, keep the stamp while it stays voided so an edit cannot move it,
+    // and clear it when the order comes back to life.
+    const wasVoided = VOIDED_STATUSES.includes(existing.status.toLowerCase() as never)
+    const isVoided = VOIDED_STATUSES.includes(parsed.data.status as never)
+    const voidedAt = isVoided ? (wasVoided ? existing.voidedAt : new Date()) : null
+
     // Lines are rewritten, not diffed — storeOrder()'s rule. `number` and
     // `externalId` are deliberately untouched: an edit is the same order.
     await db.$transaction(async (tx) => {
@@ -123,6 +134,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
         data: {
           placedAt: w.placedAt,
           status: parsed.data.status,
+          voidedAt,
           currency: w.customer.currency,
           grossSales: w.totals.grossSales,
           discountTotal: w.totals.discountTotal,

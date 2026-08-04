@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { previousRange, deltaPct, dailySeries } from './trend'
-import { buildRateTable } from './fx'
 import { computeMetrics } from './engine'
+import { buildRateTable } from './fx'
 import type { CostBook, EngineOrder, EngineShop } from './types'
 
 const day = (d: Date) => d.toISOString().slice(0, 10)
@@ -52,10 +52,13 @@ describe('dailySeries', () => {
     ['p1', [{ costPerItem: 1000, handlingCost: 0, effectiveFrom: new Date('2026-01-01') }]],
   ])
 
-  function order(id: string, on: string): EngineOrder {
+  // voidedOn, when given, makes this a refunded order: status flips to 'refunded'
+  // and voidedAt is set, matching how a real refunded order looks to the engine.
+  function order(id: string, on: string, voidedOn?: string): EngineOrder {
     return {
-      id, shopId: 's1', placedAt: new Date(on), status: 'completed', currency: 'USD',
+      id, shopId: 's1', placedAt: new Date(on), status: voidedOn ? 'refunded' : 'completed', currency: 'USD',
       costCurrency: 'USD',
+      voidedAt: voidedOn ? new Date(voidedOn) : undefined,
       grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0, taxTotal: 2500, total: 12500,
       ambassadorId: null, commissionRate: 0,
       items: [{ productId: 'p1', quantity: 1, lineNetTotal: 10000 }],
@@ -143,5 +146,54 @@ describe('dailySeries', () => {
     const byDate = Object.fromEntries(dailySeries(tzInput).map((p) => [p.date, p.netRevenue]))
     expect(byDate['2026-07-01']).toBe(10000) // its New York day
     expect(byDate['2026-07-02']).toBe(0)
+  })
+
+  // A refund is TWO entries in the engine: +1 on placedAt, -1 on voidedAt. The
+  // chart must show both, or a point on it can disagree with the header total.
+  it('shows a refund as a positive point on the sale day and a negative point on the refund day', () => {
+    const range = { from: new Date('2026-07-01'), to: new Date('2026-07-10') }
+    const refundInput = { ...input, ...range, orders: [order('r', '2026-07-01', '2026-07-08')] }
+
+    const series = dailySeries(refundInput)
+    const byDate = Object.fromEntries(series.map((p) => [p.date, p.netRevenue]))
+    const summed = series.reduce((n, p) => n + p.netRevenue, 0)
+    const { total } = computeMetrics({ ...refundInput, orders: refundInput.orders })
+
+    expect(byDate['2026-07-01']).toBe(10000) // the sale
+    expect(byDate['2026-07-08']).toBe(-10000) // the reversal
+    expect(summed).toBe(total.netRevenue) // series and header must agree
+    expect(total.netRevenue).toBe(0) // fully cancelled order
+  })
+
+  // The client's own case: an order placed long before the visible window, but
+  // refunded inside it. The sale entry is out of range and never appears; the
+  // reversal entry must still land on its own day, or the chart lies by omission.
+  it('shows a refund that lands inside the window even when the sale happened before it', () => {
+    const range = { from: new Date('2026-07-01'), to: new Date('2026-07-10') }
+    const refundInput = { ...input, ...range, orders: [order('r', '2026-04-02', '2026-07-03')] }
+
+    const series = dailySeries(refundInput)
+    const byDate = Object.fromEntries(series.map((p) => [p.date, p.netRevenue]))
+    const summed = series.reduce((n, p) => n + p.netRevenue, 0)
+    const { total } = computeMetrics({ ...refundInput, orders: refundInput.orders })
+
+    expect(series.some((p) => p.netRevenue !== 0)).toBe(true) // not all zeros
+    expect(byDate['2026-07-03']).toBe(-10000) // the reversal, on its own day
+    expect(summed).toBe(total.netRevenue)
+    expect(total.netRevenue).toBe(-10000) // the sale is outside the window; only the reversal counts
+  })
+
+  // Regression guard: an ordinary order that is never voided must still land on
+  // exactly one day, exactly as it did before voidedAt bucketing was added.
+  it('leaves a plain unrefunded order exactly where it always was', () => {
+    const range = { from: new Date('2026-07-01'), to: new Date('2026-07-10') }
+    const liveInput = { ...input, ...range, orders: [order('a', '2026-07-05')] }
+
+    const series = dailySeries(liveInput)
+    const byDate = Object.fromEntries(series.map((p) => [p.date, p.netRevenue]))
+
+    expect(byDate['2026-07-05']).toBe(10000)
+    expect(series.filter((p) => p.netRevenue !== 0)).toHaveLength(1) // one day, not two
+    expect(series.reduce((n, p) => n + p.netRevenue, 0)).toBe(10000)
   })
 })

@@ -37,6 +37,12 @@ export type EngineOrder = {
   shopId: string
   placedAt: Date
   status: string
+  /**
+   * When this order was voided, if we saw it happen. The order then counts
+   * positively on `placedAt` and negatively here. Absent on a voided order
+   * means we never learned the date, and it counts nowhere at all.
+   */
+  voidedAt?: Date | null
   currency: string
   /**
    * The currency this order's PRODUCT COSTS and FULFILLMENT RATE are held in —

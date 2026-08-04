@@ -262,4 +262,75 @@ describe('loadMetricsInput and B2B orders', () => {
     expect(ensureRates).toHaveBeenCalledTimes(1)
     expect(vi.mocked(ensureRates).mock.calls[0][2]).toEqual(expect.arrayContaining(['NOK', 'EUR']))
   })
+
+  it('fetches an order placed well before the window but voided inside it', async () => {
+    // The client's own example: an order from last week, refunded today, has
+    // to show up as a negative today. It was placed 90 days before the window
+    // opens, so a placedAt-only query would never see it — and the engine can
+    // then never subtract it on the day the money went back.
+    const shop = await db.shop.create({
+      data: { name: 'Late refund [load-test]', currency: 'NOK' },
+    })
+    await db.order.create({
+      data: {
+        shopId: shop.id, externalId: 'REFUND-0001', number: 'REFUND-0001',
+        placedAt: new Date('2026-04-02'), status: 'refunded', currency: 'NOK',
+        grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0,
+        taxTotal: 0, total: 10000, voidedAt: new Date('2026-07-03'),
+      },
+    })
+
+    const input = await loadMetricsInput({
+      shopIds: [shop.id], from: new Date('2026-07-01'), to: new Date('2026-07-14'),
+    })
+
+    expect(input.orders.some((o) => o.id !== undefined)).toBe(true)
+    expect(input.orders).toHaveLength(1)
+    expect(input.orders[0].status).toBe('refunded')
+  })
+
+  it('does not fetch an order placed and voided entirely outside the window', async () => {
+    // The other half of the same guard: the fix must not simply widen the
+    // query into fetching everything regardless of window.
+    const shop = await db.shop.create({
+      data: { name: 'Old closed order [load-test]', currency: 'NOK' },
+    })
+    await db.order.create({
+      data: {
+        shopId: shop.id, externalId: 'OLD-0001', number: 'OLD-0001',
+        placedAt: new Date('2026-01-02'), status: 'refunded', currency: 'NOK',
+        grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0,
+        taxTotal: 0, total: 10000, voidedAt: new Date('2026-01-05'),
+      },
+    })
+
+    const input = await loadMetricsInput({
+      shopIds: [shop.id], from: new Date('2026-07-01'), to: new Date('2026-07-14'),
+    })
+
+    expect(input.orders).toHaveLength(0)
+  })
+
+  it('still fetches an ordinary order placed inside the window with voidedAt null', async () => {
+    // The regression guard: the common case — a live order that has never
+    // been voided — must keep working exactly as before.
+    const shop = await db.shop.create({
+      data: { name: 'Ordinary order [load-test]', currency: 'NOK' },
+    })
+    await db.order.create({
+      data: {
+        shopId: shop.id, externalId: 'ORD-0001', number: 'ORD-0001',
+        placedAt: new Date('2026-07-05'), status: 'completed', currency: 'NOK',
+        grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0,
+        taxTotal: 0, total: 10000,
+      },
+    })
+
+    const input = await loadMetricsInput({
+      shopIds: [shop.id], from: new Date('2026-07-01'), to: new Date('2026-07-14'),
+    })
+
+    expect(input.orders).toHaveLength(1)
+    expect(input.orders[0].voidedAt).toBeNull()
+  })
 })

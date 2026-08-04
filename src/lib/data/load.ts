@@ -45,6 +45,8 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const toDay = utcDay(to).toISOString().slice(0, 10)
   const starts = zones.map((z) => zoneDayStartUtc(fromDay, z).getTime())
   const ends = zones.map((z) => zoneDayEndUtc(toDay, z).getTime())
+  const windowStart = new Date(Math.min(...starts))
+  const windowEnd = new Date(Math.max(...ends))
 
   // A shop's costs are in ITS currency. An order need not share it — a B2B
   // customer can be invoiced in EUR from a NOK store.
@@ -65,13 +67,20 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const orderRows = await db.order.findMany({
     where: {
       shopId: { in: shopIds },
-      placedAt: { gte: new Date(Math.min(...starts)), lte: new Date(Math.max(...ends)) },
+      OR: [
+        { placedAt: { gte: windowStart, lte: windowEnd } },
+        // An order placed before this window but refunded inside it still has
+        // to be fetched, or the engine can never subtract it on the day the
+        // money went back — the whole point of recording voidedAt.
+        { voidedAt: { gte: windowStart, lte: windowEnd } },
+      ],
     },
     select: {
       id: true,
       shopId: true,
       placedAt: true,
       status: true,
+      voidedAt: true,
       currency: true,
       grossSales: true,
       discountTotal: true,
@@ -91,6 +100,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     shopId: o.shopId,
     placedAt: o.placedAt,
     status: o.status,
+    voidedAt: o.voidedAt,
     currency: o.currency,
     costCurrency: currencyByShop.get(o.shopId) ?? o.currency,
     fulfillmentCost: o.fulfillmentCost,

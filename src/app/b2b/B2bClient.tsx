@@ -36,8 +36,13 @@ type B2bOrder = {
   figures: { profit: number } | null
 }
 
-/** The orders card is a working surface, not an archive. */
-const RECENT_DAYS = 90
+/**
+ * The orders card is a working surface, not an archive — but a business
+ * customer may order only twice a year, and ninety days hid orders the client
+ * knew they had placed. A year covers the real rhythm; "See all" still leads
+ * to the Orders page for anything older.
+ */
+const RECENT_DAYS = 365
 const day = (d: Date) => d.toISOString().slice(0, 10)
 
 export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
@@ -281,7 +286,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
         <div className="mt-6 rounded-[var(--radius-card)] border border-line bg-surface p-4">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
             <div className="text-sm text-ink">
-              B2B orders <span className="text-[11px] text-muted">· last {RECENT_DAYS} days</span>
+              B2B orders <span className="text-[11px] text-muted">· last 12 months</span>
             </div>
             <div className="flex items-center gap-2">
               <Link
@@ -320,7 +325,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                 ) : orders.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-10 text-center text-faint">
-                      No B2B orders in the last {RECENT_DAYS} days.
+                      No B2B orders in the last 12 months.
                     </td>
                   </tr>
                 ) : (
