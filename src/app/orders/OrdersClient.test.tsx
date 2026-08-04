@@ -161,6 +161,87 @@ describe('OrdersClient', () => {
     await waitFor(() => expect(screen.getByText('10356')).toBeTruthy())
     expect(screen.getByText(/found/i)).toBeTruthy()
   })
+
+  it('badges a B2B order and can narrow to one source', async () => {
+    const calls: string[] = []
+    const fetchMock = vi.fn((url: string) => {
+      calls.push(String(url))
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            total: 2,
+            orders: [
+              { ...paidOrder, id: 'o1', number: 'B-0001', source: 'b2b', customer: 'Nordic Retail AS' },
+              { ...paidOrder, id: 'o2', number: '9001', source: 'webshop', customer: null },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(
+      <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} />,
+    )
+    await waitFor(() => expect(screen.getByText('B-0001')).toBeTruthy())
+
+    // Only the B2B row wears the badge — a "badge everything" bug would also
+    // put it on the webshop row, and a "badge nothing" bug would put it on neither.
+    const b2bRow = screen.getByText('B-0001').closest('tr')!
+    expect(within(b2bRow).getByText('B2B')).toBeTruthy()
+    const webshopRow = screen.getByText('9001').closest('tr')!
+    expect(within(webshopRow).queryByText('B2B')).toBeNull()
+
+    // Narrowing the Source control must reach the server, not just re-render —
+    // the server owns the filter and the pagination counts that go with it.
+    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'b2b' } })
+    await waitFor(() => expect(calls.some((u) => u.includes('source=b2b'))).toBe(true))
+  })
+
+  it('seeds the source filter from the URL, so /orders?source=b2b arrives already narrowed', async () => {
+    window.history.pushState({}, '', '/orders?source=b2b')
+    try {
+      const calls: string[] = []
+      const fetchMock = vi.fn((url: string) => {
+        calls.push(String(url))
+        return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      render(
+        <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} />,
+      )
+
+      await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+      // The very first request — not a later one after some user action — carries it.
+      expect(calls[0]).toContain('source=b2b')
+    } finally {
+      window.history.pushState({}, '', '/orders')
+    }
+  })
+
+  it('falls back to showing both sources when the URL carries a junk value', async () => {
+    window.history.pushState({}, '', '/orders?source=banana')
+    try {
+      const calls: string[] = []
+      const fetchMock = vi.fn((url: string) => {
+        calls.push(String(url))
+        return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      render(
+        <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} />,
+      )
+
+      await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+      // A junk value is sent through as-is — the API is what decides both-vs-none
+      // (Task 6: anything other than 'webshop'/'b2b' means both). What this test
+      // guards is that the client doesn't add its own validation that would
+      // silently drop the parameter or crash instead of forwarding it.
+      expect(calls[0]).toContain('source=banana')
+    } finally {
+      window.history.pushState({}, '', '/orders')
+    }
+  })
 })
 
 describe('live refresh', () => {
