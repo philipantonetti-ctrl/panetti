@@ -35,6 +35,10 @@ export async function GET(req: Request) {
       db.adAccount.count({ where: { active: true } }),
     ])
 
+    // loadMetricsInput already tops up every ad-account currency in scope — it
+    // has to, because that spend is now a cost against profit. Reusing its rate
+    // table is what stops this page and the dashboard quoting different money
+    // for the same spend.
     const rates = input.rates
 
     const spend = await db.adSpend.findMany({
