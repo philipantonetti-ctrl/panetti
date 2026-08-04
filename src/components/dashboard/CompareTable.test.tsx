@@ -20,8 +20,9 @@ const row: ShopFigures = {
   netRevenue: 95000,
   grossRevenue: 118750, // net revenue + VAT = what the customer paid
   cogs: 24795, // 26.10% of net revenue
-  netProfit: 73000,
-  netMargin: 73000 / 95000,
+  marketing: 25000, // 250.00 kr of ads -> 118,750 / 25,000 = 4.75x
+  netProfit: 45205, // 95000 net revenue - 24795 cogs - 25000 marketing
+  netMargin: 45205 / 95000,
 }
 
 // A shop that sold nothing this period — every figure zero.
@@ -34,11 +35,19 @@ describe('CompareTable', () => {
     render(<CompareTable result={result} />)
 
     for (const label of [
-      'Orders', 'Gross revenue', 'Discounts', 'Net sales', 'Shipping', 'VAT',
-      'Net revenue', 'Transaction fees', 'COGS', 'Fulfillment', 'Op. expenses', 'Commission',
+      'Orders', 'Gross revenue', 'Discounts', 'Net sales', 'Fulfillment', 'VAT',
+      'Transaction fees', 'COGS', 'Marketing', 'Op. expenses', 'ROAS', 'Commission',
       'Net profit', 'Margin',
     ]) {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
+    }
+
+    // Shipping charged is zero in every shop and every period — these shops
+    // ship free, and what shipping COSTS is already under Fulfillment. Net
+    // revenue is net sales plus that zero, so it printed the same money twice.
+    for (const gone of ['Shipping', 'Net revenue']) {
+      expect(screen.queryByRole('button', { name: `Sort by ${gone}` })).toBeNull()
+      expect(screen.queryByRole('checkbox', { name: gone })).toBeNull()
     }
 
     // ONE gross figure only. "Gross sales" (the Shopify sense) sat next to
@@ -100,5 +109,61 @@ describe('CompareTable', () => {
     localStorage.setItem('compare-columns', JSON.stringify(['salesInclVat']))
     render(<CompareTable result={result} />)
     expect(screen.getByRole('button', { name: 'Sort by Gross revenue' })).toBeTruthy()
+  })
+
+  it('shows Marketing as a cost, with total spend in the Total row', () => {
+    render(<CompareTable result={result} />)
+
+    // The shop row and the identical Total both carry it.
+    const spend = formatMoney(25000, 'NOK')
+    expect(screen.getAllByText((_t, el) => el?.textContent === spend).length).toBe(2)
+  })
+
+  it('shows ROAS as gross revenue over ad spend, blended in the Total', () => {
+    render(<CompareTable result={result} />)
+
+    // 118,750 / 25,000 = 4.75x. The Total row is the blended figure by
+    // construction: it is all gross revenue over all spend.
+    expect(screen.getAllByText('4.75×').length).toBe(2)
+  })
+
+  it('dashes ROAS when no ads ran — never 0.00×', () => {
+    render(<CompareTable result={result} />)
+
+    const idleRow = screen.getByText('Mazzetti Denmark').closest('tr')!
+    expect(idleRow.textContent).toContain('—')
+    expect(idleRow.textContent).not.toContain('0.00×')
+  })
+
+  it('shows 0.00× when the ads ran and nothing sold — that is a true answer', () => {
+    const burned: ShopFigures = {
+      ...ZERO_FIGURES,
+      shopId: 's3',
+      shopName: 'Panetti Germany',
+      marketing: 12000,
+      netProfit: -12000,
+    }
+    render(<CompareTable result={{ ...result, byShop: [burned] }} />)
+
+    expect(screen.getByText('0.00×')).toBeTruthy()
+  })
+
+  it('ranks by ROAS with the dashes behind, not in front', () => {
+    // A shop with the highest profit and no ads at all: if a missing ROAS
+    // sorted as 0, or as NaN leaving the order untouched, it would stay on top
+    // of a ROAS ranking it does not belong in.
+    const rich: ShopFigures = {
+      ...ZERO_FIGURES,
+      shopId: 's3',
+      shopName: 'Mazzetti Norway',
+      grossRevenue: 900000,
+      netProfit: 500000,
+    }
+    render(<CompareTable result={{ ...result, byShop: [rich, row, idle] }} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by ROAS' }))
+
+    const names = screen.getAllByRole('row').slice(1).map((tr) => tr.firstElementChild?.textContent)
+    expect(names[0]).toBe('Panetti Norway')
   })
 })

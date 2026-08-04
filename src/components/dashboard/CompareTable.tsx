@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { formatMoney } from '@/lib/money'
-import type { EngineResult, ShopFigures } from '@/lib/metrics/types'
+import type { EngineResult, Figures, ShopFigures } from '@/lib/metrics/types'
 
 /**
  * Every shop, side by side.
@@ -12,12 +12,27 @@ import type { EngineResult, ShopFigures } from '@/lib/metrics/types'
  * meaning survives colour-blindness and a black-and-white printout.
  */
 
+/** A shop row plus the one figure this table derives rather than receives. */
+type Row = ShopFigures & { roas: number | null }
+
+/**
+ * Gross revenue per unit of ad spend. Derived here, not in the engine, because
+ * it is a ratio of two figures already on the row — and because the footer IS
+ * the totals row, which makes its cell the blended ROAS for free: all gross
+ * revenue over all spend. No spend is not "0.00x", it is nothing to divide by,
+ * so it prints a dash; spend with nothing sold really is 0.00x, and prints.
+ */
+function withRoas<T extends Figures>(figures: T): T & { roas: number | null } {
+  return { ...figures, roas: figures.marketing > 0 ? figures.grossRevenue / figures.marketing : null }
+}
+
 type Column = {
-  key: keyof ShopFigures
+  key: keyof Row
   label: string
   hint?: string
   money?: boolean
   percent?: boolean
+  roas?: boolean // "4.75×" — and a dash where there is nothing to divide by
   tone?: boolean // colour by sign
   shareOfNetRevenue?: boolean // append "(26.10%)" — this figure as a share of the row's net revenue
 }
@@ -27,13 +42,13 @@ const COLUMNS: Column[] = [
   { key: 'grossRevenue', label: 'Gross revenue', money: true, hint: 'What customers actually paid: net revenue + VAT (Nordic "brutto")' },
   { key: 'discounts', label: 'Discounts', money: true, hint: 'Coupon and code discounts, excl. VAT' },
   { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base, excl. VAT' },
-  { key: 'shippingCharged', label: 'Shipping', money: true, hint: 'Shipping charged to customers, excl. VAT' },
+  { key: 'fulfillment', label: 'Fulfillment', money: true, hint: 'What shipping actually cost us: the per-order rate from Settings, or a B2B order’s own shipping cost' },
   { key: 'taxes', label: 'VAT', money: true, hint: 'VAT collected (25% NO/SE/DK, 25.5% FI, 19% DE) — remitted to the tax office, never income or cost' },
-  { key: 'netRevenue', label: 'Net revenue', money: true, hint: 'Net sales + shipping, excl. VAT — the basis for profit' },
   { key: 'transactionFees', label: 'Transaction fees', money: true, hint: 'Payment gateway: % of the charged total + fixed part' },
   { key: 'cogs', label: 'COGS', money: true, shareOfNetRevenue: true, hint: 'Product cost + handling, and its share of net revenue' },
-  { key: 'fulfillment', label: 'Fulfillment', money: true, hint: 'Per-order rate from Settings' },
+  { key: 'marketing', label: 'Marketing', money: true, hint: 'Meta and Google ad spend, converted at each day’s own rate' },
   { key: 'operationalExpenses', label: 'Op. expenses', money: true },
+  { key: 'roas', label: 'ROAS', roas: true, hint: 'Gross revenue per unit of ad spend. The Total row is the blended figure: all gross revenue over all spend.' },
   { key: 'commission', label: 'Commission', money: true },
   { key: 'netProfit', label: 'Net profit', money: true, tone: true },
   { key: 'netMargin', label: 'Margin', percent: true, tone: true },
@@ -87,11 +102,17 @@ function Cell({
   stripe,
 }: {
   column: Column
-  row: ShopFigures
+  row: Row
   currency: string
   stripe: string
 }) {
-  const value = row[column.key] as number
+  const value = row[column.key] as number | null
+
+  // A ratio with nothing to divide by is not a number, and printing one would
+  // lie. The dash is muted so a column of them reads as absence, not as data.
+  if (value === null) {
+    return <td className={`num px-4 py-2.5 text-right text-faint ${stripe}`}>—</td>
+  }
 
   // "$3,843.74 (26.10%)" — the share only exists when there is revenue to share.
   const share =
@@ -101,9 +122,11 @@ function Cell({
 
   const text = column.money
     ? formatMoney(value, currency) + share
-    : column.percent
-      ? `${(value * 100).toFixed(1)}%`
-      : value.toLocaleString('en-US')
+    : column.roas
+      ? `${value.toFixed(2)}×`
+      : column.percent
+        ? `${(value * 100).toFixed(1)}%`
+        : value.toLocaleString('en-US')
 
   const tone = !column.tone ? 'text-ink' : value < 0 ? 'text-loss' : 'text-gain'
   const weight = column.key === 'netProfit' ? 'font-semibold' : ''
@@ -112,20 +135,23 @@ function Cell({
 }
 
 export function CompareTable({ result }: { result: EngineResult }) {
-  const [sortBy, setSortBy] = useState<keyof ShopFigures>('netProfit')
+  const [sortBy, setSortBy] = useState<keyof Row>('netProfit')
   const [desc, setDesc] = useState(true)
   const [pickerOpen, setPickerOpen] = useState(false)
   const { columns, hidden, toggle } = useVisibleColumns()
 
   const currency = result.displayCurrency
 
-  const rows = [...result.byShop].sort((a, b) => {
-    const x = a[sortBy] as number
-    const y = b[sortBy] as number
-    return desc ? y - x : x - y
+  const rows = result.byShop.map(withRoas).sort((a, b) => {
+    // A missing ROAS sorts to the bottom of a descending ranking rather than
+    // poisoning the comparator with NaN, which would leave the order untouched
+    // and make the click look broken.
+    const x = a[sortBy] ?? Number.NEGATIVE_INFINITY
+    const y = b[sortBy] ?? Number.NEGATIVE_INFINITY
+    return desc ? Number(y) - Number(x) : Number(x) - Number(y)
   })
 
-  function sort(key: keyof ShopFigures) {
+  function sort(key: keyof Row) {
     if (key === sortBy) setDesc((d) => !d)
     else {
       setSortBy(key)
@@ -232,7 +258,7 @@ export function CompareTable({ result }: { result: EngineResult }) {
                 <Cell
                   key={column.key}
                   column={column}
-                  row={{ ...result.total, shopId: 'total', shopName: 'Total' }}
+                  row={withRoas({ ...result.total, shopId: 'total', shopName: 'Total' })}
                   currency={currency}
                   stripe={stripeOf(i)}
                 />
