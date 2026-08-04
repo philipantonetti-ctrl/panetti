@@ -166,6 +166,57 @@ describe('PATCH /api/b2b/customers/[id]', () => {
     expect((await db.b2bCustomer.findUniqueOrThrow({ where: { id: c.id } })).shopId).toBe(shopId)
   })
 
+  it('refuses to change the currency of a customer who already has orders', async () => {
+    // GET /api/b2b/customers sums all of a customer's orders and labels the
+    // total with their CURRENT currency, on the assertion that every one of
+    // their orders is in it. Letting the currency change after orders exist
+    // would silently misreport that total, their revenue tile, and the
+    // meaning of every agreed price.
+    await asAdmin()
+    const c = await db.b2bCustomer.create({
+      data: { shopId, name: `Settled ${TAG}`, currency: 'NOK' },
+    })
+    await b2bOrder(c.id)
+
+    const res = await patch(c.id, {
+      name: `Settled ${TAG}`, currency: 'EUR', vatPercent: 0, prices: [],
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe(
+      'This customer already has orders in their current currency, so it cannot be changed.',
+    )
+    expect((await db.b2bCustomer.findUniqueOrThrow({ where: { id: c.id } })).currency).toBe('NOK')
+  })
+
+  it('refuses to change the currency of a customer whose only order was refunded', async () => {
+    // Same reasoning as the shop lock: a refunded order is still history
+    // recorded in that currency.
+    await asAdmin()
+    const c = await db.b2bCustomer.create({
+      data: { shopId, name: `RefundSettled ${TAG}`, currency: 'NOK' },
+    })
+    await b2bOrder(c.id, 'refunded')
+
+    const res = await patch(c.id, {
+      name: `RefundSettled ${TAG}`, currency: 'EUR', vatPercent: 0, prices: [],
+    })
+    expect(res.status).toBe(400)
+    expect((await db.b2bCustomer.findUniqueOrThrow({ where: { id: c.id } })).currency).toBe('NOK')
+  })
+
+  it('allows changing the currency of a customer who has no orders yet', async () => {
+    await asAdmin()
+    const c = await db.b2bCustomer.create({
+      data: { shopId, name: `Fresh ${TAG}`, currency: 'NOK' },
+    })
+
+    const res = await patch(c.id, {
+      name: `Fresh ${TAG}`, currency: 'EUR', vatPercent: 0, prices: [],
+    })
+    expect(res.status).toBe(200)
+    expect((await db.b2bCustomer.findUniqueOrThrow({ where: { id: c.id } })).currency).toBe('EUR')
+  })
+
   it('refuses a price for a product from another shop, leaving the existing prices untouched', async () => {
     // The same rule POST enforces on create, exercised on edit: PATCH must
     // never write a price list that points outside the customer's own shop.

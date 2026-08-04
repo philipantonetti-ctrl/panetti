@@ -40,6 +40,11 @@ export function CustomerModal({
   const [rows, setRows] = useState<PriceRow[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [canChangeShop, setCanChangeShop] = useState(true)
+  // Creating: nothing to load, so Save stays enabled as it always has. Editing:
+  // PATCH replaces the price list wholesale, so Save must stay disabled until
+  // their existing prices have actually arrived — otherwise a slow or failed
+  // detail fetch lets Save fire with rows still [], wiping every agreed price.
+  const [pricesLoaded, setPricesLoaded] = useState(!editing)
   const [busy, setBusy] = useState(false)
 
   // The catalogue follows the chosen shop; a price must point at a product the
@@ -66,6 +71,7 @@ export function CustomerModal({
             price: String(toMajor(p.unitPrice)),
           })),
         )
+        setPricesLoaded(true)
       })
       .catch(() => toast.error('Could not load their agreed prices'))
   }, [customer, toast])
@@ -260,7 +266,7 @@ export function CustomerModal({
           <button onClick={onClose} className="px-3 py-2 text-xs text-ink">Cancel</button>
           <button
             onClick={save}
-            disabled={busy || !name.trim() || !shopId || !shop}
+            disabled={busy || !name.trim() || !shopId || !shop || !pricesLoaded}
             className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
           >
             {busy ? 'Saving…' : editing ? 'Save changes' : 'Add customer'}

@@ -116,10 +116,26 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (!existing)
       return NextResponse.json({ error: 'No such customer' }, { status: 404, headers: NO_STORE })
 
+    // Any order at all locks both the shop and the currency, not just an
+    // earning one — a refunded order is still history recorded under them.
     const movingShop = d.shopId !== undefined && d.shopId !== existing.shopId
-    if (movingShop && (await db.order.count({ where: { b2bCustomerId: id } })) > 0) {
+    const changingCurrency = d.currency.toUpperCase() !== existing.currency
+    const hasOrders = (movingShop || changingCurrency)
+      ? (await db.order.count({ where: { b2bCustomerId: id } })) > 0
+      : false
+
+    if (movingShop && hasOrders) {
       return NextResponse.json(
         { error: 'This customer already has orders, so their shop cannot be changed.' },
+        { status: 400, headers: NO_STORE },
+      )
+    }
+    if (changingCurrency && hasOrders) {
+      return NextResponse.json(
+        {
+          error:
+            'This customer already has orders in their current currency, so it cannot be changed.',
+        },
         { status: 400, headers: NO_STORE },
       )
     }
