@@ -4,9 +4,7 @@ import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { loadMetricsInput } from '@/lib/data/load'
 import { computeMetrics } from '@/lib/metrics'
 import { dailySeries } from '@/lib/metrics/trend'
-import { buildRateTable } from '@/lib/metrics/fx'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
-import { ensureRates, loadRates } from '@/lib/fx/rates'
 import { buildMarketing } from '@/lib/ads/marketing'
 import { utcDay } from '@/lib/dates'
 import { db } from '@/lib/db'
@@ -37,20 +35,7 @@ export async function GET(req: Request) {
       db.adAccount.count({ where: { active: true } }),
     ])
 
-    // An ad account may bill in a currency no shop trades in; top up its rates
-    // before converting. Best-effort: convert() falls back to the nearest
-    // earlier rate, so a provider outage only makes figures approximate.
-    const extra = [...new Set(accounts.map((a) => a.currency))].filter(
-      (c) => c !== input.displayCurrency,
-    )
-    if (extra.length) {
-      try {
-        await ensureRates(from, to, extra)
-      } catch {
-        // Rates stay as they were.
-      }
-    }
-    const rates = extra.length ? buildRateTable(await loadRates()) : input.rates
+    const rates = input.rates
 
     const spend = await db.adSpend.findMany({
       where: {
