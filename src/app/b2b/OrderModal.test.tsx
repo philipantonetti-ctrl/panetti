@@ -43,14 +43,15 @@ function mockFetch(orderResponse?: { order: Record<string, unknown> } | null) {
   }))
 }
 
-// Like mockFetch, but records every call's URL and method so a save test can
-// assert which HTTP verb actually went out, not just what the screen shows.
+// Like mockFetch, but records every call's URL, method and body so a save
+// test can assert what actually went out over the wire, not just what the
+// screen shows.
 function mockFetchCapturing(
-  calls: { url: string; method?: string }[],
+  calls: { url: string; method?: string; body?: string }[],
   orderResponse: { order: Record<string, unknown> },
 ) {
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-    calls.push({ url, method: init?.method })
+    calls.push({ url, method: init?.method, body: init?.body as string | undefined })
     if (url.includes('/api/products')) return new Response(JSON.stringify(catalogue), { status: 200 })
     if (url.includes('/api/b2b/orders/')) return new Response(JSON.stringify(orderResponse), { status: 200 })
     return new Response(JSON.stringify(detail), { status: 200 })
@@ -263,7 +264,7 @@ describe('OrderModal in edit mode', () => {
   })
 
   it('saves with PATCH to the order, not POST to the collection', async () => {
-    const calls: { url: string; method?: string }[] = []
+    const calls: { url: string; method?: string; body?: string }[] = []
     mockFetchCapturing(calls, { order: {
       id: 'o4', number: 'B-0010', status: 'completed', placedAt: '2026-07-05',
       customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
@@ -287,5 +288,86 @@ describe('OrderModal in edit mode', () => {
       expect(calls.some((c) => c.url.endsWith('/api/b2b/orders/o4') && c.method === 'PATCH')).toBe(true),
     )
     expect(calls.some((c) => c.method === 'POST')).toBe(false)
+  })
+
+  it('preserves a refunded order’s status on save when nothing about the status is touched', async () => {
+    // This is the bug found by the whole-branch review: the PATCH body used
+    // to omit `status` entirely, and the route defaults a missing status to
+    // 'completed' — so editing a voided order silently un-voided it. This
+    // test must fail against the code as it stood before this fix.
+    const calls: { url: string; method?: string; body?: string }[] = []
+    mockFetchCapturing(calls, { order: {
+      id: 'o5', number: 'B-0011', status: 'refunded', placedAt: '2026-07-05',
+      customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
+      shippingCharged: 0, fulfillmentCost: 0,
+      lines: [{ productId: 'p1', quantity: 1, unitPrice: 8900, discountValue: 0, discountKind: 'PERCENT' }],
+    } })
+
+    renderWithToast(<OrderModal customers={customers} order={{ id: 'o5' }} onClose={() => {}} onSaved={() => {}} />)
+
+    await screen.findByLabelText('Discount 1')
+    // The select is seeded from the loaded order, not left on the create
+    // default — proof the widened `loaded` state actually reached the form.
+    expect(screen.getByLabelText('Status')).toHaveValue('refunded')
+
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      const patch = calls.find((c) => c.method === 'PATCH')
+      expect(patch).toBeDefined()
+      const body = JSON.parse(patch!.body!)
+      expect(body.status).toBe('refunded')
+    })
+  })
+
+  it('sends a deliberately chosen status when the Status select is changed', async () => {
+    const calls: { url: string; method?: string; body?: string }[] = []
+    mockFetchCapturing(calls, { order: {
+      id: 'o6', number: 'B-0012', status: 'refunded', placedAt: '2026-07-05',
+      customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
+      shippingCharged: 0, fulfillmentCost: 0,
+      lines: [{ productId: 'p1', quantity: 1, unitPrice: 8900, discountValue: 0, discountKind: 'PERCENT' }],
+    } })
+
+    renderWithToast(<OrderModal customers={customers} order={{ id: 'o6' }} onClose={() => {}} onSaved={() => {}} />)
+
+    await screen.findByLabelText('Discount 1')
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'completed' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => {
+      const patch = calls.find((c) => c.method === 'PATCH')
+      expect(patch).toBeDefined()
+      const body = JSON.parse(patch!.body!)
+      expect(body.status).toBe('completed')
+    })
+  })
+
+  it('sends no status when creating, and shows no Status control to change', async () => {
+    const calls: { url: string; method?: string; body?: string }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method, body: init?.body as string | undefined })
+      if (url.includes('/api/products')) return new Response(JSON.stringify(catalogue), { status: 200 })
+      if (url.includes('/api/b2b/orders'))
+        return new Response(JSON.stringify({ order: { number: 'B-0099' } }), { status: 200 })
+      return new Response(JSON.stringify(detail), { status: 200 })
+    }))
+
+    renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
+
+    // No `order` prop — nothing to load a status from, and nothing to move.
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+    fireEvent.click(await screen.findByRole('button', { name: /add a line/i }))
+    fireEvent.change(await screen.findByLabelText('Product 1'), { target: { value: 'p1' } })
+    await screen.findByLabelText('Unit price 1')
+
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
+    const post = calls.find((c) => c.method === 'POST')!
+    const body = JSON.parse(post.body!)
+    expect(body).not.toHaveProperty('status')
   })
 })

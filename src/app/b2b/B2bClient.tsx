@@ -344,7 +344,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                       </td>
                       <td className="relative px-3 py-3 text-right">
                         <button
-                          onClick={() => setEditingOrder({ id: o.id })}
+                          onClick={() => { setOrderMenuFor(null); setEditingOrder({ id: o.id }) }}
                           aria-label={`Edit order ${o.number}`}
                           className="rounded px-2 py-1 text-[11px] text-ink hover:bg-panel"
                         >

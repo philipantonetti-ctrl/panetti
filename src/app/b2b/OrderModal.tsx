@@ -63,11 +63,15 @@ export function OrderModal({
   const [agreed, setAgreed] = useState<AgreedPrice[]>([])
   const [shopCurrency, setShopCurrency] = useState('')
   const [busy, setBusy] = useState(false)
-  // Editing only: the order's own number, once it has actually loaded — used
-  // both for the heading and to gate Save so it cannot fire on a still-empty
-  // form while the fetch is in flight (the same defect `pickCustomer`'s
-  // comment above describes, one step later).
-  const [loaded, setLoaded] = useState<{ number: string } | null>(null)
+  // Editing only: the order's own number and status, once it has actually
+  // loaded — used both for the heading and to gate Save so it cannot fire on
+  // a still-empty form while the fetch is in flight (the same defect
+  // `pickCustomer`'s comment above describes, one step later).
+  const [loaded, setLoaded] = useState<{ number: string; status: string } | null>(null)
+  // Editing only: the status shown in the Status select, seeded from the
+  // loaded order and sent back verbatim unless deliberately changed — this is
+  // what stops an edit from silently un-voiding a refunded or cancelled order.
+  const [status, setStatus] = useState('completed')
 
   const customer = customers.find((c) => c.id === customerId) ?? null
 
@@ -171,7 +175,8 @@ export function OrderModal({
             savePrice: false,
           })),
         )
-        setLoaded({ number: o.number })
+        setLoaded({ number: o.number, status: o.status })
+        setStatus(o.status)
       })
       .catch(() => toast.error('Could not load that order'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,6 +209,10 @@ export function OrderModal({
           body: JSON.stringify({
             customerId: customer.id,
             placedAt,
+            // Only editing sends a status. Creating has no status field in
+            // the create route's schema, and a new order is always
+            // 'completed' — which is exactly what omitting it already means.
+            ...(editing ? { status } : {}),
             shippingCharged: parseFloat(shippingCharged) || 0,
             fulfillmentCost: parseFloat(fulfillmentCost) || 0,
             lines: rows
@@ -250,9 +259,27 @@ export function OrderModal({
         className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[var(--radius-card)] bg-surface p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="border-b border-line pb-3 text-base font-bold text-ink">
-          {editing ? `Edit order ${loaded?.number ?? ''}` : 'Add other revenue'}
-        </h2>
+        <div className="flex items-center justify-between gap-3 border-b border-line pb-3">
+          <h2 className="text-base font-bold text-ink">
+            {editing ? `Edit order ${loaded?.number ?? ''}` : 'Add other revenue'}
+          </h2>
+          {editing && (
+            <select
+              aria-label="Status" value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="rounded-[var(--radius-control)] border border-line bg-surface px-2 py-1.5 text-xs text-ink"
+            >
+              <option value="completed">Completed</option>
+              <option value="refunded">Refunded</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          )}
+        </div>
+        {editing && (
+          <p className="mt-1 text-[11px] text-muted">
+            A refunded or cancelled order stays in your history and earns nothing.
+          </p>
+        )}
 
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div>
@@ -264,7 +291,12 @@ export function OrderModal({
               className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink disabled:cursor-not-allowed disabled:bg-panel disabled:text-muted"
             >
               <option value="">Choose a customer…</option>
-              {customers.filter((c) => c.active).map((c) => (
+              {/* Active, plus whichever customer this order already belongs
+                  to — a deactivated customer must not make an edit's picker
+                  render blank; the field stays disabled either way, and
+                  `customer` above already resolves from the unfiltered
+                  array, so nothing about what gets saved changes. */}
+              {customers.filter((c) => c.active || c.id === customerId).map((c) => (
                 <option key={c.id} value={c.id}>{c.name} — {c.shopName} ({c.currency})</option>
               ))}
             </select>
