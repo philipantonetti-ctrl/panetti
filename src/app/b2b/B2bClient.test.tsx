@@ -250,4 +250,27 @@ describe('B2bClient', () => {
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false)
     confirm.mockRestore()
   })
+
+  it('asks for twelve months of B2B orders, not ninety days', async () => {
+    // The card is a working surface, but a business customer may order twice a
+    // year — ninety days hid orders the client knew they had placed.
+    const calls: { url: string; method?: string; body?: string }[] = []
+    mockFetchCapturing(calls, [customer], [])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/api/orders?source=b2b'))).toBe(true))
+
+    const url = new URL(calls.find((c) => c.url.includes('source=b2b'))!.url, 'http://localhost')
+    const from = new Date(url.searchParams.get('from')!)
+    const to = new Date(url.searchParams.get('to')!)
+    const days = Math.round((to.getTime() - from.getTime()) / 86_400_000)
+
+    expect(days).toBe(365)
+  })
+
+  it('says twelve months on the card', async () => {
+    mockFetch([customer], [])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    expect(await screen.findByText(/last 12 months/i)).toBeInTheDocument()
+  })
 })
