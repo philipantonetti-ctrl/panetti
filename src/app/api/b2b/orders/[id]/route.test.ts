@@ -7,7 +7,7 @@ vi.mock('next/headers', () => ({
   }),
 }))
 
-const { PATCH, DELETE } = await import('./route')
+const { GET, PATCH, DELETE } = await import('./route')
 const { POST } = await import('../route')
 const { signSession } = await import('@/lib/auth/session')
 const { db } = await import('@/lib/db')
@@ -199,5 +199,60 @@ describe('DELETE /api/b2b/orders/[id]', () => {
     })
     expect((await DELETE(new Request('http://localhost/x'), params(woo.id))).status).toBe(404)
     expect(await db.order.findUnique({ where: { id: woo.id } })).not.toBeNull()
+  })
+})
+
+describe('GET /api/b2b/orders/[id]', () => {
+  it('returns the order in the shape the form needs to reopen it', async () => {
+    await asAdmin()
+    const id = await createOrder() // 10 x 89.00, 10% off
+
+    const body = await (await GET(new Request('http://localhost/x'), params(id))).json()
+
+    expect(body.order).toMatchObject({
+      id, number: 'B-0001', status: 'completed',
+      placedAt: '2026-07-01',
+      customerId, currency: 'EUR',
+    })
+    // The line carries what the form cannot get from /api/orders: the
+    // product's id and the discount as it was typed.
+    expect(body.order.lines).toEqual([
+      { productId, quantity: 10, unitPrice: 8900, discountValue: 10, discountKind: 'PERCENT' },
+    ])
+  })
+
+  it('returns an AMOUNT discount in minor units, as stored', async () => {
+    // PERCENT is a plain number, AMOUNT is money. Collapsing the two is the
+    // 100x hazard this codebase guards at every other call site.
+    await asAdmin()
+    const res = await POST(new Request('http://localhost/api/b2b/orders', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerId, placedAt: '2026-07-02',
+        lines: [{ productId, quantity: 4, unitPrice: 245, discountValue: 20, discountKind: 'AMOUNT' }],
+      }),
+    }))
+    const { order } = await res.json()
+
+    const body = await (await GET(new Request('http://localhost/x'), params(order.id))).json()
+    expect(body.order.lines[0]).toMatchObject({ discountValue: 2000, discountKind: 'AMOUNT' })
+  })
+
+  it('refuses an anonymous caller', async () => {
+    cookieValue.current = undefined
+    const id = 'anything'
+    expect((await GET(new Request('http://localhost/x'), params(id))).status).toBe(403)
+  })
+
+  it('404s a webshop order', async () => {
+    await asAdmin()
+    const woo = await db.order.create({
+      data: {
+        shopId, externalId: '9500', number: '9500', placedAt: new Date('2026-07-01'),
+        status: 'completed', currency: 'NOK', grossSales: 1000, discountTotal: 0,
+        netSales: 1000, shippingCharged: 0, taxTotal: 0, total: 1000,
+      },
+    })
+    expect((await GET(new Request('http://localhost/x'), params(woo.id))).status).toBe(404)
   })
 })

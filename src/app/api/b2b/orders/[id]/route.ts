@@ -24,6 +24,69 @@ type Ctx = { params: Promise<{ id: string }> }
 const ownB2bOrder = (id: string) =>
   db.order.findFirst({ where: { id, b2bCustomerId: { not: null } }, select: { id: true, shopId: true } })
 
+/**
+ * One B2B order, in the shape the ORDER FORM speaks rather than the shape the
+ * database holds. The list endpoint cannot serve this: it returns product
+ * names for display, not the ids and discount breakdown needed to rebuild the
+ * form, and widening it would cost every row of every page.
+ */
+export async function GET(_req: Request, { params }: Ctx) {
+  try {
+    assertAdmin(await currentUser())
+    const { id } = await params
+
+    const order = await db.order.findFirst({
+      where: { id, b2bCustomerId: { not: null } },
+      select: {
+        id: true, number: true, status: true, placedAt: true, currency: true,
+        shippingCharged: true, fulfillmentCost: true, b2bCustomerId: true,
+        b2bCustomer: { select: { name: true } },
+        items: {
+          select: {
+            productId: true, quantity: true, unitPrice: true,
+            discountValue: true, discountKind: true,
+          },
+        },
+      },
+    })
+    if (!order)
+      return NextResponse.json({ error: 'No such B2B order' }, { status: 404, headers: NO_STORE })
+
+    return NextResponse.json(
+      {
+        order: {
+          id: order.id,
+          number: order.number,
+          status: order.status,
+          // The form's date input speaks 'YYYY-MM-DD'; placedAt is UTC midnight.
+          placedAt: order.placedAt.toISOString().slice(0, 10),
+          customerId: order.b2bCustomerId!,
+          customerName: order.b2bCustomer?.name ?? '',
+          currency: order.currency,
+          shippingCharged: order.shippingCharged,
+          // null means "webshop order, use the shop's rate", which a B2B order
+          // never is — but the column is nullable, so say 0 rather than null.
+          fulfillmentCost: order.fulfillmentCost ?? 0,
+          lines: order.items.map((i) => ({
+            productId: i.productId,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            // As stored: plain for PERCENT, minor units for AMOUNT.
+            discountValue: i.discountValue ?? 0,
+            discountKind: i.discountKind ?? 'PERCENT',
+          })),
+        },
+      },
+      { headers: NO_STORE },
+    )
+  } catch (e) {
+    if (e instanceof AuthError)
+      return NextResponse.json({ error: e.message }, { status: 403, headers: NO_STORE })
+    console.error(e)
+    return NextResponse.json({ error: 'Could not load the order' }, { status: 500, headers: NO_STORE })
+  }
+}
+
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
     assertAdmin(await currentUser())
