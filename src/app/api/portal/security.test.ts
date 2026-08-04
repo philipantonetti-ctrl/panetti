@@ -53,7 +53,7 @@ describe('ambassador data isolation', () => {
 // The rule above holds at the guard function. This proves it holds
 // end-to-end, through the real portal route, against a real B2B order.
 describe('a B2B order through the real portal route', () => {
-  const TAG = '[portal-test]'
+  const TAG = '[b2b-security-test]'
   const AMB_EMAIL = 'security-b2b-amb@example.local'
   let shopId = ''
   let ambassadorId = ''
