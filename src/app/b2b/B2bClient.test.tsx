@@ -41,12 +41,20 @@ const b2bOrder = {
   currency: 'EUR', netSales: 50000, customer: 'Nordic Retail AS', figures: { profit: 12000 },
 }
 
-// The form shape `GET /api/b2b/orders/[id]` answers — what edit and void both load.
+// The form shape `GET /api/b2b/orders/[id]` answers — what edit and void both
+// load. Two lines, one of each discount kind, with numbers chosen so "no
+// conversion", "convert both discounts" and "swap the two branches" each
+// land on a different wrong answer than the correct one:
+//   PERCENT discount 10   -> unchanged 10   (wholesale toMajor would give 0.1)
+//   AMOUNT  discount 750  -> toMajor'd 7.5  (no conversion would leave 750)
 const b2bOrderDetail = {
   id: 'o1', number: 'B-0001', status: 'completed', placedAt: '2026-05-01',
   customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
   shippingCharged: 500, fulfillmentCost: 200,
-  lines: [{ productId: 'p1', quantity: 2, unitPrice: 5000, discountValue: 10, discountKind: 'PERCENT' }],
+  lines: [
+    { productId: 'p1', quantity: 2, unitPrice: 5000, discountValue: 10, discountKind: 'PERCENT' },
+    { productId: 'p2', quantity: 1, unitPrice: 3000, discountValue: 750, discountKind: 'AMOUNT' },
+  ],
 }
 
 function mockFetch(customers: unknown[], orders: unknown[] = []) {
@@ -193,9 +201,15 @@ describe('B2bClient', () => {
     expect(await screen.findByRole('heading', { name: /edit order/i })).toBeInTheDocument()
   })
 
-  it('voids an order by re-sending it with the new status', async () => {
+  it('voids an order by re-sending it with the new status, in major units, converted correctly per discount kind', async () => {
     // PATCH takes the whole order, so voiding loads it first and returns it
-    // unchanged but for the status. Assert the request, not just the click.
+    // unchanged but for the status. Assert the request, not just the click —
+    // and specifically the money conversion, since that is the riskiest part
+    // of this action: PATCH expects major units, so every minor-unit field
+    // must go through toMajor, EXCEPT a PERCENT discountValue, which is a
+    // plain number and must pass through untouched. Getting this backwards
+    // would silently rewrite every AMOUNT discount by 100x on an action
+    // taken only to mark an order refunded — the worst possible outcome.
     const calls: { url: string; method?: string; body?: string }[] = []
     mockFetchCapturing(calls, [customer], [b2bOrder])
     renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
@@ -206,7 +220,19 @@ describe('B2bClient', () => {
     await waitFor(() => {
       const patch = calls.find((c) => c.method === 'PATCH')
       expect(patch?.url).toMatch(/\/api\/b2b\/orders\/o1$/)
-      expect(JSON.parse(patch!.body!).status).toBe('refunded')
+      const body = JSON.parse(patch!.body!)
+      expect(body.status).toBe('refunded')
+      // shippingCharged 500 minor -> 5 major; fulfillmentCost 200 -> 2.
+      expect(body.shippingCharged).toBe(5)
+      expect(body.fulfillmentCost).toBe(2)
+      expect(body.lines).toEqual([
+        // PERCENT: unitPrice 5000 minor -> 50 major; discountValue 10 is a
+        // plain percentage and must be untouched, not divided.
+        { productId: 'p1', quantity: 2, unitPrice: 50, discountValue: 10, discountKind: 'PERCENT' },
+        // AMOUNT: unitPrice 3000 minor -> 30 major; discountValue 750 minor
+        // -> 7.5 major, same conversion as unitPrice, not skipped.
+        { productId: 'p2', quantity: 1, unitPrice: 30, discountValue: 7.5, discountKind: 'AMOUNT' },
+      ])
     })
   })
 

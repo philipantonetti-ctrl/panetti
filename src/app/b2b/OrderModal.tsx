@@ -446,11 +446,14 @@ export function OrderModal({
           <button onClick={onClose} className="px-3 py-2 text-xs text-ink">Cancel</button>
           <button
             onClick={save}
-            // Editing: PATCH rewrites every line wholesale, so Save must wait
-            // for the real lines to actually land — the same reason
-            // CustomerModal's own Save gates on `pricesLoaded`. Without this,
-            // a click landing before the fetch resolves would save over the
-            // order with an empty form.
+            // Editing: `!customer` already blocks Save until `customerId` is
+            // set, and that only happens inside the same load callback that
+            // sets `loaded` — so there is no render where the form looks
+            // populated but `loaded` is still null. `editing && !loaded` is
+            // belt-and-braces alongside that check, not what closes the
+            // race: it mirrors CustomerModal's own Save gate on
+            // `pricesLoaded`, so an edit stays fail-closed even if the
+            // `!customer` check above it ever changes shape.
             disabled={busy || !customer || usable.length === 0 || (editing && !loaded)}
             className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
           >
