@@ -93,16 +93,24 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const conv = (amount: number, order: EngineOrder) =>
       convert(amount, order.currency, order.placedAt, displayCurrency, rates)
 
+    // Product costs and fulfillment rates are held in the SHOP's currency,
+    // which a B2B order invoiced in another currency does not share.
+    const convCost = (amount: number, order: EngineOrder) =>
+      convert(amount, order.costCurrency, order.placedAt, displayCurrency, rates)
+
     const grossSales = sum(shopOrders.map((o) => conv(o.grossSales, o)))
     const discounts = sum(shopOrders.map((o) => conv(o.discountTotal, o)))
     const netSales = sum(shopOrders.map((o) => conv(o.netSales, o)))
     const shippingCharged = sum(shopOrders.map((o) => conv(o.shippingCharged, o)))
     const taxes = sum(shopOrders.map((o) => conv(o.taxTotal, o)))
 
-    // Fulfillment: a fixed cost per order, at the rate in force on the order's day.
+    // Fulfillment: what this order actually cost to ship when it says so — a
+    // hand-entered B2B order does — otherwise the shop's rate on its day.
     const ratesForShop = input.fulfillmentRates?.get(shop.id) ?? []
     const fulfillment = sum(
-      shopOrders.map((o) => conv(fulfillmentOn(ratesForShop, o.placedAt), o)),
+      shopOrders.map((o) =>
+        convCost(o.fulfillmentCost ?? fulfillmentOn(ratesForShop, o.placedAt), o),
+      ),
     )
 
     // Gateway fee: % of the CHARGED total (incl. VAT — that is what the gateway
@@ -111,11 +119,15 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const transactionFees = !fee
       ? 0
       : sum(
-          shopOrders.map((o) => {
-            const pctPart = Math.round((o.total * fee.percent) / 100)
-            const fixedPart = crossConvert(fee.fixedMinor, fee.currency, o.currency, o.placedAt, rates)
-            return conv(pctPart + fixedPart, o)
-          }),
+          shopOrders
+            // An invoiced order never went through the gateway, so the gateway
+            // took nothing. Charging it anyway quietly shaves profit off every one.
+            .filter((o) => o.chargesGatewayFee !== false)
+            .map((o) => {
+              const pctPart = Math.round((o.total * fee.percent) / 100)
+              const fixedPart = crossConvert(fee.fixedMinor, fee.currency, o.currency, o.placedAt, rates)
+              return conv(pctPart + fixedPart, o)
+            }),
         )
     const netRevenue = netSales + shippingCharged
 
@@ -125,7 +137,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
           order.items.map((item) => {
             const cost = costOn(costs.get(item.productId) ?? [], order.placedAt)
             const line = item.quantity * (cost.costPerItem + cost.handlingCost)
-            return conv(line, order)
+            return convCost(line, order)
           }),
         ),
       ),

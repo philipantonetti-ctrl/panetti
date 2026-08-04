@@ -50,6 +50,8 @@ export async function GET(req: Request) {
     const includeVoided = params.get('includeVoided') === 'true'
     const status = params.get('status')?.toLowerCase() ?? ''
     const q = params.get('q')?.trim() ?? ''
+    // 'webshop' or 'b2b'; anything else means "both", the default.
+    const source = params.get('source') ?? ''
 
     const activeShops = await db.shop.findMany({
       where: { active: true, ...(shopIds?.length ? { id: { in: shopIds } } : {}) },
@@ -71,6 +73,11 @@ export async function GET(req: Request) {
         : includeVoided
           ? {}
           : { status: { notIn: [...VOIDED_STATUSES] } }),
+      ...(source === 'b2b'
+        ? { b2bCustomerId: { not: null } }
+        : source === 'webshop'
+          ? { b2bCustomerId: null }
+          : {}),
       ...(q
         ? {
             OR: [
@@ -107,7 +114,10 @@ export async function GET(req: Request) {
           customerName: true,
           customerEmail: true,
           ambassadorId: true,
-          shop: { select: { name: true } },
+          b2bCustomerId: true,
+          fulfillmentCost: true,
+          b2bCustomer: { select: { name: true } },
+          shop: { select: { name: true, currency: true } },
           items: {
             select: {
               productId: true,
@@ -161,11 +171,13 @@ export async function GET(req: Request) {
     const feeRow = await db.processingFee.findFirst({
       where: { gateway: ACTIVE_GATEWAY, active: true, noFeesApply: false },
     })
-    // FX only matters for the fee's fixed part crossing into another currency.
-    // No provider call here — the scheduled sync keeps rates topped up, and
-    // crossConvert falls back to the nearest earlier rate it holds.
-    const needsRates =
-      !!feeRow && feeRow.fixedMinor !== 0 && rows.some((o) => o.currency !== feeRow.currency)
+    // Costs cross from the shop's currency into the order's, so a page holding
+    // any order whose currency differs from its shop's needs the table. Cheap:
+    // loadRates() is one indexed read and crossConvert short-circuits when the
+    // two currencies match.
+    const needsRates = rows.some(
+      (o) => o.currency !== o.shop.currency || (!!feeRow && o.currency !== feeRow.currency),
+    )
     const rates: RateTable = needsRates ? buildRateTable(await loadRates()) : new Map()
 
     const orders = rows.map((o) => {
@@ -173,15 +185,29 @@ export async function GET(req: Request) {
 
       let figures = null
       if (!earnsNothing) {
-        const cogs = o.items.reduce((sum, i) => {
-          const cost = costOn(costs.get(i.productId) ?? [], o.placedAt)
-          return sum + i.quantity * (cost.costPerItem + cost.handlingCost)
-        }, 0)
-        const fulfillment = fulfillmentOn(fulfillmentRates.get(o.shopId) ?? [], o.placedAt)
-        const fee = feeRow
-          ? Math.round((o.total * feeRow.percent) / 100) +
-            crossConvert(feeRow.fixedMinor, feeRow.currency, o.currency, o.placedAt, rates)
-          : 0
+        // Costs are held in the SHOP's currency, which a B2B order invoiced in
+        // another currency does not share. Same correction as engine.ts.
+        const costCurrency = o.shop.currency
+        const toOrder = (amount: number) =>
+          crossConvert(amount, costCurrency, o.currency, o.placedAt, rates)
+
+        const cogs = toOrder(
+          o.items.reduce((sum, i) => {
+            const cost = costOn(costs.get(i.productId) ?? [], o.placedAt)
+            return sum + i.quantity * (cost.costPerItem + cost.handlingCost)
+          }, 0),
+        )
+        // A hand-entered order carries what shipping actually cost; a webshop
+        // order is charged the shop's rate on its day.
+        const fulfillment = toOrder(
+          o.fulfillmentCost ?? fulfillmentOn(fulfillmentRates.get(o.shopId) ?? [], o.placedAt),
+        )
+        // An invoiced order never went through the gateway.
+        const fee =
+          feeRow && o.b2bCustomerId === null
+            ? Math.round((o.total * feeRow.percent) / 100) +
+              crossConvert(feeRow.fixedMinor, feeRow.currency, o.currency, o.placedAt, rates)
+            : 0
         const commission = o.ambassadorId
           ? pct(o.netSales, rateByAmbassador.get(o.ambassadorId) ?? 0)
           : 0
@@ -212,6 +238,8 @@ export async function GET(req: Request) {
         couponCode: o.couponCode,
         customerName: o.customerName,
         customerEmail: o.customerEmail,
+        source: o.b2bCustomerId === null ? ('webshop' as const) : ('b2b' as const),
+        customer: o.b2bCustomer?.name ?? null,
         itemCount: o.items.reduce((n, i) => n + i.quantity, 0),
         products: o.items.map((i) => ({
           name: i.name,

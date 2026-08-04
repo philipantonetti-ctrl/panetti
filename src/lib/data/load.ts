@@ -46,6 +46,10 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const starts = zones.map((z) => zoneDayStartUtc(fromDay, z).getTime())
   const ends = zones.map((z) => zoneDayEndUtc(toDay, z).getTime())
 
+  // A shop's costs are in ITS currency. An order need not share it — a B2B
+  // customer can be invoiced in EUR from a NOK store.
+  const currencyByShop = new Map(shopRows.map((s) => [s.id, s.currency]))
+
   // Commission rate per ambassador, looked up in memory. Joining the whole
   // ambassador row onto every order made the query haul the same handful of
   // people thousands of times; the map is a few dozen rows fetched once.
@@ -75,6 +79,8 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
       shippingCharged: true,
       taxTotal: true,
       total: true,
+      b2bCustomerId: true,
+      fulfillmentCost: true,
       ambassadorId: true,
       items: { select: { productId: true, quantity: true, lineNetTotal: true } },
     },
@@ -86,6 +92,10 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     placedAt: o.placedAt,
     status: o.status,
     currency: o.currency,
+    costCurrency: currencyByShop.get(o.shopId) ?? o.currency,
+    fulfillmentCost: o.fulfillmentCost,
+    // An invoiced B2B order never touched the gateway.
+    chargesGatewayFee: o.b2bCustomerId === null,
     grossSales: o.grossSales,
     discountTotal: o.discountTotal,
     netSales: o.netSales,
@@ -144,15 +154,19 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     ? { percent: feeRow.percent, fixedMinor: feeRow.fixedMinor, currency: feeRow.currency }
     : null
 
-  // Only fetch FX when we actually need to convert something: consolidating to
-  // USD, or crossing the gateway fee's currency into the shops' own.
-  const currencies = [...new Set([...shops.map((s) => s.currency), ...expenses.map((e) => e.currency)])]
-  if (processingFee) currencies.push(processingFee.currency)
-  const needsRates =
-    (displayCurrency === 'USD' && currencies.some((c) => c !== 'USD')) ||
-    (processingFee !== null && currencies.some((c) => c !== processingFee.currency))
-  if (needsRates) {
-    await ensureRates(from, to, [...new Set(currencies)])
+  // Every currency in play. More than one means something has to cross, and
+  // crossing needs a rate. The previous version looked only at shop, expense
+  // and fee currencies, so a EUR order on a NOK shop fetched nothing and was
+  // then converted with whatever stale rates happened to be lying around.
+  const inPlay = new Set([
+    displayCurrency,
+    ...shops.map((s) => s.currency),
+    ...orders.map((o) => o.currency),
+    ...expenses.map((e) => e.currency),
+    ...(processingFee ? [processingFee.currency] : []),
+  ])
+  if (inPlay.size > 1) {
+    await ensureRates(from, to, [...inPlay])
   }
 
   return {

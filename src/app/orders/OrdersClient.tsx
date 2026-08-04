@@ -39,6 +39,8 @@ type OrderRow = {
   couponCode: string | null
   customerName: string | null
   customerEmail: string | null
+  source: 'webshop' | 'b2b'
+  customer: string | null // the B2B customer's name; null on a webshop order
   itemCount: number
   products: Product[]
   figures: Figures | null // null = voided; it earns nothing and shows "—"
@@ -117,6 +119,13 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
   const [to, setTo] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [status, setStatus] = useState('')
+  // /b2b links here with ?source=b2b. Read it once, from window rather than
+  // useSearchParams, so this client component needs no Suspense boundary.
+  const [source, setSource] = useState(() =>
+    typeof window === 'undefined'
+      ? ''
+      : new URLSearchParams(window.location.search).get('source') ?? '',
+  )
   const [q, setQ] = useState('')
   const [query, setQuery] = useState('') // q, debounced
   const [refresh, setRefresh] = useState(0)
@@ -149,6 +158,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
     if (status) p.set('status', status)
     else p.set('includeVoided', 'true')
     if (query) p.set('q', query)
+    if (source) p.set('source', source)
     p.set('limit', String(PAGE))
     p.set('offset', String(offset))
     return p
@@ -192,7 +202,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
       .finally(() => setLoading(false))
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset, from, to, selected, status, query, refresh, tick])
+  }, [preset, from, to, selected, status, source, query, refresh, tick])
 
   async function loadMore() {
     setLoadingMore(true)
@@ -287,6 +297,19 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                     </option>
                   ))}
                 </select>
+                <select
+                  aria-label="Source"
+                  value={source}
+                  onChange={(e) => {
+                    setLoading(true)
+                    setSource(e.target.value)
+                  }}
+                  className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1.5 text-[12px] text-ink transition-colors duration-150 hover:border-faint"
+                >
+                  <option value="">All orders</option>
+                  <option value="webshop">Webshop</option>
+                  <option value="b2b">B2B</option>
+                </select>
                 <input
                   type="search"
                   aria-label="Search orders"
@@ -365,7 +388,19 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                                 <span className="block text-muted">{dateFmt.format(placed)}</span>
                                 <span className="block text-[11px] text-faint">{timeFmt.format(placed)}</span>
                               </td>
-                              <td className="py-2.5 pr-4 font-semibold text-ink">{o.number}</td>
+                              <td className="py-2.5 pr-4 font-semibold text-ink">
+                                <span className="inline-flex items-center gap-1.5">
+                                  {o.number}
+                                  {o.source === 'b2b' && (
+                                    <span
+                                      title={o.customer ? `Entered by hand for ${o.customer}` : 'Entered by hand'}
+                                      className="rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent-ink"
+                                    >
+                                      B2B
+                                    </span>
+                                  )}
+                                </span>
+                              </td>
                               <td className="whitespace-nowrap py-2.5 pr-4" title={`WooCommerce status: ${o.status}`}>
                                 <span className="flex flex-col items-start gap-1">
                                   <Badge {...pay} />

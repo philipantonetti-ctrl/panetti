@@ -38,6 +38,14 @@ export type EngineOrder = {
   placedAt: Date
   status: string
   currency: string
+  /**
+   * The currency this order's PRODUCT COSTS and FULFILLMENT RATE are held in —
+   * its shop's. Usually the same as `currency`, and deliberately required
+   * rather than defaulted: a B2B order can be invoiced in EUR while the shop's
+   * costs stay in NOK, and silently reading one as the other is a tenfold
+   * error in COGS. The compiler should make every caller say which it means.
+   */
+  costCurrency: string
   grossSales: number
   discountTotal: number
   netSales: number // THE commission base
@@ -46,6 +54,17 @@ export type EngineOrder = {
   total: number // what the customer was charged, incl VAT — the gateway-fee base
   ambassadorId: string | null
   commissionRate: number // e.g. 0.10; 0 when unattributed
+  /**
+   * What shipping this order actually cost us, in `costCurrency`. Absent or
+   * null = an ordinary webshop order, which is charged the shop's standing
+   * per-order rate instead.
+   */
+  fulfillmentCost?: number | null
+  /**
+   * Does the payment gateway take a cut? Absent = yes, which is every order
+   * that arrived through a checkout. False for an invoiced B2B order.
+   */
+  chargesGatewayFee?: boolean
   items: EngineOrderItem[]
 }
 

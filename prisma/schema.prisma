@@ -44,6 +44,7 @@ model Shop {
   codes            AmbassadorCode[]
   fulfillmentRates FulfillmentRate[]
   adAccounts       AdAccount[]
+  b2bCustomers     B2bCustomer[]
 }
 
 model Product {
@@ -59,6 +60,7 @@ model Product {
   shop  Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   costs ProductCost[]
   items OrderItem[]
+  b2bPrices B2bPrice[]
 
   @@unique([shopId, externalId])
 }
@@ -96,6 +98,13 @@ model Order {
 
   couponCode      String?
   ambassadorId    String?  // resolved AT SYNC TIME and frozen — changing codes never rewrites history
+  // Set = this order was entered by hand for a business customer. It is the
+  // B2B marker, and the reason the order pays no gateway fee.
+  b2bCustomerId   String?
+  // What shipping this order actually cost us, in the SHOP's currency (the
+  // same frame as FulfillmentRate.perOrder). null = a webshop order, which
+  // uses the shop's standing rate instead.
+  fulfillmentCost Int?
 
   // Who bought, from Woo's billing details. null = synced before we stored
   // customers (backfill pending); '' = checked, the store has none on file.
@@ -104,11 +113,13 @@ model Order {
 
   shop       Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
   ambassador Ambassador? @relation(fields: [ambassadorId], references: [id], onDelete: SetNull)
+  b2bCustomer B2bCustomer? @relation(fields: [b2bCustomerId], references: [id], onDelete: Restrict)
   items      OrderItem[]
 
   @@unique([shopId, externalId])
   @@index([shopId, placedAt])
   @@index([ambassadorId, placedAt])
+  @@index([b2bCustomerId])
 }
 
 model OrderItem {
@@ -120,6 +131,10 @@ model OrderItem {
   quantity     Int
   unitPrice    Int    // minor units, excl VAT
   lineNetTotal Int    // after discount, excl VAT
+  // What was typed on the B2B order form, kept so re-opening it shows "10%"
+  // rather than the amount it worked out to. null on every webshop order.
+  discountValue Int?    // 10 (percent) or 2000 (minor units per unit)
+  discountKind  String? // "PERCENT" | "AMOUNT"
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -332,4 +347,41 @@ model AmbassadorProduct {
 
   @@index([ambassadorId])
   @@index([sku])
+}
+
+// A business customer who buys off the webshop. Their orders are ordinary
+// Order rows — what makes them different is an agreed price list, their own
+// currency, and an invoice instead of a card.
+model B2bCustomer {
+  id         String   @id @default(cuid())
+  shopId     String
+  name       String
+  currency   String   // what they pay in; need not be the shop's
+  vatPercent Float    @default(0) // 25 domestic, 0 reverse-charge or export
+  email      String?
+  note       String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  shop   Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  prices B2bPrice[]
+  orders Order[]
+
+  @@unique([shopId, name])
+}
+
+// This customer's agreed price for one product, in the CUSTOMER'S currency,
+// excluding VAT. Deliberately NOT a timeline like ProductCost: it only ever
+// pre-fills the order form, and the price actually charged is frozen on the
+// OrderItem, so renegotiating a price can never rewrite a past order.
+model B2bPrice {
+  id         String @id @default(cuid())
+  customerId String
+  productId  String
+  unitPrice  Int    // minor units, customer currency, ex VAT
+
+  customer B2bCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, productId])
 }

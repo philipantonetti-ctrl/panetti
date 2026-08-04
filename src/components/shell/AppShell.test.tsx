@@ -59,3 +59,12 @@ describe('AppShell sign-out', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/login'))
   })
 })
+
+it('offers B2B to an admin and never to marketing', () => {
+  const { unmount } = render(<AppShell email="a@b.test">x</AppShell>)
+  expect(screen.getByRole('link', { name: 'B2B' }).getAttribute('href')).toBe('/b2b')
+  unmount()
+
+  render(<AppShell email="a@b.test" role="MARKETING">x</AppShell>)
+  expect(screen.queryByRole('link', { name: 'B2B' })).toBeNull()
+})

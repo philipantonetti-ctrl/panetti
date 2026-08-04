@@ -40,6 +40,11 @@ function Delta({ current, previous, hint }: { current: number; previous: number;
   )
 }
 
+/** "NET REVENUE" -> "stat-net-revenue" — one id per stat, derived so it can never drift from its label. */
+function statTestId(label: string): string {
+  return `stat-${label.toLowerCase().replace(/\s+/g, '-')}`
+}
+
 function Stat({
   label,
   value,
@@ -52,7 +57,9 @@ function Stat({
   return (
     <div className="px-5 py-4">
       <p className="text-[11px] font-semibold tracking-wide text-faint">{label}</p>
-      <p className="num mt-1 text-[17px] font-semibold text-ink">{value}</p>
+      <p data-testid={statTestId(label)} className="num mt-1 text-[17px] font-semibold text-ink">
+        {value}
+      </p>
       {delta && <div className="mt-0.5">{delta}</div>}
     </div>
   )
@@ -78,6 +85,7 @@ export function StatStrip({
         <p className="text-[11px] font-semibold tracking-wide text-faint">NET PROFIT</p>
 
         <p
+          data-testid="stat-net-profit"
           className={`num mt-1 text-[32px] font-semibold leading-none tracking-tight ${
             profitPositive ? 'text-ink' : 'text-loss'
           }`}

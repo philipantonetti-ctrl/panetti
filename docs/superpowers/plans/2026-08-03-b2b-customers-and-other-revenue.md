@@ -681,7 +681,9 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
 - [ ] **Step 5: Run them to verify they fail**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: FAIL on all three — COGS comes back 242000, fees 2650, fulfillment 9900.
+Expected: FAIL on all three — COGS comes back 24200 (22000 × the EUR→USD rate
+of 1.1, because `convert()` multiplies by the *from* currency's rate), fees
+2650, fulfillment 9900.
 
 - [ ] **Step 6: Make the three changes in `engine.ts`**
 
@@ -737,12 +739,30 @@ In the `cogs` block (`engine.ts:122-132`), change the returned line from `conv(l
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
 Expected: PASS — the three new cases and every pre-existing one, with no assertion edited.
 
-- [ ] **Step 8: Run the whole suite**
+- [ ] **Step 8: Give the loader the real value — no stopgap**
+
+`costCurrency` is required, so `src/lib/data/load.ts` stops compiling until it is set. Set it **correctly** now rather than parking the bug in a placeholder. Above the `orderRows` query, beside `rateByAmbassador`:
+
+```ts
+  // A shop's costs are in ITS currency. An order need not share it — a B2B
+  // customer can be invoiced in EUR from a NOK store.
+  const currencyByShop = new Map(shopRows.map((s) => [s.id, s.currency]))
+```
+
+and in the `orders` mapping, after `currency: o.currency,`:
+
+```ts
+    costCurrency: currencyByShop.get(o.shopId) ?? o.currency,
+```
+
+Task 5 adds the other two fields and the `needsRates` fix on top of this.
+
+- [ ] **Step 9: Run the whole suite**
 
 Run: `npm test`
-Expected: PASS. `src/lib/data/load.ts` will not compile yet if TypeScript is strict about the missing `costCurrency` — that is Task 5. If `npm test` surfaces it, add `costCurrency: 'USD'` temporarily? **No.** Do the one-line correct thing now: in `load.ts:83-104`, add `costCurrency: o.currency,` to the mapped object. Task 5 replaces it with the shop's currency and tests it.
+Expected: PASS. Every order in the database today is a WooCommerce order whose currency IS its shop's, so no number moves.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/lib/metrics/types.ts src/lib/metrics/engine.ts src/lib/metrics/engine.test.ts src/lib/metrics/ambassadors.test.ts src/lib/metrics/gross-revenue.test.ts src/lib/metrics/trend.test.ts src/lib/data/load.ts
@@ -756,6 +776,8 @@ git commit -m "fix: product costs are the shop's currency, not the order's"
 **Files:**
 - Modify: `src/lib/data/load.ts:61-104` (select and map), `:149-156` (`needsRates`)
 - Test: `src/lib/data/load.integration.test.ts`
+
+**Note:** Task 4 already added `currencyByShop` and the `costCurrency` mapping. This task adds the other two fields, the two new selects, and the `needsRates` rewrite on top.
 
 **Interfaces:**
 - Consumes: `EngineOrder.costCurrency`, `.fulfillmentCost`, `.chargesGatewayFee` from Task 4.
@@ -823,7 +845,7 @@ describe('loadMetricsInput and B2B orders', () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/lib/data/load.integration.test.ts`
-Expected: FAIL — `costCurrency` is `'EUR'` (the stopgap from Task 4 Step 8), `fulfillmentCost` and `chargesGatewayFee` are `undefined`.
+Expected: FAIL — `fulfillmentCost` and `chargesGatewayFee` are `undefined`. (`costCurrency` already reads `'NOK'` correctly; Task 4 set it.)
 
 - [ ] **Step 3: Select the two new columns**
 
@@ -834,20 +856,11 @@ In `src/lib/data/load.ts`, inside the `db.order.findMany` `select` block (after 
       fulfillmentCost: true,
 ```
 
-- [ ] **Step 4: Map the three fields**
+- [ ] **Step 4: Map the two remaining fields**
 
-Above the `orderRows` query, beside the existing `rateByAmbassador` map:
-
-```ts
-  // A shop's costs are in ITS currency. An order need not share it — a B2B
-  // customer can be invoiced in EUR from a NOK store.
-  const currencyByShop = new Map(shopRows.map((s) => [s.id, s.currency]))
-```
-
-In the `orders` mapping, replace the stopgap `costCurrency: o.currency,` with:
+`currencyByShop` and `costCurrency` are already there from Task 4. In the `orders` mapping, add beside `costCurrency`:
 
 ```ts
-    costCurrency: currencyByShop.get(o.shopId) ?? o.currency,
     fulfillmentCost: o.fulfillmentCost,
     // An invoiced B2B order never touched the gateway.
     chargesGatewayFee: o.b2bCustomerId === null,

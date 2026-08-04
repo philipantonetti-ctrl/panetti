@@ -81,6 +81,17 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       AMBASSADORS_ITEM,
+      {
+        href: '/b2b',
+        label: 'B2B',
+        icon: icon(
+          <>
+            <path d="M3 21h18" />
+            <path d="M5 21V8l7-5 7 5v13" />
+            <path d="M10 21v-6h4v6" />
+          </>,
+        ),
+      },
     ],
   },
   {
