@@ -7,6 +7,7 @@ import { formatMoney } from '@/lib/money'
 import { useToast } from '@/components/toast/useToast'
 import type { Shop } from '@/components/filters/ShopFilter'
 import { CustomerModal } from './CustomerModal'
+import { OrderModal } from './OrderModal'
 
 export type Customer = {
   id: string
@@ -47,6 +48,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
   const [loading, setLoading] = useState(true)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [customerOpen, setCustomerOpen] = useState(false)
+  const [orderOpen, setOrderOpen] = useState(false)
   // A page-load failure is not an action: a toast fades and would leave an
   // empty table reading as "you have no customers" — a lie. Say it in place.
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -230,7 +232,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
               </Link>
               {customers.length > 0 && (
                 <button
-                  onClick={() => {}} // Tasks 10 and 11 wire these two up
+                  onClick={() => setOrderOpen(true)}
                   className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
                 >
                   + Add order
@@ -294,6 +296,14 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
           customer={editingCustomer}
           onClose={() => setCustomerOpen(false)}
           onSaved={() => { setCustomerOpen(false); load() }}
+        />
+      )}
+
+      {orderOpen && (
+        <OrderModal
+          customers={customers}
+          onClose={() => setOrderOpen(false)}
+          onSaved={() => { setOrderOpen(false); load() }}
         />
       )}
     </AppShell>
