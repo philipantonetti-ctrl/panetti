@@ -330,4 +330,92 @@ describe('computeMetrics', () => {
       computeMetrics({ ...input, orders: [order({ fulfillmentCost: 0 })] }).total.fulfillment,
     ).toBe(0)
   })
+
+  // Placed 1 July, refunded 8 July. Look at each day and at both together.
+  const refunded = () =>
+    order({ status: 'refunded', voidedAt: new Date('2026-07-08') })
+
+  it('still counts a refunded order on the day it was placed', () => {
+    // The sale really happened that day. Today's engine erases it, which
+    // rewrites a figure the client has already read.
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [refunded()], expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    expect(res.total.netSales).toBe(90000)
+    expect(res.total.orders).toBe(1)
+  })
+
+  it('subtracts the whole order on the day it was refunded', () => {
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [refunded()], expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-08'), to: new Date('2026-07-08'),
+    })
+    expect(res.total.netSales).toBe(-90000)
+    expect(res.total.cogs).toBe(-22000)
+    expect(res.total.netRevenue).toBe(-95000)
+    // You did not un-place an order.
+    expect(res.total.orders).toBe(0)
+  })
+
+  it('nets to exactly zero across a period covering both', () => {
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [refunded()], expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-31'),
+    })
+    expect(res.total.netSales).toBe(0)
+    expect(res.total.cogs).toBe(0)
+    expect(res.total.netRevenue).toBe(0)
+    expect(res.total.netProfit).toBe(0)
+    expect(res.total.orders).toBe(1)
+  })
+
+  it('reverses the ambassador commission too', () => {
+    const attributed = order({
+      status: 'refunded', voidedAt: new Date('2026-07-08'),
+      ambassadorId: 'a1', commissionRate: 0.1,
+    })
+    const on8th = computeMetrics({
+      shops: [shops[0]], orders: [attributed], expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-08'), to: new Date('2026-07-08'),
+    })
+    expect(on8th.total.commission).toBe(-9000)
+  })
+
+  it('leaves an order refunded before we recorded dates out entirely', () => {
+    // voidedAt null: we do not know when. It counts nowhere, which is exactly
+    // what the engine did before this change — no existing figure moves.
+    const old = order({ status: 'refunded' })
+    for (const [from, to] of [['2026-07-01', '2026-07-01'], ['2026-07-08', '2026-07-08'], ['2026-07-01', '2026-07-31']]) {
+      const res = computeMetrics({
+        shops: [shops[0]], orders: [old], expenses: [], costs, rates,
+        displayCurrency: 'NOK', from: new Date(from), to: new Date(to),
+      })
+      expect(res.total.netSales).toBe(0)
+      expect(res.total.orders).toBe(0)
+    }
+  })
+
+  it('does not reverse an unpaid order — pending is not a refund', () => {
+    const pending = order({ status: 'pending', voidedAt: new Date('2026-07-08') })
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [pending], expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-31'),
+    })
+    expect(res.total.netSales).toBe(0)
+    expect(res.total.orders).toBe(0)
+  })
+
+  it('reports no average on a day that only saw a refund', () => {
+    // orders is 0 that day, so an "average order value" of anything is a lie.
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [order({ status: 'refunded', voidedAt: new Date('2026-07-08') })],
+      expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-08'), to: new Date('2026-07-08'),
+    })
+    expect(res.byShop[0].orders).toBe(0)
+    expect(res.byShop[0].avgOrderValue).toBe(0)
+    // The reversal itself is still real.
+    expect(res.byShop[0].netRevenue).toBe(-95000)
+  })
 })

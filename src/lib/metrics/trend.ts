@@ -46,17 +46,31 @@ export function dailySeries(input: MetricsInput): SeriesPoint[] {
   const tz = input.timezone ?? 'UTC'
   const tzFor = (shopId: string) => input.shopTimezones?.get(shopId) ?? tz
 
-  // Bucket every order onto its own day ONCE, in the very zone the engine uses.
+  // Bucket every order onto its own day(s) ONCE, in the very zone the engine uses.
   // Then each day is computed from only its own orders. Without this, every day
   // re-scanned every order in the range (an expensive Intl call per order), so a
   // year was O(days x orders) — hundreds of thousands of scans. The per-day
   // compute still runs the real engine, so the numbers are byte-for-byte the same.
+  //
+  // A refund is two entries in the engine (+1 on placedAt, -1 on voidedAt), so an
+  // order that was voided must be present in BOTH day buckets — otherwise the
+  // reversal has nowhere to appear and the chart disagrees with the header total.
+  // The sign itself is never decided here: each per-day call below runs the real
+  // `computeMetrics` with from = to = that day, and `entriesIn` inside it picks
+  // exactly the right signed entry for that day on its own.
   const byDay = new Map<string, EngineOrder[]>()
-  for (const o of input.orders) {
-    const k = zonedDayStr(o.placedAt, tzFor(o.shopId))
+  const bucket = (k: string, o: EngineOrder) => {
     const list = byDay.get(k)
     if (list) list.push(o)
     else byDay.set(k, [o])
+  }
+  for (const o of input.orders) {
+    const placedKey = zonedDayStr(o.placedAt, tzFor(o.shopId))
+    bucket(placedKey, o)
+    if (o.voidedAt) {
+      const voidedKey = zonedDayStr(o.voidedAt, tzFor(o.shopId))
+      if (voidedKey !== placedKey) bucket(voidedKey, o)
+    }
   }
 
   return eachDay(input.from, input.to).map((day) => {
