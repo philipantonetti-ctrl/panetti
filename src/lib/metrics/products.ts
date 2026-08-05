@@ -1,7 +1,8 @@
+import { utcDay } from '../dates'
 import { sum } from '../money'
 import { costOn } from './costs'
 import { entriesIn } from './engine'
-import { convert } from './fx'
+import { crossConvert } from './fx'
 import type { CostBook, EngineOrder, EngineOrderItem, EngineShop, RateTable } from './types'
 
 /**
@@ -126,14 +127,28 @@ export function productFigures(input: ProductInput): ProductResult {
   // productId -> that product's figures in its own store.
   const buckets = new Map<string, Bucket>()
 
+  // DISTINCT order ids across the whole page, for the total row. A per-product
+  // bucket counts an order once per product it appears in (correct there —
+  // that is literally "orders of this product"), but summing those counts
+  // would report an order that bought both an oven and a brush as two orders.
+  const allOrderIds = new Set<string>()
+
   for (const entry of entriesIn(orders, from, to, tzFor)) {
     const { order, sign } = entry
 
+    // A reversal is not an un-placed order, so only the sale side counts.
+    if (sign === 1) allOrderIds.add(order.id)
+
     // Revenue crosses from the ORDER's currency; costs from the SHOP's. A B2B
     // order can be invoiced in EUR while its shop's costs stay in NOK, and
-    // reading one as the other is a tenfold error.
-    const conv = (amount: number) => convert(amount, order.currency, order.placedAt, displayCurrency, rates)
-    const convCost = (amount: number) => convert(amount, order.costCurrency, order.placedAt, displayCurrency, rates)
+    // reading one as the other is a tenfold error. `crossConvert`, not
+    // `convert`, because this page's display currency is a store group's own
+    // currency and is never USD — the only case plain `convert` handles
+    // correctly (it multiplies by the from->USD rate and calls the result
+    // "display currency" regardless of what display currency actually is).
+    const conv = (amount: number) => crossConvert(amount, order.currency, displayCurrency, order.placedAt, rates)
+    const convCost = (amount: number) =>
+      crossConvert(amount, order.costCurrency, displayCurrency, order.placedAt, rates)
 
     for (const item of order.items) {
       const meta = products.get(item.productId)
@@ -157,8 +172,17 @@ export function productFigures(input: ProductInput): ProductResult {
       // A reversal is not an un-placed order, so only the sale side is tallied.
       if (sign === 1) bucket.orderIds.add(order.id)
 
-      const cost = costOn(costs.get(item.productId) ?? [], order.placedAt)
-      if (cost.costPerItem === 0) bucket.hasCost = false
+      const history = costs.get(item.productId) ?? []
+
+      // A cost is "entered" when some point was already in force on the
+      // order's day — NOT when the resulting number happens to be zero. A
+      // product costed at {costPerItem: 0, handlingCost: 500} has a real,
+      // if odd, cost on file: flagging it as uncosted would tell the client
+      // to enter a cost they already entered.
+      const costed = history.some((p) => utcDay(p.effectiveFrom).getTime() <= utcDay(order.placedAt).getTime())
+      if (!costed) bucket.hasCost = false
+
+      const cost = costOn(history, order.placedAt)
 
       bucket.quantity += sign * item.quantity
       bucket.grossSales += sign * conv(item.unitPrice * item.quantity)
@@ -177,16 +201,25 @@ export function productFigures(input: ProductInput): ProductResult {
   }
 
   const rows: ProductRow[] = [...merged.entries()].map(([key, group]) => {
-    const stores: ProductStoreRow[] = group
-      .map((b) => ({
-        ...totalsOf(b),
-        shopId: b.meta.shopId,
-        shopName: b.shopName,
-        productId: b.meta.productId,
-        name: b.meta.name,
-        hasCost: b.hasCost,
-      }))
-      .sort((a, b) => b.netSales - a.netSales)
+    // Sort once, by netSales desc, with shopId as a deterministic tiebreaker.
+    // Without it, two stores tied on netSales make "which store names and
+    // photographs this row" depend on Map iteration order — itself dependent
+    // on the order the caller happened to list its orders in, so the same
+    // merged row could read differently between two loads of the same data.
+    const scored = group
+      .map((b) => ({ bucket: b, totals: totalsOf(b) }))
+      .sort(
+        (a, b) => b.totals.netSales - a.totals.netSales || a.bucket.meta.shopId.localeCompare(b.bucket.meta.shopId),
+      )
+
+    const stores: ProductStoreRow[] = scored.map(({ bucket: b, totals }) => ({
+      ...totals,
+      shopId: b.meta.shopId,
+      shopName: b.shopName,
+      productId: b.meta.productId,
+      name: b.meta.name,
+      hasCost: b.hasCost,
+    }))
 
     const add = (pick: (s: ProductStoreRow) => number) => sum(stores.map(pick))
     const netSales = add((s) => s.netSales)
@@ -194,14 +227,18 @@ export function productFigures(input: ProductInput): ProductResult {
     const profit = netSales - cogs
 
     // The biggest seller names the row, so a merged product reads in one
-    // language instead of whichever store happened to be loaded first.
-    const lead = stores[0]
+    // language instead of whichever store happened to be loaded first. A
+    // photo has no language, so falling back to another store's photo is
+    // fine — but the fallback walks this same sorted order, so which photo
+    // wins is deterministic too.
+    const name = scored[0].bucket.meta.name
+    const imageUrl = scored.find((s) => s.bucket.meta.imageUrl)?.bucket.meta.imageUrl ?? null
 
     return {
       key,
       sku: group[0].meta.sku,
-      name: lead.name,
-      imageUrl: group.find((b) => b.meta.imageUrl)?.meta.imageUrl ?? null,
+      name,
+      imageUrl,
       orders: add((s) => s.orders),
       quantity: add((s) => s.quantity),
       grossSales: add((s) => s.grossSales),
@@ -214,7 +251,9 @@ export function productFigures(input: ProductInput): ProductResult {
     }
   })
 
-  rows.sort((a, b) => b.profit - a.profit)
+  // A total order, so two loads of the same data never reshuffle the table:
+  // key is the last tiebreaker and the only one guaranteed distinct.
+  rows.sort((a, b) => b.profit - a.profit || a.key.localeCompare(b.key))
 
   const add = (pick: (r: ProductRow) => number) => sum(rows.map(pick))
   const netSales = add((r) => r.netSales)
@@ -225,7 +264,10 @@ export function productFigures(input: ProductInput): ProductResult {
     displayCurrency,
     rows,
     total: {
-      orders: add((r) => r.orders),
+      // An order counts once no matter how many of its lines are products on
+      // this page — summing the per-row counts would double an order that
+      // bought both an oven and a brush.
+      orders: allOrderIds.size,
       quantity: add((r) => r.quantity),
       grossSales: add((r) => r.grossSales),
       netSales,

@@ -9,10 +9,13 @@ const shops: EngineShop[] = [
   { id: 'fi', name: 'Panetti Finland', currency: 'EUR' },
 ]
 
-// 1 NOK = 0.10 USD, 1 EUR = 1.00 USD  -> 1 EUR = 10 NOK
+// 1 NOK = 0.10 USD, 1 EUR = 1.10 USD  ->  1 EUR = 11 NOK.
+// The EUR rate is deliberately NOT 1.00: at 1.00, NOK->EUR and NOK->USD are
+// numerically identical, which let a `convert`-vs-`crossConvert` currency bug
+// pass every test silently. It must stay off 1.00.
 const rates = buildRateTable([
   { date: new Date('2026-07-01'), currency: 'NOK', rate: 0.1 },
-  { date: new Date('2026-07-01'), currency: 'EUR', rate: 1 },
+  { date: new Date('2026-07-01'), currency: 'EUR', rate: 1.1 },
 ])
 
 // The same product listed in two stores, sharing one SKU.
@@ -92,10 +95,21 @@ describe('productFigures', () => {
     expect(row.quantity).toBe(3)
     expect(row.netSales).toBe(30000)
     expect(row.orders).toBe(2)
-    expect(sumOf(row.stores, 'netSales')).toBe(row.netSales)
-    expect(sumOf(row.stores, 'cogs')).toBe(row.cogs)
-    expect(sumOf(row.stores, 'quantity')).toBe(row.quantity)
-    expect(sumOf(row.stores, 'orders')).toBe(row.orders)
+
+    // Assert the actual expected per-store figures, not just that the
+    // children sum to the parent — the merge arithmetic guarantees that
+    // structurally, so it would pass even if every per-store figure were
+    // individually wrong.
+    const de = row.stores.find((s) => s.shopId === 'de')!
+    const fiStore = row.stores.find((s) => s.shopId === 'fi')!
+    expect(de.netSales).toBe(20000)
+    expect(de.cogs).toBe(6400)
+    expect(de.quantity).toBe(2)
+    expect(de.orders).toBe(1)
+    expect(fiStore.netSales).toBe(10000)
+    expect(fiStore.cogs).toBe(3200)
+    expect(fiStore.quantity).toBe(1)
+    expect(fiStore.orders).toBe(1)
   })
 
   it('never merges products that have no real SKU', () => {
@@ -125,9 +139,22 @@ describe('productFigures', () => {
     expect(before.rows[0].netSales).toBe(20000)
   })
 
+  it('reverses quantity and grossSales too, not only netSales and cogs', () => {
+    const refunded = order({ status: 'refunded', placedAt: new Date('2026-07-01'), voidedAt: new Date('2026-07-05') })
+    const row = run([refunded]).rows[0]
+    expect(row.quantity).toBe(0)
+    expect(row.grossSales).toBe(0)
+  })
+
   it('counts a reversal as no order at all', () => {
     const refunded = order({ status: 'refunded', placedAt: new Date('2026-07-01'), voidedAt: new Date('2026-07-05') })
-    expect(run([refunded]).rows[0].orders).toBe(1) // the sale, not the reversal
+    // The range starts AFTER the sale but still covers the refund, so only
+    // the reversal entry (sign -1) falls inside. The Set dedupes an id added
+    // twice, so this is the only way to catch the `if (sign === 1)` guard
+    // being dropped: with no guard this would still read 1, not 0.
+    const res = run([refunded], { from: new Date('2026-07-03'), to: new Date('2026-07-31') })
+    expect(res.rows[0].orders).toBe(0)
+    expect(res.rows[0].netSales).toBe(-20000)
   })
 
   it('counts an order listing the same product twice as one order', () => {
@@ -142,6 +169,23 @@ describe('productFigures', () => {
     expect(row.quantity).toBe(2)
   })
 
+  it('counts an order once even when it contains two different products', () => {
+    const cheap = new Map(products)
+    cheap.set('p2', { productId: 'p2', shopId: 'de', sku: 'CHEAP', externalId: '99', name: 'Brush', imageUrl: null })
+    const both = order({
+      items: [
+        { productId: 'p-de', sku: 'PZ-PRO', name: 'Ofen', quantity: 1, unitPrice: 10000, lineNetTotal: 10000 },
+        { productId: 'p2', sku: 'CHEAP', name: 'Brush', quantity: 1, unitPrice: 500, lineNetTotal: 500 },
+      ],
+    })
+    const res = run([both], { products: cheap })
+    expect(res.rows).toHaveLength(2)
+    expect(res.rows.every((r) => r.orders === 1)).toBe(true)
+    // The order itself is still ONE order, no matter how many product rows
+    // it touches — summing the per-row counts would report 2.
+    expect(res.total.orders).toBe(1)
+  })
+
   it('reads the cost that was true on the order date, not the newest one', () => {
     const dated: CostBook = new Map([
       ['p-de', [
@@ -153,12 +197,25 @@ describe('productFigures', () => {
   })
 
   it('converts a B2B order invoiced in another currency', () => {
-    // A NOK-invoiced order from a EUR shop: 2000.00 NOK = 200.00 EUR.
+    // A NOK-invoiced order from a EUR shop: 2000.00 NOK = 200000 minor NOK.
+    // NOK->EUR crosses via USD: fromUsd 0.1, toUsd 1.1 -> ratio 0.1/1.1 =
+    // 0.090909...; mulRate(200000, 0.090909...) rounds to 18182.
     const b2b = order({ currency: 'NOK', costCurrency: 'EUR', netSales: 200000, grossSales: 200000,
       items: [{ productId: 'p-de', sku: 'PZ-PRO', name: 'Ofen', quantity: 2, unitPrice: 100000, lineNetTotal: 200000 }] })
     const row = run([b2b]).rows[0]
-    expect(row.netSales).toBe(20000) // converted to EUR
+    expect(row.netSales).toBe(18182) // converted to EUR via crossConvert
     expect(row.cogs).toBe(6400) // costs were already EUR, untouched
+  })
+
+  it('converts COGS from a shop cost currency that differs from the display currency', () => {
+    // Today's loader never produces this — every shop in a store group
+    // shares the group's display currency — but productFigures is pure and
+    // must never read one currency as another if that assumption changes.
+    // 2 x (3000 + 200) = 6400 minor NOK; at 0.1/1.1 -> 581.818... -> 582 EUR.
+    const nokCosted = order({ currency: 'EUR', costCurrency: 'NOK' })
+    const row = run([nokCosted]).rows[0]
+    expect(row.netSales).toBe(20000) // order currency EUR == display, untouched
+    expect(row.cogs).toBe(582)
   })
 
   it('marks a product with no cost entered, and margins do not silently read as 100%', () => {
@@ -166,6 +223,18 @@ describe('productFigures', () => {
     expect(row.hasCost).toBe(false)
     expect(row.cogs).toBe(0)
     expect(run([order()], { costs: new Map() }).uncosted).toBe(1)
+  })
+
+  it('flags a genuine zero cost as costed, not uncosted', () => {
+    // {costPerItem: 0, handlingCost: 500} is a real cost point someone
+    // entered, not an absence of one. Flagging it uncosted would tell the
+    // client to enter a cost they already entered.
+    const zeroCosted: CostBook = new Map([
+      ['p-de', [{ costPerItem: 0, handlingCost: 500, effectiveFrom: new Date('2026-01-01') }]],
+    ])
+    const res = run([order()], { costs: zeroCosted })
+    expect(res.rows[0].hasCost).toBe(true)
+    expect(res.uncosted).toBe(0)
   })
 
   it('yields no margin rather than Infinity when nothing was sold', () => {
@@ -177,13 +246,44 @@ describe('productFigures', () => {
   })
 
   it('sums the total and recomputes its margin rather than averaging the rows', () => {
-    const fi = order({ id: 'o2', shopId: 'fi',
-      items: [{ productId: 'p-fi', sku: 'PZ-PRO', name: 'Uuni', quantity: 1, unitPrice: 10000, lineNetTotal: 10000 }],
-      netSales: 10000, grossSales: 10000 })
-    const res = run([order(), fi])
-    expect(res.total.netSales).toBe(30000)
-    expect(res.total.cogs).toBe(9600)
-    expect(res.total.margin).toBeCloseTo(res.total.profit / res.total.netSales)
+    // Two DIFFERENT products with very different margins, so an averaged
+    // answer and a recomputed one actually diverge (merging the same SKU
+    // across two stores of equal margin, as an earlier version of this test
+    // did, cannot tell the two approaches apart).
+    const cheap = new Map(products)
+    cheap.set('p2', { productId: 'p2', shopId: 'de', sku: 'CHEAP', externalId: '99', name: 'Brush', imageUrl: null })
+    const small = order({ id: 'o2', netSales: 500, grossSales: 500,
+      items: [{ productId: 'p2', sku: 'CHEAP', name: 'Brush', quantity: 1, unitPrice: 500, lineNetTotal: 500 }] })
+    const res = run([order(), small], { products: cheap })
+
+    // p-de: netSales 20000, cogs 6400, margin 0.68. p2 has no cost entry in
+    // this cost book: netSales 500, cogs 0, margin 1.00. Averaging the two
+    // row margins gives (0.68 + 1.00) / 2 = 0.84 — the wrong answer.
+    // Recomputing from the summed totals gives
+    // (20000 + 500 - 6400 - 0) / (20000 + 500) = 14100 / 20500 = 0.6878.
+    expect(res.total.netSales).toBe(20500)
+    expect(res.total.cogs).toBe(6400)
+    expect(res.total.profit).toBe(14100)
+    expect(res.total.margin).toBeCloseTo(0.6878, 4)
+    expect(res.total.margin).not.toBeCloseTo(0.84, 2)
+  })
+
+  it("recomputes a merged row's own margin from its summed figures rather than averaging its stores", () => {
+    const fi = order({
+      id: 'o2',
+      shopId: 'fi',
+      items: [{ productId: 'p-fi', sku: 'PZ-PRO', name: 'Sahkoinen pizzauuni', quantity: 1, unitPrice: 10000, lineNetTotal: 10000 }],
+      netSales: 10000,
+    })
+    // p-fi has no cost entry in this cost book, so its own margin is 1.00
+    // while p-de's is 0.68 — averaging the two stores would give 0.84.
+    const deOnlyCosts: CostBook = new Map([['p-de', costs.get('p-de')!]])
+    const res = run([order(), fi], { costs: deOnlyCosts })
+    const row = res.rows[0]
+
+    // (20000 + 10000 - 6400 - 0) / (20000 + 10000) = 23600 / 30000 = 0.7867
+    expect(row.margin).toBeCloseTo(0.7867, 4)
+    expect(row.margin).not.toBeCloseTo(0.84, 2)
   })
 
   it('sorts the best earner first', () => {
@@ -201,6 +301,23 @@ describe('productFigures', () => {
     expect(run([order(), fi]).rows[0].name).toBe('Sahkoinen pizzauuni')
   })
 
+  it('names a merged row deterministically when two stores tie on netSales', () => {
+    const fi = order({
+      id: 'o2',
+      shopId: 'fi',
+      items: [{ productId: 'p-fi', sku: 'PZ-PRO', name: 'Sahkoinen pizzauuni', quantity: 2, unitPrice: 10000, lineNetTotal: 20000 }],
+      netSales: 20000,
+      grossSales: 20000,
+    })
+    // Germany and Finland now tie on netSales (20000 each); the shopId
+    // tiebreaker makes "de" win regardless of which order the caller lists
+    // its orders in.
+    const forward = run([order(), fi])
+    const reversed = run([fi, order()])
+    expect(forward.rows[0].name).toBe('Elektrischer Pizzaofen')
+    expect(reversed.rows[0].name).toBe('Elektrischer Pizzaofen')
+  })
+
   it('ignores an unpaid order entirely', () => {
     expect(run([order({ status: 'pending' })]).rows).toEqual([])
   })
@@ -213,12 +330,7 @@ describe('mergeKey', () => {
   })
 
   it('keys on the product itself when the SKU is only the Woo id', () => {
-    const key = mergeKey({ productId: 'p', shopId: 's', sku: '42', externalId: '42', name: 'x', imageUrl: null })
-    expect(key).not.toBe('sku:42')
-    expect(key).toContain('p')
+    expect(mergeKey({ productId: 'p', shopId: 's', sku: '42', externalId: '42', name: 'x', imageUrl: null }))
+      .toBe('product:p')
   })
 })
-
-function sumOf<T>(rows: T[], field: keyof T): number {
-  return rows.reduce((a, r) => a + (r[field] as number), 0)
-}
