@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { DateFilter } from '@/components/filters/DateFilter'
+import { Thumb } from '@/components/Thumb'
 import { formatMoney } from '@/lib/money'
 import { PRESET_LABELS, type Preset } from '@/lib/dates'
 
@@ -55,15 +56,6 @@ type Portal = {
 
 /** How many orders show before "Show all". */
 const PAGE = 10
-
-/** A small product picture, or a quiet placeholder when the shop has none. */
-function Thumb({ src, alt }: { src: string | null; alt: string }) {
-  if (!src) {
-    return <span aria-hidden="true" className="h-8 w-8 shrink-0 rounded-md bg-panel" />
-  }
-  // eslint-disable-next-line @next/next/no-img-element -- shop images are arbitrary remote hosts
-  return <img src={src} alt={alt} className="h-8 w-8 shrink-0 rounded-md object-cover" />
-}
 
 /** The same stat vocabulary as the admin dashboard — one system, two audiences. */
 function Stat({

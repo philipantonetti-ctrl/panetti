@@ -78,14 +78,24 @@ function inRange(when: Date, from: Date, to: Date, tz: string): boolean {
 /**
  * An order as the period sees it. A sale is one entry at +1. A refund is TWO:
  * the original sale still stands on the day it happened, and the whole order
- * comes back off on the day the money did. Every figure below is multiplied by
+ * comes back off on the day the money did. Every figure is multiplied by
  * `sign`, so the reversal is the same arithmetic rather than a second set of
  * rules that could drift from it.
+ *
+ * Exported because the product page must reverse a refund the same way this
+ * one does. A private copy is how two screens come to disagree about a refund.
+ * Generic so a caller carrying richer line items (the product page needs sku,
+ * name and unitPrice) gets them back rather than having them widened away.
  */
-type Entry = { order: EngineOrder; sign: 1 | -1 }
+export type Entry<T extends EngineOrder = EngineOrder> = { order: T; sign: 1 | -1 }
 
-function entriesIn(orders: EngineOrder[], from: Date, to: Date, tzFor: (id: string) => string): Entry[] {
-  const out: Entry[] = []
+export function entriesIn<T extends EngineOrder>(
+  orders: T[],
+  from: Date,
+  to: Date,
+  tzFor: (id: string) => string,
+): Entry<T>[] {
+  const out: Entry<T>[] = []
 
   for (const order of orders) {
     const status = order.status.toLowerCase()

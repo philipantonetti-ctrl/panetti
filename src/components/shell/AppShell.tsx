@@ -80,6 +80,17 @@ const NAV: { section: string; items: NavItem[] }[] = [
           </>,
         ),
       },
+      {
+        href: '/products',
+        label: 'Products',
+        icon: icon(
+          <>
+            <path d="M20 7 12 3 4 7v10l8 4 8-4V7Z" />
+            <path d="m4 7 8 4 8-4" />
+            <path d="M12 11v10" />
+          </>,
+        ),
+      },
       AMBASSADORS_ITEM,
       {
         href: '/b2b',
