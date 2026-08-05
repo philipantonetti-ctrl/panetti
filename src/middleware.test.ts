@@ -47,6 +47,44 @@ describe('one live host', () => {
   })
 })
 
+/**
+ * The outage this describes: Vercel Cron calls the deployment's own generated
+ * URL, never the production domain. The host check above answered it with a
+ * 308, cron does not follow redirects, and a redirected cron is not even
+ * logged as an invocation — so the scheduled sync silently never ran.
+ */
+describe('machines are not walked anywhere', () => {
+  const deployment = 'https://panetti-ec53dmxro-panetti-intelligence.vercel.app'
+
+  it('lets the scheduled sync run on the generated URL Vercel actually calls', async () => {
+    production()
+    const res = await middleware(new NextRequest(`${deployment}/api/cron/sync`))
+    expect(res.headers.get('location')).toBeNull()
+    expect(res.status).toBe(200)
+  })
+
+  it('lets a store deliver a webhook whatever host it was registered against', async () => {
+    production()
+    const res = await middleware(new NextRequest(`${deployment}/api/webhooks/woo/shop1`))
+    expect(res.headers.get('location')).toBeNull()
+    expect(res.status).toBe(200)
+  })
+
+  /**
+   * The reason the exemption is two paths and not all of /api: the OAuth start
+   * route builds its redirect_uri from the host it was called on
+   * (api/ads/oauth/[provider]/start/route.ts), which is the whole reason the
+   * host check exists. Widening the exemption puts a hashed host back in front
+   * of Facebook.
+   */
+  it('still walks the OAuth start route, whose redirect_uri is built from the host', async () => {
+    production()
+    const res = await middleware(new NextRequest(`${deployment}/api/ads/oauth/meta/start`))
+    expect(res.status).toBe(308)
+    expect(res.headers.get('location')).toBe('https://panetti.vercel.app/api/ads/oauth/meta/start')
+  })
+})
+
 describe('the session gate, unchanged behind the host check', () => {
   it('sends a guest on a protected page to /login', async () => {
     production()
