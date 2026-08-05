@@ -1169,12 +1169,23 @@ git commit -m "feat: admin-only product analytics endpoint"
 Presentational only — it receives rows, it does not fetch. Expansion is local state.
 
 **Files:**
+- Create: `src/components/Thumb.tsx`
 - Create: `src/app/products/ProductsTable.tsx`
 - Test: `src/app/products/ProductsTable.test.tsx`
+- Modify: `src/app/orders/OrdersClient.tsx:97-102` (delete the local `Thumb`, import the shared one)
+- Modify: `src/app/portal/PortalClient.tsx:61-66` (same)
 
 **Interfaces:**
 - Consumes: `ProductRow`, `ProductTotals` (Task 3); `formatMoney` from `@/lib/money`
-- Produces: `export function ProductsTable({ rows, total, currency }: { rows: ProductRow[]; total: ProductTotals; currency: string }): JSX.Element`
+- Produces:
+  - `export function Thumb({ src, alt }: { src: string | null; alt: string }): JSX.Element`
+  - `export function ProductsTable({ rows, total, currency }: { rows: ProductRow[]; total: ProductTotals; currency: string }): JSX.Element`
+
+**Why the extraction:** `Thumb` is currently defined identically in two files. This
+task would make a third copy. Extract it once, to `src/components/Thumb.tsx`, and
+point all three at it. Copy the existing body VERBATIM — including its
+eslint-disable comment and its placeholder branch — so the two existing pages
+cannot change appearance. Their existing tests passing unchanged is the proof.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1272,6 +1283,16 @@ describe('ProductsTable', () => {
     expect(screen.getByText('No products sold in this period.')).toBeInTheDocument()
   })
 
+  it('shows the product photo when the shop has one', () => {
+    render(<ProductsTable rows={[row({ imageUrl: 'https://shop.example/oven.png' })]} total={TOTAL} currency="EUR" />)
+    expect(screen.getByAltText('Elektrischer Pizzaofen')).toHaveAttribute('src', 'https://shop.example/oven.png')
+  })
+
+  it('leaves a quiet placeholder rather than a broken image when there is no photo', () => {
+    render(<ProductsTable rows={[row({ imageUrl: null })]} total={TOTAL} currency="EUR" />)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
   it('totals the footer from the rows', () => {
     render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" />)
     expect(screen.getByText('Total').closest('tr')!.textContent).toContain('68.0%')
@@ -1284,7 +1305,28 @@ describe('ProductsTable', () => {
 Run: `npx vitest run src/app/products/ProductsTable.test.tsx`
 Expected: FAIL — cannot resolve `./ProductsTable`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 3a: Extract the shared thumbnail**
+
+Create `src/components/Thumb.tsx`, moving the body verbatim from `src/app/orders/OrdersClient.tsx:97-102`:
+
+```tsx
+/** A small product picture, or a quiet placeholder when the shop has none. */
+export function Thumb({ src, alt }: { src: string | null; alt: string }) {
+  if (!src) return <span aria-hidden="true" className="h-8 w-8 shrink-0 rounded-md bg-panel" />
+  // eslint-disable-next-line @next/next/no-img-element -- shop images are arbitrary remote hosts
+  return <img src={src} alt={alt} className="h-8 w-8 shrink-0 rounded-md object-cover" />
+}
+```
+
+In `src/app/orders/OrdersClient.tsx` AND `src/app/portal/PortalClient.tsx`: delete
+the local `Thumb` function and add `import { Thumb } from '@/components/Thumb'`.
+Change nothing else in either file — every existing call site keeps its props.
+
+Run `npx vitest run src/app/orders/ src/app/portal/` before continuing. Both
+suites must pass unchanged; if either fails, the extraction altered behaviour
+and must be corrected before moving on.
+
+- [ ] **Step 3b: Write the table**
 
 Create `src/app/products/ProductsTable.tsx`:
 
@@ -1293,6 +1335,7 @@ Create `src/app/products/ProductsTable.tsx`:
 
 import { Fragment, useState } from 'react'
 import { formatMoney } from '@/lib/money'
+import { Thumb } from '@/components/Thumb'
 import type { ProductRow, ProductTotals } from '@/lib/metrics/products'
 
 /**
@@ -1384,28 +1427,33 @@ export function ProductsTable({
                     onClick={expandable ? () => toggle(row.key) : undefined}
                   >
                     <td className="py-2 pl-4 pr-4">
-                      {expandable ? (
-                        <button
-                          type="button"
-                          aria-expanded={isOpen}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            toggle(row.key)
-                          }}
-                          className="flex items-center gap-1.5 text-left text-[13px] font-medium text-ink"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className={`inline-block w-3 text-faint transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
+                      <div className="flex items-center gap-2.5">
+                        <Thumb src={row.imageUrl} alt={row.name} />
+                        {expandable ? (
+                          <button
+                            type="button"
+                            aria-expanded={isOpen}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggle(row.key)
+                            }}
+                            className="flex items-center gap-1.5 text-left text-[13px] font-medium text-ink"
                           >
-                            ›
-                          </span>
-                          {row.name}
-                        </button>
-                      ) : (
-                        <span className="block pl-[18px] text-[13px] text-ink">{row.name}</span>
-                      )}
-                      {!row.hasCost && <CostWarning />}
+                            <span
+                              aria-hidden="true"
+                              className={`inline-block w-3 text-faint transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
+                            >
+                              ›
+                            </span>
+                            {row.name}
+                          </button>
+                        ) : (
+                          // pl-[18px] keeps an unexpandable name aligned with the
+                          // expandable ones, whose chevron occupies that space.
+                          <span className="block pl-[18px] text-[13px] text-ink">{row.name}</span>
+                        )}
+                        {!row.hasCost && <CostWarning />}
+                      </div>
                     </td>
                     <td className="num px-4 py-2 text-right text-ink">{countText(row.orders)}</td>
                     <td className="num px-4 py-2 text-right text-ink">{countText(row.quantity)}</td>
@@ -1458,15 +1506,15 @@ export function ProductsTable({
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run src/app/products/ProductsTable.test.tsx`
-Expected: PASS, 8 tests.
+Run: `npx vitest run src/app/products/ProductsTable.test.tsx src/app/orders/ src/app/portal/`
+Expected: PASS — 10 new table tests, plus the orders and portal suites unchanged.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git branch --show-current   # must print feat/product-analytics
-git add src/app/products/ProductsTable.tsx src/app/products/ProductsTable.test.tsx
-git commit -m "feat: product table with per-store drill-down and uncosted warnings"
+git add src/components/Thumb.tsx src/app/products/ProductsTable.tsx src/app/products/ProductsTable.test.tsx src/app/orders/OrdersClient.tsx src/app/portal/PortalClient.tsx
+git commit -m "feat: product table with per-store drill-down, sharing the thumbnail component"
 ```
 
 ---
@@ -1913,8 +1961,8 @@ git commit -m "fix: <whatever the browser found>"
 | 400 on mixed currency from a hand-typed URL | 4, 5 |
 | Empty states | 6, 7 |
 | Nav entry | 7 |
-| Thumbnail from `Product.imageUrl` | loaded in 4, carried in 3; NOT rendered in 6 |
+| Thumbnail from `Product.imageUrl` | loaded in 4, carried in 3, rendered in 6 |
 
-**One gap, deliberately left:** `imageUrl` is loaded and carried through to `ProductRow` but Task 6 does not render it. The column adds a network image per row and the spec calls it decoration, not a figure. Add it as a follow-up once the numbers are trusted, or delete the field — do not leave it half-wired indefinitely.
+**No open gaps.** An earlier draft carried `imageUrl` without rendering it; the thumbnail is now rendered in Task 6 through a shared `Thumb` component, which also removes an existing duplication between `OrdersClient` and `PortalClient`.
 
 **Type consistency:** `ProductTotals` is the shared shape; `ProductRow` and `ProductStoreRow` both extend it, so `formatMoney(row.netSales)` and `formatMoney(store.netSales)` take the same path in Task 6. `mergeKey` is used in Task 3 only and tested there. `MixedCurrencyError.groups` has the same shape in Task 4 (thrown), Task 5 (serialised) and Task 7 (the client's own `groupByCurrency` result) — `{ currency, shops }` throughout.
