@@ -163,7 +163,7 @@ export function ProductsClient({
     <AppShell email={email}>
       <PageHeader
         title="Products"
-        subtitle="Revenue, cost and profit per product. Every figure is exact — nothing is split across products."
+        subtitle="What each product sold, what it cost you and what you kept, in your stores' own currency. Click a product to see it store by store."
       >
         <ShopFilter
           shops={shops}
