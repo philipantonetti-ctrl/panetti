@@ -70,6 +70,11 @@ share of line value would turn every figure into an estimate. BeProfit's
 Ad spend is explicitly excluded. It is per campaign, not per product, and pushing
 it down to products would be a guess dressed as a number.
 
+Note: `Figures` gained a `marketing` field in `037c96b` (ad spend, per shop per
+day, in `EngineAdSpend`). That is a SHOP-level figure and stays one. There is no
+column on this page that consumes it, and none should be added — a product has no
+share of a campaign that can be established from data we hold.
+
 ## Architecture
 
 ### `src/lib/metrics/products.ts` (new)
@@ -82,14 +87,14 @@ Pure, no database access, mirroring `computeMetrics`. Returns merged rows, each
 carrying its per-store children, plus a total row.
 
 The total row is a **sum**, with margin recomputed from the summed figures —
-never an average of the row margins. This matches `totalOf()` (`engine.ts:229`)
+never an average of the row margins. This matches `totalOf()` (`engine.ts:267`)
 and is why BeProfit's "Weighted Average" footer is not copied: averaging a 74%
 margin on a 474 EUR product against a 69% margin on a 15.000 EUR one produces a
 number that describes nothing.
 
 Three rules are inherited from the engine rather than reimplemented:
 
-1. **Refunds reverse.** `entriesIn()` (`engine.ts:72`) is currently private. It is
+1. **Refunds reverse.** `entriesIn()` (`engine.ts:87`) is currently private. It is
    exported and shared. A refunded order counts +1 on its placed day and −1 on its
    voided day, on this page and on the Dashboard, permanently in step. A private
    copy would drift, and four recent commits exist precisely because this rule is
