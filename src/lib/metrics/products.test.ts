@@ -112,6 +112,26 @@ describe('productFigures', () => {
     expect(fiStore.orders).toBe(1)
   })
 
+  it('merges a refunded store with an un-refunded one and the parent tally still sums the (possibly negative) children', () => {
+    const deRefunded = order({ status: 'refunded', placedAt: new Date('2026-07-01'), voidedAt: new Date('2026-07-05') })
+    const fi = order({
+      id: 'o2',
+      shopId: 'fi',
+      items: [{ productId: 'p-fi', sku: 'PZ-PRO', name: 'Sahkoinen pizzauuni', quantity: 1, unitPrice: 10000, lineNetTotal: 10000 }],
+      netSales: 10000,
+    })
+    const res = run([deRefunded, fi])
+
+    expect(res.rows).toHaveLength(1)
+    const row = res.rows[0]
+    const de = row.stores.find((s) => s.shopId === 'de')!
+    const fiStore = row.stores.find((s) => s.shopId === 'fi')!
+    expect(de.orders).toBe(0) // placed and refunded, both in range: nets to 0
+    expect(fiStore.orders).toBe(1)
+    expect(row.orders).toBe(1)
+    expect(de.orders + fiStore.orders).toBe(row.orders)
+  })
+
   it('never merges products that have no real SKU', () => {
     // map.ts falls back to the Woo product id when a listing has no SKU, and
     // those ids are per-store sequential: two stores' product #42 are not one product.
@@ -133,6 +153,10 @@ describe('productFigures', () => {
     const whole = run([refunded])
     expect(whole.rows[0].netSales).toBe(0)
     expect(whole.rows[0].cogs).toBe(0)
+    // Placed (+1) and reversed (-1) both land in range, netting to 0 -- the
+    // same "sum of signs" convention the Dashboard uses. This was the bug:
+    // it used to read 1, because only the sale side was ever counted.
+    expect(whole.rows[0].orders).toBe(0)
 
     // The sale alone, before the refund landed.
     const before = run([refunded], { from: new Date('2026-07-01'), to: new Date('2026-07-03') })
@@ -146,14 +170,15 @@ describe('productFigures', () => {
     expect(row.grossSales).toBe(0)
   })
 
-  it('counts a reversal as no order at all', () => {
+  it('a reversal alone leaves a negative tally, the way the Dashboard does', () => {
     const refunded = order({ status: 'refunded', placedAt: new Date('2026-07-01'), voidedAt: new Date('2026-07-05') })
     // The range starts AFTER the sale but still covers the refund, so only
-    // the reversal entry (sign -1) falls inside. The Set dedupes an id added
-    // twice, so this is the only way to catch the `if (sign === 1)` guard
-    // being dropped: with no guard this would still read 1, not 0.
+    // the reversal entry (sign -1) falls inside. Under the "sum of signs"
+    // convention this must read -1, not 0 -- a period containing only a
+    // refund is meant to look negative, not empty, exactly as the Dashboard
+    // (sum(shopOrders.map(e => e.sign))) now reads it.
     const res = run([refunded], { from: new Date('2026-07-03'), to: new Date('2026-07-31') })
-    expect(res.rows[0].orders).toBe(0)
+    expect(res.rows[0].orders).toBe(-1)
     expect(res.rows[0].netSales).toBe(-20000)
   })
 
@@ -184,6 +209,24 @@ describe('productFigures', () => {
     // The order itself is still ONE order, no matter how many product rows
     // it touches — summing the per-row counts would report 2.
     expect(res.total.orders).toBe(1)
+  })
+
+  it('reverses the total too: one order across two products, refunded in range, totals zero', () => {
+    const cheap = new Map(products)
+    cheap.set('p2', { productId: 'p2', shopId: 'de', sku: 'CHEAP', externalId: '99', name: 'Brush', imageUrl: null })
+    const both = order({
+      status: 'refunded',
+      placedAt: new Date('2026-07-01'),
+      voidedAt: new Date('2026-07-05'),
+      items: [
+        { productId: 'p-de', sku: 'PZ-PRO', name: 'Ofen', quantity: 1, unitPrice: 10000, lineNetTotal: 10000 },
+        { productId: 'p2', sku: 'CHEAP', name: 'Brush', quantity: 1, unitPrice: 500, lineNetTotal: 500 },
+      ],
+    })
+    const res = run([both], { products: cheap })
+    expect(res.rows).toHaveLength(2)
+    expect(res.rows.every((r) => r.orders === 0)).toBe(true)
+    expect(res.total.orders).toBe(0)
   })
 
   it('excludes an order from the total when none of its lines resolve to a loaded product', () => {

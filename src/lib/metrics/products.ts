@@ -96,7 +96,14 @@ export function mergeKey(meta: ProductMeta): string {
 type Bucket = {
   meta: ProductMeta
   shopName: string
-  orderIds: Set<string>
+  /**
+   * order id -> that order's NET sign for this product. A placed order
+   * contributes +1, a reversal -1, and an order placed and refunded within
+   * the same period nets to 0 — the same "sum of signs" convention the
+   * Dashboard uses, so a period containing only a refund reads as negative
+   * rather than silently floored at zero or left showing a stale +1.
+   */
+  orderSigns: Map<string, number>
   quantity: number
   grossSales: number
   netSales: number
@@ -107,7 +114,7 @@ type Bucket = {
 function totalsOf(b: Bucket): ProductTotals {
   const profit = b.netSales - b.cogs
   return {
-    orders: b.orderIds.size,
+    orders: sum([...b.orderSigns.values()]),
     quantity: b.quantity,
     grossSales: b.grossSales,
     netSales: b.netSales,
@@ -127,11 +134,14 @@ export function productFigures(input: ProductInput): ProductResult {
   // productId -> that product's figures in its own store.
   const buckets = new Map<string, Bucket>()
 
-  // DISTINCT order ids across the whole page, for the total row. A per-product
-  // bucket counts an order once per product it appears in (correct there —
-  // that is literally "orders of this product"), but summing those counts
-  // would report an order that bought both an oven and a brush as two orders.
-  const allOrderIds = new Set<string>()
+  // Each DISTINCT order's net sign across the whole page, for the total row.
+  // Same "sum of signs" convention as the Dashboard: a period containing
+  // only a refund reads as -1, and a placed-then-refunded order nets to 0,
+  // never a stale +1. A per-product bucket still counts an order once per
+  // product it appears in (correct there — that is literally "orders of
+  // this product"), but summing those bucket counts would report an order
+  // that bought both an oven and a brush as two orders on the total.
+  const allOrderSigns = new Map<string, number>()
 
   for (const entry of entriesIn(orders, from, to, tzFor)) {
     const { order, sign } = entry
@@ -153,6 +163,15 @@ export function productFigures(input: ProductInput): ProductResult {
     // than it inflates the rows.
     let matched = false
 
+    // Guards each bucket's order tally against being credited twice by two
+    // lines of the same product in the same entry. Crediting once per LINE
+    // instead of once per ENTRY would silently reintroduce the bug the
+    // distinct-order rule exists to prevent (an order listing the same
+    // product twice must still net a single +-1). Reset fresh per entry, so
+    // an order's placed entry and its later voided entry each get their own
+    // one-time credit into the bucket's net sign.
+    const creditedBuckets = new Set<string>()
+
     for (const item of order.items) {
       const meta = products.get(item.productId)
       if (!meta) continue // a line whose product row we did not load; never invent one
@@ -163,7 +182,7 @@ export function productFigures(input: ProductInput): ProductResult {
         bucket = {
           meta,
           shopName: shopNames.get(meta.shopId) ?? '',
-          orderIds: new Set(),
+          orderSigns: new Map(),
           quantity: 0,
           grossSales: 0,
           netSales: 0,
@@ -173,8 +192,13 @@ export function productFigures(input: ProductInput): ProductResult {
         buckets.set(item.productId, bucket)
       }
 
-      // A reversal is not an un-placed order, so only the sale side is tallied.
-      if (sign === 1) bucket.orderIds.add(order.id)
+      // Net signed tally, the Dashboard's own convention: a placed order is
+      // +1, a reversal -1, and a placed-then-refunded order nets to 0 rather
+      // than staying wrongly at 1.
+      if (!creditedBuckets.has(item.productId)) {
+        creditedBuckets.add(item.productId)
+        bucket.orderSigns.set(order.id, (bucket.orderSigns.get(order.id) ?? 0) + sign)
+      }
 
       const history = costs.get(item.productId) ?? []
 
@@ -194,9 +218,12 @@ export function productFigures(input: ProductInput): ProductResult {
       bucket.cogs += sign * convCost(item.quantity * (cost.costPerItem + cost.handlingCost))
     }
 
-    // A reversal is not an un-placed order, so only the sale side counts —
-    // and only when it actually landed on a row this page shows.
-    if (matched && sign === 1) allOrderIds.add(order.id)
+    // Same net-signed convention as the per-bucket tally above, gated on
+    // `matched` exactly as before: an order whose lines resolve to no
+    // loaded product still contributes nothing to the total, in either sign.
+    if (matched) {
+      allOrderSigns.set(order.id, (allOrderSigns.get(order.id) ?? 0) + sign)
+    }
   }
 
   // Fold the per-store buckets into merged rows.
@@ -272,10 +299,10 @@ export function productFigures(input: ProductInput): ProductResult {
     displayCurrency,
     rows,
     total: {
-      // An order counts once no matter how many of its lines are products on
-      // this page — summing the per-row counts would double an order that
-      // bought both an oven and a brush.
-      orders: allOrderIds.size,
+      // Same net-signed convention as every bucket, summed across distinct
+      // orders — never the per-row order counts, which would double an
+      // order that bought both an oven and a brush.
+      orders: sum([...allOrderSigns.values()]),
       quantity: add((r) => r.quantity),
       grossSales: add((r) => r.grossSales),
       netSales,
