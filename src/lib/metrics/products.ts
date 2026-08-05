@@ -136,9 +136,6 @@ export function productFigures(input: ProductInput): ProductResult {
   for (const entry of entriesIn(orders, from, to, tzFor)) {
     const { order, sign } = entry
 
-    // A reversal is not an un-placed order, so only the sale side counts.
-    if (sign === 1) allOrderIds.add(order.id)
-
     // Revenue crosses from the ORDER's currency; costs from the SHOP's. A B2B
     // order can be invoiced in EUR while its shop's costs stay in NOK, and
     // reading one as the other is a tenfold error. `crossConvert`, not
@@ -150,9 +147,16 @@ export function productFigures(input: ProductInput): ProductResult {
     const convCost = (amount: number) =>
       crossConvert(amount, order.costCurrency, displayCurrency, order.placedAt, rates)
 
+    // Whether at least one of this order's lines resolved to a product loaded
+    // on this page. A shipping-only order, or one whose items are entirely
+    // outside this page's product set, must not inflate the total any more
+    // than it inflates the rows.
+    let matched = false
+
     for (const item of order.items) {
       const meta = products.get(item.productId)
       if (!meta) continue // a line whose product row we did not load; never invent one
+      matched = true
 
       let bucket = buckets.get(item.productId)
       if (!bucket) {
@@ -189,6 +193,10 @@ export function productFigures(input: ProductInput): ProductResult {
       bucket.netSales += sign * conv(item.lineNetTotal)
       bucket.cogs += sign * convCost(item.quantity * (cost.costPerItem + cost.handlingCost))
     }
+
+    // A reversal is not an un-placed order, so only the sale side counts —
+    // and only when it actually landed on a row this page shows.
+    if (matched && sign === 1) allOrderIds.add(order.id)
   }
 
   // Fold the per-store buckets into merged rows.
@@ -236,7 +244,7 @@ export function productFigures(input: ProductInput): ProductResult {
 
     return {
       key,
-      sku: group[0].meta.sku,
+      sku: scored[0].bucket.meta.sku,
       name,
       imageUrl,
       orders: add((s) => s.orders),

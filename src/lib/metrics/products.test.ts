@@ -186,6 +186,17 @@ describe('productFigures', () => {
     expect(res.total.orders).toBe(1)
   })
 
+  it('excludes an order from the total when none of its lines resolve to a loaded product', () => {
+    // A shipping-only order, or one referencing a product this page never
+    // loaded, must not inflate the total any more than it inflates the rows.
+    const unknown = order({
+      items: [{ productId: 'ghost', sku: 'GHOST', name: 'Ghost', quantity: 1, unitPrice: 1000, lineNetTotal: 1000 }],
+    })
+    const res = run([unknown])
+    expect(res.rows).toEqual([])
+    expect(res.total.orders).toBe(0)
+  })
+
   it('reads the cost that was true on the order date, not the newest one', () => {
     const dated: CostBook = new Map([
       ['p-de', [
