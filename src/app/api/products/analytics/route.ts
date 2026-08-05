@@ -11,6 +11,7 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
 export async function GET(req: Request) {
   try {
+    // Product cost and profit figures are admin-only. This is the security boundary.
     assertAdmin(await currentUser())
 
     const params = new URL(req.url).searchParams
