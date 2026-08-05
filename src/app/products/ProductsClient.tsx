@@ -61,6 +61,32 @@ function MixedCurrencies({
   )
 }
 
+/**
+ * The biggest group among `groups`, which `groupByCurrency` already returns
+ * sorted by currency code ascending. `reduce` with a strict `>` means the
+ * first group we reach wins any tie for largest — i.e. the
+ * alphabetically-earliest currency — so the tiebreak rides that documented
+ * sort order rather than any Array.sort stability of our own.
+ */
+function biggestGroup(groups: { currency: string; shops: Shop[] }[]): { currency: string; shops: Shop[] } {
+  return groups.reduce((best, g) => (g.shops.length > best.shops.length ? g : best), groups[0])
+}
+
+/**
+ * Real accounts routinely span several currencies — refusing to guess is
+ * right, but opening on that refusal on every single visit is not. On first
+ * load only, and only when the shops actually span more than one currency,
+ * narrow silently to the single biggest currency group instead of "all
+ * shops": a real, honest table appears immediately, and every other group is
+ * still one filter click away. A shop list that already shares one currency
+ * is left at [] ("all") — there is nothing to narrow.
+ */
+function initialSelected(shops: Shop[]): string[] {
+  const groups = groupByCurrency(shops)
+  if (groups.length <= 1) return []
+  return biggestGroup(groups).shops.map((s) => s.id)
+}
+
 export function ProductsClient({
   email,
   shops,
@@ -73,7 +99,14 @@ export function ProductsClient({
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [selected, setSelected] = useState<string[]>([])
+  const [selected, setSelected] = useState<string[]>(() => initialSelected(shops))
+  // True only while `selected` is still the silent first-load narrowing above
+  // — never inferred by comparing arrays, because a user could manually land
+  // back on the very same shops the auto-selection picked. An explicit flag
+  // does not mistake that for "still auto-selected"; it is cleared the moment
+  // ShopFilter's onChange fires at all, below, regardless of what the new
+  // selection turns out to be.
+  const [autoSelected, setAutoSelected] = useState<boolean>(() => groupByCurrency(shops).length > 1)
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -87,10 +120,13 @@ export function ProductsClient({
   const mixed = groups.length > 1
 
   useEffect(() => {
-    if (mixed) {
-      setLoading(false)
-      return
-    }
+    // Nothing can be honestly loaded across currencies, and nothing here
+    // needs to record that: every path that changes `selected` (ShopFilter's
+    // onChange, MixedCurrencies' onPick, both below) already sets `loading`
+    // itself before it does, and the JSX never reads `loading` while mixed —
+    // MixedCurrencies renders in its place. Setting state here would just be
+    // a synchronous setState in an effect body with nothing behind it.
+    if (mixed) return
 
     const params = new URLSearchParams()
     if (preset === 'custom' && from && to) {
@@ -118,7 +154,10 @@ export function ProductsClient({
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
   }, [preset, from, to, selected, tick, mixed])
 
-  const currency = data?.displayCurrency ?? ''
+  // Before the first response lands, this still names the right currency: the
+  // group is derived client-side from `shops`, the same source of truth the
+  // server itself resolves `displayCurrency` from.
+  const currency = data?.displayCurrency ?? groups[0]?.currency ?? ''
 
   return (
     <AppShell email={email}>
@@ -131,6 +170,7 @@ export function ProductsClient({
           selected={selected}
           onChange={(next) => {
             setLoading(true)
+            setAutoSelected(false) // a real choice now — no longer an assumption made for them
             setSelected(next)
           }}
         />
@@ -162,6 +202,13 @@ export function ProductsClient({
           </p>
         ) : (
           <>
+            {autoSelected && (
+              <p className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-muted">
+                Showing your {chosen.length} {currency} {chosen.length === 1 ? 'store' : 'stores'}. Pick others in
+                the filter.
+              </p>
+            )}
+
             {error && (
               <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-loss">
                 {error}
