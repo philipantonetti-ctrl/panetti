@@ -43,15 +43,6 @@ describe('loadProductsInput', () => {
     expect(err.groups.map((g: { currency: string }) => g.currency).sort()).toEqual(['NOK', 'SEK'])
   })
 
-  it('allows several shops that share one currency', async () => {
-    const shops = await db.shop.findMany({ where: { currency: 'NOK', active: true }, take: 2 })
-    if (shops.length < 2) return // seed changed; nothing to assert
-
-    const input = await loadProductsInput({ shopIds: shops.map((s) => s.id), ...RANGE })
-    expect(input.displayCurrency).toBe('NOK')
-    expect(input.shops).toHaveLength(2)
-  })
-
   it('carries the sku, name and unit price the aggregation needs', async () => {
     const shop = await db.shop.findFirstOrThrow({ where: { name: 'Mazzetti.no' } })
     const input = await loadProductsInput({ shopIds: [shop.id], ...RANGE })
@@ -98,6 +89,65 @@ describe('loadProductsInput and its own fixtures', () => {
     await db.order.deleteMany({ where: { shop: { name: { contains: '[load-products-test]' } } } })
     await db.product.deleteMany({ where: { shop: { name: { contains: '[load-products-test]' } } } })
     await db.shop.deleteMany({ where: { name: { contains: '[load-products-test]' } } })
+  })
+
+  it('allows several shops that share one currency', async () => {
+    // Fixture-only, deliberately NOT reading the seed: the old version did
+    // `db.shop.findMany({ currency: 'NOK' }).take(2)` and returned early —
+    // asserting nothing — if the seed ever had fewer than two NOK shops.
+    // A test that can pass by doing nothing is worse than no test at all,
+    // so this creates its own two same-currency shops instead, tagged for
+    // the afterEach above to clean up, with a real order/product line on one
+    // of them so the assertion checks something concrete rather than just
+    // "two shops loaded".
+    const shopA = await db.shop.create({ data: { name: 'Nordic A [load-products-test]', currency: 'NOK' } })
+    const shopB = await db.shop.create({ data: { name: 'Nordic B [load-products-test]', currency: 'NOK' } })
+    const product = await db.product.create({
+      data: {
+        shopId: shopA.id,
+        externalId: 'MULTI-0001',
+        sku: 'MULTI-0001',
+        name: 'Multi-shop Product [load-products-test]',
+      },
+    })
+    await db.order.create({
+      data: {
+        shopId: shopA.id,
+        externalId: 'MULTI-0001',
+        number: 'MULTI-0001',
+        placedAt: new Date('2026-07-05'),
+        status: 'completed',
+        currency: 'NOK',
+        grossSales: 10000,
+        discountTotal: 0,
+        netSales: 10000,
+        shippingCharged: 0,
+        taxTotal: 0,
+        total: 10000,
+        items: {
+          create: [
+            {
+              productId: product.id,
+              sku: 'MULTI-0001',
+              name: 'Multi-shop Product [load-products-test]',
+              quantity: 1,
+              unitPrice: 10000,
+              lineNetTotal: 10000,
+            },
+          ],
+        },
+      },
+    })
+
+    const input = await loadProductsInput({ shopIds: [shopA.id, shopB.id], ...RANGE })
+
+    expect(input.displayCurrency).toBe('NOK')
+    expect(input.shops).toHaveLength(2)
+
+    const res = productFigures(input)
+    const row = res.rows.find((r) => r.sku === 'MULTI-0001')
+    expect(row).toBeDefined()
+    expect(row!.netSales).toBeGreaterThan(0)
   })
 
   it('fetches an order placed well before the window but voided inside it, taking its product back off', async () => {
