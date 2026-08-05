@@ -134,7 +134,10 @@ export function ProductsTable({
                   {expandable &&
                     isOpen &&
                     row.stores.map((s) => (
-                      <tr key={`${row.key}:${s.shopId}`} className="border-b border-line bg-panel/40">
+                      // productId, not shopId: that is the real uniqueness guarantee
+                      // (products.ts buckets per-store figures by productId), and two
+                      // Woo products in one shop can share a SKU.
+                      <tr key={`${row.key}:${s.productId}`} className="border-b border-line bg-panel/40">
                         <td className="py-2 pl-10 pr-4 text-[12px] text-muted">
                           {s.shopName}
                           {!s.hasCost && <CostWarning />}
