@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect } from 'vitest'
-import { computeMetrics } from './engine'
+import { computeMetrics, entriesIn } from './engine'
 import { buildRateTable } from './fx'
 import type { CostBook, EngineAdSpend, EngineExpense, EngineOrder, EngineShop } from './types'
 
@@ -499,5 +499,37 @@ describe('computeMetrics and ad spend', () => {
     const res = run(undefined)
     expect(res.total.marketing).toBe(0)
     expect(res.total.netProfit).toBe(0)
+  })
+})
+
+describe('entriesIn (shared with the product page)', () => {
+  const tzFor = () => 'UTC'
+
+  it('gives a live order one positive entry', () => {
+    const res = entriesIn([order()], new Date('2026-07-01'), new Date('2026-07-01'), tzFor)
+    expect(res).toHaveLength(1)
+    expect(res[0].sign).toBe(1)
+  })
+
+  it('gives a refunded order a positive entry on its placed day and a negative one on its voided day', () => {
+    const refunded = order({
+      status: 'refunded',
+      placedAt: new Date('2026-07-01'),
+      voidedAt: new Date('2026-07-05'),
+    })
+    const res = entriesIn([refunded], new Date('2026-07-01'), new Date('2026-07-31'), tzFor)
+    expect(res.map((e) => e.sign).sort()).toEqual([-1, 1])
+  })
+
+  it('leaves a refunded order alone when we never learned the void date', () => {
+    const refunded = order({ status: 'refunded', voidedAt: null })
+    expect(entriesIn([refunded], new Date('2026-07-01'), new Date('2026-07-31'), tzFor)).toEqual([])
+  })
+
+  it('preserves the caller’s own item type', () => {
+    const rich = { ...order(), items: [{ productId: 'p1', quantity: 2, lineNetTotal: 90000, sku: 'SKU-1' }] }
+    const res = entriesIn([rich], new Date('2026-07-01'), new Date('2026-07-01'), tzFor)
+    // Compiles only if the generic carried `sku` through rather than widening.
+    expect(res[0].order.items[0].sku).toBe('SKU-1')
   })
 })
