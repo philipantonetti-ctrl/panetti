@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
+import { Thumb } from '@/components/Thumb'
 import { formatMoney } from '@/lib/money'
 import type { Preset } from '@/lib/dates'
 import { useLiveTick } from '@/lib/use-live-tick'
@@ -92,13 +93,6 @@ function Badge({ label, tone }: { label: string; tone: string }) {
       {label}
     </span>
   )
-}
-
-/** A small product picture, or a quiet placeholder when the shop has none. */
-function Thumb({ src, alt }: { src: string | null; alt: string }) {
-  if (!src) return <span aria-hidden="true" className="h-8 w-8 shrink-0 rounded-md bg-panel" />
-  // eslint-disable-next-line @next/next/no-img-element -- shop images are arbitrary remote hosts
-  return <img src={src} alt={alt} className="h-8 w-8 shrink-0 rounded-md object-cover" />
 }
 
 /** "—" for a voided order: it earns nothing, and the table never pretends. */
