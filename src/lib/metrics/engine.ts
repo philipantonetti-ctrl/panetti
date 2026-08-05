@@ -231,14 +231,18 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const netProfit =
       netRevenue - cogs - fulfillment - transactionFees - marketing - operationalExpenses - commission
 
-    // A reversal is not an un-placed order, so only the sale side counts —
-    // for the tally AND for what it divides.
-    const placed = shopOrders.filter((e) => e.sign === 1).length
+    // The tally reverses with the money. It is the one figure that used to
+    // count the sale entries and ignore the reversals, so a store whose orders
+    // were all cancelled reported them as orders beside a revenue of zero —
+    // "2 orders, $0.00" on the client's Dashboard. Summing the signs is the
+    // same arithmetic every column above already does, which is what stops the
+    // count and the money it sits next to from ever describing different sets.
+    const orders = sum(shopOrders.map((e) => e.sign))
 
     return {
       shopId: shop.id,
       shopName: shop.name,
-      orders: placed,
+      orders,
       grossSales,
       discounts,
       netSales,
@@ -255,7 +259,10 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       commission,
       netProfit,
       netMargin: netRevenue === 0 ? 0 : netProfit / netRevenue,
-      avgOrderValue: placed === 0 ? 0 : Math.round(netRevenue / placed),
+      // A period that saw nothing but reversals has a negative tally, and
+      // dividing one negative by another would report a confident positive
+      // average of orders that were given back. There is no average to report.
+      avgOrderValue: orders <= 0 ? 0 : Math.round(netRevenue / orders),
       ambassadorSales,
     }
   })
@@ -290,7 +297,8 @@ function totalOf(rows: ShopFigures[]): Figures {
     commission: add((r) => r.commission),
     netProfit,
     netMargin: netRevenue === 0 ? 0 : netProfit / netRevenue,
-    avgOrderValue: orders === 0 ? 0 : Math.round(netRevenue / orders),
+    // Same rule as a shop row: no average to report when the tally is not positive.
+    avgOrderValue: orders <= 0 ? 0 : Math.round(netRevenue / orders),
     ambassadorSales: add((r) => r.ambassadorSales),
   }
 }

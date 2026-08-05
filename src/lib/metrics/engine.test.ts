@@ -354,8 +354,9 @@ describe('computeMetrics', () => {
     expect(res.total.netSales).toBe(-90000)
     expect(res.total.cogs).toBe(-22000)
     expect(res.total.netRevenue).toBe(-95000)
-    // You did not un-place an order.
-    expect(res.total.orders).toBe(0)
+    // The tally reverses with the money it describes. A period that saw only
+    // this refund is a period one order lighter, and says so.
+    expect(res.total.orders).toBe(-1)
   })
 
   it('nets to exactly zero across a period covering both', () => {
@@ -367,7 +368,30 @@ describe('computeMetrics', () => {
     expect(res.total.cogs).toBe(0)
     expect(res.total.netRevenue).toBe(0)
     expect(res.total.netProfit).toBe(0)
-    expect(res.total.orders).toBe(1)
+    // Exactly zero means the tally too: a sale that was given back inside the
+    // period you are looking at leaves nothing behind, in any column.
+    expect(res.total.orders).toBe(0)
+  })
+
+  /**
+   * The client's report, from the live Dashboard: Mazzetti Norway showed
+   * "2 orders, $0.00" — two orders placed and cancelled within minutes on the
+   * same day. Every money column reversed; the tally did not, because it
+   * counted the sale entries and ignored the reversals.
+   */
+  it('counts no order when a cancellation lands in the same period as the sale', () => {
+    const sameDay = order({
+      status: 'cancelled',
+      placedAt: new Date('2026-07-01T04:03:00Z'),
+      voidedAt: new Date('2026-07-01T04:06:00Z'),
+    })
+    const res = computeMetrics({
+      shops: [shops[0]], orders: [sameDay], expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    expect(res.total.netRevenue).toBe(0)
+    expect(res.total.orders).toBe(0)
+    expect(res.byShop[0].orders).toBe(0)
   })
 
   it('reverses the ambassador commission too', () => {
@@ -407,13 +431,15 @@ describe('computeMetrics', () => {
   })
 
   it('reports no average on a day that only saw a refund', () => {
-    // orders is 0 that day, so an "average order value" of anything is a lie.
+    // The day's tally is -1 and its revenue negative. Dividing one by the
+    // other yields a confident +95000 — the average value of an order nobody
+    // placed that day. Any "average order value" here is a lie.
     const res = computeMetrics({
       shops: [shops[0]], orders: [order({ status: 'refunded', voidedAt: new Date('2026-07-08') })],
       expenses: [], costs, rates,
       displayCurrency: 'NOK', from: new Date('2026-07-08'), to: new Date('2026-07-08'),
     })
-    expect(res.byShop[0].orders).toBe(0)
+    expect(res.byShop[0].orders).toBe(-1)
     expect(res.byShop[0].avgOrderValue).toBe(0)
     // The reversal itself is still real.
     expect(res.byShop[0].netRevenue).toBe(-95000)
