@@ -7,21 +7,13 @@ import { ensureRates, loadRates } from '../fx/rates'
 import type { CostBook } from '../metrics/types'
 import type { ProductInput, ProductMeta, ProductOrder } from '../metrics/products'
 
-/**
- * Everything the product page needs for one query.
- *
- * Deliberately NOT `loadMetricsInput`. That one selects only productId,
- * quantity and lineNetTotal from order items; this page also needs the sku,
- * name and unit price. Widening the shared select would make every Dashboard
- * request haul three unused columns across thousands of rows.
- *
- * The display currency is the selected shops' shared currency — not USD.
- * Mixing currencies is refused rather than converted, because a product table
- * that silently consolidates is one a client cannot check against his own till.
- */
-
 export type LoadProductsArgs = {
-  shopIds?: string[] // undefined = every active shop
+  // undefined = every active shop. An explicitly empty array is a real
+  // selection too, not an absent one — it is what ShopFilter's NO_SHOPS
+  // sentinel (src/components/filters/ShopFilter.tsx) resolves to once a
+  // caller turns a selection into shop ids — and must mean "no shops",
+  // never silently widen back out to "all of them".
+  shopIds?: string[]
   from: Date
   to: Date
   timezone?: string
@@ -38,11 +30,30 @@ export class MixedCurrencyError extends Error {
   }
 }
 
+/**
+ * Gather everything the product page needs for one query.
+ *
+ * Deliberately NOT `loadMetricsInput`. That one selects only productId,
+ * quantity and lineNetTotal from order items; this page also needs the sku,
+ * name and unit price. Widening the shared select would make every Dashboard
+ * request haul three unused columns across thousands of rows.
+ *
+ * The display currency is the selected shops' shared currency — not USD.
+ * Mixing currencies is refused rather than converted, because a product table
+ * that silently consolidates is one a client cannot check against his own till.
+ */
 export async function loadProductsInput(args: LoadProductsArgs): Promise<ProductInput> {
   const { from, to } = args
 
+  // undefined -> every active shop, matching loadMetricsInput. An explicitly
+  // empty array is a DIFFERENT thing: the old `args.shopIds?.length ? ... : {}`
+  // treated both the same, so a caller resolving ShopFilter's NO_SHOPS
+  // sentinel into `shopIds: []` silently got every active shop back — and,
+  // on this loader, a baffling MixedCurrencyError for what reads as "nothing
+  // selected". `{ in: [] }` correctly matches zero rows, so an explicit empty
+  // list now means what it says.
   const shopRows = await db.shop.findMany({
-    where: { active: true, ...(args.shopIds?.length ? { id: { in: args.shopIds } } : {}) },
+    where: { active: true, ...(args.shopIds === undefined ? {} : { id: { in: args.shopIds } }) },
     orderBy: { name: 'asc' },
   })
 
@@ -51,7 +62,12 @@ export async function loadProductsInput(args: LoadProductsArgs): Promise<Product
 
   const shops = shopRows.map((s) => ({ id: s.id, name: s.name, currency: s.currency }))
   const shopIds = shops.map((s) => s.id)
-  // No shops at all still has to return something the aggregation can chew on.
+  // No shops matched at all — an explicitly empty selection, or ids that hit
+  // no ACTIVE shop (a stale id, a deactivated store) — means no rows on this
+  // page, and there is then no shop whose currency the label could honestly
+  // claim. 'USD' here is not a claim about the data: it is an arbitrary
+  // non-empty placeholder that keeps the type honest while every figure
+  // downstream is zero.
   const displayCurrency = groups[0]?.currency ?? 'USD'
 
   const tz = args.timezone ?? 'UTC'

@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { loadProductsInput, MixedCurrencyError } from './load-products'
 import { productFigures } from '../metrics/products'
 import { db } from '../db'
+import { ensureRates } from '../fx/rates'
 
 // Same reasoning as load.integration.test.ts: ensureRates otherwise reaches
 // api.frankfurter.app, which is flaky offline. loadRates stays real.
@@ -64,5 +65,253 @@ describe('loadProductsInput', () => {
     const meta = input.products.get(line.productId)
     expect(meta).toBeDefined()
     expect(typeof meta!.externalId).toBe('string')
+  })
+
+  it('treats an explicitly empty shopIds array as "no shops", not "every shop"', async () => {
+    // The trap: `args.shopIds?.length ? ... : {}` used to treat `[]` the same
+    // as `undefined` and silently load every active shop — which, on this
+    // loader, throws a baffling MixedCurrencyError for what reads as "nothing
+    // selected". This is what ShopFilter's NO_SHOPS sentinel resolves to.
+    const input = await loadProductsInput({ shopIds: [], ...RANGE })
+
+    expect(input.shops).toEqual([])
+    // No shop means no currency to honestly label the (empty) totals with;
+    // 'USD' is a placeholder, not a claim — see the comment at load-products.ts.
+    expect(input.displayCurrency).toBe('USD')
+
+    const res = productFigures(input)
+    expect(res.rows).toEqual([])
+  })
+})
+
+// This file otherwise only reads the seeded database; these cases create
+// their own fixtures and clean up after themselves like
+// load.integration.test.ts does (see e.g. its :266-335 and :142-189) — the
+// '[load-products-test]' tag on every shop name marks what to wipe, and
+// nothing outside that tag is ever touched.
+describe('loadProductsInput and its own fixtures', () => {
+  beforeEach(() => {
+    vi.mocked(ensureRates).mockClear()
+  })
+
+  afterEach(async () => {
+    await db.order.deleteMany({ where: { shop: { name: { contains: '[load-products-test]' } } } })
+    await db.product.deleteMany({ where: { shop: { name: { contains: '[load-products-test]' } } } })
+    await db.shop.deleteMany({ where: { name: { contains: '[load-products-test]' } } })
+  })
+
+  it('fetches an order placed well before the window but voided inside it, taking its product back off', async () => {
+    // The client's own example, same as load.integration.test.ts:266-290: an
+    // order from months ago, refunded inside the window, must still be
+    // fetched — or its product can never come back off this page either.
+    const shop = await db.shop.create({ data: { name: 'Late refund [load-products-test]', currency: 'NOK' } })
+    const product = await db.product.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'LP-0001',
+        sku: 'LP-0001',
+        name: 'Late Refund Product [load-products-test]',
+      },
+    })
+    await db.order.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'REFUND-LP-0001',
+        number: 'REFUND-LP-0001',
+        placedAt: new Date('2026-04-02'),
+        status: 'refunded',
+        currency: 'NOK',
+        grossSales: 10000,
+        discountTotal: 0,
+        netSales: 10000,
+        shippingCharged: 0,
+        taxTotal: 0,
+        total: 10000,
+        voidedAt: new Date('2026-07-03'),
+        items: {
+          create: [
+            {
+              productId: product.id,
+              sku: 'LP-0001',
+              name: 'Late Refund Product [load-products-test]',
+              quantity: 2,
+              unitPrice: 5000,
+              lineNetTotal: 10000,
+            },
+          ],
+        },
+      },
+    })
+
+    const input = await loadProductsInput({
+      shopIds: [shop.id],
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-14'),
+    })
+
+    expect(input.orders).toHaveLength(1)
+    expect(input.orders[0].status).toBe('refunded')
+
+    // Only the voided-side entry falls inside this window (placedAt is
+    // months earlier), so the product's net sales go negative here — proof
+    // the reversal, not just the fetch, made it through to the aggregation.
+    const res = productFigures(input)
+    const row = res.rows.find((r) => r.sku === 'LP-0001')
+    expect(row).toBeDefined()
+    expect(row!.netSales).toBeLessThan(0)
+  })
+
+  it('does not fetch an order placed and voided entirely outside the window', async () => {
+    // The other half of the same guard, mirroring load.integration.test.ts:292-312:
+    // the fix must not simply widen the query into fetching everything.
+    const shop = await db.shop.create({ data: { name: 'Old closed order [load-products-test]', currency: 'NOK' } })
+    const product = await db.product.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'OLD-0001',
+        sku: 'OLD-0001',
+        name: 'Old Product [load-products-test]',
+      },
+    })
+    await db.order.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'OLD-0001',
+        number: 'OLD-0001',
+        placedAt: new Date('2026-01-02'),
+        status: 'refunded',
+        currency: 'NOK',
+        grossSales: 10000,
+        discountTotal: 0,
+        netSales: 10000,
+        shippingCharged: 0,
+        taxTotal: 0,
+        total: 10000,
+        voidedAt: new Date('2026-01-05'),
+        items: {
+          create: [
+            {
+              productId: product.id,
+              sku: 'OLD-0001',
+              name: 'Old Product [load-products-test]',
+              quantity: 1,
+              unitPrice: 10000,
+              lineNetTotal: 10000,
+            },
+          ],
+        },
+      },
+    })
+
+    const input = await loadProductsInput({
+      shopIds: [shop.id],
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-14'),
+    })
+
+    expect(input.orders).toHaveLength(0)
+  })
+
+  it('fetches rates when an order currency differs from its shop', async () => {
+    // Mirrors load.integration.test.ts:142-168. A lone shop never triggers
+    // multi-shop consolidation, so a differently-invoiced order sitting on it
+    // is the only thing left that can still need a rate.
+    const shop = await db.shop.create({ data: { name: 'FX order [load-products-test]', currency: 'NOK' } })
+    const product = await db.product.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'FX-0001',
+        sku: 'FX-0001',
+        name: 'FX Product [load-products-test]',
+      },
+    })
+    await db.order.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'FX-0001',
+        number: 'FX-0001',
+        placedAt: new Date('2026-07-01'),
+        status: 'completed',
+        currency: 'EUR',
+        grossSales: 10000,
+        discountTotal: 0,
+        netSales: 10000,
+        shippingCharged: 0,
+        taxTotal: 0,
+        total: 10000,
+        items: {
+          create: [
+            {
+              productId: product.id,
+              sku: 'FX-0001',
+              name: 'FX Product [load-products-test]',
+              quantity: 1,
+              unitPrice: 10000,
+              lineNetTotal: 10000,
+            },
+          ],
+        },
+      },
+    })
+
+    await loadProductsInput({
+      shopIds: [shop.id],
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-01'),
+    })
+
+    expect(ensureRates).toHaveBeenCalledTimes(1)
+    const requestedCurrencies = vi.mocked(ensureRates).mock.calls[0][2]
+    expect(requestedCurrencies).toEqual(expect.arrayContaining(['NOK', 'EUR']))
+  })
+
+  it('does not fetch rates when every order already shares the shop currency', async () => {
+    // Mirrors load.integration.test.ts:170-189: proves the fix did not just
+    // widen into "always fetch".
+    const shop = await db.shop.create({ data: { name: 'Single currency [load-products-test]', currency: 'NOK' } })
+    const product = await db.product.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'NOK-0001',
+        sku: 'NOK-0001',
+        name: 'NOK Product [load-products-test]',
+      },
+    })
+    await db.order.create({
+      data: {
+        shopId: shop.id,
+        externalId: 'NOK-0001',
+        number: 'NOK-0001',
+        placedAt: new Date('2026-07-05'),
+        status: 'completed',
+        currency: 'NOK',
+        grossSales: 10000,
+        discountTotal: 0,
+        netSales: 10000,
+        shippingCharged: 0,
+        taxTotal: 0,
+        total: 10000,
+        items: {
+          create: [
+            {
+              productId: product.id,
+              sku: 'NOK-0001',
+              name: 'NOK Product [load-products-test]',
+              quantity: 1,
+              unitPrice: 10000,
+              lineNetTotal: 10000,
+            },
+          ],
+        },
+      },
+    })
+
+    await loadProductsInput({
+      shopIds: [shop.id],
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-14'),
+    })
+
+    expect(ensureRates).not.toHaveBeenCalled()
   })
 })
