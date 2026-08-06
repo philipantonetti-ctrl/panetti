@@ -67,6 +67,19 @@ function wooCouponOrder(id: number, placedAt: string, code: string) {
   return { ...wooOrder(id, placedAt), coupon_lines: [{ code }] }
 }
 
+/**
+ * The URL of the first ORDERS request. A sync now asks the store which order
+ * statuses it uses before pulling anything, so call 0 is that lookup, not the
+ * pull a test means to inspect.
+ */
+function firstOrdersUrl(mock: { mock: { calls: unknown[][] } }): string {
+  const call = mock.mock.calls
+    .map((c) => String(c[0]))
+    .find((u) => new URL(u).pathname.endsWith('/orders'))
+  if (!call) throw new Error('no orders request was made')
+  return call
+}
+
 async function connectedShop(name: string) {
   return db.shop.create({
     data: {
@@ -165,7 +178,7 @@ describe('syncShop', () => {
 
     // Resumes by CREATED date, one second behind the newest stored order so the
     // boundary order is re-fetched rather than risk being skipped.
-    const url = String(fetchMock.mock.calls[0][0])
+    const url = firstOrdersUrl(fetchMock)
     expect(url).toContain('after=2024-06-01T11%3A59%3A59')
     expect(url).not.toContain('modified_after')
 
@@ -249,7 +262,7 @@ describe('syncShop', () => {
 
     // Woo is only told whole seconds and its clock may drift from ours; the
     // five-minute overlap makes both harmless, and the upserts make it free.
-    const url = String(fetchMock.mock.calls[0][0])
+    const url = firstOrdersUrl(fetchMock)
     expect(url).toContain('modified_after=2026-07-01T11%3A55%3A00')
   })
 
@@ -467,7 +480,7 @@ describe('draining a backlog', () => {
     await syncShop(shop.id)
 
     // 01:39:00 minus the five-minute OVERLAP.
-    expect(String(second.mock.calls[0][0])).toContain('modified_after=2026-07-01T01%3A34%3A00')
+    expect(firstOrdersUrl(second)).toContain('modified_after=2026-07-01T01%3A34%3A00')
   })
 
   // The old behaviour: refuse, leave the watermark, and be handed a bigger
@@ -919,5 +932,89 @@ describe('reporting what the repair pass found', () => {
 
     // No repairs is the normal case: the field is absent rather than a noisy 0.
     expect((await syncShop(shop.id)).repaired).toBeUndefined()
+  })
+})
+
+describe('a store with its own order statuses', () => {
+  /**
+   * The real shape of the Panetti Sweden hole. The store runs orders through a
+   * "shipping" step its fulfilment plugin invented. WooCommerce's default
+   * `status=any` becomes WP's `post_status => 'any'`, which omits statuses
+   * registered with exclude_from_search — so a pull that does not NAME the
+   * status hands back a window with those orders silently absent.
+   *
+   * Such an order can then only ever arrive by webhook. Lose that one delivery
+   * and it is lost for good: every later pull is blind to it.
+   */
+  function storeHidingCustomStatuses(orders: { id: number; at: string; status: string }[]) {
+    return vi.fn(async (url: string) => {
+      const u = new URL(url)
+
+      if (u.pathname.endsWith('/reports/orders/totals')) {
+        return jsonPage([
+          { slug: 'processing', name: 'Processing', total: 1 },
+          { slug: 'shipping', name: 'Shipping', total: 2 },
+          { slug: 'cancelled', name: 'Cancelled', total: 1 },
+        ])
+      }
+      if (!u.pathname.endsWith('/orders')) return jsonPage([])
+      if (u.searchParams.get('modified_after')) return jsonPage([])
+      if (u.searchParams.get('page') !== '1') return jsonPage([])
+
+      // The whole point: without a named status the store answers as WordPress
+      // does, and the custom-status orders are simply not in the reply.
+      const asked = u.searchParams.get('status')?.split(',') ?? ['processing', 'cancelled']
+      const visible = orders.filter((o) => asked.includes(o.status))
+      return jsonPage(visible.map((o) => ({ ...wooOrder(o.id, o.at), status: o.status })))
+    })
+  }
+
+  it('recovers an order sitting in a status the store invented', async () => {
+    const shop = await connectedShop('[sync-test] custom status')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date(Date.now() - 30 * 60 * 1000) },
+    })
+    const at = new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 19)
+
+    vi.stubGlobal(
+      'fetch',
+      storeHidingCustomStatuses([{ id: 13754, at, status: 'shipping' }]),
+    )
+
+    const result = await syncShop(shop.id)
+    expect(result.ok).toBe(true)
+    expect(result.repairError).toBeUndefined()
+    expect(result.repaired).toBe(1)
+
+    const held = await db.order.findFirst({
+      where: { shopId: shop.id, externalId: '13754' },
+      select: { status: true },
+    })
+    expect(held?.status).toBe('shipping')
+  })
+
+  it('says so when the repair pass itself fails, instead of looking healthy', async () => {
+    const shop = await connectedShop('[sync-test] repair dies')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date(Date.now() - 30 * 60 * 1000) },
+    })
+
+    let call = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = new URL(url)
+      if (u.pathname.endsWith('/reports/orders/totals')) return jsonPage([{ slug: 'processing' }])
+      if (!u.pathname.endsWith('/orders')) return jsonPage([])
+      // The incremental pull lands; the repair pass's own request is refused.
+      call++
+      return call === 1 ? jsonPage([]) : new Response('gone', { status: 500 })
+    }))
+
+    const result = await syncShop(shop.id)
+    // The sync itself did succeed — but the books were never checked, and a
+    // silent 0 would have read as "nothing needed fixing".
+    expect(result.ok).toBe(true)
+    expect(result.repairError).toMatch(/500/)
   })
 })

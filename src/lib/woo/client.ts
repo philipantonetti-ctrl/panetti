@@ -21,6 +21,12 @@ export type FetchFilter = {
   deadline?: number
   /** Ceiling for a single request; clamped down to what is left of the deadline. */
   requestTimeoutMs?: number
+  /**
+   * Ask for these order statuses BY NAME. Empty or absent falls back to
+   * WooCommerce's default, which is not the "everything" it reads as — see
+   * `fetchOrderStatuses`.
+   */
+  statuses?: string[]
 }
 
 export type FetchResult = {
@@ -118,6 +124,8 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
       params.set('modified_after', filter.modifiedAfter.toISOString().slice(0, 19))
     }
     if (filter.createdAfter) params.set('after', filter.createdAfter.toISOString().slice(0, 19))
+    // Named outright, because the default does not mean what it looks like.
+    if (filter.statuses?.length) params.set('status', filter.statuses.join(','))
 
     let res: Response
     try {
@@ -165,6 +173,51 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
 
   // Every page we were allowed to fetch came back full — more is behind it.
   return { orders: all, hasMore: true, resumeFrom, sortedByModified }
+}
+
+/**
+ * Every order status this store actually uses, its own inventions included.
+ *
+ * Asked because WooCommerce's default is a trap. Send no `status` and the REST
+ * controller applies `any`, which becomes WordPress's `post_status => 'any'` —
+ * and that is NOT everything: it silently omits any status registered with
+ * `exclude_from_search`, which is how fulfilment plugins commonly register the
+ * extra statuses they add. A store running orders through its own "shipping"
+ * step therefore answers a perfectly ordinary window with those orders absent,
+ * no error, no clue. Such an order can only ever arrive by webhook, and if that
+ * one delivery is lost it is lost for good: every later pull is blind to it.
+ *
+ * This endpoint reports a row per status the store knows, custom ones included,
+ * and those names ARE accepted by the `status` parameter. Naming them is the
+ * only way to ask for everything and mean it.
+ *
+ * Best-effort: an empty list means "could not tell", and the caller falls back
+ * to the default rather than narrowing the query to nothing.
+ */
+export async function fetchOrderStatuses(
+  creds: WooCredentials,
+  filter: { deadline?: number } = {},
+): Promise<string[]> {
+  // No budget left means no pull is going to happen either; spending a request
+  // to describe a store we are not about to read takes it from the next store.
+  if (filter.deadline !== undefined && Date.now() >= filter.deadline) return []
+
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  try {
+    const res = await fetch(
+      `${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/reports/orders/totals`,
+      {
+        headers: { Authorization: `Basic ${auth}` },
+        signal: AbortSignal.timeout(requestBudgetMs(filter)),
+      },
+    )
+    if (!res.ok) return []
+    const rows = (await res.json()) as { slug?: string }[]
+    if (!Array.isArray(rows)) return []
+    return rows.map((r) => r.slug).filter((s): s is string => typeof s === 'string' && s.length > 0)
+  } catch {
+    return [] // unreachable or unreadable: fall back, never narrow to nothing
+  }
 }
 
 /**

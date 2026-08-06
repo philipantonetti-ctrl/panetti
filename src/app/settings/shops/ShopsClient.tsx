@@ -113,6 +113,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
         ordersSynced: number
         more?: boolean
         repaired?: number
+        repairError?: string
         error?: string
       }[] = data.results ?? []
       const good = results.filter((r) => r.ok)
@@ -122,11 +123,17 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
       // books look complete because it was never there to be noticed — so
       // recovering one is news, not a detail to fold into the orders count.
       const mended = good.filter((r) => r.repaired)
+      // The sync worked, but the completeness check did not run. Said plainly,
+      // because "synced 40 orders" alone would imply the books were verified.
+      const unchecked = good.filter((r) => r.repairError)
 
       setMessage(
         `Synced ${good.reduce((n, r) => n + r.ordersSynced, 0)} orders from ${good.length} shop(s).` +
           (mended.length
             ? ` Recovered ${mended.reduce((n, r) => n + (r.repaired ?? 0), 0)} missing or changed order(s): ${mended.map((r) => `${r.shopName} (${r.repaired})`).join(', ')}.`
+            : '') +
+          (unchecked.length
+            ? ` Could not check for missing orders on ${unchecked.map((r) => `${r.shopName} (${r.repairError})`).join(', ')}.`
             : '') +
           (partial.length
             ? ` ${partial.map((r) => `${r.shopName} has more history to fetch.`).join(' ')} Press Sync all again to continue.`

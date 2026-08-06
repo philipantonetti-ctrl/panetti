@@ -3,6 +3,7 @@ import { VOIDED_STATUSES } from '../metrics/types'
 import { decryptSecret } from '../secrets'
 import {
   fetchCatalogPrices,
+  fetchOrderStatuses,
   fetchOrders,
   fetchOrdersByIds,
   type WooCredentials,
@@ -24,6 +25,8 @@ export type SyncResult = {
    * noticed — so the only way anyone learns it happened is if the sync says so.
    */
   repaired?: number
+  /** The repair pass itself failed. The sync still succeeded; the books may not be whole. */
+  repairError?: string
   error?: string
 }
 
@@ -263,13 +266,18 @@ export type Reconciliation = {
 export async function reconcileRecent(
   shopId: string,
   creds: WooCredentials,
-  opts: { days?: number; deadline?: number } = {},
+  opts: { days?: number; deadline?: number; statuses?: string[] } = {},
 ): Promise<Reconciliation> {
   const days = opts.days ?? RECONCILE_DAYS
   const since = new Date(Date.now() - days * DAY)
 
   const { orders, hasMore } = await fetchOrders(creds, {
     createdAfter: since,
+    // Named outright. A repair pass that inherits WooCommerce's default cannot
+    // see an order sitting in a status the store invented — which is exactly
+    // the order most likely to be missing, since only a webhook could have
+    // brought it in and a webhook is the thing that gets lost.
+    statuses: opts.statuses,
     // Scaled to the window: a fixed cap would silently check only the first few
     // hundred orders of a wide sweep and report success for the rest.
     maxPages: Math.max(RECONCILE_MIN_PAGES, Math.ceil(days * RECONCILE_PAGES_PER_DAY)),
@@ -459,13 +467,28 @@ export async function syncShop(
       if (newest) createdAfter = new Date(newest.placedAt.getTime() - 1000)
     }
 
+    // Stamped before the first word to the store, not after: the watermark's
+    // whole job is that nothing changed while we worked can fall between two
+    // windows, and the status lookup below is already time spent on this store.
     const fetchStartedAt = new Date()
+
+    // Which statuses this store actually uses, its own inventions included.
+    // Every pull below names them, because WooCommerce's default quietly omits
+    // custom statuses — a store with its own "shipping" step would otherwise
+    // hand back windows with those orders missing and no sign anything was.
+    const statuses = await fetchOrderStatuses(creds, { deadline: opts.deadline })
     const { orders, hasMore, resumeFrom, sortedByModified } = await fetchOrders(
       creds,
       firstSync
-        ? { createdAfter, maxPages: opts.backfillPages ?? BACKFILL_PAGES, deadline: opts.deadline }
+        ? {
+            createdAfter,
+            statuses,
+            maxPages: opts.backfillPages ?? BACKFILL_PAGES,
+            deadline: opts.deadline,
+          }
         : {
             modifiedAfter: new Date(shop.lastSyncAt!.getTime() - OVERLAP),
+            statuses,
             maxPages: opts.maxPages,
             deadline: opts.deadline,
           },
@@ -475,6 +498,7 @@ export async function syncShop(
 
     let synced = 0
     let repaired = 0
+    let repairError: string | undefined
     for (const raw of orders) {
       await storeOrder(shop.id, raw, byCode)
       synced++
@@ -547,11 +571,15 @@ export async function syncShop(
           // before this run: a store that went a week unreached has a week of
           // possible holes, and three days would step straight over them.
           days: reconcileWindow(shop.lastSyncAt, fetchStartedAt),
+          statuses,
           deadline: opts.deadline,
         })
         repaired = check.repaired
-      } catch {
-        // Retried on the next completed sync.
+      } catch (e) {
+        // Reported, not swallowed. A repair that dies quietly is
+        // indistinguishable from a store that needed no repair, and that
+        // silence is precisely what let a missing order go unnoticed for days.
+        repairError = e instanceof Error ? e.message : 'Repair pass failed'
       }
 
       // Best-effort on a COMPLETED sync only: refresh each known product's own
@@ -598,7 +626,13 @@ export async function syncShop(
       error: null,
     })
 
-    return { ...base, ok: true, ordersSynced: synced, ...(repaired ? { repaired } : {}) }
+    return {
+      ...base,
+      ok: true,
+      ordersSynced: synced,
+      ...(repaired ? { repaired } : {}),
+      ...(repairError ? { repairError } : {}),
+    }
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Sync failed'
     // lastSyncAt is deliberately NOT updated, so the next run retries this window.

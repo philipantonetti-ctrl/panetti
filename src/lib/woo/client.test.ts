@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchCoupons, fetchOrders, requestBudgetMs } from './client'
+import { fetchCoupons, fetchOrderStatuses, fetchOrders, requestBudgetMs } from './client'
 
 const CREDS = { url: 'https://shop.example', key: 'ck', secret: 'cs' }
 
@@ -15,6 +15,12 @@ function page(n: number) {
     headers: { 'Content-Type': 'application/json' },
   })
 }
+
+const statusPage = (rows: unknown[]) =>
+  new Response(JSON.stringify(rows), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -280,5 +286,62 @@ describe('resume points', () => {
     const res = await fetchOrders(CREDS, { createdAfter: new Date('2026-07-01T09:00:00Z') })
     expect(res.sortedByModified).toBe(true)
     expect(res.resumeFrom).toBeUndefined()
+  })
+})
+
+describe('asking for statuses by name', () => {
+  it('names every status when the caller supplies them', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchOrders(CREDS, { statuses: ['processing', 'completed', 'shipping'] })
+
+    // Sending no status leaves WooCommerce on `any`, which becomes WP's
+    // `post_status => 'any'` — and that omits statuses registered with
+    // exclude_from_search, exactly how plugins add their own. A store with a
+    // "shipping" step then answers with those orders silently absent.
+    const url = new URL(String(fetchMock.mock.calls[0][0]))
+    expect(url.searchParams.get('status')).toBe('processing,completed,shipping')
+  })
+
+  it('falls back to the default rather than narrowing to nothing', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(page(0))
+    vi.stubGlobal('fetch', fetchMock)
+
+    // An empty list means "could not tell what this store uses". Sending
+    // `status=` would ask for no statuses at all and return an empty store.
+    await fetchOrders(CREDS, { statuses: [] })
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.has('status')).toBe(false)
+  })
+})
+
+describe('fetchOrderStatuses', () => {
+  it('reports the store own statuses, custom ones included', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        statusPage([
+          { slug: 'pending', name: 'Pending payment', total: 1 },
+          { slug: 'processing', name: 'Processing', total: 4 },
+          { slug: 'shipping', name: 'Shipping', total: 3 },
+          { slug: 'cancelled', name: 'Cancelled', total: 2 },
+        ]),
+      ),
+    )
+
+    expect(await fetchOrderStatuses(CREDS)).toEqual([
+      'pending',
+      'processing',
+      'shipping',
+      'cancelled',
+    ])
+  })
+
+  it('returns nothing readable as an empty list, never a broken query', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 500 })))
+    expect(await fetchOrderStatuses(CREDS)).toEqual([])
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    expect(await fetchOrderStatuses(CREDS)).toEqual([])
   })
 })
