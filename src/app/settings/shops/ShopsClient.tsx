@@ -112,25 +112,33 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
         ok: boolean
         ordersSynced: number
         more?: boolean
-        repaired?: number
+        added?: number
+        updated?: number
         repairError?: string
         error?: string
       }[] = data.results ?? []
       const good = results.filter((r) => r.ok)
       const bad = results.filter((r) => !r.ok)
       const partial = good.filter((r) => r.more)
-      // Worth its own sentence. A missing order is invisible by nature — the
-      // books look complete because it was never there to be noticed — so
-      // recovering one is news, not a detail to fold into the orders count.
-      const mended = good.filter((r) => r.repaired)
+      // Two sentences, not one. A recovered order is revenue that was never
+      // being counted and can only push a figure up; a corrected one can just
+      // as easily pull it down, because an order that quietly became cancelled
+      // takes its money back out. Reporting a single "repaired" total said
+      // "orders were missing" when some had merely changed, and promised a
+      // rise that might never arrive.
+      const found = good.filter((r) => r.added)
+      const corrected = good.filter((r) => r.updated)
       // The sync worked, but the completeness check did not run. Said plainly,
       // because "synced 40 orders" alone would imply the books were verified.
       const unchecked = good.filter((r) => r.repairError)
 
       setMessage(
         `Synced ${good.reduce((n, r) => n + r.ordersSynced, 0)} orders from ${good.length} shop(s).` +
-          (mended.length
-            ? ` Recovered ${mended.reduce((n, r) => n + (r.repaired ?? 0), 0)} missing or changed order(s): ${mended.map((r) => `${r.shopName} (${r.repaired})`).join(', ')}.`
+          (found.length
+            ? ` Recovered ${found.reduce((n, r) => n + (r.added ?? 0), 0)} order(s) the stores had and we did not: ${found.map((r) => `${r.shopName} (${r.added})`).join(', ')}.`
+            : '') +
+          (corrected.length
+            ? ` Corrected ${corrected.reduce((n, r) => n + (r.updated ?? 0), 0)} order(s) whose status or total had changed: ${corrected.map((r) => `${r.shopName} (${r.updated})`).join(', ')}.`
             : '') +
           (unchecked.length
             ? ` Could not check for missing orders on ${unchecked.map((r) => `${r.shopName} (${r.repairError})`).join(', ')}.`

@@ -19,12 +19,17 @@ export type SyncResult = {
   /** This pull landed, but more is behind it: history, a full page cap, or the deadline. */
   more?: boolean
   /**
-   * Orders the repair pass had to put back because they were missing or had
-   * drifted. Reported rather than fixed in silence: a hole is invisible by
-   * nature — the books look complete because the order was never there to be
-   * noticed — so the only way anyone learns it happened is if the sync says so.
+   * Orders the store had and we did not. Reported rather than fixed in
+   * silence: a hole is invisible by nature — the books look complete because
+   * the order was never there to be noticed — so the only way anyone learns it
+   * happened is if the sync says so.
    */
-  repaired?: number
+  added?: number
+  /**
+   * Orders we held whose status or charged total had drifted. Kept apart from
+   * `added`: one can only raise a total, the other can lower it.
+   */
+  updated?: number
   /** The repair pass itself failed. The sync still succeeded; the books may not be whole. */
   repairError?: string
   error?: string
@@ -238,8 +243,21 @@ export function reconcileWindow(lastSyncAt: Date | null, now: Date): number {
 }
 
 export type Reconciliation = {
-  /** Orders written back because they were absent or had drifted. */
-  repaired: number
+  /**
+   * Orders the store had and we did not hold at all. These are the ones that
+   * move a figure: revenue we were never counting is now counted.
+   */
+  added: number
+  /**
+   * Orders we held whose status or charged total had drifted from the store's.
+   * Reported apart from `added` because the two mean opposite things to anyone
+   * reading a number: a recovered order can only raise a total, while a
+   * correction can just as easily lower it — an order that quietly became
+   * cancelled takes its revenue back out. Rolling them together produced
+   * "11 orders were missing", which was not true and promised a rise that
+   * might not come.
+   */
+  updated: number
   /**
    * False when the store had more in the window than this pass could read, so
    * some of it was NOT checked. A repair that quietly stops short is worse than
@@ -283,7 +301,7 @@ export async function reconcileRecent(
     maxPages: Math.max(RECONCILE_MIN_PAGES, Math.ceil(days * RECONCILE_PAGES_PER_DAY)),
     deadline: opts.deadline,
   })
-  if (orders.length === 0) return { repaired: 0, complete: !hasMore }
+  if (orders.length === 0) return { added: 0, updated: 0, complete: !hasMore }
 
   const held = await db.order.findMany({
     where: { shopId, placedAt: { gte: since } },
@@ -292,16 +310,20 @@ export async function reconcileRecent(
   const heldBy = new Map(held.map((o) => [o.externalId, o]))
 
   const byCode = await codeBookFor(shopId)
-  let repaired = 0
+  let added = 0
+  let updated = 0
   for (const raw of orders) {
     const mine = heldBy.get(String(raw.id))
     const theirs = mapOrder(raw)
-    if (!mine || mine.status !== theirs.status || mine.total !== theirs.total) {
+    if (!mine) {
       await storeOrder(shopId, raw, byCode)
-      repaired++
+      added++
+    } else if (mine.status !== theirs.status || mine.total !== theirs.total) {
+      await storeOrder(shopId, raw, byCode)
+      updated++
     }
   }
-  return { repaired, complete: !hasMore }
+  return { added, updated, complete: !hasMore }
 }
 
 /**
@@ -497,7 +519,8 @@ export async function syncShop(
     const byCode = await codeBookFor(shop.id)
 
     let synced = 0
-    let repaired = 0
+    let added = 0
+    let updated = 0
     let repairError: string | undefined
     for (const raw of orders) {
       await storeOrder(shop.id, raw, byCode)
@@ -574,7 +597,8 @@ export async function syncShop(
           statuses,
           deadline: opts.deadline,
         })
-        repaired = check.repaired
+        added = check.added
+        updated = check.updated
       } catch (e) {
         // Reported, not swallowed. A repair that dies quietly is
         // indistinguishable from a store that needed no repair, and that
@@ -630,7 +654,8 @@ export async function syncShop(
       ...base,
       ok: true,
       ordersSynced: synced,
-      ...(repaired ? { repaired } : {}),
+      ...(added ? { added } : {}),
+      ...(updated ? { updated } : {}),
       ...(repairError ? { repairError } : {}),
     }
   } catch (e) {

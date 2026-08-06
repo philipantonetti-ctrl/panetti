@@ -801,7 +801,10 @@ describe('reconciling the recent past', () => {
     await storeOrder(shop.id, { ...wooOrder(5001, at), status: 'pending' }, new Map())
     vi.stubGlobal('fetch', storeReturning([{ ...wooOrder(5001, at), status: 'completed' }]))
 
-    expect((await reconcileRecent(shop.id, creds)).repaired).toBe(1)
+    // A CORRECTION, not a recovery: we already held it, its status had moved
+    // on. Counting this as a missing order would promise revenue that was
+    // already there, and this one could as easily have gone the other way.
+    expect(await reconcileRecent(shop.id, creds)).toMatchObject({ added: 0, updated: 1 })
     const held = await db.order.findFirst({ where: { shopId: shop.id, externalId: '5001' } })
     expect(held!.status).toBe('completed')
   })
@@ -814,7 +817,7 @@ describe('reconciling the recent past', () => {
     vi.stubGlobal('fetch', storeReturning([wooOrder(5002, at)]))
 
     // Nothing absent, nothing drifted: no writes at all.
-    expect(await reconcileRecent(shop.id, creds)).toEqual({ repaired: 0, complete: true })
+    expect(await reconcileRecent(shop.id, creds)).toEqual({ added: 0, updated: 0, complete: true })
   })
 
   it('says so when the store held more than the pass could read', async () => {
@@ -849,7 +852,8 @@ describe('reconciling the recent past', () => {
     )
 
     const result = await reconcileRecent(shop.id, creds, { days: 3 })
-    expect(result.repaired).toBe(0) // looks perfectly healthy...
+    expect(result.added).toBe(0) // looks perfectly healthy...
+    expect(result.updated).toBe(0)
     expect(result.complete).toBe(false) // ...but most of the window went unread
   })
 
@@ -919,7 +923,8 @@ describe('reporting what the repair pass found', () => {
     const result = await syncShop(shop.id)
     expect(result.ok).toBe(true)
     expect(result.ordersSynced).toBe(0) // the incremental pull found nothing
-    expect(result.repaired).toBe(1) // but a hole was closed, and it says so
+    expect(result.added).toBe(1) // but a hole was closed, and it says so
+    expect(result.updated).toBeUndefined() // nothing merely drifted
   })
 
   it('stays quiet about a store that needed nothing', async () => {
@@ -930,8 +935,10 @@ describe('reporting what the repair pass found', () => {
     })
     vi.stubGlobal('fetch', vi.fn(async () => jsonPage([])))
 
-    // No repairs is the normal case: the field is absent rather than a noisy 0.
-    expect((await syncShop(shop.id)).repaired).toBeUndefined()
+    // No repairs is the normal case: the fields are absent rather than noisy 0s.
+    const res = await syncShop(shop.id)
+    expect(res.added).toBeUndefined()
+    expect(res.updated).toBeUndefined()
   })
 })
 
@@ -985,7 +992,7 @@ describe('a store with its own order statuses', () => {
     const result = await syncShop(shop.id)
     expect(result.ok).toBe(true)
     expect(result.repairError).toBeUndefined()
-    expect(result.repaired).toBe(1)
+    expect(result.added).toBe(1)
 
     const held = await db.order.findFirst({
       where: { shopId: shop.id, externalId: '13754' },
@@ -1016,5 +1023,42 @@ describe('a store with its own order statuses', () => {
     // silent 0 would have read as "nothing needed fixing".
     expect(result.ok).toBe(true)
     expect(result.repairError).toMatch(/500/)
+  })
+})
+
+describe('telling a recovered order from a corrected one', () => {
+  it('counts them separately, because they move a total in opposite directions', async () => {
+    const shop = await connectedShop('[sync-test] two kinds')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date(Date.now() - 30 * 60 * 1000) },
+    })
+    const at = new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 19)
+
+    // Held as a live sale; the store has since cancelled it. Correcting this
+    // REMOVES revenue we were counting.
+    await storeOrder(shop.id, { ...wooOrder(8001, at), status: 'completed' }, new Map())
+    // Never held at all. Recovering this ADDS revenue we were not counting.
+    const missing = wooOrder(8002, at)
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = new URL(url)
+        if (u.pathname.endsWith('/reports/orders/totals')) return jsonPage([{ slug: 'completed' }])
+        if (!u.pathname.endsWith('/orders')) return jsonPage([])
+        if (u.searchParams.get('modified_after')) return jsonPage([])
+        return u.searchParams.get('page') === '1'
+          ? jsonPage([{ ...wooOrder(8001, at), status: 'cancelled' }, missing])
+          : jsonPage([])
+      }),
+    )
+
+    const result = await syncShop(shop.id)
+    // One of each. Reported as a single "2 repaired" this read as "2 orders
+    // were missing", which was untrue and promised a rise in the figures when
+    // the cancellation pulls the other way.
+    expect(result.added).toBe(1)
+    expect(result.updated).toBe(1)
   })
 })
