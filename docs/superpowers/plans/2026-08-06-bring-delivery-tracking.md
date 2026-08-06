@@ -1301,6 +1301,51 @@ git add package.json package-lock.json next.config.ts src/lib/bring/pdf.ts src/l
 git commit -m "feat: read order and tracking numbers out of the warehouse PDF"
 ```
 
+#### As-built corrections (found in review, after `a6baedf`)
+
+**The `extractPairs` above is wrong and was not shipped as written.** It iterates order numbers in *document* order and claims the nearest unclaimed token for each, which lets a farther-but-earlier order number steal a closer order's tracking number. It fails two of this task's own tests. The shipped implementation does **global nearest-distance-first** matching: build every (order, token) candidate pair, sort by distance with a deterministic tie-break, then claim greedily. Git is the source of truth for that code; this block is kept only to explain the change.
+
+- [ ] **Step 8: Pin the Node version**
+
+`unpdf` declares `"engines": { "node": ">=22" }`. This repo pins nothing — no `engines` field, no `.nvmrc`, and `vercel.json` sets no runtime — so production runs on whatever Vercel's project default happens to be. A mismatch surfaces as a module failure at request time rather than a failed build, which is the worst place to find it.
+
+Add to `package.json`, as a sibling of `"scripts"`:
+
+```json
+  "engines": {
+    "node": ">=22"
+  },
+```
+
+Vercel reads this and selects a matching runtime, or fails the build loudly. Loudly is what we want.
+
+- [ ] **Step 9: Refuse a tracking-shaped token that repeats**
+
+`looksLikeTracking` accepts any 8+ character alphanumeric token carrying 8+ digits. On a real document that also matches an unpunctuated date (`20260804`), an 8-digit phone number, invoice and registration numbers — both verified in review. Because matching is distance-based, a false positive sitting *near* an order number produces a silently **wrong** pairing, not a missing one. A wrong pairing looks like success and poisons that order's delivery figure permanently.
+
+The format cannot be tightened responsibly without a real warehouse PDF, and guessing at lengths would be worse. But one rule is structural rather than format-based and holds regardless of layout: **a parcel number is unique per shipment, while boilerplate repeats.** So a tracking-shaped token appearing more than once in a document is ambiguous, and ambiguity is refused rather than guessed — the same rule Task 6 applies to an order number two shops both hold.
+
+Add the test:
+
+```ts
+it('refuses a tracking-shaped token that repeats, because a parcel number is unique', () => {
+  // The support number in the footer is 8 digits, so it looks like a parcel
+  // number and sits right beside order 1002. Refusing it costs one missing
+  // pair, which shows up in the import's unmatched count. Accepting it would
+  // silently attach the wrong parcel to 1002 and look like success.
+  const text = `
+    Kundeservice 21009000
+    1001 370724403790000123
+    1002 21009000
+  `
+  expect(extractPairs(text, known)).toEqual([
+    { orderNumber: '1001', trackingNumber: '370724403790000123' },
+  ])
+})
+```
+
+Then, in `extractPairs`, after collecting the candidate tracking tokens and before matching, drop every token value that occurs more than once in the document. Keep the existing behaviour for everything else: a row that matches nothing stays absent rather than guessed.
+
 ---
 
 ### Task 6: Turn pairs into shipments
