@@ -82,7 +82,23 @@ const CUSTOMER_BACKFILL_BATCH = 500
  * matches costs one request and no writes at all.
  */
 const RECONCILE_DAYS = 3
-const RECONCILE_PAGES = 3
+
+/**
+ * A store the sync could not reach for a while needs the whole silence
+ * re-read, not the last three days of it: the 29 July outage ran seven days,
+ * and every hole it left sits outside a three-day window forever. The window
+ * therefore stretches to cover the gap since the last completed sync, plus a
+ * day either side for clock drift.
+ *
+ * Capped, because "the shop has never synced" and "the shop synced last year"
+ * both compute an enormous window, and a repair pass that tries to re-read all
+ * of history is the same runaway the backfill chunking exists to prevent.
+ */
+const RECONCILE_MAX_DAYS = 45
+
+/** ~100 orders a page. Scaled to the window so a wider sweep is not silently cut short. */
+const RECONCILE_PAGES_PER_DAY = 1
+const RECONCILE_MIN_PAGES = 3
 
 /** couponCode (UPPERCASE) -> who owns it, for one store. */
 export type CodeBook = Map<string, { ambassadorId: string }>
@@ -197,32 +213,62 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
 }
 
 /**
- * Make our copy of the last few days agree with the store's.
+ * How wide the repair window has to be for this shop, in days.
+ *
+ * Normally the last few days. But a store the sync could not reach for a week
+ * has a week of possible holes, all of them outside a three-day window — and
+ * outside it FOREVER, because the incremental pull will never offer those
+ * orders again. So the window stretches to cover the silence: the gap since the
+ * last completed sync, plus a day either side for clock drift.
+ */
+export function reconcileWindow(lastSyncAt: Date | null, now: Date): number {
+  if (!lastSyncAt) return RECONCILE_DAYS // a first sync just read all of history
+  const gap = (now.getTime() - lastSyncAt.getTime()) / DAY
+  return Math.min(RECONCILE_MAX_DAYS, Math.max(RECONCILE_DAYS, Math.ceil(gap) + 1))
+}
+
+export type Reconciliation = {
+  /** Orders written back because they were absent or had drifted. */
+  repaired: number
+  /**
+   * False when the store had more in the window than this pass could read, so
+   * some of it was NOT checked. A repair that quietly stops short is worse than
+   * no repair: it reads as proof the books agree when nothing looked.
+   */
+  complete: boolean
+}
+
+/**
+ * Make our copy of a recent window agree with the store's.
  *
  * The incremental window cannot do this: it asks what CHANGED, and a missed
- * order did not change. This asks what EXISTS, over a short recent window, and
- * repairs anything absent or drifted. It is the only path by which a hole heals.
+ * order did not change. This asks what EXISTS, and repairs anything absent or
+ * drifted. It is the only path by which a hole heals.
  *
  * Only orders that are missing, or whose status or charged total no longer
  * match, are written — those two decide whether an order counts and for how
  * much. A healthy store therefore costs one request and no writes.
  *
- * Returns how many orders had to be repaired: 0 on a store that is already
- * correct, which is the normal case.
+ * Never deletes. An order the store does not return is left exactly as it is:
+ * a truncated page or a store that hides old orders must not be able to erase
+ * real history.
  */
 export async function reconcileRecent(
   shopId: string,
   creds: WooCredentials,
   opts: { days?: number; deadline?: number } = {},
-): Promise<number> {
-  const since = new Date(Date.now() - (opts.days ?? RECONCILE_DAYS) * DAY)
+): Promise<Reconciliation> {
+  const days = opts.days ?? RECONCILE_DAYS
+  const since = new Date(Date.now() - days * DAY)
 
-  const { orders } = await fetchOrders(creds, {
+  const { orders, hasMore } = await fetchOrders(creds, {
     createdAfter: since,
-    maxPages: RECONCILE_PAGES,
+    // Scaled to the window: a fixed cap would silently check only the first few
+    // hundred orders of a wide sweep and report success for the rest.
+    maxPages: Math.max(RECONCILE_MIN_PAGES, Math.ceil(days * RECONCILE_PAGES_PER_DAY)),
     deadline: opts.deadline,
   })
-  if (orders.length === 0) return 0
+  if (orders.length === 0) return { repaired: 0, complete: !hasMore }
 
   const held = await db.order.findMany({
     where: { shopId, placedAt: { gte: since } },
@@ -240,7 +286,7 @@ export async function reconcileRecent(
       repaired++
     }
   }
-  return repaired
+  return { repaired, complete: !hasMore }
 }
 
 /**
@@ -488,7 +534,13 @@ export async function syncShop(
       // catalog and customer passes — if the budget runs out, it must run out
       // on a nicety, not on a missing sale.
       try {
-        await reconcileRecent(shop.id, creds, { deadline: opts.deadline })
+        await reconcileRecent(shop.id, creds, {
+          // Sized to THIS shop's silence, using the watermark as it stood
+          // before this run: a store that went a week unreached has a week of
+          // possible holes, and three days would step straight over them.
+          days: reconcileWindow(shop.lastSyncAt, fetchStartedAt),
+          deadline: opts.deadline,
+        })
       } catch {
         // Retried on the next completed sync.
       }

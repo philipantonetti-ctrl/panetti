@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { reconcileRecent, storeOrder, syncAllShops, syncShop } from './sync'
+import { reconcileRecent, reconcileWindow, storeOrder, syncAllShops, syncShop } from './sync'
 import { encryptSecret } from '../secrets'
 import { db } from '../db'
 
@@ -788,7 +788,7 @@ describe('reconciling the recent past', () => {
     await storeOrder(shop.id, { ...wooOrder(5001, at), status: 'pending' }, new Map())
     vi.stubGlobal('fetch', storeReturning([{ ...wooOrder(5001, at), status: 'completed' }]))
 
-    expect(await reconcileRecent(shop.id, creds)).toBe(1)
+    expect((await reconcileRecent(shop.id, creds)).repaired).toBe(1)
     const held = await db.order.findFirst({ where: { shopId: shop.id, externalId: '5001' } })
     expect(held!.status).toBe('completed')
   })
@@ -801,7 +801,43 @@ describe('reconciling the recent past', () => {
     vi.stubGlobal('fetch', storeReturning([wooOrder(5002, at)]))
 
     // Nothing absent, nothing drifted: no writes at all.
-    expect(await reconcileRecent(shop.id, creds)).toBe(0)
+    expect(await reconcileRecent(shop.id, creds)).toEqual({ repaired: 0, complete: true })
+  })
+
+  it('says so when the store held more than the pass could read', async () => {
+    const shop = await connectedShop('[sync-test] truncated')
+    const at = recent()
+
+    // Already holding everything the store will show, so NOTHING needs
+    // repairing. That is the dangerous shape: zero repairs reads as "the books
+    // agree", when in truth the pass ran out of pages and most of the window
+    // was never looked at. Only `complete` can tell the two apart.
+    await db.order.createMany({
+      data: Array.from({ length: 100 }, (_, i) => ({
+        shopId: shop.id,
+        externalId: String(6000 + i),
+        number: String(6000 + i),
+        placedAt: new Date(at + 'Z'),
+        status: 'completed',
+        currency: 'NOK',
+        grossSales: 10000,
+        discountTotal: 0,
+        netSales: 10000,
+        shippingCharged: 0,
+        taxTotal: 2500,
+        total: 12500, // matches wooOrder's '125.00', so nothing looks drifted
+      })),
+    })
+
+    // Every page comes back full, so there is always more behind it.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonPage(Array.from({ length: 100 }, (_, i) => wooOrder(6000 + i, at)))),
+    )
+
+    const result = await reconcileRecent(shop.id, creds, { days: 3 })
+    expect(result.repaired).toBe(0) // looks perfectly healthy...
+    expect(result.complete).toBe(false) // ...but most of the window went unread
   })
 
   it('asks the store for a bounded window, never for all of history', async () => {
@@ -819,5 +855,27 @@ describe('reconciling the recent past', () => {
     const daysBack = (Date.now() - after) / (24 * 60 * 60 * 1000)
     expect(daysBack).toBeGreaterThan(2.9)
     expect(daysBack).toBeLessThan(3.1)
+  })
+})
+
+describe('how far back a repair pass looks', () => {
+  const now = new Date('2026-08-06T12:00:00Z')
+
+  it('covers the last few days on a store that is keeping up', () => {
+    expect(reconcileWindow(new Date('2026-08-06T11:45:00Z'), now)).toBe(3)
+  })
+
+  it('stretches to cover a silence, so an outage leaves no permanent hole', () => {
+    // The real one: the scheduled sync stopped on 29 July and was not fixed
+    // until 5 August. Every order missed in those days sits outside a
+    // three-day window, and the incremental pull will never offer them again.
+    const outage = reconcileWindow(new Date('2026-07-29T09:00:00Z'), now)
+    expect(outage).toBeGreaterThanOrEqual(9)
+  })
+
+  it('refuses to re-read all of history, however long the silence', () => {
+    expect(reconcileWindow(new Date('2020-01-01T00:00:00Z'), now)).toBe(45)
+    // A shop with no watermark has just read its whole history anyway.
+    expect(reconcileWindow(null, now)).toBe(3)
   })
 })
