@@ -31,7 +31,8 @@ export type WooOrder = {
   total: string
   coupon_lines: { code: string }[]
   line_items: WooLineItem[]
-  billing?: { first_name?: string; last_name?: string; email?: string }
+  billing?: { first_name?: string; last_name?: string; email?: string; country?: string }
+  shipping?: { country?: string }
 }
 
 export type MappedOrder = {
@@ -51,6 +52,9 @@ export type MappedOrder = {
   // counts as "customer checked" and the backfill knows it is done.
   customerName: string
   customerEmail: string
+  // ISO-2, uppercased. '' when the store has none on file — never null, so a
+  // synced order counts as "country checked" and the backfill knows it is done.
+  shippingCountry: string
   items: {
     externalProductId: string
     sku: string
@@ -96,6 +100,10 @@ export function mapOrder(woo: WooOrder): MappedOrder {
     couponCode: woo.coupon_lines?.[0]?.code?.toUpperCase() ?? null,
     customerName: [woo.billing?.first_name, woo.billing?.last_name].filter(Boolean).join(' ').trim(),
     customerEmail: woo.billing?.email?.trim() ?? '',
+    // Shipping first: it is where the parcel actually goes, which is what the
+    // delivery promise is about. Billing is the fallback for stores that only
+    // collect one address.
+    shippingCountry: (woo.shipping?.country || woo.billing?.country || '').trim().toUpperCase(),
     items: woo.line_items.map((li) => ({
       externalProductId: String(li.product_id),
       sku: li.sku || String(li.product_id),

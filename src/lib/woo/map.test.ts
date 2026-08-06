@@ -21,6 +21,10 @@ const woo: WooOrder = {
   ],
 }
 
+// Alias for the tests below: they build on the same realistic order but read
+// more clearly under the name "the order we start from".
+const baseOrder = woo
+
 describe('mapOrder', () => {
   it('reads net sales as the line total AFTER discount and EXCLUDING VAT', () => {
     const o = mapOrder(woo)
@@ -114,5 +118,28 @@ describe('mapOrder', () => {
     const a = mapOrder(woo)
     const b = mapOrder({ ...woo, status: 'processing' }) // same order, changed status
     expect(a.externalId).toBe(b.externalId)
+  })
+
+  it('takes the destination country from the shipping address', () => {
+    const o = mapOrder({
+      ...baseOrder,
+      shipping: { country: 'SE' },
+    } as never)
+    expect(o.shippingCountry).toBe('SE')
+  })
+
+  it('falls back to the billing country when there is no shipping address', () => {
+    const o = mapOrder({ ...baseOrder, billing: { country: 'DK' } } as never)
+    expect(o.shippingCountry).toBe('DK')
+  })
+
+  it('reports an empty string, never null, when the store has no country at all', () => {
+    const o = mapOrder(baseOrder as never)
+    expect(o.shippingCountry).toBe('')
+  })
+
+  it('uppercases the country so DE and de never split a report in two', () => {
+    const o = mapOrder({ ...baseOrder, shipping: { country: 'de' } } as never)
+    expect(o.shippingCountry).toBe('DE')
   })
 })

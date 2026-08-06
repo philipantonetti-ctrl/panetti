@@ -200,6 +200,7 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
     couponCode: o.couponCode,
     customerName: o.customerName,
     customerEmail: o.customerEmail,
+    shippingCountry: o.shippingCountry,
     ambassadorId,
   }
 
@@ -354,6 +355,37 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
     await db.order.update({
       where: { id: m.id },
       data: { customerName: o?.customerName ?? '', customerEmail: o?.customerEmail ?? '' },
+    })
+  }
+  return missing.length
+}
+
+/**
+ * Fill in the destination country on orders synced before it was stored. Same
+ * shape as backfillCustomers: targets exactly the orders where the field is
+ * still null, newest first, asks Woo for those ids only, and writes nothing
+ * else. An order Woo no longer has is marked '' — checked, nothing there — so
+ * the queue only ever shrinks and this costs zero once history is filled.
+ */
+export async function backfillDelivery(shopId: string, creds: WooCredentials): Promise<number> {
+  const missing = await db.order.findMany({
+    where: { shopId, shippingCountry: null },
+    orderBy: { placedAt: 'desc' },
+    take: CUSTOMER_BACKFILL_BATCH,
+    select: { id: true, externalId: true },
+  })
+  if (missing.length === 0) return 0
+
+  const fetched = new Map<string, WooOrder>()
+  for (const raw of await fetchOrdersByIds(creds, missing.map((m) => m.externalId))) {
+    fetched.set(String(raw.id), raw)
+  }
+
+  for (const m of missing) {
+    const raw = fetched.get(m.externalId)
+    await db.order.update({
+      where: { id: m.id },
+      data: { shippingCountry: raw ? mapOrder(raw).shippingCountry : '' },
     })
   }
   return missing.length
@@ -630,6 +662,13 @@ export async function syncShop(
       // Best-effort: orders from before customers were stored get theirs filled.
       try {
         await backfillCustomers(shop.id, creds)
+      } catch {
+        // The queue is durable — whatever is left fills on the next sync.
+      }
+
+      // Best-effort: orders from before the country was stored get theirs filled.
+      try {
+        await backfillDelivery(shop.id, creds)
       } catch {
         // The queue is durable — whatever is left fills on the next sync.
       }
