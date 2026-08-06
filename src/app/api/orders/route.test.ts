@@ -362,4 +362,34 @@ describe('B2B orders in the order list', () => {
     // raw 10000 (EUR -> EUR is crossConvert's identity short-circuit).
     expect(o.figures.cogs).toBe(909)
   })
+
+  it("dates an order by its own shop's clock, the way the dashboard already does", async () => {
+    await asAdmin()
+    // The workspace runs on Europe/Oslo (UTC+2 in August). This store keeps its
+    // own clock in Helsinki (UTC+3) — a setting the shop page offers and the
+    // metrics engine already honours, bucketing each shop's orders in ITS zone.
+    const fi = (
+      await db.shop.create({
+        data: { name: `FI ${MARK}`, currency: 'DKK', timezone: 'Europe/Helsinki' },
+      })
+    ).id
+    const prodFi = (
+      await db.product.create({
+        data: { shopId: fi, externalId: 'pf', sku: 'PF', name: 'PF', lastPrice: 5000 },
+      })
+    ).id
+    // 21:30 UTC is half past midnight on 6 August in Helsinki — but still the
+    // evening of the 5th in Oslo. Listing it under the workspace day put it on
+    // a different date from the one the dashboard counted it on, so the same
+    // order was visible on one screen and missing from the other.
+    await order(fi, prodFi, 'FI-late', '2026-08-05T21:30:00Z', [
+      { name: 'Late', sku: 'LATE', quantity: 1 },
+    ])
+
+    const sixth = await (await get(`from=2026-08-06&to=2026-08-06&shops=${fi}`)).json()
+    expect(sixth.orders.map((o: { number: string }) => o.number)).toEqual(['FI-late'])
+
+    const fifth = await (await get(`from=2026-08-05&to=2026-08-05&shops=${fi}`)).json()
+    expect(fifth.orders).toEqual([])
+  })
 })

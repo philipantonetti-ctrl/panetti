@@ -55,15 +55,44 @@ export async function GET(req: Request) {
 
     const activeShops = await db.shop.findMany({
       where: { active: true, ...(shopIds?.length ? { id: { in: shopIds } } : {}) },
-      select: { id: true },
+      select: { id: true, timezone: true },
     })
 
+    const fromDay = utcDay(from).toISOString().slice(0, 10)
+    const toDay = utcDay(to).toISOString().slice(0, 10)
+
+    /**
+     * A day belongs to the shop having it.
+     *
+     * The metrics engine buckets each shop's orders in THAT SHOP's zone
+     * (load.ts, engine.ts `inRange`), because a store keeps its own calendar.
+     * This list used to bucket every order in the workspace zone instead, so a
+     * store running an hour ahead put its around-midnight orders on one date
+     * here and a different date on the dashboard — the same order visible on
+     * one screen and missing from the other, which is exactly how it was
+     * reported. One window per distinct zone, so both screens name one day.
+     *
+     * Grouped by zone rather than per shop: nine stores across three zones is
+     * three branches, not nine. Held under AND because the free-text search
+     * below owns `OR`, and two `OR` keys in one object leave only the last.
+     */
+    const zones = new Map<string, string[]>()
+    for (const s of activeShops) {
+      const zone = s.timezone ?? timezone
+      zones.set(zone, [...(zones.get(zone) ?? []), s.id])
+    }
+    const dayWindows = {
+      OR: [...zones].map(([zone, ids]) => ({
+        shopId: { in: ids },
+        placedAt: { gte: zoneDayStartUtc(fromDay, zone), lte: zoneDayEndUtc(toDay, zone) },
+      })),
+    }
+
     const where = {
+      // Kept alongside the windows: with no shops in scope this still matches
+      // nothing, without relying on how an empty `OR` is interpreted.
       shopId: { in: activeShops.map((s) => s.id) },
-      placedAt: {
-        gte: zoneDayStartUtc(utcDay(from).toISOString().slice(0, 10), timezone),
-        lte: zoneDayEndUtc(utcDay(to).toISOString().slice(0, 10), timezone),
-      },
+      AND: [dayWindows],
       // Naming a status wins outright — asking for "refunded" and getting an
       // empty list because refunds are hidden would be absurd. Otherwise the
       // default hides only VOIDED orders: a pending order is a live order and

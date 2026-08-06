@@ -102,6 +102,24 @@ describe('computeMetrics', () => {
     expect(res.total.commission).toBe(0) // the refunded order earns nothing
   })
 
+  it('counts a sale wearing a status the system has never seen', () => {
+    // Stores add their own statuses — a fulfilment plugin moves an order to
+    // "shipping" between processing and completed. The rules here are a DENY
+    // list on purpose: only refunded/cancelled/failed/trash and the two unpaid
+    // states are held back, so an unrecognised status is a live, paid sale.
+    // Swapping that for a list of KNOWN-good statuses would silently drop a
+    // whole store's revenue on the day it installs a plugin.
+    const res = computeMetrics({
+      shops: [shops[0]],
+      orders: [order({ id: 'custom-status', status: 'shipping' })],
+      expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    expect(res.total.orders).toBe(1)
+    expect(res.total.netSales).toBe(90000)
+    expect(res.byShop[0].orders).toBe(1)
+  })
+
   it('excludes unpaid orders — pending and on-hold — until Woo marks them paid', () => {
     const res = computeMetrics({
       shops: [shops[0]],
