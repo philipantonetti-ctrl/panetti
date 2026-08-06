@@ -138,6 +138,61 @@ describe('AmbassadorsClient store-scoped codes', () => {
   })
 })
 
+describe('the row menu', () => {
+  const roster = [
+    {
+      id: 'a1', name: 'Maria Ghanem', email: 'maria@x.local', commissionPercent: 10, active: true,
+      onboarded: false, invitePath: '/invite/x', products: [],
+      codes: [{ id: 'c1', code: 'MARIA500', shopId: 's1', shopName: 'Norway' }],
+    },
+  ]
+
+  it('keeps the row verbs out of sight until asked for', async () => {
+    renderPage(roster)
+    await waitFor(() => expect(screen.getByText('MARIA500')).toBeTruthy())
+
+    // The row shows one control, not four. Spelling every verb out is what made
+    // the last column the widest thing on the page.
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Maria Ghanem' }))
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Deactivate' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeTruthy()
+  })
+
+  it('leaves the invite link in the open, beside the status it belongs to', async () => {
+    renderPage(roster)
+    // Not filed under the menu: it is the one thing needed the moment someone
+    // is added, and it exists only while they are "Not set up yet".
+    await waitFor(() => expect(screen.getByTestId('copy-invite')).toBeTruthy())
+    expect(screen.getByText('Not set up yet')).toBeTruthy()
+  })
+
+  it('closes on Escape without running anything', async () => {
+    renderPage(roster)
+    await waitFor(() => expect(screen.getByText('MARIA500')).toBeTruthy())
+
+    const trigger = screen.getByRole('button', { name: 'Actions for Maria Ghanem' })
+    fireEvent.click(trigger)
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull())
+    // Focus returns to the row it came from, rather than leaving a keyboard
+    // user at the top of the document with no idea which row they were on.
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('offers Reactivate, not Deactivate, for someone switched off', async () => {
+    renderPage([{ ...roster[0], active: false, onboarded: true, invitePath: null }])
+    await waitFor(() => expect(screen.getByText('Deactivated')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Maria Ghanem' }))
+    expect(screen.getByRole('menuitem', { name: 'Reactivate' })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: 'Deactivate' })).toBeNull()
+  })
+})
+
 describe('the Edit window offers only their own store products', () => {
   /** s2 sells Pro X only; s1 sells both. */
   const onShop = (shopId: string) => [
@@ -151,7 +206,9 @@ describe('the Edit window offers only their own store products', () => {
   async function openEditAndPicker(shopId: string) {
     renderPage(onShop(shopId))
     await waitFor(() => expect(screen.getByText('SOLO10')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    // Edit lives in the row's own menu now, so the menu opens first.
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Solo Store' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }))
     // The catalogue arrives from its own fetch; clicking blind is a race.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Product' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Product' }))

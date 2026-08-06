@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { CodeCombobox } from '@/components/CodeCombobox'
+import { RowMenu } from '@/components/RowMenu'
 import { Leaderboard } from '@/components/dashboard/Leaderboard'
 import { useToast } from '@/components/toast/useToast'
 import { PRESET_LABELS, type Preset } from '@/lib/dates'
@@ -123,14 +124,14 @@ function StatusPill({ row }: { row: Row }) {
   // Deactivated first: an onboarded ambassador who is switched off is not "Active".
   if (!row.active) {
     return (
-      <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">
+      <span className="inline-block whitespace-nowrap rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">
         Deactivated
       </span>
     )
   }
   if (row.onboarded) {
     return (
-      <span className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-gain">
+      <span className="inline-block whitespace-nowrap rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-gain">
         Active
       </span>
     )
@@ -141,14 +142,14 @@ function StatusPill({ row }: { row: Row }) {
     return (
       <span
         title="This email already has a login. They sign in with it; their ambassador sales show on the dashboard."
-        className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-gain"
+        className="inline-block whitespace-nowrap rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-gain"
       >
         Uses existing login
       </span>
     )
   }
   return (
-    <span className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-muted">
+    <span className="inline-block whitespace-nowrap rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-muted">
       Not set up yet
     </span>
   )
@@ -542,13 +543,22 @@ export function AmbassadorsClient({
         <div className="mt-4 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
           <table className="w-full text-xs">
             <thead>
+              {/* Widths are stated rather than left to the browser, which sizes
+                  columns by their content and so hands the most room to whichever
+                  cell happens to hold the longest word. Codes and Products carry
+                  wrapping chips and are the only two that genuinely want the
+                  space; everything else is capped at what it needs. */}
               <tr className="bg-panel text-left text-muted">
-                <th className="px-3 py-2.5 font-medium">Ambassador</th>
-                <th className="px-3 py-2.5 font-medium">Commission</th>
+                <th className="w-[16%] px-3 py-2.5 font-medium">Ambassador</th>
+                <th className="w-[6rem] px-3 py-2.5 font-medium">Commission</th>
                 <th className="px-3 py-2.5 font-medium">Codes</th>
                 <th className="px-3 py-2.5 font-medium">Products</th>
-                <th className="px-3 py-2.5 font-medium">Status</th>
-                <th className="px-3 py-2.5 text-right font-medium">Actions</th>
+                <th className="w-[8.5rem] px-3 py-2.5 font-medium">Status</th>
+                <th className="w-12 px-3 py-2.5 text-right font-medium">
+                  {/* The column is one icon wide; the heading names it for
+                      screen readers without setting the column's width. */}
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody className="text-ink">
@@ -609,46 +619,50 @@ export function AmbassadorsClient({
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5">
+                    {/* The invite link lives WITH the status, not with the row
+                        verbs: it exists only while someone is "Not set up yet",
+                        which is precisely what the pill above it says. Kept in
+                        the open rather than filed under the menu because it is
+                        the one thing you need the moment you add someone. */}
+                    <td className="px-3 py-2.5 align-top">
                       <StatusPill row={row} />
+                      {!row.onboarded && row.invitePath && (
+                        <button
+                          data-testid="copy-invite"
+                          onClick={() => copyInvite(row)}
+                          className="mt-1 block whitespace-nowrap text-[11px] font-semibold text-accent hover:underline"
+                        >
+                          {copied === row.id ? 'Copied' : 'Copy invite link'}
+                        </button>
+                      )}
                     </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center justify-end gap-3">
-                        {/* Nobody who already has a login needs an invite. */}
-                        {!row.onboarded && row.invitePath && (
-                          <button
-                            data-testid="copy-invite"
-                            onClick={() => copyInvite(row)}
-                            className="font-semibold text-accent hover:underline"
-                          >
-                            {copied === row.id ? 'Copied' : 'Copy invite link'}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setEditingId(row.id)}
-                          className="font-semibold text-accent hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() =>
-                            void send(`active-${row.id}`, `/api/ambassadors/${row.id}`, 'PATCH', {
-                              active: !row.active,
-                            })
-                          }
-                          disabled={busy}
-                          className="font-semibold text-muted transition-colors duration-150 hover:text-ink hover:underline disabled:opacity-60"
-                        >
-                          {row.active ? 'Deactivate' : 'Reactivate'}
-                        </button>
-                        {/* Never disabled for someone who has sold: the server's reason is worth reading. */}
-                        <button
-                          onClick={() => void remove(row)}
-                          disabled={busy}
-                          className="font-semibold text-loss hover:underline disabled:opacity-60"
-                        >
-                          {pending === `delete-${row.id}` ? 'Deleting…' : 'Delete'}
-                        </button>
+                    <td className="px-3 py-2.5 align-top">
+                      <div className="flex justify-end">
+                        <RowMenu
+                          ariaLabel={`Actions for ${row.name}`}
+                          actions={[
+                            { label: 'Edit', onSelect: () => setEditingId(row.id) },
+                            {
+                              label: row.active ? 'Deactivate' : 'Reactivate',
+                              disabled: busy,
+                              onSelect: () =>
+                                void send(
+                                  `active-${row.id}`,
+                                  `/api/ambassadors/${row.id}`,
+                                  'PATCH',
+                                  { active: !row.active },
+                                ),
+                            },
+                            {
+                              // Never disabled for someone who has sold: the
+                              // server's reason is worth reading.
+                              label: pending === `delete-${row.id}` ? 'Deleting…' : 'Delete',
+                              danger: true,
+                              disabled: busy,
+                              onSelect: () => void remove(row),
+                            },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>
