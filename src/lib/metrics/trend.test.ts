@@ -148,9 +148,9 @@ describe('dailySeries', () => {
     expect(byDate['2026-07-02']).toBe(0)
   })
 
-  // A refund is TWO entries in the engine: +1 on placedAt, -1 on voidedAt. The
-  // chart must show both, or a point on it can disagree with the header total.
-  it('shows a refund as a positive point on the sale day and a negative point on the refund day', () => {
+  // A refunded order is not a sale on any day, so the chart shows it nowhere —
+  // no spike on the sale day, no trough on the refund day.
+  it('leaves no mark at all for an order that was refunded', () => {
     const range = { from: new Date('2026-07-01'), to: new Date('2026-07-10') }
     const refundInput = { ...input, ...range, orders: [order('r', '2026-07-01', '2026-07-08')] }
 
@@ -159,16 +159,16 @@ describe('dailySeries', () => {
     const summed = series.reduce((n, p) => n + p.netRevenue, 0)
     const { total } = computeMetrics({ ...refundInput, orders: refundInput.orders })
 
-    expect(byDate['2026-07-01']).toBe(10000) // the sale
-    expect(byDate['2026-07-08']).toBe(-10000) // the reversal
+    expect(byDate['2026-07-01']).toBe(0)
+    expect(byDate['2026-07-08']).toBe(0)
     expect(summed).toBe(total.netRevenue) // series and header must agree
-    expect(total.netRevenue).toBe(0) // fully cancelled order
+    expect(total.netRevenue).toBe(0)
   })
 
-  // The client's own case: an order placed long before the visible window, but
-  // refunded inside it. The sale entry is out of range and never appears; the
-  // reversal entry must still land on its own day, or the chart lies by omission.
-  it('shows a refund that lands inside the window even when the sale happened before it', () => {
+  // The case that forced the rule: an order placed OUTSIDE the visible window
+  // and refunded inside it. Booking the reversal on its own day dragged the
+  // chart — and the header — below zero for a day whose own orders were fine.
+  it('never dips a day for a refund belonging to an order outside the window', () => {
     const range = { from: new Date('2026-07-01'), to: new Date('2026-07-10') }
     const refundInput = { ...input, ...range, orders: [order('r', '2026-04-02', '2026-07-03')] }
 
@@ -177,10 +177,10 @@ describe('dailySeries', () => {
     const summed = series.reduce((n, p) => n + p.netRevenue, 0)
     const { total } = computeMetrics({ ...refundInput, orders: refundInput.orders })
 
-    expect(series.some((p) => p.netRevenue !== 0)).toBe(true) // not all zeros
-    expect(byDate['2026-07-03']).toBe(-10000) // the reversal, on its own day
+    expect(byDate['2026-07-03']).toBe(0) // April's order cannot touch July
+    expect(series.every((p) => p.netRevenue === 0)).toBe(true)
     expect(summed).toBe(total.netRevenue)
-    expect(total.netRevenue).toBe(-10000) // the sale is outside the window; only the reversal counts
+    expect(total.netRevenue).toBe(0)
   })
 
   // Regression guard: an ordinary order that is never voided must still land on

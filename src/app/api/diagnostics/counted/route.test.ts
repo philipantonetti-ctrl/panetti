@@ -76,22 +76,17 @@ describe('GET /api/diagnostics/counted', () => {
     const body = await (await get(`from=2026-08-05&to=2026-08-05&shops=${shopId}`)).json()
     const shop = body.shops.find((s: { shopId: string }) => s.shopId === shopId)
 
-    // The cancelled order appears TWICE on purpose — the sale on the day it was
-    // placed and its reversal on the day it was cancelled — so the count nets it
-    // away rather than pretending it never happened.
+    // The three live sales of that day, and nothing else.
     expect(shop.counted.map((c: { order: string }) => c.order).sort()).toEqual([
-      '13752', '13752', '13753', '13754', '13755',
+      '13753', '13754', '13755',
     ])
-    // Three real sales: 13752's +1 and -1 cancel each other out.
     expect(shop.orderCount).toBe(3)
 
     const dropped = Object.fromEntries(
       shop.notCounted.map((n: { order: string; reason: string }) => [n.order, n.reason]),
     )
     expect(dropped['13756']).toMatch(/not paid yet/)
-    // The cancellation is not in notCounted: it IS counted, twice, netting to
-    // zero — the sale on its day and the reversal on the day the money went back.
-    expect(dropped['13752']).toBeUndefined()
+    expect(dropped['13752']).toMatch(/not a sale on any day/)
 
     // 13751 was placed at 23:10 Stockholm the night before, so the range never
     // loads it at all. Absence would read as a lost order; it is shown as what
@@ -111,14 +106,19 @@ describe('GET /api/diagnostics/counted', () => {
     expect(shop.timezone).toBe('Europe/Stockholm')
   })
 
-  it('shows a cancellation as a sale and a reversal that cancel out', async () => {
+  it('never books a cancellation against a day it was not placed on', async () => {
     await asAdmin()
-    await order('13752', '2026-08-05T06:26:00Z', 'cancelled', 569800, '2026-08-05T06:30:00Z')
+    // Placed on the 4th, cancelled on the 5th. The live case: the 5th saw
+    // three sales and reported two, because this order's reversal was booked
+    // here — a day it was never part of.
+    await order('13751', '2026-08-04T20:15:00Z', 'cancelled', 569800, '2026-08-05T08:00:00Z')
+    await order('13753', '2026-08-05T07:36:00Z', 'completed', 569800)
 
     const body = await (await get(`from=2026-08-05&to=2026-08-05&shops=${shopId}`)).json()
     const shop = body.shops.find((s: { shopId: string }) => s.shopId === shopId)
 
-    expect(shop.counted.map((c: { sign: number }) => c.sign).sort()).toEqual([-1, 1])
-    expect(shop.orderCount).toBe(0) // the client's rule: a cancelled order is not a sale
+    expect(shop.counted.map((c: { order: string }) => c.order)).toEqual(['13753'])
+    expect(shop.counted.every((c: { sign: number }) => c.sign === 1)).toBe(true)
+    expect(shop.orderCount).toBe(1)
   })
 })

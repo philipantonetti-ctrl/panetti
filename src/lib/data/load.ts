@@ -67,13 +67,11 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const orderRows = await db.order.findMany({
     where: {
       shopId: { in: shopIds },
-      OR: [
-        { placedAt: { gte: windowStart, lte: windowEnd } },
-        // An order placed before this window but refunded inside it still has
-        // to be fetched, or the engine can never subtract it on the day the
-        // money went back — the whole point of recording voidedAt.
-        { voidedAt: { gte: windowStart, lte: windowEnd } },
-      ],
+      // Placed inside the window, and nothing else. An order belongs to the day
+      // it was placed; a refund no longer books a reversal on the day the money
+      // went back, so an order placed elsewhere and voided inside this window
+      // now produces no entry and was being fetched only to be discarded.
+      placedAt: { gte: windowStart, lte: windowEnd },
     },
     select: {
       id: true,

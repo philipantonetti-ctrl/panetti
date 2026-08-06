@@ -353,42 +353,68 @@ describe('computeMetrics', () => {
   const refunded = () =>
     order({ status: 'refunded', voidedAt: new Date('2026-07-08') })
 
-  it('still counts a refunded order on the day it was placed', () => {
-    // The sale really happened that day. Today's engine erases it, which
-    // rewrites a figure the client has already read.
-    const res = computeMetrics({
-      shops: [shops[0]], orders: [refunded()], expenses: [], costs, rates,
-      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
-    })
-    expect(res.total.netSales).toBe(90000)
-    expect(res.total.orders).toBe(1)
+  it('counts a refunded order nowhere at all, its own day included', () => {
+    // Not "sale here, reversal there" — gone. A refunded order is not a sale,
+    // so the day it was placed must stop claiming it too. That does restate a
+    // past day, which is the deliberate trade: see the Entry docs.
+    for (const [from, to] of [
+      ['2026-07-01', '2026-07-01'], // the day it was placed
+      ['2026-07-08', '2026-07-08'], // the day it was refunded
+      ['2026-07-01', '2026-07-31'], // both together
+    ]) {
+      const res = computeMetrics({
+        shops: [shops[0]], orders: [refunded()], expenses: [], costs, rates,
+        displayCurrency: 'NOK', from: new Date(from), to: new Date(to),
+      })
+      expect(res.total.orders).toBe(0)
+      expect(res.total.netSales).toBe(0)
+      expect(res.total.cogs).toBe(0)
+      expect(res.total.netRevenue).toBe(0)
+      expect(res.total.netProfit).toBe(0)
+    }
   })
 
-  it('subtracts the whole order on the day it was refunded', () => {
-    const res = computeMetrics({
-      shops: [shops[0]], orders: [refunded()], expenses: [], costs, rates,
-      displayCurrency: 'NOK', from: new Date('2026-07-08'), to: new Date('2026-07-08'),
+  /**
+   * Panetti Sweden, 5 August 2026, live: three orders came in that day, and
+   * the Dashboard said 2. Nothing on the 5th explained it. The cause was an
+   * order from the 4th, cancelled on the morning of the 5th, whose reversal
+   * was booked against the 5th — a day it was never part of.
+   *
+   * A day's order count must depend only on that day's orders.
+   */
+  it('never lets a later cancellation shrink the day it was cancelled on', () => {
+    const yesterdayThenCancelled = order({
+      id: 'placed-the-4th',
+      placedAt: new Date('2026-07-04T20:15:00Z'),
+      status: 'cancelled',
+      voidedAt: new Date('2026-07-05T08:00:00Z'),
     })
-    expect(res.total.netSales).toBe(-90000)
-    expect(res.total.cogs).toBe(-22000)
-    expect(res.total.netRevenue).toBe(-95000)
-    // The tally reverses with the money it describes. A period that saw only
-    // this refund is a period one order lighter, and says so.
-    expect(res.total.orders).toBe(-1)
-  })
+    const todaysSales = [
+      order({ id: 'a', placedAt: new Date('2026-07-05T07:36:00Z') }),
+      order({ id: 'b', placedAt: new Date('2026-07-05T13:40:00Z') }),
+      order({ id: 'c', placedAt: new Date('2026-07-05T18:31:00Z') }),
+    ]
 
-  it('nets to exactly zero across a period covering both', () => {
     const res = computeMetrics({
-      shops: [shops[0]], orders: [refunded()], expenses: [], costs, rates,
-      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-31'),
+      shops: [shops[0]],
+      orders: [yesterdayThenCancelled, ...todaysSales],
+      expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-05'), to: new Date('2026-07-05'),
     })
-    expect(res.total.netSales).toBe(0)
-    expect(res.total.cogs).toBe(0)
-    expect(res.total.netRevenue).toBe(0)
-    expect(res.total.netProfit).toBe(0)
-    // Exactly zero means the tally too: a sale that was given back inside the
-    // period you are looking at leaves nothing behind, in any column.
-    expect(res.total.orders).toBe(0)
+
+    expect(res.total.orders).toBe(3)
+    expect(res.total.netSales).toBe(3 * 90000)
+
+    // And the day it really belonged to has let it go, rather than keeping a
+    // sale that was called off.
+    const fourth = computeMetrics({
+      shops: [shops[0]],
+      orders: [yesterdayThenCancelled, ...todaysSales],
+      expenses: [], costs, rates,
+      displayCurrency: 'NOK', from: new Date('2026-07-04'), to: new Date('2026-07-04'),
+    })
+    expect(fourth.total.orders).toBe(0)
+    expect(fourth.total.netSales).toBe(0)
   })
 
   /**
@@ -412,16 +438,21 @@ describe('computeMetrics', () => {
     expect(res.byShop[0].orders).toBe(0)
   })
 
-  it('reverses the ambassador commission too', () => {
+  it('pays no commission on an order that was given back', () => {
     const attributed = order({
       status: 'refunded', voidedAt: new Date('2026-07-08'),
       ambassadorId: 'a1', commissionRate: 0.1,
     })
-    const on8th = computeMetrics({
-      shops: [shops[0]], orders: [attributed], expenses: [], costs, rates,
-      displayCurrency: 'NOK', from: new Date('2026-07-08'), to: new Date('2026-07-08'),
-    })
-    expect(on8th.total.commission).toBe(-9000)
+    // Neither on the day it was placed nor on the day it was refunded: there
+    // is no sale to pay a commission on, so there is no commission to reverse.
+    for (const day of ['2026-07-01', '2026-07-08']) {
+      const res = computeMetrics({
+        shops: [shops[0]], orders: [attributed], expenses: [], costs, rates,
+        displayCurrency: 'NOK', from: new Date(day), to: new Date(day),
+      })
+      expect(res.total.commission).toBe(0)
+      expect(res.total.ambassadorSales).toBe(0)
+    }
   })
 
   it('leaves an order refunded before we recorded dates out entirely', () => {
@@ -448,19 +479,17 @@ describe('computeMetrics', () => {
     expect(res.total.orders).toBe(0)
   })
 
-  it('reports no average on a day that only saw a refund', () => {
-    // The day's tally is -1 and its revenue negative. Dividing one by the
-    // other yields a confident +95000 — the average value of an order nobody
-    // placed that day. Any "average order value" here is a lie.
+  it('reports no average on a day that sold nothing', () => {
+    // No orders means no average. Dividing revenue by a zero tally must not
+    // produce a confident number for a day nobody bought anything.
     const res = computeMetrics({
       shops: [shops[0]], orders: [order({ status: 'refunded', voidedAt: new Date('2026-07-08') })],
       expenses: [], costs, rates,
       displayCurrency: 'NOK', from: new Date('2026-07-08'), to: new Date('2026-07-08'),
     })
-    expect(res.byShop[0].orders).toBe(-1)
+    expect(res.byShop[0].orders).toBe(0)
     expect(res.byShop[0].avgOrderValue).toBe(0)
-    // The reversal itself is still real.
-    expect(res.byShop[0].netRevenue).toBe(-95000)
+    expect(res.byShop[0].netRevenue).toBe(0)
   })
 })
 
@@ -555,14 +584,28 @@ describe('entriesIn (shared with the product page)', () => {
     expect(res[0].sign).toBe(1)
   })
 
-  it('gives a refunded order a positive entry on its placed day and a negative one on its voided day', () => {
+  it('gives a refunded order no entry at all, whatever the window', () => {
     const refunded = order({
       status: 'refunded',
       placedAt: new Date('2026-07-01'),
       voidedAt: new Date('2026-07-05'),
     })
-    const res = entriesIn([refunded], new Date('2026-07-01'), new Date('2026-07-31'), tzFor)
-    expect(res.map((e) => e.sign).sort()).toEqual([-1, 1])
+    // Not one entry, not two. A refunded order is not a sale on any day, so it
+    // can never reach into a window it does not belong to.
+    expect(entriesIn([refunded], new Date('2026-07-01'), new Date('2026-07-31'), tzFor)).toEqual([])
+    expect(entriesIn([refunded], new Date('2026-07-05'), new Date('2026-07-05'), tzFor)).toEqual([])
+  })
+
+  it('never emits a reversal, so no window can hold a negative entry', () => {
+    const mixed = [
+      order({ id: 'live', placedAt: new Date('2026-07-02') }),
+      order({ id: 'refunded', status: 'refunded', voidedAt: new Date('2026-07-05') }),
+      order({ id: 'cancelled', status: 'cancelled', voidedAt: new Date('2026-07-06') }),
+      order({ id: 'unpaid', status: 'pending', placedAt: new Date('2026-07-03') }),
+    ]
+    const res = entriesIn(mixed, new Date('2026-07-01'), new Date('2026-07-31'), tzFor)
+    expect(res.map((e) => e.order.id)).toEqual(['live'])
+    expect(res.every((e) => e.sign === 1)).toBe(true)
   })
 
   it('leaves a refunded order alone when we never learned the void date', () => {

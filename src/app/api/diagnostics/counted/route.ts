@@ -81,11 +81,11 @@ export async function GET(req: Request) {
 
     // The engine's rules, read back as a sentence. Mirrors `entriesIn` branch
     // for branch; if that ever changes, this must change with it.
-    const whyDropped = (status: string, voidedAt: Date | null, day: string): string => {
+    const whyDropped = (status: string, day: string): string => {
       const s = status.toLowerCase()
       if (UNPAID_STATUSES.includes(s as never)) return `not paid yet (${status})`
-      if (VOIDED_STATUSES.includes(s as never) && !voidedAt)
-        return `${status}, and we never learned when — left out rather than reversed on a guessed day`
+      if (VOIDED_STATUSES.includes(s as never))
+        return `${status} — a voided order is not a sale on any day, including the one it was placed on`
       return `placed on ${day}, outside ${utcDay(from).toISOString().slice(0, 10)}..${utcDay(to).toISOString().slice(0, 10)} on this shop's clock`
     }
 
@@ -128,7 +128,7 @@ export async function GET(req: Request) {
           .filter((r) => !hasEntry.has(r.id))
           .map((r) => ({
             ...r,
-            reason: whyDropped(r.status, r.voidedAt ? new Date(r.voidedAt) : null, r.dayOnShopClock),
+            reason: whyDropped(r.status, r.dayOnShopClock),
           })),
         // Orders sitting just outside the range on this shop's clock. If the
         // store says an order belongs to this day and it appears here instead,

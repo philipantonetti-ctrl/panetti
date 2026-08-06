@@ -5,8 +5,7 @@ import { costOn } from './costs'
 import { expenseInRange } from './expenses'
 import { convert, crossConvert } from './fx'
 import {
-  UNPAID_STATUSES,
-  VOIDED_STATUSES,
+  EXCLUDED_STATUSES,
   ZERO_FIGURES,
   type CostBook,
   type EngineAdSpend,
@@ -76,16 +75,27 @@ function inRange(when: Date, from: Date, to: Date, tz: string): boolean {
 }
 
 /**
- * An order as the period sees it. A sale is one entry at +1. A refund is TWO:
- * the original sale still stands on the day it happened, and the whole order
- * comes back off on the day the money did. Every figure is multiplied by
- * `sign`, so the reversal is the same arithmetic rather than a second set of
- * rules that could drift from it.
+ * An order as the period sees it: one entry, at +1, on the day it was placed.
  *
- * Exported because the product page must reverse a refund the same way this
- * one does. A private copy is how two screens come to disagree about a refund.
- * Generic so a caller carrying richer line items (the product page needs sku,
- * name and unitPrice) gets them back rather than having them widened away.
+ * An earlier version booked a refund as TWO entries — the sale standing on its
+ * own day and a −1 reversal on the day the money went back. It read well as
+ * accounting and failed as reporting. On 5 August 2026 Panetti Sweden took
+ * three orders; a FOURTH, placed the day before, was cancelled that morning,
+ * and its −1 landed on the 5th. A column headed "Orders" reported 2 for a day
+ * that saw 3, and no amount of looking at the 5th could explain it, because
+ * the cause was not on the 5th.
+ *
+ * So a sale now belongs to one day and one only, and a voided order belongs to
+ * none: it stops counting where it was placed rather than reaching forward to
+ * shrink an unrelated day. The cost is that cancelling an old order restates
+ * that older day, which is the same convention the store's own reporting uses,
+ * and the one the client reconciles against.
+ *
+ * `sign` survives because the product page shares this shape and sums it. It is
+ * +1 for every entry today; nothing emits a reversal any more.
+ *
+ * Exported so the product page reads a refund exactly as this does. A private
+ * copy is how two screens come to disagree.
  */
 export type Entry<T extends EngineOrder = EngineOrder> = { order: T; sign: 1 | -1 }
 
@@ -98,23 +108,13 @@ export function entriesIn<T extends EngineOrder>(
   const out: Entry<T>[] = []
 
   for (const order of orders) {
-    const status = order.status.toLowerCase()
-    // Not paid yet is not the same as paid and given back: an unpaid order
-    // simply does not count until it is paid, and never reverses.
-    if (UNPAID_STATUSES.includes(status as never)) continue
+    // An order that earns nothing counts nowhere. Not paid yet, or paid and
+    // given back — either way it is not a sale, and no day's figures may claim
+    // it. The same rule the ambassador leaderboard has always used.
+    if (EXCLUDED_STATUSES.includes(order.status.toLowerCase() as never)) continue
 
-    const tz = tzFor(order.shopId)
-
-    if (!VOIDED_STATUSES.includes(status as never)) {
-      if (inRange(order.placedAt, from, to, tz)) out.push({ order, sign: 1 })
-      continue
-    }
-
-    // Voided but we never learned when — leave every existing figure alone.
-    if (!order.voidedAt) continue
-
-    if (inRange(order.placedAt, from, to, tz)) out.push({ order, sign: 1 })
-    if (inRange(order.voidedAt, from, to, tz)) out.push({ order, sign: -1 })
+    // A sale belongs to the day it was placed, and to no other.
+    if (inRange(order.placedAt, from, to, tzFor(order.shopId))) out.push({ order, sign: 1 })
   }
 
   return out

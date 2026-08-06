@@ -150,10 +150,10 @@ describe('loadProductsInput and its own fixtures', () => {
     expect(row!.netSales).toBeGreaterThan(0)
   })
 
-  it('fetches an order placed well before the window but voided inside it, taking its product back off', async () => {
-    // The client's own example, same as load.integration.test.ts:266-290: an
-    // order from months ago, refunded inside the window, must still be
-    // fetched — or its product can never come back off this page either.
+  it('does not fetch an order placed before the window merely because it was voided inside it', async () => {
+    // It used to be fetched so its product could be taken back off on the
+    // refund day. Nothing is booked against that day any more, so the row
+    // would only be loaded and discarded.
     const shop = await db.shop.create({ data: { name: 'Late refund [load-products-test]', currency: 'NOK' } })
     const product = await db.product.create({
       data: {
@@ -199,16 +199,13 @@ describe('loadProductsInput and its own fixtures', () => {
       to: new Date('2026-07-14'),
     })
 
-    expect(input.orders).toHaveLength(1)
-    expect(input.orders[0].status).toBe('refunded')
+    expect(input.orders).toHaveLength(0)
 
-    // Only the voided-side entry falls inside this window (placedAt is
-    // months earlier), so the product's net sales go negative here — proof
-    // the reversal, not just the fetch, made it through to the aggregation.
+    // And nothing reaches the page. A product this window never sold must not
+    // appear below zero because an April order was refunded in July.
     const res = productFigures(input)
-    const row = res.rows.find((r) => r.sku === 'LP-0001')
-    expect(row).toBeDefined()
-    expect(row!.netSales).toBeLessThan(0)
+    expect(res.rows.find((r) => r.sku === 'LP-0001')).toBeUndefined()
+    expect(res.total.netSales).toBe(0)
   })
 
   it('does not fetch an order placed and voided entirely outside the window', async () => {

@@ -83,12 +83,11 @@ export async function loadProductsInput(args: LoadProductsArgs): Promise<Product
   const orderRows = await db.order.findMany({
     where: {
       shopId: { in: shopIds },
-      OR: [
-        { placedAt: { gte: windowStart, lte: windowEnd } },
-        // An order placed before this window but refunded inside it must still
-        // be fetched, or its products can never be taken back off.
-        { voidedAt: { gte: windowStart, lte: windowEnd } },
-      ],
+      // Placed inside the window, and nothing else. A product's sales belong to
+      // the days the orders were placed; a refund is no longer booked against
+      // the day the money went back, so an order placed elsewhere and voided
+      // inside this window was being fetched only to be thrown away.
+      placedAt: { gte: windowStart, lte: windowEnd },
     },
     select: {
       id: true,

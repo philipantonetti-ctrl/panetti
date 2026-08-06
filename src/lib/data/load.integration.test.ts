@@ -263,11 +263,10 @@ describe('loadMetricsInput and B2B orders', () => {
     expect(vi.mocked(ensureRates).mock.calls[0][2]).toEqual(expect.arrayContaining(['NOK', 'EUR']))
   })
 
-  it('fetches an order placed well before the window but voided inside it', async () => {
-    // The client's own example: an order from last week, refunded today, has
-    // to show up as a negative today. It was placed 90 days before the window
-    // opens, so a placedAt-only query would never see it — and the engine can
-    // then never subtract it on the day the money went back.
+  it('does not fetch an order placed before the window merely because it was voided inside it', async () => {
+    // It used to be fetched so the engine could subtract it on the day the
+    // money went back. That reversal is gone — an order belongs to the day it
+    // was placed — so fetching it now only costs rows that produce no entry.
     const shop = await db.shop.create({
       data: { name: 'Late refund [load-test]', currency: 'NOK' },
     })
@@ -284,9 +283,7 @@ describe('loadMetricsInput and B2B orders', () => {
       shopIds: [shop.id], from: new Date('2026-07-01'), to: new Date('2026-07-14'),
     })
 
-    expect(input.orders.some((o) => o.id !== undefined)).toBe(true)
-    expect(input.orders).toHaveLength(1)
-    expect(input.orders[0].status).toBe('refunded')
+    expect(input.orders).toHaveLength(0)
   })
 
   it('does not fetch an order placed and voided entirely outside the window', async () => {

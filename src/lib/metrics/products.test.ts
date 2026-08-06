@@ -112,7 +112,7 @@ describe('productFigures', () => {
     expect(fiStore.orders).toBe(1)
   })
 
-  it('merges a refunded store with an un-refunded one and the parent tally still sums the (possibly negative) children', () => {
+  it('merges a refunded store with an un-refunded one, the parent tally summing its children', () => {
     const deRefunded = order({ status: 'refunded', placedAt: new Date('2026-07-01'), voidedAt: new Date('2026-07-05') })
     const fi = order({
       id: 'o2',
@@ -124,12 +124,14 @@ describe('productFigures', () => {
 
     expect(res.rows).toHaveLength(1)
     const row = res.rows[0]
-    const de = row.stores.find((s) => s.shopId === 'de')!
+    // The refunded store contributes no sale, so it brings no store line with
+    // it -- a store row reading 0 would imply it sold something and got it
+    // all back inside this window, which is not what happened.
+    expect(row.stores.find((s) => s.shopId === 'de')).toBeUndefined()
     const fiStore = row.stores.find((s) => s.shopId === 'fi')!
-    expect(de.orders).toBe(0) // placed and refunded, both in range: nets to 0
     expect(fiStore.orders).toBe(1)
     expect(row.orders).toBe(1)
-    expect(de.orders + fiStore.orders).toBe(row.orders)
+    expect(row.stores.reduce((n, s) => n + s.orders, 0)).toBe(row.orders)
   })
 
   it('never merges products that have no real SKU', () => {
@@ -148,38 +150,36 @@ describe('productFigures', () => {
     expect(res.rows).toHaveLength(2)
   })
 
-  it('removes a refunded order on the day the money went back', () => {
+  it('drops a refunded order from every window, its own day included', () => {
     const refunded = order({ status: 'refunded', placedAt: new Date('2026-07-01'), voidedAt: new Date('2026-07-05') })
+    // No sale means no row: the product simply did not sell in this period.
     const whole = run([refunded])
-    expect(whole.rows[0].netSales).toBe(0)
-    expect(whole.rows[0].cogs).toBe(0)
-    // Placed (+1) and reversed (-1) both land in range, netting to 0 -- the
-    // same "sum of signs" convention the Dashboard uses. This was the bug:
-    // it used to read 1, because only the sale side was ever counted.
-    expect(whole.rows[0].orders).toBe(0)
+    expect(whole.rows).toHaveLength(0)
+    expect(whole.total.orders).toBe(0)
+    expect(whole.total.netSales).toBe(0)
 
-    // The sale alone, before the refund landed.
+    // Including a window holding only the sale. A product page that still
+    // credited the sale here would disagree with the Dashboard beside it.
     const before = run([refunded], { from: new Date('2026-07-01'), to: new Date('2026-07-03') })
-    expect(before.rows[0].netSales).toBe(20000)
+    expect(before.rows).toHaveLength(0)
   })
 
-  it('reverses quantity and grossSales too, not only netSales and cogs', () => {
+  it('clears quantity and grossSales too, not only netSales and cogs', () => {
     const refunded = order({ status: 'refunded', placedAt: new Date('2026-07-01'), voidedAt: new Date('2026-07-05') })
-    const row = run([refunded]).rows[0]
-    expect(row.quantity).toBe(0)
-    expect(row.grossSales).toBe(0)
+    const { total } = run([refunded])
+    expect(total.quantity).toBe(0)
+    expect(total.grossSales).toBe(0)
   })
 
-  it('a reversal alone leaves a negative tally, the way the Dashboard does', () => {
+  it('shows nothing for a window holding only a refund, never a negative row', () => {
     const refunded = order({ status: 'refunded', placedAt: new Date('2026-07-01'), voidedAt: new Date('2026-07-05') })
-    // The range starts AFTER the sale but still covers the refund, so only
-    // the reversal entry (sign -1) falls inside. Under the "sum of signs"
-    // convention this must read -1, not 0 -- a period containing only a
-    // refund is meant to look negative, not empty, exactly as the Dashboard
-    // (sum(shopOrders.map(e => e.sign))) now reads it.
+    // The range starts AFTER the sale and covers the refund. A reversal booked
+    // on the refund day would put a product below zero for a period in which
+    // it was never sold -- the same defect that made the Dashboard report two
+    // orders on a day that took three.
     const res = run([refunded], { from: new Date('2026-07-03'), to: new Date('2026-07-31') })
-    expect(res.rows[0].orders).toBe(-1)
-    expect(res.rows[0].netSales).toBe(-20000)
+    expect(res.rows).toHaveLength(0)
+    expect(res.total.orders).toBe(0)
   })
 
   it('counts an order listing the same product twice as one order', () => {
@@ -211,7 +211,7 @@ describe('productFigures', () => {
     expect(res.total.orders).toBe(1)
   })
 
-  it('reverses the total too: one order across two products, refunded in range, totals zero', () => {
+  it('zeroes the total too: one refunded order across two products', () => {
     const cheap = new Map(products)
     cheap.set('p2', { productId: 'p2', shopId: 'de', sku: 'CHEAP', externalId: '99', name: 'Brush', imageUrl: null })
     const both = order({
@@ -224,9 +224,10 @@ describe('productFigures', () => {
       ],
     })
     const res = run([both], { products: cheap })
-    expect(res.rows).toHaveLength(2)
-    expect(res.rows.every((r) => r.orders === 0)).toBe(true)
+    // Neither product sold: one refunded order cannot leave two rows behind.
+    expect(res.rows).toHaveLength(0)
     expect(res.total.orders).toBe(0)
+    expect(res.total.netSales).toBe(0)
   })
 
   it('excludes an order from the total when none of its lines resolve to a loaded product', () => {
