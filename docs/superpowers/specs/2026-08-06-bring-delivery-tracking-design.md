@@ -202,6 +202,19 @@ truth. They are also what the drill-down timeline renders.
   the store has none", matching the existing `customerName` convention.
 - `deliveryAlertedAt DateTime?` — so nothing can alert twice, ever.
 
+**On `Shop`:**
+
+- `deliveryTrackingFrom DateTime?` — **null means this shop is not tracked at all.**
+  It carries two jobs at once, and both are necessary. A shop that ships from
+  somewhere else entirely (Germany is the likely case) must not have every one of its
+  orders read `Not shipped yet` and alert. And for a tracked shop, orders placed
+  before the date read `Before tracking started`, never alert, and never enter the
+  median — without which the day this ships, every order in history is "past its
+  promise and not delivered" and Slack receives a thousand-line message.
+
+  It is backdateable: if the warehouse can supply old files, importing them and
+  moving the date back gives real history on day one rather than an empty page.
+
 **Config**, a singleton of its own rather than crowding `Setting` (which is purely
 formats), following the `AdPlatformApp` precedent (`prisma/schema.prisma:262`):
 
@@ -212,10 +225,6 @@ model DeliveryConfig {
   bringApiKey    String?   // encrypted
   bringClientUrl String?   // X-Bring-Client-URL
   slackWebhookUrl String?  // encrypted
-  // Orders placed before this are shown as "Before tracking started" and never
-  // alert. Without it, the day this ships every order in history is "past its
-  // promise and not delivered" and Slack receives a thousand-line message.
-  trackingFrom   DateTime?
   lastSyncAt     DateTime?
   lastError      String?
 }
@@ -320,18 +329,31 @@ The response object gains honest counts (`shipments`, `shipmentsFailed`,
 
 ### The alert rule
 
-One query: orders where tracking is expected (`placedAt >= trackingFrom`),
-`deliveryAlertedAt IS NULL`, past their deadline, and **not yet available**.
+One query: orders whose shop is tracked and whose `placedAt >= Shop.deliveryTrackingFrom`,
+`deliveryAlertedAt IS NULL`, **status not in `VOIDED_STATUSES`**, past their deadline,
+and **not yet available**.
 
-That single rule covers both failure modes — a parcel crawling through Bring, and an
+Excluding voided orders is not a detail. A refunded or cancelled order is never going
+to be delivered, so without that clause every refund in the tracked window becomes a
+permanent late delivery and Slack fills with orders nobody is waiting for. The
+constant already exists (`src/lib/metrics/types.ts`) and is reused rather than
+restated.
+
+That rule covers both live failure modes — a parcel crawling through Bring, and an
 order the warehouse never booked at all. The second is the worse of the two, and a
 shipment-driven alert would miss it entirely because there is no shipment.
 
+**A returned parcel alerts too, once, with its own reason.** The customer did not get
+their order, which is exactly the thing he needs to know. It is the "leaves the late
+list" case below that keeps it from sitting there forever afterwards: alerting is a
+one-time event, the late list is a live queue, and a return belongs in the first and
+not the second.
+
 The message: a header (`3 orders past their delivery promise`) and one line per
 order carrying number, shop, country, days over, what is actually happening (`Not
-shipped`, `In transit since 3 Aug`, `At pickup point`), a link into the app and a
-link to Bring's public tracking page. Capped at 25 lines with `and 12 more`, so a
-bad day cannot exceed Slack's payload limit.
+shipped`, `In transit since 3 Aug`, `At pickup point`, `Returned to sender`), a link
+into the app and a link to Bring's public tracking page. Capped at 25 lines with
+`and 12 more`, so a bad day cannot exceed Slack's payload limit.
 
 `deliveryAlertedAt` is stamped **after** Slack returns 200, never before. If Slack is
 down the alert waits for the next run instead of vanishing.
@@ -391,11 +413,13 @@ as `api/orders/route.ts`. Ambassadors and the marketing role never see any of it
 | --- | --- |
 | Bring credentials unset | Delivery page explains what is missing and links to settings. No polling. |
 | Slack webhook unset | Everything else works; alerting is shown as off, not silently skipped. |
-| Order placed before `trackingFrom` | `Before tracking started`. Never alerts, never counted. |
-| Order after `trackingFrom` with no shipment | `Not shipped yet`, and alerts once past its deadline. |
+| Shop with `deliveryTrackingFrom` null | Excluded entirely. Column reads `—`, never alerts, never in the median. |
+| Order before its shop's `deliveryTrackingFrom` | `Before tracking started`. Never alerts, never counted. |
+| Order after it with no shipment | `Not shipped yet`, and alerts once past its deadline. |
+| Order refunded or cancelled | Never alerts. Column reads whatever the parcel actually did, or `—`. |
 | Shipment with no linked order | Counted in the unlinked bucket, manually linkable. |
 | File row matching several orders | Unmatched, with the reason shown. Never guessed. |
-| Parcel returned or cancelled | Own outcome. Leaves the median, leaves the late list. |
+| Parcel returned or cancelled | Own outcome. Alerts once, then leaves the median and the late list. |
 | No `shippingCountry` on an order | Falls back to the `'*'` promise row. |
 | Bring returns nothing for a number | `lastError` on that shipment only; every other parcel proceeds. |
 
@@ -427,8 +451,10 @@ never polled again; the deadline stops the batch.
 
 `alerts.test.ts` — an order past its deadline with no shipment alerts; the same order
 does not alert on the next run; a Slack failure leaves `deliveryAlertedAt` null so
-the next run retries; an order before `trackingFrom` never alerts; more than 25 late
-orders produce one capped message.
+the next run retries; **a refunded order past its deadline never alerts**; **a shop
+with `deliveryTrackingFrom` null never alerts**; an order placed before its shop's
+date never alerts; a returned parcel alerts once with its own reason; more than 25
+late orders produce one capped message.
 
 `route.test.ts` — non-admin gets 403 on every new route.
 
@@ -452,6 +478,12 @@ Phase 1 is useful standing alone, which is why the split is there.
   rather than scoping which parcels may be read — so it should work, but "should" is
   not "does". One authenticated call with one real tracking number settles it, and
   it happens before any code is written.
+- **Bring's rate limit is undocumented as far as the research went.** The tiered
+  cadence is sized to be modest rather than to fit a known ceiling. If a limit turns
+  up, the tiers are one table to adjust and nothing else moves.
+- **Whether `q` accepts several tracking numbers in one call.** If it does, call
+  volume falls by roughly the batch size. Checked in the same phase 0 probe, because
+  it costs one extra request to find out.
 - **Whether the warehouse can send CSV instead of PDF.** Identical effort for them,
   and it removes the most fragile part of this design. PDF extraction breaks silently
   when a template changes, and silently-broken linking means orders quietly stop
