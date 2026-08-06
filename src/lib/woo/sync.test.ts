@@ -879,3 +879,45 @@ describe('how far back a repair pass looks', () => {
     expect(reconcileWindow(null, now)).toBe(3)
   })
 })
+
+describe('reporting what the repair pass found', () => {
+  it('says how many orders it had to put back', async () => {
+    const shop = await connectedShop('[sync-test] reports')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date(Date.now() - 30 * 60 * 1000) },
+    })
+    const at = new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 19)
+
+    // Nothing has been EDITED since the watermark, so the incremental pull
+    // returns nothing and the sync looks like a quiet success. The order below
+    // exists in the store and not in our copy: only the repair pass finds it,
+    // and only this number tells anyone it happened.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = new URL(url)
+        if (!u.pathname.endsWith('/orders')) return jsonPage([])
+        if (u.searchParams.get('modified_after')) return jsonPage([])
+        return u.searchParams.get('page') === '1' ? jsonPage([wooOrder(7001, at)]) : jsonPage([])
+      }),
+    )
+
+    const result = await syncShop(shop.id)
+    expect(result.ok).toBe(true)
+    expect(result.ordersSynced).toBe(0) // the incremental pull found nothing
+    expect(result.repaired).toBe(1) // but a hole was closed, and it says so
+  })
+
+  it('stays quiet about a store that needed nothing', async () => {
+    const shop = await connectedShop('[sync-test] quiet')
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date(Date.now() - 30 * 60 * 1000) },
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => jsonPage([])))
+
+    // No repairs is the normal case: the field is absent rather than a noisy 0.
+    expect((await syncShop(shop.id)).repaired).toBeUndefined()
+  })
+})

@@ -17,6 +17,13 @@ export type SyncResult = {
   ordersSynced: number
   /** This pull landed, but more is behind it: history, a full page cap, or the deadline. */
   more?: boolean
+  /**
+   * Orders the repair pass had to put back because they were missing or had
+   * drifted. Reported rather than fixed in silence: a hole is invisible by
+   * nature — the books look complete because the order was never there to be
+   * noticed — so the only way anyone learns it happened is if the sync says so.
+   */
+  repaired?: number
   error?: string
 }
 
@@ -467,6 +474,7 @@ export async function syncShop(
     const byCode = await codeBookFor(shop.id)
 
     let synced = 0
+    let repaired = 0
     for (const raw of orders) {
       await storeOrder(shop.id, raw, byCode)
       synced++
@@ -534,13 +542,14 @@ export async function syncShop(
       // catalog and customer passes — if the budget runs out, it must run out
       // on a nicety, not on a missing sale.
       try {
-        await reconcileRecent(shop.id, creds, {
+        const check = await reconcileRecent(shop.id, creds, {
           // Sized to THIS shop's silence, using the watermark as it stood
           // before this run: a store that went a week unreached has a week of
           // possible holes, and three days would step straight over them.
           days: reconcileWindow(shop.lastSyncAt, fetchStartedAt),
           deadline: opts.deadline,
         })
+        repaired = check.repaired
       } catch {
         // Retried on the next completed sync.
       }
@@ -589,7 +598,7 @@ export async function syncShop(
       error: null,
     })
 
-    return { ...base, ok: true, ordersSynced: synced }
+    return { ...base, ok: true, ordersSynced: synced, ...(repaired ? { repaired } : {}) }
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Sync failed'
     // lastSyncAt is deliberately NOT updated, so the next run retries this window.

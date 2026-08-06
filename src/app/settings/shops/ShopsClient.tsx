@@ -112,14 +112,22 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
         ok: boolean
         ordersSynced: number
         more?: boolean
+        repaired?: number
         error?: string
       }[] = data.results ?? []
       const good = results.filter((r) => r.ok)
       const bad = results.filter((r) => !r.ok)
       const partial = good.filter((r) => r.more)
+      // Worth its own sentence. A missing order is invisible by nature — the
+      // books look complete because it was never there to be noticed — so
+      // recovering one is news, not a detail to fold into the orders count.
+      const mended = good.filter((r) => r.repaired)
 
       setMessage(
         `Synced ${good.reduce((n, r) => n + r.ordersSynced, 0)} orders from ${good.length} shop(s).` +
+          (mended.length
+            ? ` Recovered ${mended.reduce((n, r) => n + (r.repaired ?? 0), 0)} missing or changed order(s): ${mended.map((r) => `${r.shopName} (${r.repaired})`).join(', ')}.`
+            : '') +
           (partial.length
             ? ` ${partial.map((r) => `${r.shopName} has more history to fetch.`).join(' ')} Press Sync all again to continue.`
             : '') +
