@@ -1,15 +1,25 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, afterAll } from 'vitest'
 import { db } from '@/lib/db'
 
+// See "Test data convention" in the Global Constraints. The tag is what keeps
+// this suite's rows out of load.integration.test.ts's shop count.
+const TAG = '[delivery-test]'
+
 async function makeShop() {
-  return db.shop.create({ data: { name: `Test ${Math.random()}`, currency: 'NOK' } })
+  return db.shop.create({ data: { name: `Schema ${TAG}`, currency: 'NOK' } })
+}
+
+async function cleanup() {
+  await db.shipmentEvent.deleteMany({ where: { shipment: { order: { shop: { name: { contains: TAG } } } } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: { shop: { name: { contains: TAG } } } }, { orderId: null }] } })
+  await db.orderItem.deleteMany({ where: { order: { shop: { name: { contains: TAG } } } } })
+  await db.order.deleteMany({ where: { shop: { name: { contains: TAG } } } })
+  await db.shop.deleteMany({ where: { name: { contains: TAG } } })
 }
 
 describe('delivery schema', () => {
-  beforeEach(async () => {
-    await db.shipmentEvent.deleteMany()
-    await db.shipment.deleteMany()
-  })
+  beforeEach(cleanup)
+  afterAll(cleanup)
 
   it('holds a shipment with no order, so a parcel can arrive before its link', async () => {
     const s = await db.shipment.create({ data: { trackingNumber: `T${Date.now()}` } })
