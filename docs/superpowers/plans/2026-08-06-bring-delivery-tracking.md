@@ -21,7 +21,43 @@
 - **Every new API route is admin-only:** `assertAdmin(await currentUser())` and `Cache-Control: private, no-store`, matching `src/app/api/orders/route.ts`.
 - **Money is integer minor units.** Nothing in this feature stores money, and nothing here may start.
 - **Tests are colocated** next to their subject as `<name>.test.ts`. Tests that touch the database are named `<name>.integration.test.ts`.
-- **Test data convention — this one will bite you.** The local Postgres holds **11 seeded shops that must survive**; `src/lib/data/load.integration.test.ts:29` asserts `toBe(11)` after excluding anything whose name matches `/\[[\w-]*test\]/`. So: every shop a test creates **must carry the tag `[delivery-test]` in its name**, and every cleanup **must be scoped to that tag**. A bare `db.shop.deleteMany()` or `db.order.deleteMany()` deletes the seeded fixtures for every checkout sharing that database, and an untagged shop name breaks the count assertion on the next run. Follow `load.integration.test.ts:86-88` — it deletes only `{ name: { contains: '[load-test]' } }`. Unlinked shipments (`orderId: null`) have no shop to tag, so scope those by `orderId: null` and clean them in the same pass.
+- **Test data convention — this one will bite you.** Vitest runs test **files in parallel** (this repo sets no `fileParallelism`/`poolOptions`), and every file shares one local Postgres. So a test may never delete a row it did not create. Three rules, all of which the repo already follows:
+
+  1. **Every fixture carries a tag unique to its own file**, never a tag shared between files. Existing examples: `[load-test]` in `load.integration.test.ts`, `[pf-test]` in `processing-fee/route.test.ts`. This plan's tags are `[delivery-schema-test]`, `[delivery-link-test]`, `[delivery-import-test]`, `[delivery-route-test]`, `[delivery-alerts-test]` — one per file, and no two files may share one.
+  2. **Every `deleteMany` is scoped to that tag.** A bare `db.shop.deleteMany()` or `db.order.deleteMany()` destroys the **11 seeded shops** that `src/lib/data/load.integration.test.ts:29` asserts (`toBe(11)`, excluding names matching `/\[[\w-]*test\]/`) — for every checkout sharing that database. Copy `load.integration.test.ts:86-88`, which deletes only `{ name: { contains: '[load-test]' } }`. An untagged fixture name breaks that count on the next run.
+  3. **Rows with no shop to tag get their own per-file prefix.** A `Shipment` with `orderId: null` belongs to no shop, so scoping cleanup by `orderId: null` would delete another file's unlinked parcels. Each file therefore gives its tracking numbers a unique prefix and cleans by `{ trackingNumber: { startsWith: PREFIX } }`.
+
+  **Singleton rows** (`DeliveryConfig`, always `id: 'singleton'`) are the one thing no tag can isolate. Never `deleteMany()` then `create()` — use `upsert`, the way `src/app/api/ads/oauth.test.ts:47` does for `AdPlatformApp`. A test needing "not connected" upserts the credential fields to `null` rather than deleting the row, so two racing files cannot make each other's row vanish mid-assertion.
+
+- **The delivery integration suites must not run concurrently with each other.** Tagging cannot save them: `DeliveryConfig` is a fixed-id singleton, and `PUT /api/delivery/settings` **deletes every `DeliveryPromise` row** as its real production behaviour (promises are rewritten wholesale, not diffed), so Task 14's suite will wipe Tasks 11 and 13's promises whenever they overlap. Scoping the fixtures is still worth doing and is specified per file above, but the sequencing is what actually makes them deterministic.
+
+  **Task 8 owns this change** — it is the first task to touch `DeliveryConfig`. Add a second Vitest project to `vitest.config.ts` so only these files lose parallelism and the other 118 keep it:
+
+  ```ts
+  // in the returned config's `test` block, alongside the existing options
+  projects: [
+    {
+      extends: true,
+      test: {
+        name: 'app',
+        include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'],
+        exclude: ['src/lib/{delivery,bring}/**/*.integration.test.ts'],
+      },
+    },
+    {
+      extends: true,
+      test: {
+        name: 'delivery',
+        include: ['src/lib/{delivery,bring}/**/*.integration.test.ts'],
+        // DeliveryConfig is a fixed-id singleton and the settings route rewrites
+        // every DeliveryPromise row. These files share state no tag can separate.
+        fileParallelism: false,
+      },
+    },
+  ],
+  ```
+
+  `extends: true` inherits the root `plugins`, `env` and `environment`, so `DATABASE_URL` and `AUTH_SECRET` keep resolving exactly as they do today. Verify with `npm run test` that the file count still totals what it did before the split — a bad glob silently runs fewer tests, which looks like success.
 - **Test command:** `npm run test` (Vitest, `globals: true`, node environment). Single file: `npx vitest run src/lib/bring/map.test.ts`.
 - **Design tokens only.** OKLCH variables (`--ink`, `--ink-muted`, `--border`, `--accent`, `--gain`, `--loss`, `--warn`), Geist Sans, `font-variant-numeric: tabular-nums` on every number, cards are 1px border + 12px radius + no shadow. No new colours, no shadows.
 - **Say when you don't know.** A confident wrong number is the worst thing this product can ship. Unknown delivery state renders as an honest label, never as zero days.
@@ -247,17 +283,27 @@ Create `src/lib/bring/schema.integration.test.ts`:
 import { describe, expect, it, beforeEach } from 'vitest'
 import { db } from '@/lib/db'
 
-// See "Test data convention" in the Global Constraints. The tag is what keeps
-// this suite's rows out of load.integration.test.ts's shop count.
-const TAG = '[delivery-test]'
+// See "Test data convention" in the Global Constraints. Both of these are
+// unique to THIS file: test files run in parallel against one database, so a
+// tag shared with another delivery suite would have them deleting each other's
+// fixtures mid-assertion.
+const TAG = '[delivery-schema-test]'
+const TRACK = 'TSCHEMA' // every tracking number this suite creates starts with it
+
+let seq = 0
+const trackingNumber = () => `${TRACK}${Date.now()}${seq++}`
 
 async function makeShop() {
   return db.shop.create({ data: { name: `Schema ${TAG}`, currency: 'NOK' } })
 }
 
 async function cleanup() {
-  await db.shipmentEvent.deleteMany({ where: { shipment: { order: { shop: { name: { contains: TAG } } } } } })
-  await db.shipment.deleteMany({ where: { OR: [{ order: { shop: { name: { contains: TAG } } } }, { orderId: null }] } })
+  // Events first: they hang off shipments, and the tag reaches them only
+  // through a shipment that still exists.
+  await db.shipmentEvent.deleteMany({ where: { shipment: { trackingNumber: { startsWith: TRACK } } } })
+  // By prefix, not by `orderId: null` — an unlinked parcel belongs to no shop,
+  // so `orderId: null` would delete another file's parcels too.
+  await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: TRACK } } })
   await db.orderItem.deleteMany({ where: { order: { shop: { name: { contains: TAG } } } } })
   await db.order.deleteMany({ where: { shop: { name: { contains: TAG } } } })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
@@ -268,20 +314,20 @@ describe('delivery schema', () => {
   afterAll(cleanup)
 
   it('holds a shipment with no order, so a parcel can arrive before its link', async () => {
-    const s = await db.shipment.create({ data: { trackingNumber: `T${Date.now()}` } })
+    const s = await db.shipment.create({ data: { trackingNumber: trackingNumber() } })
     expect(s.orderId).toBeNull()
     expect(s.terminal).toBe(false)
     expect(s.carrier).toBe('BRING')
   })
 
   it('refuses two shipments with the same tracking number', async () => {
-    const n = `T${Date.now()}`
+    const n = trackingNumber()
     await db.shipment.create({ data: { trackingNumber: n } })
     await expect(db.shipment.create({ data: { trackingNumber: n } })).rejects.toThrow()
   })
 
   it('refuses a duplicate event, which is what makes re-ingest a no-op', async () => {
-    const s = await db.shipment.create({ data: { trackingNumber: `T${Date.now()}` } })
+    const s = await db.shipment.create({ data: { trackingNumber: trackingNumber() } })
     const at = new Date('2026-08-01T10:00:00Z')
     await db.shipmentEvent.create({ data: { shipmentId: s.id, status: 'HANDED_IN', occurredAt: at } })
     await expect(
@@ -299,7 +345,7 @@ describe('delivery schema', () => {
       },
     })
     const s = await db.shipment.create({
-      data: { trackingNumber: `T${Date.now()}`, orderId: order.id, linkSource: 'FILE' },
+      data: { trackingNumber: trackingNumber(), orderId: order.id, linkSource: 'FILE' },
     })
     await db.order.delete({ where: { id: order.id } })
     expect((await db.shipment.findUnique({ where: { id: s.id } }))?.orderId).toBeNull()
@@ -1295,13 +1341,25 @@ async function order(shopId: string, number: string) {
   })
 }
 
-// Tagged and scoped — see "Test data convention" in the Global Constraints.
-const TAG = '[delivery-test]'
+// Both unique to THIS file — see "Test data convention" in the Global
+// Constraints. Test files run in parallel against one database.
+const TAG = '[delivery-link-test]'
+const TRACK = 'TLINK' // every tracking number below starts with it
 const scoped = { shop: { name: { contains: TAG } } }
+const mine = { trackingNumber: { startsWith: TRACK } }
+
+// IMPLEMENTER: the tests below are written with 'T1' and 'T2' for readability.
+// Use these two constants instead of those string literals everywhere they
+// appear — a bare 'T1' has no prefix, so cleanup() would leave it behind and
+// the next run's unique-constraint check would fail against a stale row.
+const T1 = `${TRACK}1`
+const T2 = `${TRACK}2`
 
 async function cleanup() {
-  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { orderId: null }] } } })
-  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { orderId: null }] } })
+  await db.shipmentEvent.deleteMany({ where: { shipment: mine } })
+  // By prefix, not by `orderId: null` — an unlinked parcel belongs to no shop,
+  // so `orderId: null` would delete another file's parcels too.
+  await db.shipment.deleteMany({ where: mine })
   await db.orderItem.deleteMany({ where: { order: scoped } })
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
@@ -1515,18 +1573,22 @@ import { importTrackingFile } from './import'
 
 let shopId: string
 
-// Tagged and scoped — see "Test data convention" in the Global Constraints.
-const TAG = '[delivery-test]'
+// Unique to THIS file — see "Test data convention" in the Global Constraints.
+const TAG = '[delivery-import-test]'
 const scoped = { shop: { name: { contains: TAG } } }
 
 async function cleanup() {
-  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { orderId: null }] } } })
-  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { orderId: null }] } })
+  // Every parcel this suite creates is linked to one of its own tagged orders
+  // (they come from the file being imported), so the order scope reaches them
+  // all and no tracking-number prefix is needed here.
+  await db.shipmentEvent.deleteMany({ where: { shipment: { order: scoped } } })
+  await db.shipment.deleteMany({ where: { order: scoped } })
   await db.orderItem.deleteMany({ where: { order: scoped } })
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
-  // TrackingImport has no shop to tag; this suite is its only writer.
-  await db.trackingImport.deleteMany()
+  // TrackingImport has no shop to tag and no natural key. Scope by the
+  // filenames this suite uses so a parallel file's imports survive.
+  await db.trackingImport.deleteMany({ where: { filename: { in: ['today.csv', 'notes.docx'] } } })
 }
 
 afterAll(cleanup)
@@ -3384,16 +3446,19 @@ let shopId: string
 // The 11 seeded shops stay put: they have no deliveryTrackingFrom, so every
 // order of theirs reads UNTRACKED and touches none of the assertions below.
 // That makes this a stronger test than deleting them would.
-const TAG = '[delivery-test]'
+const TAG = '[delivery-route-test]'
+const TRACK = 'TROUTE' // the unlinked parcel below carries this prefix
 const scoped = { shop: { name: { contains: TAG } } }
 
 async function cleanup() {
-  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { orderId: null }] } } })
-  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { orderId: null }] } })
+  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { trackingNumber: { startsWith: TRACK } }] } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { trackingNumber: { startsWith: TRACK } }] } })
   await db.orderItem.deleteMany({ where: { order: scoped } })
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
-  await db.deliveryPromise.deleteMany()
+  // DeliveryPromise has no shop to tag. Scope by the country codes this suite
+  // writes so a parallel file's promises survive.
+  await db.deliveryPromise.deleteMany({ where: { country: { in: ['*', 'NO'] } } })
 }
 
 afterAll(cleanup)
@@ -3833,17 +3898,24 @@ let shopId: string
 afterEach(() => vi.unstubAllGlobals())
 
 // Tagged and scoped — see "Test data convention" in the Global Constraints.
-const TAG = '[delivery-test]'
+const TAG = '[delivery-alerts-test]'
+const TRACK = 'TALERT' // the parcels below carry this prefix
 const scoped = { shop: { name: { contains: TAG } } }
 
 async function cleanup() {
-  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { orderId: null }] } } })
-  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { orderId: null }] } })
+  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { trackingNumber: { startsWith: TRACK } }] } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { trackingNumber: { startsWith: TRACK } }] } })
   await db.orderItem.deleteMany({ where: { order: scoped } })
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
-  await db.deliveryPromise.deleteMany()
-  await db.deliveryConfig.deleteMany()
+  await db.deliveryPromise.deleteMany({ where: { country: { in: ['*'] } } })
+  // Never deleteMany on the singleton — blank the fields instead, so a racing
+  // file cannot find the row missing. See the Global Constraints.
+  await db.deliveryConfig.upsert({
+    where: { id: 'singleton' },
+    create: { id: 'singleton' },
+    update: { bringApiUid: null, bringApiKey: null, bringClientUrl: null, slackWebhookUrl: null },
+  })
 }
 
 afterAll(cleanup)
