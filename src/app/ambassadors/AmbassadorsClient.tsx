@@ -554,10 +554,13 @@ export function AmbassadorsClient({
                 <th className="px-3 py-2.5 font-medium">Codes</th>
                 <th className="px-3 py-2.5 font-medium">Products</th>
                 <th className="w-[8.5rem] px-3 py-2.5 font-medium">Status</th>
-                <th className="w-12 px-3 py-2.5 text-right font-medium">
-                  {/* The column is one icon wide; the heading names it for
-                      screen readers without setting the column's width. */}
-                  <span className="sr-only">Actions</span>
+                {/* Named, not hidden. An unlabelled column of dots reads as a
+                    stray mark rather than something you are meant to press,
+                    and the rule down its left edge is what makes it a column
+                    at all: without it the button floats off the end of the
+                    Status cell. */}
+                <th className="w-[5.5rem] border-l border-line px-3 py-2.5 text-right font-medium">
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -636,7 +639,7 @@ export function AmbassadorsClient({
                         </button>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 align-top">
+                    <td className="border-l border-line px-3 py-2.5 align-top">
                       <div className="flex justify-end">
                         <RowMenu
                           ariaLabel={`Actions for ${row.name}`}
