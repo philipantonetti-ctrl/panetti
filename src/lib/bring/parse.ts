@@ -39,6 +39,9 @@ export function looksLikeTracking(token: string): boolean {
 export function extractPairs(text: string, knownOrderNumbers: Set<string>): ParsedRow[] {
   const tokens = text.split(/\s+/).filter(Boolean)
 
+  const tokenCounts = new Map<string, number>()
+  tokens.forEach((t) => tokenCounts.set(t, (tokenCounts.get(t) ?? 0) + 1))
+
   const orderIndices: number[] = []
   const trackingIndices: number[] = []
   tokens.forEach((t, i) => {
@@ -46,6 +49,13 @@ export function extractPairs(text: string, knownOrderNumbers: Set<string>): Pars
       orderIndices.push(i)
     } else if (looksLikeTracking(t)) {
       // An order number we hold is never also a tracking number, whatever its shape.
+      //
+      // A parcel number is unique to one shipment; boilerplate (a support
+      // line, a phone number) repeats. A tracking-shaped token seen more than
+      // once in the document is therefore ambiguous, so it is refused rather
+      // than guessed at — a missing pair shows up in the unmatched count, a
+      // wrong pair silently poisons an order's delivery figure.
+      if ((tokenCounts.get(t) ?? 0) > 1) return
       trackingIndices.push(i)
     }
   })

@@ -73,6 +73,21 @@ describe('extractPairs', () => {
   it('returns nothing at all for an empty document, and does not throw', () => {
     expect(extractPairs('', known)).toEqual([])
   })
+
+  it('refuses a tracking-shaped token that repeats, because a parcel number is unique', () => {
+    // The support number in the footer is 8 digits, so it looks like a parcel
+    // number and sits right beside order 1002. Refusing it costs one missing
+    // pair, which shows up in the import's unmatched count. Accepting it would
+    // silently attach the wrong parcel to 1002 and look like success.
+    const text = `
+      Kundeservice 21009000
+      1001 370724403790000123
+      1002 21009000
+    `
+    expect(extractPairs(text, known)).toEqual([
+      { orderNumber: '1001', trackingNumber: '370724403790000123' },
+    ])
+  })
 })
 
 describe('parseTrackingFile', () => {
