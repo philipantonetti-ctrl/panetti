@@ -21,6 +21,7 @@
 - **Every new API route is admin-only:** `assertAdmin(await currentUser())` and `Cache-Control: private, no-store`, matching `src/app/api/orders/route.ts`.
 - **Money is integer minor units.** Nothing in this feature stores money, and nothing here may start.
 - **Tests are colocated** next to their subject as `<name>.test.ts`. Tests that touch the database are named `<name>.integration.test.ts`.
+- **Test data convention — this one will bite you.** The local Postgres holds **11 seeded shops that must survive**; `src/lib/data/load.integration.test.ts:29` asserts `toBe(11)` after excluding anything whose name matches `/\[[\w-]*test\]/`. So: every shop a test creates **must carry the tag `[delivery-test]` in its name**, and every cleanup **must be scoped to that tag**. A bare `db.shop.deleteMany()` or `db.order.deleteMany()` deletes the seeded fixtures for every checkout sharing that database, and an untagged shop name breaks the count assertion on the next run. Follow `load.integration.test.ts:86-88` — it deletes only `{ name: { contains: '[load-test]' } }`. Unlinked shipments (`orderId: null`) have no shop to tag, so scope those by `orderId: null` and clean them in the same pass.
 - **Test command:** `npm run test` (Vitest, `globals: true`, node environment). Single file: `npx vitest run src/lib/bring/map.test.ts`.
 - **Design tokens only.** OKLCH variables (`--ink`, `--ink-muted`, `--border`, `--accent`, `--gain`, `--loss`, `--warn`), Geist Sans, `font-variant-numeric: tabular-nums` on every number, cards are 1px border + 12px radius + no shadow. No new colours, no shadows.
 - **Say when you don't know.** A confident wrong number is the worst thing this product can ship. Unknown delivery state renders as an honest label, never as zero days.
@@ -246,15 +247,25 @@ Create `src/lib/bring/schema.integration.test.ts`:
 import { describe, expect, it, beforeEach } from 'vitest'
 import { db } from '@/lib/db'
 
+// See "Test data convention" in the Global Constraints. The tag is what keeps
+// this suite's rows out of load.integration.test.ts's shop count.
+const TAG = '[delivery-test]'
+
 async function makeShop() {
-  return db.shop.create({ data: { name: `Test ${Math.random()}`, currency: 'NOK' } })
+  return db.shop.create({ data: { name: `Schema ${TAG}`, currency: 'NOK' } })
+}
+
+async function cleanup() {
+  await db.shipmentEvent.deleteMany({ where: { shipment: { order: { shop: { name: { contains: TAG } } } } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: { shop: { name: { contains: TAG } } } }, { orderId: null }] } })
+  await db.orderItem.deleteMany({ where: { order: { shop: { name: { contains: TAG } } } } })
+  await db.order.deleteMany({ where: { shop: { name: { contains: TAG } } } })
+  await db.shop.deleteMany({ where: { name: { contains: TAG } } })
 }
 
 describe('delivery schema', () => {
-  beforeEach(async () => {
-    await db.shipmentEvent.deleteMany()
-    await db.shipment.deleteMany()
-  })
+  beforeEach(cleanup)
+  afterAll(cleanup)
 
   it('holds a shipment with no order, so a parcel can arrive before its link', async () => {
     const s = await db.shipment.create({ data: { trackingNumber: `T${Date.now()}` } })
@@ -1284,15 +1295,29 @@ async function order(shopId: string, number: string) {
   })
 }
 
+// Tagged and scoped — see "Test data convention" in the Global Constraints.
+const TAG = '[delivery-test]'
+const scoped = { shop: { name: { contains: TAG } } }
+
+async function cleanup() {
+  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { orderId: null }] } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { orderId: null }] } })
+  await db.orderItem.deleteMany({ where: { order: scoped } })
+  await db.order.deleteMany({ where: scoped })
+  await db.shop.deleteMany({ where: { name: { contains: TAG } } })
+}
+
 beforeEach(async () => {
-  await db.shipmentEvent.deleteMany()
-  await db.shipment.deleteMany()
-  await db.orderItem.deleteMany()
-  await db.order.deleteMany()
-  await db.shop.deleteMany()
-  shopA = (await db.shop.create({ data: { name: 'A', currency: 'NOK' } })).id
-  shopB = (await db.shop.create({ data: { name: 'B', currency: 'SEK' } })).id
+  await cleanup()
+  // deliveryTrackingFrom must be set: linkRows only ever matches orders in a
+  // delivery-tracked shop, so an untracked fixture links nothing and every
+  // assertion below reads zero.
+  const tracked = { deliveryTrackingFrom: new Date('2026-01-01') }
+  shopA = (await db.shop.create({ data: { name: `A ${TAG}`, currency: 'NOK', ...tracked } })).id
+  shopB = (await db.shop.create({ data: { name: `B ${TAG}`, currency: 'SEK', ...tracked } })).id
 })
+
+afterAll(cleanup)
 
 describe('linkRows', () => {
   it('links a row to its order and records where the link came from', async () => {
@@ -1490,16 +1515,27 @@ import { importTrackingFile } from './import'
 
 let shopId: string
 
-beforeEach(async () => {
-  await db.shipmentEvent.deleteMany()
-  await db.shipment.deleteMany()
-  await db.orderItem.deleteMany()
-  await db.order.deleteMany()
+// Tagged and scoped — see "Test data convention" in the Global Constraints.
+const TAG = '[delivery-test]'
+const scoped = { shop: { name: { contains: TAG } } }
+
+async function cleanup() {
+  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { orderId: null }] } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { orderId: null }] } })
+  await db.orderItem.deleteMany({ where: { order: scoped } })
+  await db.order.deleteMany({ where: scoped })
+  await db.shop.deleteMany({ where: { name: { contains: TAG } } })
+  // TrackingImport has no shop to tag; this suite is its only writer.
   await db.trackingImport.deleteMany()
-  await db.shop.deleteMany()
+}
+
+afterAll(cleanup)
+
+beforeEach(async () => {
+  await cleanup()
   shopId = (
     await db.shop.create({
-      data: { name: 'A', currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') },
+      data: { name: `A ${TAG}`, currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') },
     })
   ).id
   await db.order.create({
@@ -2139,21 +2175,21 @@ export async function syncShipments(
       const { nextPollAt, terminal } = nextPollFor(m, null, now)
 
       await db.$transaction(async (tx) => {
-        for (const e of found.events) {
-          // createMany + skipDuplicates leans on @@unique([shipmentId, status,
-          // occurredAt]) — this is what makes re-ingesting a restated history a
-          // no-op rather than a pile of duplicates.
-          await tx.shipmentEvent.createMany({
-            data: [{
-              shipmentId: s.id,
-              status: e.status,
-              occurredAt: e.occurredAt,
-              description: e.description,
-              location: e.location,
-            }],
-            skipDuplicates: true,
-          })
-        }
+        // One insert for the whole event set, not one per event: a parcel's
+        // history is re-sent in full on every poll, so this runs constantly.
+        // skipDuplicates leans on @@unique([shipmentId, status, occurredAt]) —
+        // that constraint is what makes re-ingesting a restated history a no-op
+        // rather than a pile of duplicates.
+        await tx.shipmentEvent.createMany({
+          data: found.events.map((e) => ({
+            shipmentId: s.id,
+            status: e.status,
+            occurredAt: e.occurredAt,
+            description: e.description,
+            location: e.location,
+          })),
+          skipDuplicates: true,
+        })
         await tx.shipment.update({
           where: { id: s.id },
           data: {
@@ -3344,16 +3380,29 @@ const { currentUser } = await import('@/lib/auth/current-user')
 
 let shopId: string
 
-beforeEach(async () => {
-  await db.shipmentEvent.deleteMany()
-  await db.shipment.deleteMany()
-  await db.orderItem.deleteMany()
-  await db.order.deleteMany()
+// Tagged and scoped — see "Test data convention" in the Global Constraints.
+// The 11 seeded shops stay put: they have no deliveryTrackingFrom, so every
+// order of theirs reads UNTRACKED and touches none of the assertions below.
+// That makes this a stronger test than deleting them would.
+const TAG = '[delivery-test]'
+const scoped = { shop: { name: { contains: TAG } } }
+
+async function cleanup() {
+  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { orderId: null }] } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { orderId: null }] } })
+  await db.orderItem.deleteMany({ where: { order: scoped } })
+  await db.order.deleteMany({ where: scoped })
+  await db.shop.deleteMany({ where: { name: { contains: TAG } } })
   await db.deliveryPromise.deleteMany()
-  await db.shop.deleteMany()
+}
+
+afterAll(cleanup)
+
+beforeEach(async () => {
+  await cleanup()
   shopId = (await db.shop.create({
     data: {
-      name: 'Panetti', currency: 'NOK', active: true,
+      name: `Panetti ${TAG}`, currency: 'NOK', active: true,
       deliveryTrackingFrom: new Date('2026-01-01'),
     },
   })).id
@@ -3620,7 +3669,6 @@ Widen the `db.order.findMany` select with:
 
 ```ts
           shippingCountry: true,
-          placedAt: true, // already selected
           shipments: {
             select: {
               trackingNumber: true, bookedAt: true, handedInAt: true,
@@ -3784,17 +3832,27 @@ let shopId: string
 
 afterEach(() => vi.unstubAllGlobals())
 
-beforeEach(async () => {
-  await db.shipmentEvent.deleteMany()
-  await db.shipment.deleteMany()
-  await db.orderItem.deleteMany()
-  await db.order.deleteMany()
+// Tagged and scoped — see "Test data convention" in the Global Constraints.
+const TAG = '[delivery-test]'
+const scoped = { shop: { name: { contains: TAG } } }
+
+async function cleanup() {
+  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { orderId: null }] } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { orderId: null }] } })
+  await db.orderItem.deleteMany({ where: { order: scoped } })
+  await db.order.deleteMany({ where: scoped })
+  await db.shop.deleteMany({ where: { name: { contains: TAG } } })
   await db.deliveryPromise.deleteMany()
   await db.deliveryConfig.deleteMany()
-  await db.shop.deleteMany()
+}
+
+afterAll(cleanup)
+
+beforeEach(async () => {
+  await cleanup()
 
   shopId = (await db.shop.create({
-    data: { name: 'Panetti', currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') },
+    data: { name: `Panetti ${TAG}`, currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') },
   })).id
   await db.deliveryPromise.create({
     data: { country: '*', days: 3, businessDays: true, effectiveFrom: new Date('2026-01-01') },
