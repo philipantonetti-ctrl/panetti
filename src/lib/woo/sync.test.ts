@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { storeOrder, syncAllShops, syncShop } from './sync'
+import { reconcileRecent, storeOrder, syncAllShops, syncShop } from './sync'
 import { encryptSecret } from '../secrets'
 import { db } from '../db'
 
@@ -705,5 +705,119 @@ describe('rotation', () => {
     const ours = results.filter((r) => r.shopName.startsWith('[sync-test] pair'))
     expect(ours).toHaveLength(2)
     expect(ours.some((r) => r.ok)).toBe(true)
+  })
+})
+
+describe('a hole in the middle of a day', () => {
+  /**
+   * The store's real 5 August, as BeProfit showed it: four orders, one voided.
+   * Times are GMT (the store runs two hours ahead).
+   */
+  const DAY = [
+    { id: 13752, at: '2026-08-05T06:26:21' },
+    { id: 13753, at: '2026-08-05T07:36:47' },
+    { id: 13754, at: '2026-08-05T13:40:52' },
+    { id: 13755, at: '2026-08-05T18:31:26' },
+  ]
+
+  /**
+   * A store that answers honestly. Nothing has been edited since the watermark,
+   * so an incremental pull correctly returns NOTHING — which is exactly why a
+   * missed order can never come back on its own. A plain created-after window
+   * still returns the whole day.
+   */
+  function storeHolding(orders: typeof DAY) {
+    return vi.fn(async (url: string) => {
+      const u = new URL(url)
+      if (!u.pathname.endsWith('/orders')) return jsonPage([])
+      if (u.searchParams.get('modified_after')) return jsonPage([])
+      if (u.searchParams.get('after') && u.searchParams.get('page') === '1') {
+        return jsonPage(orders.map((o) => wooOrder(o.id, o.at)))
+      }
+      return jsonPage([])
+    })
+  }
+
+  it('re-pulls an order the incremental window can never offer again', async () => {
+    const shop = await connectedShop('[sync-test] gap')
+    // Already past first sync, and the watermark sits after the whole day.
+    await db.shop.update({
+      where: { id: shop.id },
+      data: { lastSyncAt: new Date('2026-08-05T21:00:00Z') },
+    })
+
+    // Our copy is missing 13754: its delivery was lost as it was placed.
+    for (const o of DAY) {
+      if (o.id === 13754) continue
+      await storeOrder(shop.id, wooOrder(o.id, o.at), new Map())
+    }
+
+    vi.stubGlobal('fetch', storeHolding(DAY))
+    await syncShop(shop.id)
+
+    const held = (
+      await db.order.findMany({ where: { shopId: shop.id }, select: { externalId: true } })
+    )
+      .map((o) => o.externalId)
+      .sort()
+    expect(held).toEqual(['13752', '13753', '13754', '13755'])
+  })
+})
+
+describe('reconciling the recent past', () => {
+  const creds = { url: 'https://shop.example', key: 'ck_real', secret: 'cs_real' }
+
+  /** A store answering a created-after window with exactly these orders. */
+  const storeReturning = (orders: unknown[]) =>
+    vi.fn(async (url: string) => {
+      const u = new URL(url)
+      if (u.pathname.endsWith('/orders') && u.searchParams.get('page') === '1') {
+        return jsonPage(orders)
+      }
+      return jsonPage([])
+    })
+
+  const recent = () => new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 19)
+
+  it('repairs an order whose status moved on without us hearing', async () => {
+    const shop = await connectedShop('[sync-test] drift')
+    const at = recent()
+
+    // We hold it as still awaiting payment, so every money screen leaves it
+    // out. The store has since been paid — we simply never got told.
+    await storeOrder(shop.id, { ...wooOrder(5001, at), status: 'pending' }, new Map())
+    vi.stubGlobal('fetch', storeReturning([{ ...wooOrder(5001, at), status: 'completed' }]))
+
+    expect(await reconcileRecent(shop.id, creds)).toBe(1)
+    const held = await db.order.findFirst({ where: { shopId: shop.id, externalId: '5001' } })
+    expect(held!.status).toBe('completed')
+  })
+
+  it('costs nothing on a store that already agrees', async () => {
+    const shop = await connectedShop('[sync-test] agrees')
+    const at = recent()
+    await storeOrder(shop.id, wooOrder(5002, at), new Map())
+
+    vi.stubGlobal('fetch', storeReturning([wooOrder(5002, at)]))
+
+    // Nothing absent, nothing drifted: no writes at all.
+    expect(await reconcileRecent(shop.id, creds)).toBe(0)
+  })
+
+  it('asks the store for a bounded window, never for all of history', async () => {
+    const shop = await connectedShop('[sync-test] window')
+    const fetchMock = storeReturning([])
+    vi.stubGlobal('fetch', fetchMock)
+
+    await reconcileRecent(shop.id, creds, { days: 3 })
+
+    // A repair pass that re-read every order ever placed would cost more on
+    // every sync as the store grew, until it could not finish at all. The
+    // window is what keeps this affordable enough to run after every sync.
+    const url = new URL(String(fetchMock.mock.calls[0][0]))
+    const after = Date.parse(url.searchParams.get('after')! + 'Z')
+    const daysBack = (Date.now() - after) / (24 * 60 * 60 * 1000)
+    expect(daysBack).toBeGreaterThan(2.9)
+    expect(daysBack).toBeLessThan(3.1)
   })
 })

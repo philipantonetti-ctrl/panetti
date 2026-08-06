@@ -66,6 +66,24 @@ const UNREADABLE_STAMP =
 /** How many customer-less legacy orders one sync fills in (5 id-batches). */
 const CUSTOMER_BACKFILL_BATCH = 500
 
+/**
+ * How far back a completed sync re-reads the store, and how many pages that is
+ * allowed to cost.
+ *
+ * An incremental pull only ever asks for orders MODIFIED since the watermark,
+ * and the watermark only ever moves forward. So an order missed ONCE is missed
+ * FOREVER: it is never edited again, so it is never offered again. A delivery
+ * lost while a deploy rolled, a run killed mid-store, a store clock that drifted
+ * past OVERLAP — any of them leaves a hole in the middle of a day with the
+ * orders on either side present, and every later sync reports success.
+ *
+ * Re-reading a few recent days is what closes it. Bounded on both sides, and it
+ * writes only what actually differs, so a store whose recent past already
+ * matches costs one request and no writes at all.
+ */
+const RECONCILE_DAYS = 3
+const RECONCILE_PAGES = 3
+
 /** couponCode (UPPERCASE) -> who owns it, for one store. */
 export type CodeBook = Map<string, { ambassadorId: string }>
 
@@ -176,6 +194,53 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
       })),
     })
   })
+}
+
+/**
+ * Make our copy of the last few days agree with the store's.
+ *
+ * The incremental window cannot do this: it asks what CHANGED, and a missed
+ * order did not change. This asks what EXISTS, over a short recent window, and
+ * repairs anything absent or drifted. It is the only path by which a hole heals.
+ *
+ * Only orders that are missing, or whose status or charged total no longer
+ * match, are written — those two decide whether an order counts and for how
+ * much. A healthy store therefore costs one request and no writes.
+ *
+ * Returns how many orders had to be repaired: 0 on a store that is already
+ * correct, which is the normal case.
+ */
+export async function reconcileRecent(
+  shopId: string,
+  creds: WooCredentials,
+  opts: { days?: number; deadline?: number } = {},
+): Promise<number> {
+  const since = new Date(Date.now() - (opts.days ?? RECONCILE_DAYS) * DAY)
+
+  const { orders } = await fetchOrders(creds, {
+    createdAfter: since,
+    maxPages: RECONCILE_PAGES,
+    deadline: opts.deadline,
+  })
+  if (orders.length === 0) return 0
+
+  const held = await db.order.findMany({
+    where: { shopId, placedAt: { gte: since } },
+    select: { externalId: true, status: true, total: true },
+  })
+  const heldBy = new Map(held.map((o) => [o.externalId, o]))
+
+  const byCode = await codeBookFor(shopId)
+  let repaired = 0
+  for (const raw of orders) {
+    const mine = heldBy.get(String(raw.id))
+    const theirs = mapOrder(raw)
+    if (!mine || mine.status !== theirs.status || mine.total !== theirs.total) {
+      await storeOrder(shopId, raw, byCode)
+      repaired++
+    }
+  }
+  return repaired
 }
 
 /**
@@ -418,6 +483,16 @@ export async function syncShop(
     // anyway risks the invocation being killed before the watermark below is
     // written — losing the whole run's progress to work that could have waited.
     if (opts.deadline === undefined || Date.now() < opts.deadline) {
+      // Order data first, because it is the priority: close any hole the
+      // incremental window can no longer reach. Deliberately ahead of the
+      // catalog and customer passes — if the budget runs out, it must run out
+      // on a nicety, not on a missing sale.
+      try {
+        await reconcileRecent(shop.id, creds, { deadline: opts.deadline })
+      } catch {
+        // Retried on the next completed sync.
+      }
+
       // Best-effort on a COMPLETED sync only: refresh each known product's own
       // listed price (incl. VAT). A failure here never fails the sync — order
       // data is the priority, and the next completed sync simply retries.
