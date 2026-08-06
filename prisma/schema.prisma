@@ -29,6 +29,11 @@ model Shop {
   // Why the last attempt failed; null when it succeeded. Without this a frozen
   // store shows a stale date and no reason at all.
   lastError  String?
+  /// Null = this shop is not delivery-tracked at all, so its orders never read
+  /// "not shipped yet" and never alert. Set = tracked, and orders placed before
+  /// this date read "Before tracking started". Backdate it after importing
+  /// historical warehouse files to get real history on day one.
+  deliveryTrackingFrom DateTime?
   createdAt  DateTime @default(now())
 
   // Per-shop standards and formats; null falls back to the workspace Setting.
@@ -119,11 +124,19 @@ model Order {
   // customers (backfill pending); '' = checked, the store has none on file.
   customerName    String?
   customerEmail   String?
+  /// ISO-2 destination country, from Woo's shipping address. Null = not yet
+  /// checked (backfill pending); '' = checked, the store has none on file.
+  /// Same convention as customerName.
+  shippingCountry String?
+  /// When we posted this order to Slack as late. Set only after Slack accepts,
+  /// so nothing can ever alert twice and a Slack outage retries next run.
+  deliveryAlertedAt DateTime?
 
   shop       Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
   ambassador Ambassador? @relation(fields: [ambassadorId], references: [id], onDelete: SetNull)
   b2bCustomer B2bCustomer? @relation(fields: [b2bCustomerId], references: [id], onDelete: Restrict)
   items      OrderItem[]
+  shipments  Shipment[]
 
   @@unique([shopId, externalId])
   @@index([shopId, placedAt])
@@ -393,4 +406,104 @@ model B2bPrice {
   product  Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([customerId, productId])
+}
+
+/// One parcel. Bring calls it a package; we only ever hold its number and what
+/// happened to it. `orderId` is nullable on purpose: a parcel can be known
+/// before its link is, and an unlinked parcel is counted on screen rather than
+/// silently dropped.
+model Shipment {
+  id             String  @id @default(cuid())
+  trackingNumber String  @unique
+  carrier        String  @default("BRING")
+  orderId        String?
+  /// Which strategy produced the link: FILE | NYCE | WOO | MANUAL.
+  linkSource     String?
+
+  /// Milestones, derived from ShipmentEvent and rewritten on every ingest.
+  /// Denormalised for query speed; the events remain the source of truth.
+  bookedAt    DateTime? // PRE_NOTIFIED — label made, nothing has moved
+  handedInAt  DateTime? // HANDED_IN — the warehouse let go of it
+  availableAt DateTime? // READY_FOR_PICKUP or DELIVERED — the clock stop
+  collectedAt DateTime? // COLLECTED / DELIVERED — recorded, never judged
+  /// DELIVERED | RETURNED | CANCELLED. Null while still moving.
+  outcome     String?
+
+  lastStatus String?
+  nextPollAt DateTime?
+  terminal   Boolean   @default(false)
+  /// Why the last poll failed. Stored, never thrown: one dead parcel must not
+  /// stop the rest.
+  lastError  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order  Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  events ShipmentEvent[]
+
+  @@index([terminal, nextPollAt])
+  @@index([orderId])
+}
+
+/// Bring restates events. The unique constraint is what makes re-ingestion a
+/// no-op rather than a duplicate, and that is what lets the sync run as often
+/// as it likes.
+model ShipmentEvent {
+  id          String   @id @default(cuid())
+  shipmentId  String
+  status      String
+  occurredAt  DateTime
+  description String?
+  location    String?
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([shipmentId, status, occurredAt])
+  @@index([shipmentId, occurredAt])
+}
+
+/// What we promise, per destination country, on a timeline. The row with the
+/// latest effectiveFrom <= Order.placedAt wins — the same rule ProductCost and
+/// FulfillmentRate already use. A promise changed today never rewrites last
+/// month's on-time rate.
+model DeliveryPromise {
+  id            String   @id @default(cuid())
+  /// ISO-2 country code, or '*' for the fallback.
+  country       String
+  days          Int
+  businessDays  Boolean  @default(true)
+  effectiveFrom DateTime
+
+  @@unique([country, effectiveFrom])
+  @@index([country, effectiveFrom])
+}
+
+/// Bring and Slack credentials. Its own singleton rather than crowding Setting,
+/// which is purely formats. Follows the AdPlatformApp precedent.
+model DeliveryConfig {
+  id              String    @id @default("singleton")
+  bringApiUid     String? // Mybring account email
+  bringApiKey     String? // encrypted
+  bringClientUrl  String? // sent as X-Bring-Client-URL
+  slackWebhookUrl String? // encrypted
+  lastSyncAt      DateTime?
+  lastError       String?
+}
+
+/// Every warehouse file we ingested, so "did yesterday's file land, and did all
+/// of it match?" is a question with an answer on screen.
+model TrackingImport {
+  id            String   @id @default(cuid())
+  filename      String
+  source        String // UPLOAD | EMAIL
+  receivedAt    DateTime @default(now())
+  rowsParsed    Int
+  rowsLinked    Int
+  rowsUnmatched Int
+  /// Rows we refused to link, with the reason, as JSON text.
+  unmatched     String?
+  error         String?
+
+  @@index([receivedAt])
 }
