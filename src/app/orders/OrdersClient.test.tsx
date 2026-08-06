@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react'
-import { OrdersClient, paymentBadge, fulfillmentBadge } from './OrdersClient'
+import { OrdersClient, paymentBadge, fulfillmentBadge, placedFormats } from './OrdersClient'
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/orders',
@@ -20,6 +20,7 @@ const paidOrder = {
   placedAt: '2026-07-21T18:47:05.000Z',
   status: 'completed',
   shop: 'Mazzetti Denmark',
+  timezone: 'Europe/Copenhagen',
   currency: 'DKK',
   netSales: 2159920,
   discountTotal: 0,
@@ -300,5 +301,34 @@ describe('live refresh', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('when an order was placed', () => {
+  // 2026-08-05T13:40Z is 15:40 in Stockholm and 21:40 in Manila. The row must
+  // read the same to both, because it names the SHOP's clock, not the reader's.
+  const placed = new Date('2026-08-05T13:40:00.000Z')
+
+  it('reads on the shop clock, whoever is looking', () => {
+    const stockholm = placedFormats('Europe/Stockholm')
+    expect(stockholm.date.format(placed)).toBe('05 Aug 2026')
+    expect(stockholm.time.format(placed)).toBe('15:40')
+
+    // The old formatters carried no timeZone at all, so this same instant
+    // printed as 21:40 to anyone whose machine was set to Manila — and an
+    // evening sale printed under the following day.
+    const manila = placedFormats('Asia/Manila')
+    expect(manila.time.format(placed)).toBe('21:40')
+  })
+
+  it('never lets the time contradict the day the list was filtered by', () => {
+    // 22:30 in Stockholm on 5 August. Read on a Manila clock this is 6 August,
+    // so a list filtered to the 5th would have shown a row stamped the 6th.
+    const lateEvening = new Date('2026-08-05T20:30:00.000Z')
+    const shop = placedFormats('Europe/Stockholm')
+    expect(shop.date.format(lateEvening)).toBe('05 Aug 2026')
+    expect(shop.time.format(lateEvening)).toBe('22:30')
+
+    expect(placedFormats('Asia/Manila').date.format(lateEvening)).toBe('06 Aug 2026')
   })
 })

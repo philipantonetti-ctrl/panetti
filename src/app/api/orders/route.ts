@@ -146,7 +146,7 @@ export async function GET(req: Request) {
           b2bCustomerId: true,
           fulfillmentCost: true,
           b2bCustomer: { select: { name: true } },
-          shop: { select: { name: true, currency: true } },
+          shop: { select: { name: true, currency: true, timezone: true } },
           items: {
             select: {
               productId: true,
@@ -258,6 +258,15 @@ export async function GET(req: Request) {
         placedAt: o.placedAt.toISOString(),
         status: o.status,
         shop: o.shop.name,
+        /**
+         * The clock this order was placed on. Sent because the browser must not
+         * be the one to decide: a plain Intl format with no timeZone renders in
+         * whatever zone the VIEWER's computer is in, so the same sale read as
+         * 15:40 in Stockholm and 21:40 from Manila — and an evening order read
+         * as the next day. The list is already filtered by this same zone, so
+         * showing any other one would contradict the rows it just chose.
+         */
+        timezone: o.shop.timezone ?? timezone,
         currency: o.currency,
         netSales: o.netSales,
         discountTotal: o.discountTotal,

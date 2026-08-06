@@ -31,6 +31,8 @@ type OrderRow = {
   placedAt: string
   status: string
   shop: string
+  /** The shop's own clock. Every timestamp on this row is read in it. */
+  timezone: string
   currency: string
   netSales: number
   discountTotal: number
@@ -61,8 +63,33 @@ const STATUS_OPTIONS = [
   ['failed', 'Failed'],
 ] as const
 
-const dateFmt = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-const timeFmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+/**
+ * When an order was placed, on the SHOP's clock — never the viewer's.
+ *
+ * These formatters used to carry no `timeZone`, which makes Intl fall back to
+ * whatever zone the reader's own computer is set to. The same sale then read as
+ * 15:40 to a colleague in Stockholm and 21:40 to one in Manila, and an evening
+ * order read as belonging to the next day. Worse, the list is FILTERED by the
+ * shop's zone, so the times shown could contradict the very rows chosen: ask
+ * for one day and see stamps from the day after.
+ *
+ * Built per zone and kept, because a table of fifty rows would otherwise
+ * construct two formatters per row on every render.
+ */
+const fmtCache = new Map<string, { date: Intl.DateTimeFormat; time: Intl.DateTimeFormat }>()
+
+export function placedFormats(timeZone: string) {
+  let pair = fmtCache.get(timeZone)
+  if (!pair) {
+    const opts = { timeZone } as const
+    pair = {
+      date: new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', ...opts }),
+      time: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, ...opts }),
+    }
+    fmtCache.set(timeZone, pair)
+  }
+  return pair
+}
 
 /**
  * One Woo status, read as the two facts the reference tool shows side by side:
@@ -357,6 +384,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                         const pay = paymentBadge(o.status)
                         const ful = fulfillmentBadge(o.status)
                         const placed = new Date(o.placedAt)
+                        const fmt = placedFormats(o.timezone)
                         const f = o.figures
                         return (
                           <Fragment key={o.id}>
@@ -379,8 +407,8 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                                 </button>
                               </td>
                               <td className="num whitespace-nowrap py-2.5 pr-4">
-                                <span className="block text-muted">{dateFmt.format(placed)}</span>
-                                <span className="block text-[11px] text-faint">{timeFmt.format(placed)}</span>
+                                <span className="block text-muted">{fmt.date.format(placed)}</span>
+                                <span className="block text-[11px] text-faint">{fmt.time.format(placed)}</span>
                               </td>
                               <td className="py-2.5 pr-4 font-semibold text-ink">
                                 <span className="inline-flex items-center gap-1.5">
