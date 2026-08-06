@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  // unpdf ships its own pdf.js build; bundling it breaks the worker resolution.
+  serverExternalPackages: ['unpdf'],
   env: {
     // Inlined into every bundle, server and client alike, so an open tab can
     // tell when a newer deployment exists and reload itself (see FreshBuild).
