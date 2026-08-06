@@ -8,18 +8,15 @@ import { DateFilter } from '@/components/filters/DateFilter'
 import { StatStrip } from '@/components/dashboard/StatStrip'
 import { TrendChart } from '@/components/dashboard/TrendChart'
 import { CompareTable } from '@/components/dashboard/CompareTable'
-import { Leaderboard } from '@/components/dashboard/Leaderboard'
 import { PRESET_LABELS, type Preset } from '@/lib/dates'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { EngineResult, Figures } from '@/lib/metrics/types'
-import type { LeaderboardRow } from '@/lib/metrics/ambassadors'
 import type { SeriesPoint } from '@/lib/metrics/trend'
 
 type Payload = {
   metrics: EngineResult
   previous: Figures
   series: SeriesPoint[]
-  leaderboard: LeaderboardRow[]
 }
 
 /** Skeletons in the shape of the content — never a spinner in the middle of a table. */
@@ -160,8 +157,6 @@ export function DashboardClient({
             <TrendChart series={data.series} currency={currency} />
 
             <CompareTable result={data.metrics} />
-
-            <Leaderboard rows={data.leaderboard} currency={currency} />
           </div>
         ) : null}
       </PageBody>
