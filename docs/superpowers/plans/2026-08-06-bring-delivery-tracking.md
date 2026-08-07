@@ -64,9 +64,16 @@
 
 ---
 
-## Prerequisite: Phase 0 probe (do this before Task 3)
+## Phase 0 probe — gates *validation*, not implementation
 
-Tasks 1, 2, 5, 6, 7 and 14 can proceed without it. Tasks 3, 4, 8, 9 need it.
+**Every one of the fourteen tasks can be built and made green without it.** Task 3's tests stub `fetch` outright, Task 8's do the same, Task 14 mocks auth, and Task 4 is synthetic apart from a single test that is skipped until the recording exists. Nothing here waits on the client.
+
+What the probe gates is whether the built thing will *work against the real Bring account*. Until it runs, two things stay unproven and must not be described as working:
+
+1. That Bring's Tracking API returns parcels booked under **another company's** customer number — the assumption the entire design rests on.
+2. That the field selectors in `mapConsignments` match what Bring actually sends, rather than what its documentation says.
+
+Treat a fully green suite as "the logic is correct", never as "the integration is verified". The skipped test in Task 4 is the honest marker of the gap.
 
 The whole design rests on one unverified assumption: that Bring's Tracking API returns parcels booked under **another company's** customer number. Confirm it with one call, using a real tracking number supplied by the client:
 
@@ -528,7 +535,7 @@ git commit -m "feat: store the destination country on orders, and backfill histo
 - Test: `src/lib/bring/client.test.ts`
 
 **Interfaces:**
-- Consumes: the recorded fixture from Phase 0.
+- Consumes: nothing. Every test here stubs `fetch`, so this task needs no credentials and no recorded response.
 - Produces:
   ```ts
   export type BringCredentials = { uid: string; key: string; clientUrl: string }
@@ -731,11 +738,15 @@ This is the task carrying the most judgement. Read the spec's "The clock" sectio
   export function milestonesFrom(events: MappedEvent[]): Milestones
   ```
 
-- [ ] **Step 1: Confirm the fixture's field names**
+- [ ] **Step 1: Note which field names you are building against, and why they are provisional**
 
-Open `src/lib/bring/__fixtures__/real-package.json` and confirm the path to a package's number and to each event's status and timestamp. Bring's documented shape is `consignmentSet[].packageSet[].eventSet[]`, with events carrying `status`, `description`, `dateIso`, `city`, `countryCode`, and packages carrying `packageNumber`.
+`src/bring/__fixtures__/real-package.json` **does not exist** — the Phase 0 probe has not run, because the client has not yet supplied a warehouse-booked tracking number. Build against Bring's *documented* shape: `consignmentSet[].packageSet[].eventSet[]`, with packages carrying `packageNumber` and events carrying `status`, `description`, `dateIso`, `city`, `countryCode`.
 
-**If the recorded fixture disagrees, the fixture wins.** Adjust the selectors in Step 3 and say so in the commit message.
+Every other test in this task is synthetic and proves the milestone logic properly, which is the part carrying real judgement. Only the last test needs the recording.
+
+**Write that one as `it.skip(...)`**, with a comment naming the missing fixture and stating that it must be enabled — and its selectors re-checked against reality — the moment the probe runs. Do not invent a fixture and do not delete the test.
+
+When the real response does arrive: **the recording wins over the documentation.** Adjust the selectors in `mapConsignments` to match what Bring actually sent, and say so in the commit message.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -859,7 +870,13 @@ describe('mapConsignments', () => {
     expect(mapConsignments([null, {}, { packageSet: null }, { packageSet: [{}] }])).toEqual([])
   })
 
-  it('maps the recorded real response', async () => {
+  // SKIPPED: needs src/lib/bring/__fixtures__/real-package.json, which does not
+  // exist yet — the Phase 0 probe is blocked on the client supplying a
+  // warehouse-booked tracking number. Everything above is synthetic and proves
+  // the milestone rules; this is the only test that would prove our field
+  // SELECTORS match what Bring actually sends. Enable it the moment the probe
+  // runs, and treat the recording as authoritative over Bring's documentation.
+  it.skip('maps the recorded real response', async () => {
     const real = (await import('./__fixtures__/real-package.json')).default as unknown
     const mapped = mapConsignments([real].flat())
     expect(mapped.length).toBeGreaterThan(0)
