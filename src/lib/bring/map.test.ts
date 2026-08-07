@@ -135,7 +135,7 @@ describe('mapConsignments', () => {
     expect(p.events[0].location).toBe('Oslo, NO')
   })
 
-  it('leaves location null rather than a stray comma when the city is missing', () => {
+  it('builds a location from the country alone, with no stray comma, when there is no city', () => {
     const [p] = mapConsignments([
       consignment('370000000011', [
         { status: 'IN_TRANSIT', dateIso: '2026-08-02T06:00:00Z', countryCode: 'NO' },
