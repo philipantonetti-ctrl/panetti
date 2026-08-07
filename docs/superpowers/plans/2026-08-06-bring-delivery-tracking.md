@@ -2186,7 +2186,10 @@ Create `src/lib/bring/sync.ts`:
 
 ```ts
 import { db } from '../db'
+import { getSetting } from '../settings'
 import { getDeliveryConfig } from '../delivery/config'
+import { deadlineFor } from '../delivery/days'
+import { promiseOn } from '../delivery/promise'
 import { fetchTracking } from './client'
 import { mapConsignments, type Milestones } from './map'
 
@@ -2266,10 +2269,28 @@ export async function syncShipments(
   const { creds } = await getDeliveryConfig()
   if (!creds) return { polled: 0, updated: 0, failed: 0, error: 'Bring is not connected.' }
 
+  // The promise book and the workspace timezone, once for the run, never per
+  // parcel. Both are tiny and change rarely.
+  const promises = await db.deliveryPromise.findMany()
+  const { timezone: fallbackTz } = await getSetting()
+
   const due = await db.shipment.findMany({
     where: { terminal: false, nextPollAt: { lte: now } },
     orderBy: { nextPollAt: { sort: 'asc', nulls: 'first' } },
-    select: { id: true, trackingNumber: true, orderId: true },
+    select: {
+      id: true,
+      trackingNumber: true,
+      orderId: true,
+      // Carried so each parcel's own deadline can be computed below: a parcel
+      // near or past its promise is polled on every run.
+      order: {
+        select: {
+          placedAt: true,
+          shippingCountry: true,
+          shop: { select: { timezone: true } },
+        },
+      },
+    },
     take: 200,
   })
 
@@ -2327,9 +2348,24 @@ export async function syncShipments(
       }
 
       const m = found.milestones
-      // The deadline needs the order's promise, which Task 9 supplies. Until
-      // then every parcel uses the ordinary tiers; wiring it is Task 9 Step 7.
-      const { nextPollAt, terminal } = nextPollFor(m, null, now)
+      // An unlinked parcel, or one whose country has no promise in force,
+      // simply uses the ordinary tiers. No promise means NO deadline — never a
+      // zero one, which would make every parcel look overdue and put the whole
+      // backlog into the every-run tier.
+      const promise = s.order
+        ? promiseOn(promises, s.order.shippingCountry, s.order.placedAt)
+        : null
+      const deadline =
+        s.order && promise
+          ? deadlineFor(
+              s.order.placedAt,
+              promise.days,
+              promise.businessDays,
+              s.order.shop.timezone ?? fallbackTz,
+            )
+          : null
+
+      const { nextPollAt, terminal } = nextPollFor(m, deadline, now)
 
       await db.$transaction(async (tx) => {
         // One insert for the whole event set, not one per event: a parcel's
