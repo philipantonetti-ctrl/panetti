@@ -59,6 +59,7 @@
 
   `extends: true` inherits the root `plugins`, `env` and `environment`, so `DATABASE_URL` and `AUTH_SECRET` keep resolving exactly as they do today. Verify with `npm run test` that the file count still totals what it did before the split — a bad glob silently runs fewer tests, which looks like success.
 - **Test command:** `npm run test` (Vitest, `globals: true`, node environment). Single file: `npx vitest run src/lib/bring/map.test.ts`.
+- **`npx tsc --noEmit` must be clean before every commit — a green suite is not enough.** `tsconfig.json` includes `**/*.ts` with only `node_modules` excluded, so **test files are typechecked**, and `next build` typechecks by default. Vitest does not. So a type error in a test file passes every test and then **fails the deployment**. Two traps have already been hit: `vi.fn(async () => ...)` infers a zero-argument mock, making `fn.mock.calls[0][0]` an error on an empty tuple; and a static `import` of a fixture that does not exist yet is a compile error **even inside `it.skip`**, because skipping affects the runner, not the typechecker — read such fixtures at runtime with `readFile` instead.
 - **Design tokens only.** OKLCH variables (`--ink`, `--ink-muted`, `--border`, `--accent`, `--gain`, `--loss`, `--warn`), Geist Sans, `font-variant-numeric: tabular-nums` on every number, cards are 1px border + 12px radius + no shadow. No new colours, no shadows.
 - **Say when you don't know.** A confident wrong number is the worst thing this product can ship. Unknown delivery state renders as an honest label, never as zero days.
 
@@ -559,8 +560,16 @@ const creds = { uid: 'ops@example.com', key: 'secret-key', clientUrl: 'https://p
 
 afterEach(() => vi.unstubAllGlobals())
 
+// The parameters are declared even though the body ignores them. `vi.fn(async
+// () => ...)` infers a ZERO-ARG mock, so `fn.mock.calls[0][0]` and `[0][1]`
+// become type errors — indexing an empty tuple — even though they work at
+// runtime. That matters here: tsconfig includes `**/*.ts`, so test files are
+// typechecked, and `next build` typechecks, so this breaks the deployment
+// while every test still passes.
 function stub(status: number, body: unknown) {
-  const fn = vi.fn(async () => new Response(JSON.stringify(body), { status }))
+  const fn = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+    new Response(JSON.stringify(body), { status }),
+  )
   vi.stubGlobal('fetch', fn)
   return fn
 }
@@ -891,7 +900,17 @@ describe('mapConsignments', () => {
   // SELECTORS match what Bring actually sends. Enable it the moment the probe
   // runs, and treat the recording as authoritative over Bring's documentation.
   it.skip('maps the recorded real response', async () => {
-    const real = (await import('./__fixtures__/real-package.json')).default as unknown
+    // Read at runtime, NOT imported. A static import of a file that does not
+    // exist is a COMPILE error even inside `it.skip` — skipping affects the
+    // runner, not the typechecker — and `next build` typechecks test files,
+    // so an import here breaks the deployment while the suite stays green.
+    // Same pattern parse.test.ts uses for its warehouse PDF fixture.
+    const { readFile } = await import('node:fs/promises')
+    const raw = await readFile(
+      new URL('./__fixtures__/real-package.json', import.meta.url),
+      'utf8',
+    )
+    const real = JSON.parse(raw) as unknown
     const mapped = mapConsignments([real].flat())
     expect(mapped.length).toBeGreaterThan(0)
     expect(mapped[0].trackingNumber).toBeTruthy()
