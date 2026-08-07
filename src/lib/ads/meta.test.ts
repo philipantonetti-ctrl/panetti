@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchMetaBreakdown,
+  fetchMetaCampaignDaily,
   fetchMetaDaily,
   fetchMetaDailyBudget,
   parseMetaInsights,
@@ -339,5 +340,78 @@ describe('fetchMetaBreakdown', () => {
     await expect(
       fetchMetaBreakdown(CREDS, { level: 'campaign', accountExternalId: '1' }, FROM, TO),
     ).rejects.toThrow(/Invalid OAuth token/)
+  })
+})
+
+describe('fetchMetaCampaignDaily', () => {
+  const CREDS_M = { accessToken: 'tok' }
+
+  it('returns one row per campaign per day', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      json({
+        data: [
+          {
+            campaign_id: '111',
+            campaign_name: 'Norway Brand',
+            date_start: '2026-03-01',
+            spend: '12.34',
+            impressions: '90',
+            clicks: '4',
+            inline_link_clicks: '3',
+          },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rows = await fetchMetaCampaignDaily(CREDS_M, '999', new Date('2026-03-01T00:00:00Z'), new Date('2026-03-01T00:00:00Z'))
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      campaignId: '111',
+      campaignName: 'Norway Brand',
+      spend: 1234,
+      impressions: 90,
+      clicks: 4,
+      linkClicks: 3,
+    })
+  })
+
+  it('asks for campaign level with a daily increment', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json({ data: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchMetaCampaignDaily(CREDS_M, '999', new Date('2026-03-01T00:00:00Z'), new Date('2026-03-02T00:00:00Z'))
+
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('level=campaign')
+    expect(url).toContain('time_increment=1')
+    expect(url).toContain('campaign_id')
+  })
+
+  it('throws rather than silently returning a short year when a window fills the page cap', async () => {
+    // Every page hands back another `next`, so the loop can only stop on the cap.
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        json({
+          data: [{ campaign_id: '1', campaign_name: 'C', date_start: '2026-03-01', spend: '1.00' }],
+          paging: { next: 'https://graph.facebook.com/v25.0/next-page' },
+        }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      fetchMetaCampaignDaily(CREDS_M, '999', new Date('2026-03-01T00:00:00Z'), new Date('2026-03-05T00:00:00Z')),
+    ).rejects.toThrow(/too many rows/i)
+  })
+
+  it('splits a long range into chunked requests', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(json({ data: [] })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchMetaCampaignDaily(CREDS_M, '999', new Date('2026-01-01T00:00:00Z'), new Date('2026-12-31T00:00:00Z'))
+
+    expect(fetchMock).toHaveBeenCalledTimes(5) // 365 days / 90
   })
 })

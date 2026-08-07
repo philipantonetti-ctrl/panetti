@@ -4,10 +4,12 @@ import {
   AdApiError,
   type BreakdownEntry,
   type BreakdownLevel,
+  type CampaignDailyRow,
   type DailyRow,
   type MetaCredentials,
   type VerifiedAccount,
 } from './types'
+import { CHUNK_DAYS, chunkRange } from './windows'
 
 /**
  * Meta Marketing API (Graph v25.0), Insights endpoint.
@@ -232,4 +234,61 @@ export async function verifyMeta(
   )
   if (!body.currency) throw new AdApiError('Meta did not return the account currency')
   return { name: body.name ?? `Meta ${externalId}`, currency: body.currency }
+}
+
+/**
+ * One row per campaign per day, for a split account.
+ *
+ * fetchMetaBreakdown warns that asking per day "would return entities x days
+ * and page for a very long time". That warning is right, and it is why the
+ * range is fetched in windows here. The cap is still real: PAGE_LIMIT 500 x
+ * MAX_PAGES 10 = 5000 rows, and the loop below would otherwise stop at the cap
+ * and return a short answer that looks complete. Chunking prevents that; the
+ * throw makes any future surprise loud instead of silent.
+ */
+export async function fetchMetaCampaignDaily(
+  creds: MetaCredentials,
+  externalId: string,
+  from: Date,
+  to: Date,
+): Promise<CampaignDailyRow[]> {
+  const rows: CampaignDailyRow[] = []
+
+  for (const window of chunkRange(from, to, CHUNK_DAYS)) {
+    const params = new URLSearchParams({
+      level: 'campaign',
+      time_increment: '1',
+      time_range: JSON.stringify({ since: day(window.from), until: day(window.to) }),
+      fields:
+        'campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions,action_values',
+      limit: String(PAGE_LIMIT),
+    })
+
+    let url: string | undefined = `${GRAPH}/act_${externalId}/insights?${params}`
+    let page = 0
+    for (; url && page < MAX_PAGES; page++) {
+      const body: { data?: BreakdownInsightRow[]; paging?: { next?: string } } = await metaJson(
+        url,
+        creds.accessToken,
+      )
+      for (const row of body.data ?? []) {
+        if (!row.campaign_id) continue // nothing to key on, same as mapBreakdownRow
+        const [daily] = parseMetaInsights([row])
+        if (!daily) continue
+        rows.push({ ...daily, campaignId: row.campaign_id, campaignName: row.campaign_name || row.campaign_id })
+      }
+      url = body.paging?.next
+    }
+
+    // Still a next link after MAX_PAGES means the answer was cut short. Meta
+    // does not say so, and a short year that looks complete is worse than an
+    // error, so say so here.
+    if (url) {
+      throw new AdApiError(
+        'Too many rows for one request. This account has more campaigns than a 90-day window can carry.',
+      )
+    }
+  }
+
+  return rows
 }
