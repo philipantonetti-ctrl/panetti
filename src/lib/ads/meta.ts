@@ -260,7 +260,7 @@ export async function fetchMetaCampaignDaily(
       time_increment: '1',
       time_range: JSON.stringify({ since: day(window.from), until: day(window.to) }),
       fields:
-        'campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions,action_values',
+        'campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions,action_values,video_thruplay_watched_actions',
       limit: String(PAGE_LIMIT),
     })
 
