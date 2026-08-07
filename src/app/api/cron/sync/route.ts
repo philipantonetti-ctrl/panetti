@@ -45,6 +45,21 @@ const SHOPS_DEADLINE_MS = 240_000
 const SHIPMENTS_DEADLINE_MS = 275_000
 
 /**
+ * The alert must have STARTED by this point in the run, or it is skipped.
+ *
+ * The reservation above is only a budget for parcel polling — it cannot bind
+ * the stages before it. `syncAllAdAccounts` and `ensureRates` carry no deadline
+ * of their own, so a slow-but-not-failing upstream stage can still eat the
+ * margin, and `flushDeliveryAlerts` has no early exit once it begins.
+ *
+ * So the margin is checked rather than assumed. Skipping is safe and, more
+ * importantly, VISIBLE: unstamped orders alert on the next run either way, but
+ * a skip we report beats being killed mid-post by the platform ceiling, which
+ * would look exactly like a quiet week with nothing late.
+ */
+const ALERT_START_BY_MS = 280_000
+
+/**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
  * dashboard see new sales without anyone pressing a button.
  *
@@ -117,10 +132,17 @@ export async function GET(req: Request) {
   // Slack being down must never fail the shop sync, and an unstamped order simply
   // alerts on the next run.
   let alerts: { sent: number; skipped: string | null } = { sent: 0, skipped: null }
-  try {
-    alerts = await flushDeliveryAlerts()
-  } catch {
-    // The orders stay unstamped, which is exactly the retry we want.
+  if (Date.now() > runStartedAt + ALERT_START_BY_MS) {
+    // Checked, not assumed — see ALERT_START_BY_MS. Starting work the platform
+    // will kill part-way through is worse than not starting it: both leave the
+    // orders unstamped for the next run, but only this one says so out loud.
+    alerts = { sent: 0, skipped: 'Not enough time left in this run; alerts retry next run.' }
+  } else {
+    try {
+      alerts = await flushDeliveryAlerts()
+    } catch {
+      // The orders stay unstamped, which is exactly the retry we want.
+    }
   }
 
   // Report honestly: a half-failed run that claimed success would hide stale figures.
