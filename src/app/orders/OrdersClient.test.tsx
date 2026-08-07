@@ -49,6 +49,16 @@ const paidOrder = {
     profit: 1059629,
     margin: 0.4425,
   },
+  delivery: {
+    state: 'AVAILABLE',
+    totalDays: 3,
+    warehouseDays: 1,
+    transitDays: 2,
+    late: false,
+    daysOver: null,
+    promiseDays: 5,
+    trackingNumbers: ['TRACK1'],
+  },
 }
 
 const refundedOrder = {
@@ -59,6 +69,16 @@ const refundedOrder = {
   customerName: '',
   customerEmail: 'obsenemail@x.dk',
   figures: null,
+  delivery: {
+    state: 'VOIDED',
+    totalDays: null,
+    warehouseDays: null,
+    transitDays: null,
+    late: false,
+    daysOver: null,
+    promiseDays: null,
+    trackingNumbers: [],
+  },
 }
 
 const payload = { total: 2, orders: [paidOrder, refundedOrder] }
@@ -330,5 +350,89 @@ describe('when an order was placed', () => {
     expect(shop.time.format(lateEvening)).toBe('22:30')
 
     expect(placedFormats('Asia/Manila').date.format(lateEvening)).toBe('06 Aug 2026')
+  })
+})
+
+describe('delivery column', () => {
+  const dlv = (over: Record<string, unknown>) => ({
+    state: 'AVAILABLE',
+    totalDays: null,
+    warehouseDays: null,
+    transitDays: null,
+    late: false,
+    daysOver: null,
+    promiseDays: null,
+    trackingNumbers: [],
+    ...over,
+  })
+
+  it('reads a settled state as a plain sentence, red only when it is late', async () => {
+    const rows = [
+      { ...paidOrder, id: 'd1', number: 'DLV-A1', delivery: dlv({ state: 'AVAILABLE', totalDays: 3 }) },
+      { ...paidOrder, id: 'd2', number: 'DLV-A2', delivery: dlv({ state: 'AVAILABLE', totalDays: 9, late: true, daysOver: 3 }) },
+      { ...paidOrder, id: 'd3', number: 'DLV-NT', delivery: dlv({ state: 'NO_TRACKING', late: true, daysOver: 2 }) },
+      { ...paidOrder, id: 'd4', number: 'DLV-RT', delivery: dlv({ state: 'RETURNED', late: true, daysOver: 1 }) },
+      { ...paidOrder, id: 'd5', number: 'DLV-CX', delivery: dlv({ state: 'CANCELLED' }) },
+    ]
+    renderPage({ total: rows.length, orders: rows })
+    await waitFor(() => expect(screen.getByText('DLV-A1')).toBeTruthy())
+    const row = (number: string) => screen.getByText(number).closest('tr')!
+
+    // On time: no red, the plain fact.
+    const onTime = within(row('DLV-A1')).getByText('3 days')
+    expect(onTime.className).not.toContain('text-loss')
+
+    // Late: the same shape of sentence, now flagged.
+    expect(within(row('DLV-A2')).getByText('9 days').className).toContain('text-loss')
+    expect(within(row('DLV-NT')).getByText('Not shipped yet').className).toContain('text-loss')
+
+    // A settled outcome that is not AVAILABLE/NO_TRACKING never guesses a number.
+    expect(within(row('DLV-RT')).getByText('Returned')).toBeTruthy()
+    expect(within(row('DLV-CX')).getByText('Cancelled')).toBeTruthy()
+  })
+
+  it('counts the day client-side from placedAt for a still-moving order, never a stored number', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-10T12:00:00.000Z'))
+    try {
+      const rows = [
+        {
+          ...paidOrder, id: 'd6', number: 'DLV-IT', placedAt: '2026-08-06T12:00:00.000Z',
+          delivery: dlv({ state: 'IN_TRANSIT' }),
+        },
+        {
+          ...paidOrder, id: 'd7', number: 'DLV-BK', placedAt: '2026-08-06T12:00:00.000Z',
+          delivery: dlv({ state: 'BOOKED' }),
+        },
+      ]
+      renderPage({ total: rows.length, orders: rows })
+      await act(async () => {})
+      const row = (number: string) => screen.getByText(number).closest('tr')!
+
+      // 6 -> 10 August is 4 days, on the shop's own clock (Europe/Copenhagen).
+      expect(within(row('DLV-IT')).getByText('In transit, day 4')).toBeTruthy()
+      expect(within(row('DLV-BK')).getByText('At the warehouse, day 4')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows a dash rather than a guess for the three states it does not judge', async () => {
+    const rows = [
+      { ...paidOrder, id: 'd8', number: 'DLV-VD', delivery: dlv({ state: 'VOIDED' }) },
+      { ...paidOrder, id: 'd9', number: 'DLV-BT', delivery: dlv({ state: 'BEFORE_TRACKING' }) },
+      { ...paidOrder, id: 'd10', number: 'DLV-UT', delivery: dlv({ state: 'UNTRACKED' }) },
+    ]
+    renderPage({ total: rows.length, orders: rows })
+    await waitFor(() => expect(screen.getByText('DLV-VD')).toBeTruthy())
+    const row = (number: string) => screen.getByText(number).closest('tr')!
+
+    expect(within(row('DLV-VD')).getByText('—')).toBeTruthy()
+
+    // UNTRACKED must never look like NO_TRACKING, and BEFORE_TRACKING must
+    // never look like an order that simply has not shipped — both explain
+    // themselves rather than leaving the same bare dash as VOIDED.
+    expect(within(row('DLV-BT')).getByTitle('Placed before delivery tracking started').textContent).toBe('—')
+    expect(within(row('DLV-UT')).getByTitle('This shop is not delivery-tracked').textContent).toBe('—')
   })
 })

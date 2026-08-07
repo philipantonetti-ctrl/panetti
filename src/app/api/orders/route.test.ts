@@ -38,7 +38,15 @@ async function wipe() {
   // Scoped to the exact date and currencies this file seeds — never a blanket
   // wipe of FxRate, which other tests and real data depend on.
   await db.fxRate.deleteMany({ where: { date: FX_DATE, base: { in: ['NOK', 'EUR'] }, quote: 'USD' } })
+  // DeliveryPromise has no shop to tag. Scoped to the fake, file-exclusive
+  // country code below — a bare '*' would race the delivery route suite's own
+  // '*' fixture in the shared database (see src/app/api/delivery/route.integration.test.ts).
+  await db.deliveryPromise.deleteMany({ where: { country: PROMISE_COUNTRY } })
 }
+
+// Reserved for this file's delivery-state fixtures only — never the real
+// wildcard '*', which src/app/api/delivery/route.integration.test.ts owns.
+const PROMISE_COUNTRY = 'ZZ-ORDERS-TEST'
 
 const order = (
   shopId: string,
@@ -391,5 +399,52 @@ describe('B2B orders in the order list', () => {
 
     const fifth = await (await get(`from=2026-08-05&to=2026-08-05&shops=${fi}`)).json()
     expect(fifth.orders).toEqual([])
+  })
+})
+
+describe('order delivery state', () => {
+  it('carries each order delivery state, so the column never guesses', async () => {
+    await asAdmin()
+    const shop = (
+      await db.shop.create({
+        data: { name: `Dlv1 ${MARK}`, currency: 'DKK', deliveryTrackingFrom: new Date('2026-01-01') },
+      })
+    ).id
+    await db.deliveryPromise.create({
+      data: { country: PROMISE_COUNTRY, days: 3, businessDays: true, effectiveFrom: new Date('2026-01-01') },
+    })
+    // Placed months ago, no shipment ever booked — comfortably past any promise.
+    await db.order.create({
+      data: {
+        shopId: shop, externalId: 'dlv-1001', number: 'D-1001', placedAt: new Date('2026-01-06T09:00:00Z'),
+        status: 'completed', currency: 'DKK', shippingCountry: PROMISE_COUNTRY,
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      },
+    })
+
+    const body = await (await get(`from=2026-01-01&to=2026-01-31&shops=${shop}`)).json()
+    const row = body.orders.find((o: { number: string }) => o.number === 'D-1001')
+    expect(row.delivery.state).toBe('NO_TRACKING')
+    expect(row.delivery.late).toBe(true)
+  })
+
+  it('says a shop is untracked rather than calling its orders unshipped', async () => {
+    await asAdmin()
+    const shop = (
+      await db.shop.create({
+        data: { name: `Dlv2 ${MARK}`, currency: 'DKK', deliveryTrackingFrom: null },
+      })
+    ).id
+    await db.order.create({
+      data: {
+        shopId: shop, externalId: 'dlv-1002', number: 'D-1002', placedAt: new Date('2026-01-06T09:00:00Z'),
+        status: 'completed', currency: 'DKK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      },
+    })
+
+    const body = await (await get(`from=2026-01-01&to=2026-01-31&shops=${shop}`)).json()
+    expect(body.orders[0].delivery.state).toBe('UNTRACKED')
+    expect(body.orders[0].delivery.late).toBe(false)
   })
 })

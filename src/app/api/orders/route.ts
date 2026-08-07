@@ -13,6 +13,7 @@ import { buildRateTable, crossConvert } from '@/lib/metrics/fx'
 import { loadRates } from '@/lib/fx/rates'
 import { ACTIVE_GATEWAY } from '@/lib/gateways'
 import { pct } from '@/lib/money'
+import { deliveryFor } from '@/lib/delivery/view'
 import type { CostPoint, RateTable } from '@/lib/metrics/types'
 
 // Voided or simply not paid yet — either way the order earns nothing (yet).
@@ -145,8 +146,15 @@ export async function GET(req: Request) {
           ambassadorId: true,
           b2bCustomerId: true,
           fulfillmentCost: true,
+          shippingCountry: true,
+          shipments: {
+            select: {
+              trackingNumber: true, bookedAt: true, handedInAt: true,
+              availableAt: true, collectedAt: true, outcome: true, lastStatus: true,
+            },
+          },
           b2bCustomer: { select: { name: true } },
-          shop: { select: { name: true, currency: true, timezone: true } },
+          shop: { select: { name: true, currency: true, timezone: true, deliveryTrackingFrom: true } },
           items: {
             select: {
               productId: true,
@@ -208,6 +216,11 @@ export async function GET(req: Request) {
       (o) => o.currency !== o.shop.currency || (!!feeRow && o.currency !== feeRow.currency),
     )
     const rates: RateTable = needsRates ? buildRateTable(await loadRates()) : new Map()
+
+    // Once per page, never per row — the same rule the costs and rates above
+    // follow.
+    const promises = await db.deliveryPromise.findMany()
+    const now = new Date()
 
     const orders = rows.map((o) => {
       const earnsNothing = NOT_EARNING.has(o.status.toLowerCase())
@@ -288,6 +301,19 @@ export async function GET(req: Request) {
           imageUrl: i.product.imageUrl,
         })),
         figures,
+        delivery: deliveryFor(
+          {
+            id: o.id, number: o.number, placedAt: o.placedAt, status: o.status,
+            shippingCountry: o.shippingCountry,
+            shopName: o.shop.name,
+            shopTimezone: o.shop.timezone,
+            shopTrackingFrom: o.shop.deliveryTrackingFrom,
+            shipments: o.shipments,
+          },
+          promises,
+          timezone,
+          now,
+        ),
       }
     })
 

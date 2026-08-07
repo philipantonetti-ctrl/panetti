@@ -8,6 +8,8 @@ import { Thumb } from '@/components/Thumb'
 import { formatMoney } from '@/lib/money'
 import type { Preset } from '@/lib/dates'
 import { useLiveTick } from '@/lib/use-live-tick'
+import { daysBetween } from '@/lib/delivery/days'
+import type { DeliveryState } from '@/lib/delivery/view'
 
 type Product = {
   name: string
@@ -24,6 +26,17 @@ type Figures = {
   commission: number
   profit: number
   margin: number
+}
+/** Mirrors OrderDelivery (src/lib/delivery/view.ts) as it comes over JSON. */
+type Delivery = {
+  state: DeliveryState
+  totalDays: number | null
+  warehouseDays: number | null
+  transitDays: number | null
+  late: boolean
+  daysOver: number | null
+  promiseDays: number | null
+  trackingNumbers: string[]
 }
 type OrderRow = {
   id: string
@@ -47,6 +60,7 @@ type OrderRow = {
   itemCount: number
   products: Product[]
   figures: Figures | null // null = voided; it earns nothing and shows "—"
+  delivery: Delivery
 }
 
 const PAGE = 50
@@ -126,6 +140,54 @@ function Badge({ label, tone }: { label: string; tone: string }) {
 function Money({ minor, currency, strong }: { minor: number | null | undefined; currency: string; strong?: boolean }) {
   if (minor === null || minor === undefined) return <span className="text-faint">—</span>
   return <span className={strong ? 'font-semibold text-ink' : undefined}>{formatMoney(minor, currency)}</span>
+}
+
+/**
+ * One honest sentence per delivery state, never a bare number. UNTRACKED
+ * ("this shop is not delivery-tracked") and BEFORE_TRACKING ("placed before
+ * tracking started") explain themselves via `title` so neither can be
+ * mistaken for NO_TRACKING ("we expected a parcel and have none") — the same
+ * three-way split view.ts's deliveryFor() draws.
+ *
+ * Only AVAILABLE and NO_TRACKING turn text-loss when late. BOOKED and
+ * IN_TRANSIT are still moving rather than a settled outcome — the Delivery
+ * page's own state badge draws this same line (still-moving reads as
+ * at-risk, not loss), so this column does not flash red on every order
+ * merely still in transit past its promise.
+ *
+ * The day count for BOOKED/IN_TRANSIT is daysBetween(placedAt, now),
+ * computed here rather than stored: it changes every day on its own, and a
+ * frozen number would go stale the moment it was cached.
+ */
+function DeliveryCell({ d, placedAt, timezone, now }: { d: Delivery; placedAt: string; timezone: string; now: Date }) {
+  switch (d.state) {
+    case 'AVAILABLE':
+      return <span className={d.late ? 'text-loss' : undefined}>{d.totalDays} days</span>
+    case 'IN_TRANSIT':
+      return <span>In transit, day {daysBetween(new Date(placedAt), now, timezone)}</span>
+    case 'BOOKED':
+      return <span>At the warehouse, day {daysBetween(new Date(placedAt), now, timezone)}</span>
+    case 'NO_TRACKING':
+      return <span className={d.late ? 'text-loss' : undefined}>Not shipped yet</span>
+    case 'RETURNED':
+      return <span>Returned</span>
+    case 'CANCELLED':
+      return <span>Cancelled</span>
+    case 'VOIDED':
+      return <span className="text-faint">—</span>
+    case 'BEFORE_TRACKING':
+      return (
+        <span className="text-faint" title="Placed before delivery tracking started">
+          —
+        </span>
+      )
+    case 'UNTRACKED':
+      return (
+        <span className="text-faint" title="This shop is not delivery-tracked">
+          —
+        </span>
+      )
+  }
 }
 
 /**
@@ -364,6 +426,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                         <th className="py-2.5 pr-4">Placed</th>
                         <th className="py-2.5 pr-4">Order</th>
                         <th className="py-2.5 pr-4">Status</th>
+                        <th className="py-2.5 pr-4">Delivery</th>
                         <th className="py-2.5 pr-4">Customer</th>
                         <th className="py-2.5 pr-4">Shop</th>
                         <th className="py-2.5 pr-4 text-right">Items</th>
@@ -386,6 +449,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                         const placed = new Date(o.placedAt)
                         const fmt = placedFormats(o.timezone)
                         const f = o.figures
+                        const now = new Date()
                         return (
                           <Fragment key={o.id}>
                             <tr
@@ -429,6 +493,9 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                                   <Badge {...ful} />
                                 </span>
                               </td>
+                              <td className="num whitespace-nowrap py-2.5 pr-4">
+                                <DeliveryCell d={o.delivery} placedAt={o.placedAt} timezone={o.timezone} now={now} />
+                              </td>
                               <td className="max-w-[160px] truncate py-2.5 pr-4 text-muted" title={o.customerEmail || undefined}>
                                 {o.customerName || o.customerEmail || <span className="text-faint">—</span>}
                               </td>
@@ -466,7 +533,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                             {isOpen && (
                               <tr className="border-b border-line last:border-0 bg-canvas">
                                 <td />
-                                <td colSpan={15} className="py-3 pr-6">
+                                <td colSpan={16} className="py-3 pr-6">
                                   <p className="mb-2 text-[11px] font-semibold tracking-wide text-faint">WHAT WAS BOUGHT</p>
                                   <table className="w-full max-w-[720px] text-[12.5px]">
                                     <thead>
