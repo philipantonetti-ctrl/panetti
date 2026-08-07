@@ -97,6 +97,23 @@ describe('campaigns API', () => {
     const { account, campaign } = await fixture()
     const res = await patch(account.id, { assignments: [{ campaignId: campaign.id, shopId: 'no-such-shop' }] })
     expect(res.status).toBe(400)
+    expect((await db.adCampaign.findUnique({ where: { id: campaign.id } }))?.shopId).toBeNull()
+  })
+
+  it('writes nothing from a batch when one assignment is invalid', async () => {
+    const { account, campaign, other } = await fixture()
+    const campaign2 = await db.adCampaign.create({
+      data: { accountId: account.id, externalId: 'c2', name: `${TAG} c2` },
+    })
+
+    const res = await patch(account.id, {
+      assignments: [
+        { campaignId: campaign.id, shopId: other.id },
+        { campaignId: campaign2.id, shopId: 'no-such-shop' },
+      ],
+    })
+    expect(res.status).toBe(400)
+    expect((await db.adCampaign.findUnique({ where: { id: campaign.id } }))?.shopId).toBeNull()
   })
 
   it('clears lastSyncAt when the account is switched to split, so it backfills', async () => {
