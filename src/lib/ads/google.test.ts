@@ -154,6 +154,23 @@ describe('fetchGoogleDaily', () => {
       new AdApiError('The developer token is not approved.'),
     )
   })
+
+  // Task 4: a malformed or truncated 200 response used to be swallowed into
+  // `null`, which parseGoogleChunks reads as zero rows — the sync then
+  // recorded success with lastError: null. Low-impact when this was one
+  // request per account; this branch makes it five windowed requests per
+  // sync, so one parse failure now silently discards up to 90 days of
+  // campaign spend and reports a plausible-looking short year. That is the
+  // same silent-truncation class the Meta page-cap guard exists to prevent.
+  it('throws rather than silently returning nothing when a 200 response cannot be parsed', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(new Response('not valid json', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchGoogleDaily(CREDS, '1', new Date(), new Date())).rejects.toThrow(AdApiError)
+  })
 })
 
 describe('fetchGoogleDailyBudget', () => {

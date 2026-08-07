@@ -136,8 +136,30 @@ async function searchStream(
     headers,
     body: JSON.stringify({ query }),
   })
-  const body: unknown = await res.json().catch(() => null)
-  if (!res.ok) throw new AdApiError(errorMessage(body) ?? `Google answered ${res.status}`)
+  // A distinct sentinel, not `null`: a malformed or truncated body must never
+  // read the same as "Google answered with a legitimate empty result", or a
+  // parse failure silently becomes zero rows and the sync records success
+  // with lastError: null. Chunked windowing (windows.ts) turns one request
+  // into five per sync, so one bad chunk would otherwise discard up to 90
+  // days of campaign spend and report a plausible-looking short year — the
+  // same silent-truncation class the Meta page-cap guard exists to prevent.
+  const PARSE_FAILED = Symbol('parse-failed')
+  let body: unknown
+  try {
+    body = await res.json()
+  } catch {
+    body = PARSE_FAILED
+  }
+  if (!res.ok) {
+    // Non-ok behaviour is unchanged: a body that failed to parse contributes
+    // no error message, same as the old `catch(() => null)` did.
+    throw new AdApiError(
+      (body === PARSE_FAILED ? undefined : errorMessage(body)) ?? `Google answered ${res.status}`,
+    )
+  }
+  if (body === PARSE_FAILED) {
+    throw new AdApiError('Google returned a response that could not be parsed.')
+  }
   return parseGoogleChunks(body)
 }
 
