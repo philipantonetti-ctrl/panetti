@@ -3,6 +3,7 @@ import { syncAllShops } from '@/lib/woo/sync'
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/bring/sync'
 import { ensureRates } from '@/lib/fx/rates'
+import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
 import { db } from '@/lib/db'
 
 /**
@@ -112,6 +113,16 @@ export async function GET(req: Request) {
     // Each shipment keeps its own lastError; the delivery page tells the story.
   }
 
+  // Alerting last, so it judges the freshest tracking we have. Best-effort:
+  // Slack being down must never fail the shop sync, and an unstamped order simply
+  // alerts on the next run.
+  let alertsSent = 0
+  try {
+    alertsSent = (await flushDeliveryAlerts()).sent
+  } catch {
+    // The orders stay unstamped, which is exactly the retry we want.
+  }
+
   // Report honestly: a half-failed run that claimed success would hide stale figures.
   return NextResponse.json({
     ok: failed.length === 0,
@@ -123,5 +134,6 @@ export async function GET(req: Request) {
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,
+    alertsSent,
   })
 }

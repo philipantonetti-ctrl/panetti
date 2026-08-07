@@ -1,0 +1,229 @@
+import { describe, expect, it, beforeEach, afterAll, vi, afterEach } from 'vitest'
+import { db } from '@/lib/db'
+import { encryptSecret } from '@/lib/secrets'
+import { alertMessage, flushDeliveryAlerts } from './alerts'
+
+const NOW = new Date('2026-08-20T12:00:00Z')
+let shopId: string
+
+afterEach(() => vi.unstubAllGlobals())
+
+// Tagged and scoped — see "Test data convention" in the Global Constraints.
+const TAG = '[delivery-alerts-test]'
+const TRACK = 'TALERT' // every tracking number below starts with it
+const scoped = { shop: { name: { contains: TAG } } }
+
+// IMPLEMENTER: every shipment this file persists uses one of these instead of
+// a bare 'T1' literal — a bare literal has no TALERT prefix, so cleanup()'s
+// trackingNumber-prefix branch could not find it (see link.integration.test.ts's
+// IMPLEMENTER note and route.integration.test.ts's UNLINKED comment for the
+// exact same trap). Each of these shipments is also linked via orderId to a
+// scoped order, so cleanup()'s `order: scoped` branch already covers them —
+// but the prefix is kept so every persisted row is self-describing and the
+// two cleanup branches agree with what the constants claim.
+const T1 = `${TRACK}1`
+
+async function cleanup() {
+  await db.shipmentEvent.deleteMany({ where: { shipment: { OR: [{ order: scoped }, { trackingNumber: { startsWith: TRACK } }] } } })
+  await db.shipment.deleteMany({ where: { OR: [{ order: scoped }, { trackingNumber: { startsWith: TRACK } }] } })
+  await db.orderItem.deleteMany({ where: { order: scoped } })
+  await db.order.deleteMany({ where: scoped })
+  await db.shop.deleteMany({ where: { name: { contains: TAG } } })
+  await db.deliveryPromise.deleteMany({ where: { country: { in: ['*'] } } })
+  // Never deleteMany on the singleton — blank the fields instead, so a racing
+  // file cannot find the row missing. See the Global Constraints.
+  await db.deliveryConfig.upsert({
+    where: { id: 'singleton' },
+    create: { id: 'singleton' },
+    update: { bringApiUid: null, bringApiKey: null, bringClientUrl: null, slackWebhookUrl: null },
+  })
+}
+
+afterAll(cleanup)
+
+beforeEach(async () => {
+  await cleanup()
+
+  shopId = (await db.shop.create({
+    data: { name: `Panetti ${TAG}`, currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') },
+  })).id
+  await db.deliveryPromise.create({
+    data: { country: '*', days: 3, businessDays: true, effectiveFrom: new Date('2026-01-01') },
+  })
+  // Upsert, not create: cleanup() above already leaves the singleton row in
+  // place — blanked, never deleted, per the Global Constraints — so a plain
+  // create() here would collide with its own primary key on every test after
+  // the first. Matches sync.integration.test.ts's established convention.
+  await db.deliveryConfig.upsert({
+    where: { id: 'singleton' },
+    create: { id: 'singleton', slackWebhookUrl: encryptSecret('https://hooks.slack.com/services/x') },
+    update: { slackWebhookUrl: encryptSecret('https://hooks.slack.com/services/x') },
+  })
+})
+
+async function order(number: string, over: Record<string, unknown> = {}) {
+  return db.order.create({
+    // Order numbers are matched ACROSS ALL SHOPS by linkRows, and
+    // flushDeliveryAlerts scans every tracked shop with no shop filter. Both
+    // make a bare '1001' collide with other delivery suites. Prefix every one.
+    data: {
+      shopId, externalId: `E${number}`, number: `ALRT${number}`,
+      placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed', currency: 'NOK',
+      shippingCountry: 'NO',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      ...over,
+    },
+  })
+}
+
+const ok = () => {
+  // Typed as a type argument, not inferred: `vi.fn(async () => ...)` alone
+  // infers a ZERO-ARG mock, which makes `fn.mock.calls[0][1]` below a type
+  // error — indexing an empty tuple — even though it works at runtime.
+  const fn = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
+    async () => new Response('ok', { status: 200 }),
+  )
+  vi.stubGlobal('fetch', fn)
+  return fn
+}
+
+describe('flushDeliveryAlerts', () => {
+  it('alerts an order past its promise with no parcel, once', async () => {
+    const o = await order('1001')
+    const fn = ok()
+
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(1)
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect((await db.order.findUniqueOrThrow({ where: { id: o.id } })).deliveryAlertedAt).not.toBeNull()
+
+    // Second run: nothing new, so nothing is posted at all.
+    const again = ok()
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+    expect(again).not.toHaveBeenCalled()
+  })
+
+  it('leaves the order unstamped when Slack fails, so the next run retries', async () => {
+    const o = await order('1001')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('no', { status: 500 })))
+
+    const r = await flushDeliveryAlerts({ now: NOW })
+    expect(r.sent).toBe(0)
+    expect((await db.order.findUniqueOrThrow({ where: { id: o.id } })).deliveryAlertedAt).toBeNull()
+  })
+
+  it('never alerts a refunded order, which is never going to be delivered', async () => {
+    await order('1001', { status: 'refunded' })
+    const fn = ok()
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('never alerts a shop that is not delivery-tracked', async () => {
+    await db.shop.update({ where: { id: shopId }, data: { deliveryTrackingFrom: null } })
+    await order('1001')
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+  })
+
+  it('never alerts an order placed before tracking started', async () => {
+    await db.shop.update({ where: { id: shopId }, data: { deliveryTrackingFrom: new Date('2026-08-10') } })
+    await order('1001')
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+  })
+
+  it('does not alert an order that arrived late, since nobody can act on it now', async () => {
+    // It missed its promise and the on-time rate records that. But the parcel
+    // is with the customer, so an alert would be noise.
+    const o = await order('1001')
+    await db.shipment.create({
+      data: {
+        trackingNumber: T1, orderId: o.id,
+        availableAt: new Date('2026-08-15T09:00:00Z'), // well past a 3-day promise
+        outcome: 'DELIVERED', terminal: true,
+      },
+    })
+    const fn = ok()
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('does not alert an order that arrived in time', async () => {
+    const o = await order('1001')
+    await db.shipment.create({
+      data: {
+        trackingNumber: T1, orderId: o.id,
+        availableAt: new Date('2026-08-05T09:00:00Z'), outcome: 'DELIVERED', terminal: true,
+      },
+    })
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+  })
+
+  it('alerts a returned parcel, because the customer never got their order', async () => {
+    const o = await order('1001')
+    await db.shipment.create({
+      data: { trackingNumber: T1, orderId: o.id, outcome: 'RETURNED', terminal: true },
+    })
+    ok()
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(1)
+  })
+
+  it('says it is not configured rather than failing, when there is no webhook', async () => {
+    // Blank the field in place rather than deleteMany() on the singleton —
+    // forbidden by the Global Constraints ("never deleteMany() ... blank the
+    // fields rather than deleting the row"). getDeliveryConfig() reads exactly
+    // the same "not connected" state from a row with a null webhook as it does
+    // from no row at all, so this proves the same thing without ever letting
+    // the singleton row disappear out from under a racing suite.
+    await db.deliveryConfig.update({ where: { id: 'singleton' }, data: { slackWebhookUrl: null } })
+    await order('1001')
+    const r = await flushDeliveryAlerts({ now: NOW })
+    expect(r.sent).toBe(0)
+    expect(r.skipped).toMatch(/Slack/)
+  })
+
+  it('sends one message for many orders, capped, and stamps every one of them', async () => {
+    for (let i = 0; i < 30; i++) await order(`10${i}`)
+    const fn = ok()
+
+    const r = await flushDeliveryAlerts({ now: NOW })
+    expect(r.sent).toBe(30)
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    const text = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string).text
+    expect(text).toMatch(/30 orders/)
+    expect(text).toMatch(/and 5 more/)
+    // Every one is stamped, capped message or not: a line we chose not to print
+    // must not alert again tomorrow as if it were new.
+    //
+    // DEVIATION FROM BRIEF: the brief asserted a bare, whole-table
+    // `db.order.count({ where: { deliveryAlertedAt: null } })`. Scoped to this
+    // file's own shop instead — the same fix sync.integration.test.ts already
+    // made for shipmentEvent, for the same reason: a bare query over a shared
+    // table reads the 11 seeded shops' orders and every other suite's fixtures
+    // too, not just this file's 30.
+    expect(await db.order.count({ where: { deliveryAlertedAt: null, shopId } })).toBe(0)
+  })
+})
+
+describe('alertMessage', () => {
+  it('names the order, the shortfall and what is actually happening', () => {
+    const text = alertMessage(
+      [{ id: 'o1', number: '1001', shop: 'Panetti', country: 'NO',
+         daysOver: 2, promiseDays: 3, state: 'NO_TRACKING', trackingNumbers: [] }],
+      'https://panetti.vercel.app',
+    )
+    expect(text).toContain('1001')
+    expect(text).toContain('Panetti')
+    expect(text).toContain('2 days over')
+    expect(text).toContain('Not shipped')
+    expect(text).toContain('https://panetti.vercel.app/orders')
+  })
+
+  it('links the parcel on Bring when there is one', () => {
+    const text = alertMessage(
+      [{ id: 'o1', number: '1001', shop: 'Panetti', country: 'NO',
+         daysOver: 1, promiseDays: 3, state: 'IN_TRANSIT', trackingNumbers: ['T1'] }],
+      'https://panetti.vercel.app',
+    )
+    expect(text).toContain('tracking.bring.com/tracking/T1')
+  })
+})
