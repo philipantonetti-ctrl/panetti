@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { attributedSpend } from './attribution'
+import { attributedSpend, relevantAdCurrencies } from './attribution'
 
 const TAG = 'attribution-test'
 const DAY = new Date('2026-03-01T00:00:00Z')
@@ -90,5 +90,33 @@ describe('attributedSpend', () => {
     })
 
     expect(totalFor(await attributedSpend([s.id], DAY, DAY), s.id)).toBe(777)
+  })
+})
+
+describe('relevantAdCurrencies', () => {
+  // The whole-account version of this — an EUR account with zero AdSpend rows
+  // whose rate must still be fetched — is covered in load.integration.test.ts.
+  // This is its split-account mirror: nothing exercised that branch, so a
+  // later simplification could drop it and a split account's currency would
+  // silently vanish from the FX table.
+  it('includes a split account’s currency even when its campaign has zero spend rows', async () => {
+    const [a, def] = [await shop('a'), await shop('default')]
+    const account = await db.adAccount.create({
+      data: {
+        shopId: def.id,
+        provider: 'google',
+        externalId: `${Date.now()}-fx`,
+        name: `${TAG} fx acct`,
+        currency: 'EUR',
+        splitByCampaign: true,
+      },
+    })
+    // The campaign belongs to shop A, but has never synced a single spend row.
+    await db.adCampaign.create({
+      data: { accountId: account.id, externalId: 'c-fx', name: `${TAG} c-fx`, shopId: a.id },
+    })
+
+    const currencies = await relevantAdCurrencies([a.id])
+    expect(currencies).toContain('EUR')
   })
 })
