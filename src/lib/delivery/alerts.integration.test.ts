@@ -35,7 +35,13 @@ async function cleanup() {
   await db.deliveryConfig.upsert({
     where: { id: 'singleton' },
     create: { id: 'singleton' },
-    update: { bringApiUid: null, bringApiKey: null, bringClientUrl: null, slackWebhookUrl: null },
+    update: {
+      bringApiUid: null, bringApiKey: null, bringClientUrl: null, slackWebhookUrl: null,
+      // Reset too, or a stale row from an earlier test in this file (or a
+      // failed run) lets "clears the last error" pass without the code under
+      // test ever having cleared anything.
+      lastError: null,
+    },
   })
 }
 
@@ -109,6 +115,30 @@ describe('flushDeliveryAlerts', () => {
     const r = await flushDeliveryAlerts({ now: NOW })
     expect(r.sent).toBe(0)
     expect((await db.order.findUniqueOrThrow({ where: { id: o.id } })).deliveryAlertedAt).toBeNull()
+  })
+
+  it('records why Slack failed, so a broken webhook is not silent', async () => {
+    await order('1001')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('invalid_token', { status: 403 })))
+
+    const r = await flushDeliveryAlerts({ now: NOW })
+    expect(r.sent).toBe(0)
+    expect(r.skipped).toMatch(/403/)
+
+    const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
+    expect(cfg.lastError).toMatch(/403/)
+  })
+
+  it('clears the last error once Slack accepts again', async () => {
+    await db.deliveryConfig.update({
+      where: { id: 'singleton' }, data: { lastError: 'Slack responded 403: invalid_token' },
+    })
+    await order('1001')
+    ok()
+
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(1)
+    const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
+    expect(cfg.lastError).toBeNull()
   })
 
   it('never alerts a refunded order, which is never going to be delivered', async () => {

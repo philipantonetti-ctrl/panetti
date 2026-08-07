@@ -142,14 +142,20 @@ export async function flushDeliveryAlerts(
   const appUrl = process.env.APP_URL ?? 'https://panetti.vercel.app'
   try {
     await postSlack(slackWebhookUrl, alertMessage(late, appUrl))
-  } catch {
+  } catch (e) {
     // postSlack throws on failure, deliberately: the caller must not mark
-    // anything alerted for a message that never arrived. Caught here, not left
-    // to propagate, so this function keeps its own promise — Slack being down
-    // is reported the same way "not configured" is, as a normal result, not an
-    // unhandled rejection. The orders stay unstamped either way: the next run's
-    // `deliveryAlertedAt: null` filter picks them straight back up and retries.
-    return { sent: 0, skipped: 'Slack post failed; the next run will retry.' }
+    // anything alerted for a message that never arrived. Caught here so this
+    // function keeps its own promise — Slack being down is a normal result,
+    // not an unhandled rejection — and RECORDED, because a silently broken
+    // webhook is indistinguishable from a quiet week with nothing late.
+    const reason = e instanceof Error ? e.message : 'Slack post failed'
+    await db.deliveryConfig
+      .update({ where: { id: 'singleton' }, data: { lastError: reason } })
+      .catch(() => {
+        // Bookkeeping is never worth failing an alert run over — same rule
+        // recordRun follows in woo/sync.ts.
+      })
+    return { sent: 0, skipped: reason }
   }
 
   // Every one of them, not only the printed lines: a line we chose not to print
@@ -158,6 +164,14 @@ export async function flushDeliveryAlerts(
     where: { id: { in: late.map((l) => l.id) } },
     data: { deliveryAlertedAt: now },
   })
+
+  // A stale error that outlives the outage is its own lie: clear it the moment
+  // Slack accepts a message again. Best-effort, same as recording it.
+  await db.deliveryConfig
+    .update({ where: { id: 'singleton' }, data: { lastError: null } })
+    .catch(() => {
+      // Bookkeeping is never worth failing an alert run over.
+    })
 
   return { sent: late.length, skipped: null }
 }

@@ -116,9 +116,9 @@ export async function GET(req: Request) {
   // Alerting last, so it judges the freshest tracking we have. Best-effort:
   // Slack being down must never fail the shop sync, and an unstamped order simply
   // alerts on the next run.
-  let alertsSent = 0
+  let alerts: { sent: number; skipped: string | null } = { sent: 0, skipped: null }
   try {
-    alertsSent = (await flushDeliveryAlerts()).sent
+    alerts = await flushDeliveryAlerts()
   } catch {
     // The orders stay unstamped, which is exactly the retry we want.
   }
@@ -134,6 +134,7 @@ export async function GET(req: Request) {
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,
-    alertsSent,
+    alertsSent: alerts.sent,
+    alertsSkipped: alerts.skipped,
   })
 }
