@@ -5,14 +5,20 @@ const creds = { uid: 'ops@example.com', key: 'secret-key', clientUrl: 'https://p
 
 afterEach(() => vi.unstubAllGlobals())
 
-// The parameters are declared even though the body ignores them. `vi.fn(async
-// () => ...)` infers a ZERO-ARG mock, so `fn.mock.calls[0][0]` and `[0][1]`
-// become type errors — indexing an empty tuple — even though they work at
-// runtime. tsconfig includes `**/*.ts`, so test files are typechecked, and
-// `next build` typechecks: this breaks the deployment while every test passes.
+/**
+ * A `fetch` stub whose CALLS are typed, so the tests can read the url and the
+ * headers back.
+ *
+ * The signature is supplied as a type argument rather than as parameters the
+ * body ignores. `vi.fn(async () => ...)` alone infers a ZERO-ARG mock, which
+ * makes `fn.mock.calls[0][0]` a type error — indexing an empty tuple — even
+ * though it works at runtime. That matters here: tsconfig includes `**\/*.ts`,
+ * so test files are typechecked and `next build` fails on this, while every
+ * test still passes.
+ */
 function stub(status: number, body: unknown) {
-  const fn = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
-    new Response(JSON.stringify(body), { status }),
+  const fn = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
+    async () => new Response(JSON.stringify(body), { status }),
   )
   vi.stubGlobal('fetch', fn)
   return fn
