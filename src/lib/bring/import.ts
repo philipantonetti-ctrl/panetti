@@ -4,9 +4,18 @@ import { knownOrderNumbers, linkRows, type UnmatchedRow } from './link'
 
 export type ImportResult = {
   importId: string
+  /** Distinct parcel numbers the document appeared to contain. */
   parsed: number
   linked: number
+  /** Rows refused for a reason we can state — an order number two shops share. */
   unmatched: UnmatchedRow[]
+  /**
+   * Parcel numbers the file offered that did not end up linked, INCLUDING the
+   * ones we cannot explain. Always >= unmatched.length. This is the number that
+   * tells an operator the file was only half understood; `unmatched` alone
+   * cannot, because a row we failed to read leaves nothing to describe.
+   */
+  unaccounted: number
 }
 
 /**
@@ -61,9 +70,17 @@ export async function importTrackingFile(
     throw e
   }
 
+  // `seen` is what the document APPEARED to contain; `rows` is what we managed
+  // to pair. Recording rows.length as "parsed" was a lie by omission: a 100-row
+  // file we half-understood reported "read 40, linked 40" — a complete success
+  // — while sixty parcels vanished. And a vanished parcel leaves its order
+  // looking never-shipped, so it eventually fires a Slack alert about a parcel
+  // that shipped perfectly normally, with its tracking number sitting in the
+  // file we just read.
   let rows
+  let seen: number
   try {
-    rows = await parseTrackingFile(buf, filename, known)
+    ;({ rows, seen } = await parseTrackingFile(buf, filename, known))
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Could not read this file'
     await recordFailedAttempt(filename, source, { rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error })
@@ -81,21 +98,28 @@ export async function importTrackingFile(
     // show verbatim.
     const error = e instanceof Error ? e.message : 'Could not link this file'
     await recordFailedAttempt(filename, source, {
-      rowsParsed: rows.length, rowsLinked: 0, rowsUnmatched: 0, error,
+      rowsParsed: seen, rowsLinked: 0, rowsUnmatched: seen, error,
     })
     throw e
   }
+
+  // Everything the file offered that did not end up linked, whether we could
+  // name a reason for it or not. `unmatched` still carries the reasons we DO
+  // have (an order number two shops share); the remainder is the silent kind,
+  // and it is counted rather than described because there is nothing honest to
+  // say about a row we could not read.
+  const unaccounted = Math.max(0, seen - linked)
 
   const record = await db.trackingImport.create({
     data: {
       filename,
       source,
-      rowsParsed: rows.length,
+      rowsParsed: seen,
       rowsLinked: linked,
-      rowsUnmatched: unmatched.length,
+      rowsUnmatched: unaccounted,
       unmatched: unmatched.length ? JSON.stringify(unmatched) : null,
     },
   })
 
-  return { importId: record.id, parsed: rows.length, linked, unmatched }
+  return { importId: record.id, parsed: seen, linked, unmatched, unaccounted }
 }

@@ -33,8 +33,10 @@ export function looksLikeTracking(token: string): boolean {
  * likely to change — and leaves only the one assumption that cannot: that the
  * two numbers appear near each other.
  *
- * A row that matches nothing is simply absent from the result. The caller
- * reports the shortfall; nothing is invented to fill it.
+ * A row that matches nothing is simply ABSENT from the result — there is no
+ * "unmatched" entry for it, because a row we could not read leaves nothing to
+ * describe. That is why `countParcelNumbers` exists: it is the only way the
+ * caller can tell a file we read completely from one we half-understood.
  */
 export function extractPairs(text: string, knownOrderNumbers: Set<string>): ParsedRow[] {
   const tokens = text.split(/\s+/).filter(Boolean)
@@ -103,6 +105,34 @@ export function extractPairs(text: string, knownOrderNumbers: Set<string>): Pars
 }
 
 /**
+ * How many DISTINCT parcel-shaped numbers the document contains, including the
+ * ones `extractPairs` refuses to pair.
+ *
+ * This is what makes a shortfall visible. `extractPairs` returns only its
+ * successes, so a file whose layout we half-understood reads as a complete
+ * success while most of its parcels are silently dropped — and each dropped
+ * parcel leaves its order looking never-shipped, which eventually fires a Slack
+ * alert about a parcel that shipped perfectly normally.
+ *
+ * Distinct VALUES, not occurrences: the same number printed twice is one
+ * parcel, and counting occurrences would inflate the total against which the
+ * matched count is compared.
+ */
+export function countParcelNumbers(text: string, knownOrderNumbers: Set<string>): number {
+  const seen = new Set<string>()
+  for (const t of text.split(/\s+/).filter(Boolean)) {
+    if (!knownOrderNumbers.has(t) && looksLikeTracking(t)) seen.add(t)
+  }
+  return seen.size
+}
+
+export type ParseResult = {
+  rows: ParsedRow[]
+  /** Distinct parcel-shaped numbers in the document — see countParcelNumbers. */
+  seen: number
+}
+
+/**
  * Read whatever the warehouse sent. PDF is what they send today; CSV is
  * accepted too, because it costs nothing here and is far more robust if they
  * ever agree to switch.
@@ -111,14 +141,19 @@ export async function parseTrackingFile(
   buf: Buffer,
   filename: string,
   knownOrderNumbers: Set<string>,
-): Promise<ParsedRow[]> {
+): Promise<ParseResult> {
   const ext = filename.toLowerCase().split('.').pop() ?? ''
 
-  if (ext === 'pdf') return extractPairs(await pdfToText(buf), knownOrderNumbers)
+  const read = (text: string): ParseResult => ({
+    rows: extractPairs(text, knownOrderNumbers),
+    seen: countParcelNumbers(text, knownOrderNumbers),
+  })
+
+  if (ext === 'pdf') return read(await pdfToText(buf))
   if (ext === 'csv' || ext === 'txt') {
     // The same extractor: commas and semicolons become token boundaries, and
     // everything the PDF path learned about noise applies unchanged.
-    return extractPairs(buf.toString('utf8').replace(/[;,]/g, ' '), knownOrderNumbers)
+    return read(buf.toString('utf8').replace(/[;,]/g, ' '))
   }
 
   throw new Error('Only PDF and CSV files can be read. This one is a .' + ext)

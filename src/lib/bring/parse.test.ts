@@ -101,7 +101,7 @@ describe('parseTrackingFile', () => {
     const buf = await readFile(new URL('./__fixtures__/warehouse.pdf', import.meta.url))
     // Widen the known set to whatever that document actually contains, then
     // narrow this assertion to the real order numbers once you have seen them.
-    const rows = await parseTrackingFile(buf, 'warehouse.pdf', known)
+    const { rows } = await parseTrackingFile(buf, 'warehouse.pdf', known)
     expect(Array.isArray(rows)).toBe(true)
   })
 
@@ -109,5 +109,39 @@ describe('parseTrackingFile', () => {
     await expect(parseTrackingFile(Buffer.from('x'), 'notes.docx', known)).rejects.toThrow(
       /Only PDF and CSV/,
     )
+  })
+
+  it('reports every parcel number the file held, not just the ones it paired', async () => {
+    // Two of these three parcels belong to orders we do not hold, so they are
+    // dropped entirely — there is no unmatched row to describe them. Without
+    // `seen`, this file would report "1 row, 1 linked": a flawless import that
+    // quietly lost two thirds of its parcels, and left two orders looking
+    // never-shipped until the alert fired about them.
+    const csv = Buffer.from(
+      '1001,370724403790000123\n' +
+        '9998,370724403790000124\n' +
+        '9999,370724403790000125\n',
+      'utf8',
+    )
+    const { rows, seen } = await parseTrackingFile(csv, 'today.csv', known)
+    expect(rows).toHaveLength(1)
+    expect(seen).toBe(3)
+  })
+
+  it('counts a repeated parcel number once, and still refuses to pair it', async () => {
+    // The support line in a footer looks like a parcel number and repeats.
+    // It counts toward what the file offered — the operator should see that
+    // something went unlinked — but it must never be paired.
+    const csv = Buffer.from('21009000\n1001,370724403790000123\n1002,21009000\n', 'utf8')
+    const { rows, seen } = await parseTrackingFile(csv, 'today.csv', known)
+    expect(rows).toEqual([{ orderNumber: '1001', trackingNumber: '370724403790000123' }])
+    expect(seen).toBe(2)
+  })
+
+  it('reports no shortfall when every parcel in the file was linked', async () => {
+    const csv = Buffer.from('1001,370724403790000123\n1002,370724403790000124\n', 'utf8')
+    const { rows, seen } = await parseTrackingFile(csv, 'today.csv', known)
+    expect(rows).toHaveLength(2)
+    expect(seen).toBe(2)
   })
 })

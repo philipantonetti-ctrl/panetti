@@ -175,7 +175,36 @@ describe('importTrackingFile', () => {
     })
     expect(row?.rowsParsed).toBe(1) // parsing succeeded; only linking failed
     expect(row?.rowsLinked).toBe(0)
-    expect(row?.rowsUnmatched).toBe(0)
+    // Every parcel the file offered went unlinked, so all of them are
+    // unaccounted for. This used to assert 0, which read as "nothing failed to
+    // match" on a run where the whole file failed.
+    expect(row?.rowsUnmatched).toBe(1)
     expect(row?.error).toMatch(/reach database server/)
+  })
+
+  it('counts the parcels a half-read file lost, not just the ones it named', async () => {
+    // Two of these three parcels belong to orders nobody holds, so the parser
+    // drops them and there is no unmatched row to describe them. Reporting
+    // rows.length as "parsed" made this read "1 parsed, 1 linked" — a flawless
+    // import that quietly lost two thirds of the file, leaving two orders
+    // looking never-shipped until the alert fired about them.
+    const r = await importTrackingFile(
+      csv(
+        `${ORDER1},370724403790000123\n` +
+          '9998,370724403790000124\n' +
+          '9999,370724403790000125\n',
+      ),
+      'today.csv',
+      'UPLOAD',
+    )
+    expect(r.parsed).toBe(3)
+    expect(r.linked).toBe(1)
+    expect(r.unaccounted).toBe(2)
+    // Nothing invented: we cannot say WHY those two failed, only that they did.
+    expect(r.unmatched).toHaveLength(0)
+
+    const row = await db.trackingImport.findUniqueOrThrow({ where: { id: r.importId } })
+    expect(row.rowsParsed).toBe(3)
+    expect(row.rowsUnmatched).toBe(2)
   })
 })

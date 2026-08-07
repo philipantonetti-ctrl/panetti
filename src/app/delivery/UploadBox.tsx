@@ -2,7 +2,12 @@
 
 import { useState } from 'react'
 
-type Result = { parsed: number; linked: number; unmatched: { orderNumber: string; reason: string }[] }
+type Result = {
+  parsed: number
+  linked: number
+  unmatched: { orderNumber: string; reason: string }[]
+  unaccounted: number
+}
 
 /**
  * The manual way in. It exists permanently, not as a stopgap: when the
@@ -58,12 +63,19 @@ export function UploadBox({ onImported }: { onImported: () => void }) {
 
       {result && (
         <p className="mt-2 text-[12px] text-ink">
-          Read {result.parsed} rows, linked {result.linked}.
-          {result.unmatched.length > 0 && (
+          Read {result.parsed} parcel {result.parsed === 1 ? 'number' : 'numbers'}, linked{' '}
+          {result.linked}.
+          {/*
+            The shortfall is the signal, so it is stated first and in warn. Most
+            of it usually has no reason we can name — a row whose layout we
+            could not read leaves nothing to describe — so the count comes
+            first and the reasons we DO have follow it.
+          */}
+          {result.unaccounted > 0 && (
             <span className="text-warn">
               {' '}
-              {result.unmatched.length} could not be matched: {result.unmatched[0].reason}
-              {result.unmatched.length > 1 && `, and ${result.unmatched.length - 1} more`}.
+              {result.unaccounted} could not be matched to an order.
+              {result.unmatched.length > 0 && ` ${result.unmatched[0].reason}.`}
             </span>
           )}
         </p>
