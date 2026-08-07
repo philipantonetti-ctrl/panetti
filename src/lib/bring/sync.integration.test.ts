@@ -176,7 +176,13 @@ describe('syncShipments', () => {
   // to match what the test actually asserts; the body is unchanged.
   it('records a number Bring does not know, and keeps asking later', async () => {
     await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
-    stubBring([])
+    // The REAL shape, captured from api.bring.com on 2026-08-07 with the
+    // client's own credentials. Bring answers an unknown number with HTTP 200
+    // and a consignmentSet holding an ERROR entry — not the empty array this
+    // test used to assume, and not an HTTP error either. The outcome is the
+    // same (the number never reaches byNumber, so it is recorded as unknown),
+    // but the shape we assert against is now one Bring actually sends.
+    stubBring([{ error: { code: 404, message: 'No shipments found' } }])
     await syncShipments({ now })
     const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
     expect(s.lastError).toMatch(/not know/i)
