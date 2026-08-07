@@ -5,7 +5,16 @@ const ev = (status: string, iso: string): MappedEvent => ({
   status, occurredAt: new Date(iso), description: null, location: null,
 })
 
-const consignment = (packageNumber: string, events: { status: string; dateIso: string }[]) => ({
+const consignment = (
+  packageNumber: string,
+  events: {
+    status: string
+    dateIso: string
+    description?: string
+    city?: string
+    countryCode?: string
+  }[],
+) => ({
   packageSet: [{ packageNumber, eventSet: events }],
 })
 
@@ -113,6 +122,41 @@ describe('mapConsignments', () => {
 
   it('survives junk without throwing, because a malformed reply must not stop the run', () => {
     expect(mapConsignments([null, {}, { packageSet: null }, { packageSet: [{}] }])).toEqual([])
+  })
+
+  it('carries the description and builds a location from city and country', () => {
+    const [p] = mapConsignments([
+      consignment('370000000010', [
+        { status: 'IN_TRANSIT', dateIso: '2026-08-02T06:00:00Z',
+          description: 'Sendingen er på vei', city: 'Oslo', countryCode: 'NO' },
+      ]),
+    ])
+    expect(p.events[0].description).toBe('Sendingen er på vei')
+    expect(p.events[0].location).toBe('Oslo, NO')
+  })
+
+  it('leaves location null rather than a stray comma when the city is missing', () => {
+    const [p] = mapConsignments([
+      consignment('370000000011', [
+        { status: 'IN_TRANSIT', dateIso: '2026-08-02T06:00:00Z', countryCode: 'NO' },
+      ]),
+    ])
+    expect(p.events[0].location).toBe('NO')
+    expect(p.events[0].description).toBeNull()
+  })
+
+  it('has no location at all when Bring sends neither city nor country', () => {
+    const [p] = mapConsignments([
+      consignment('370000000012', [{ status: 'IN_TRANSIT', dateIso: '2026-08-02T06:00:00Z' }]),
+    ])
+    expect(p.events[0].location).toBeNull()
+  })
+
+  it('keeps a parcel that has no events yet, with no milestones', () => {
+    const [p] = mapConsignments([{ packageSet: [{ packageNumber: '370000000013' }] }])
+    expect(p.trackingNumber).toBe('370000000013')
+    expect(p.events).toEqual([])
+    expect(p.milestones.lastStatus).toBeNull()
   })
 
   // SKIPPED: needs src/lib/bring/__fixtures__/real-package.json, which does not
