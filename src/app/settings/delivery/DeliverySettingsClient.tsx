@@ -132,7 +132,7 @@ export function DeliverySettingsClient({ email }: { email: string }) {
     <AppShell email={email}>
       <PageHeader
         title="Delivery settings"
-        subtitle="Bring and Slack credentials, what each destination is promised, and which shops are tracked."
+        subtitle="Set these up in order. Connect Bring, connect Slack, say how many days each country is promised, then switch on the shops you want tracked."
       />
       <PageBody>
         {error && (
@@ -201,7 +201,10 @@ function BringSection({ data, reload }: { data: Settings; reload: () => void }) 
   }
 
   return (
-    <Card title="Bring" subtitle="Credentials for the warehouse's Bring tracking account.">
+    <Card
+      title="Bring"
+      subtitle="Your own Mybring login, not the warehouse's. We use it to look up parcels. Press Save before Test connection."
+    >
       <label className={fieldLabel} htmlFor="bring-uid">
         Account email
       </label>
@@ -295,7 +298,10 @@ function SlackSection({ data, reload }: { data: Settings; reload: () => void }) 
   }
 
   return (
-    <Card title="Slack" subtitle="Where delivery alerts post.">
+    <Card
+      title="Slack"
+      subtitle="Where late deliveries get posted. Send a test message once, so you know what a real alert looks like."
+    >
       <label className={fieldLabel} htmlFor="slack-url">
         Webhook URL
       </label>
@@ -375,7 +381,7 @@ function PromisesSection({ promises, reload }: { promises: PromiseRow[]; reload:
   return (
     <Card
       title="Delivery promises"
-      subtitle="What we promise, per destination country, on a timeline. The latest row that has already started applies."
+      subtitle="How many days you promise, per country. An order is late when it passes this. Change one and past figures stay as they were. Use * for every country without its own row."
     >
       <div className="overflow-hidden rounded-[var(--radius-control)] border border-line">
         <table className="w-full border-collapse text-[13px]">
@@ -594,7 +600,7 @@ function ShopsSection({ shops, reload }: { shops: ShopRow[]; reload: () => void 
   return (
     <Card
       title="Which shops are tracked"
-      subtitle="Leave blank if this shop does not ship from the Bring warehouse."
+      subtitle="The on and off switch. Blank means this shop is not tracked at all. A date means start judging orders from then, so switching on will not alert about old orders."
     >
       <div className="overflow-hidden rounded-[var(--radius-control)] border border-line">
         <table className="w-full border-collapse text-[13px]">
@@ -648,7 +654,10 @@ function ShopsSection({ shops, reload }: { shops: ShopRow[]; reload: () => void 
 
 function ImportsSection({ imports }: { imports: ImportRow[] }) {
   return (
-    <Card title="Recent imports" subtitle="Every warehouse file we have read, most recent first.">
+    <Card
+      title="Recent imports"
+      subtitle="Every warehouse file we have read. If parcels found and parcels linked do not match, the file was only half understood."
+    >
       <div className="overflow-x-auto rounded-[var(--radius-control)] border border-line">
         <table className="w-full border-collapse text-[13px]">
           <thead>
