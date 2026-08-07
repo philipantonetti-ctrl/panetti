@@ -326,8 +326,14 @@ export async function fetchGoogleCampaignDaily(
  * Reuses toDailyRows for the metrics so a campaign's numbers can never disagree
  * with the same campaign's numbers elsewhere. A row with no campaign id is
  * skipped for the reason mapBreakdownRow gives: it has nothing to key on.
+ *
+ * Not exported: its only consumer is fetchGoogleCampaignDaily above, and its
+ * own behaviour (campaign-id extraction, dropping id-less rows) is already
+ * proven through it in google.test.ts — a second, direct test would only
+ * duplicate those assertions without covering anything fetchGoogleCampaignDaily
+ * does not.
  */
-export function toCampaignDailyRows(results: GoogleResult[]): CampaignDailyRow[] {
+function toCampaignDailyRows(results: GoogleResult[]): CampaignDailyRow[] {
   const out: CampaignDailyRow[] = []
   for (const r of results) {
     const id = r.campaign?.id

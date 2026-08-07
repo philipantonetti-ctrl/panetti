@@ -85,7 +85,12 @@ describe('CampaignsModal', () => {
     expect(select.value).toBe('s1')
   })
 
-  it('saves the assignments that were changed', async () => {
+  // Despite the name this test used to have, save() posts every row's
+  // assignment on every save, not only the one the user touched — see the
+  // unconditional `rows.map(...)` in CampaignsModal.tsx's save(). This test
+  // only ever changed one row, so its own name claimed a "changed only"
+  // behaviour it never actually exercised.
+  it("saves every campaign's assignment, changed or not", async () => {
     const saved: unknown[] = []
     stubFetch(saved)
     const onSaved = vi.fn()
@@ -98,9 +103,16 @@ describe('CampaignsModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
     await waitFor(() => expect(saved).toHaveLength(1))
-    expect(saved[0]).toMatchObject({
-      assignments: expect.arrayContaining([{ campaignId: 'b', shopId: 's2' }]),
-    })
+    const posted = (saved[0] as { assignments: unknown[] }).assignments
+    // Both rows, not only the one just touched: 'a' (Norway Brand) was never
+    // changed in this test, yet its assignment still rides along.
+    expect(posted).toHaveLength(2)
+    expect(posted).toEqual(
+      expect.arrayContaining([
+        { campaignId: 'a', shopId: 's1' },
+        { campaignId: 'b', shopId: 's2' },
+      ]),
+    )
     // FINDING 3: onSaved is the only externally observable "the save actually
     // finished" signal here — a save that silently swallowed a successful
     // response would still leave every earlier assertion green.
