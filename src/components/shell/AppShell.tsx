@@ -170,7 +170,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       },
       {
         href: '/settings/delivery',
-        label: 'Delivery',
+        label: 'Delivery settings',
         icon: icon(
           <>
             <path d="M3 7h11v10H3z" />

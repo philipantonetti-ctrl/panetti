@@ -82,6 +82,14 @@ describe('delivery settings', () => {
     expect(row.bringApiUid).toBe('ops2@example.com')
   })
 
+  it('treats a whitespace-only secret as blank too — a stray paste must not wipe a good key', async () => {
+    await put({ bringApiUid: 'ops@example.com', bringApiKey: 'super-secret', slackWebhookUrl: 'https://hooks.slack.com/services/x' })
+    await put({ bringApiKey: '   ', slackWebhookUrl: '\t\n ' })
+    const row = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
+    expect(decryptSecret(row.bringApiKey!)).toBe('super-secret')
+    expect(decryptSecret(row.slackWebhookUrl!)).toBe('https://hooks.slack.com/services/x')
+  })
+
   it('saves a promise per country on a timeline', async () => {
     await put({ promises: [
       { country: 'NO', days: 3, businessDays: true, effectiveFrom: '2026-01-01' },

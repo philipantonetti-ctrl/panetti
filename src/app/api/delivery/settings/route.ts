@@ -14,10 +14,14 @@ const Body = z.object({
   bringApiUid: z.string().trim().optional(),
   // Blank means "leave what is stored" — the browser never receives the secret,
   // so it cannot send it back, and requiring it would wipe the key on every
-  // unrelated save.
-  bringApiKey: z.string().optional(),
+  // unrelated save. Trimmed for the same reason wooKey/wooSecret are
+  // (src/app/api/shops/[id]/route.ts): a whitespace-only paste is otherwise
+  // still truthy, so it would pass the "non-empty means replace" check below
+  // and silently overwrite a good stored secret with blanks.
+  bringApiKey: z.string().trim().optional(),
   bringClientUrl: z.string().trim().url().optional().or(z.literal('')),
-  slackWebhookUrl: z.string().optional(),
+  // Trimmed for the same reason as bringApiKey above.
+  slackWebhookUrl: z.string().trim().optional(),
   promises: z
     .array(
       z.object({
