@@ -3320,14 +3320,34 @@ describe('deliveryStats', () => {
   it('counts what is late right now and what has no tracking at all', () => {
     const s = deliveryStats(
       [
-        v({ state: 'IN_TRANSIT', totalDays: null, late: true }),
-        v({ state: 'NO_TRACKING', totalDays: null, late: true }),
-        v({ state: 'NO_TRACKING', totalDays: null, late: false }),
+        v({ state: 'IN_TRANSIT', totalDays: null, availableAt: null, late: true }),
+        v({ state: 'NO_TRACKING', totalDays: null, availableAt: null, late: true }),
+        v({ state: 'NO_TRACKING', totalDays: null, availableAt: null, late: false }),
       ],
       ['NO', 'NO', 'NO'],
     )
     expect(s.lateNow).toBe(2)
     expect(s.noTracking).toBe(2)
+  })
+
+  it('does not queue an order that already arrived, however late it was', () => {
+    // It missed its promise, so it must hurt the on-time rate. But nobody is
+    // waiting for it any more, so it does not belong in a tile people read as
+    // a list of things to chase.
+    const s = deliveryStats(
+      [v({ totalDays: 5, promiseDays: 3, availableAt: new Date(), late: true })],
+      ['NO'],
+    )
+    expect(s.lateNow).toBe(0)
+    expect(s.onTimeRate).toBe(0)
+  })
+
+  it('keeps a returned parcel in the live queue, since the customer got nothing', () => {
+    const s = deliveryStats(
+      [v({ state: 'RETURNED', totalDays: null, availableAt: null, late: true })],
+      ['NO'],
+    )
+    expect(s.lateNow).toBe(1)
   })
 
   it('builds a distribution that shows the tail a median hides', () => {
@@ -3450,7 +3470,11 @@ export function deliveryStats(
     onTimeRate: rate(delivered),
     judged: delivered.filter((v) => v.promiseDays !== null).length,
     unjudged: delivered.filter((v) => v.promiseDays === null).length,
-    lateNow: views.filter((v) => v.late).length,
+    // "Late RIGHT NOW" is the live queue: missed its promise AND still not with
+    // the customer. `late` alone also covers orders that arrived late, which
+    // belong in the on-time rate but not in a tile someone reads as a to-do
+    // list. A returned parcel has no availableAt, so it correctly stays here.
+    lateNow: views.filter((v) => v.late && v.availableAt === null).length,
     noTracking: views.filter((v) => v.state === 'NO_TRACKING').length,
     distribution: [...counts.entries()]
       .map(([days, count]) => ({ days, count }))
@@ -4144,6 +4168,22 @@ describe('flushDeliveryAlerts', () => {
     expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
   })
 
+  it('does not alert an order that arrived late, since nobody can act on it now', async () => {
+    // It missed its promise and the on-time rate records that. But the parcel
+    // is with the customer, so an alert would be noise.
+    const o = await order('1001')
+    await db.shipment.create({
+      data: {
+        trackingNumber: 'T1', orderId: o.id,
+        availableAt: new Date('2026-08-15T09:00:00Z'), // well past a 3-day promise
+        outcome: 'DELIVERED', terminal: true,
+      },
+    })
+    const fn = ok()
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+    expect(fn).not.toHaveBeenCalled()
+  })
+
   it('does not alert an order that arrived in time', async () => {
     const o = await order('1001')
     await db.shipment.create({
@@ -4342,7 +4382,13 @@ export async function flushDeliveryAlerts(
       timezone,
       now,
     )
-    if (!view.late) continue
+    // Two conditions, not one. `late` covers everything that missed its
+    // promise, INCLUDING orders that arrived late — those belong in the on-time
+    // rate, but paging someone about a parcel already in the customer's hands
+    // changes nothing and trains people to ignore the channel. Alert only on
+    // what is still outstanding: undelivered, or returned (availableAt is null
+    // for a return, so returns correctly stay in).
+    if (!view.late || view.availableAt !== null) continue
     late.push({
       id: o.id, number: o.number, shop: o.shop.name,
       country: o.shippingCountry || null,
