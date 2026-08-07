@@ -2,6 +2,7 @@ import { db } from '../db'
 import { resolveCredentials } from './sync'
 import { fetchMetaBreakdown } from './meta'
 import { fetchGoogleBreakdown } from './google'
+import { accountIdsForShops } from './attribution'
 import type { BreakdownEntry, BreakdownLevel, GoogleCredentials, MetaCredentials } from './types'
 
 export type BreakdownRow = BreakdownEntry & {
@@ -55,10 +56,17 @@ export async function loadBreakdown(opts: {
   from: Date
   to: Date
 }): Promise<BreakdownResponse> {
+  // The third instance of the same scoping trap already fixed in load.ts and
+  // /api/marketing/route.ts: a split account qualifies on where ITS CAMPAIGNS
+  // resolve, not on the account's own shopId. Filtering on `shopId: opts.shopId`
+  // alone would show an EMPTY drill-down beneath a non-zero row whenever a
+  // split account's default sits outside opts.shopId but one of its campaigns
+  // belongs to it.
+  const ids = await accountIdsForShops([opts.shopId])
   const accounts = await db.adAccount.findMany({
     where: {
       active: true,
-      shopId: opts.shopId,
+      id: { in: ids },
       provider: opts.provider,
       ...(opts.accountId ? { id: opts.accountId } : {}),
     },

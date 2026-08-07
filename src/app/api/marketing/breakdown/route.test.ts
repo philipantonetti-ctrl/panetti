@@ -223,6 +223,36 @@ describe('GET /api/marketing/breakdown', () => {
     expect(body.rows.some((r: { accountId: string }) => r.accountId === accountB.id)).toBe(false)
   })
 
+  // Task 5: the third instance of the same scoping trap already fixed in
+  // load.ts and /api/marketing/route.ts. A split account's own default shop
+  // can sit outside the filter while one of its campaigns still belongs to
+  // it — before the fix, filtering accounts on `shopId: opts.shopId` alone
+  // produced an EMPTY drill-down (accountsChecked: 0) beneath a Marketing row
+  // that was showing real spend for that same shop.
+  it("includes a split account whose campaign is in scope even though the account's own shop is not", async () => {
+    const otherShop = await db.shop.create({ data: { name: `Shop B ${MARK}`, currency: 'NOK' } })
+    const splitAccount = await makeAccount({
+      shopId: otherShop.id,
+      splitByCampaign: true,
+      externalId: `bd-split-${Date.now()}`,
+    })
+    await db.adCampaign.create({
+      data: { accountId: splitAccount.id, externalId: 'split-c1', name: 'Split campaign', shopId },
+    })
+    metaBreakdown.mockResolvedValue([entry('c1')])
+
+    // Filtered to `shopId` (this describe's own default shop, from
+    // beforeEach) — the split account's own default is `otherShop`, not this.
+    const res = await get(`shopId=${shopId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    expect(body.accountsChecked).toBe(1)
+    expect(metaBreakdown).toHaveBeenCalledTimes(1)
+    expect(body.rows).toHaveLength(1)
+    expect(body.rows[0].accountId).toBe(splitAccount.id)
+  })
+
   // I6: platform order carries no meaning on a page used to judge spending —
   // matches MarketingTable's own default sort (highest spend first).
   it('sorts rows by spend, richest first', async () => {
