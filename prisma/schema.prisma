@@ -49,6 +49,7 @@ model Shop {
   codes            AmbassadorCode[]
   fulfillmentRates FulfillmentRate[]
   adAccounts       AdAccount[]
+  adCampaigns      AdCampaign[]
   b2bCustomers     B2bCustomer[]
 }
 
@@ -310,6 +311,7 @@ model AdAccount {
   connectionId    String?
   loginCustomerId String?   // Google: the manager (MCC) id access goes through
   dailyBudget     Int?      // current daily budget across active campaigns, minor units, account currency
+  splitByCampaign Boolean   @default(false) // true = attribute per campaign, not per account
   active          Boolean   @default(true)
   lastSyncAt      DateTime?
   lastError       String?
@@ -318,6 +320,7 @@ model AdAccount {
   shop       Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   connection AdConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   spend      AdSpend[]
+  campaigns  AdCampaign[]
 
   @@unique([provider, externalId])
   @@index([shopId])
@@ -343,6 +346,46 @@ model AdSpend {
   account AdAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([accountId, date])
+  @@index([date])
+}
+
+// Which store a campaign advertises for. The account's own shopId is the
+// default; this overrides it. Never written by the sync — only by a person.
+model AdCampaign {
+  id         String   @id @default(cuid())
+  accountId  String
+  externalId String   // campaign id from the platform
+  name       String   // snapshot, refreshed on each sync
+  shopId     String?  // null = unassigned, falls back to account.shopId
+  createdAt  DateTime @default(now())
+
+  account AdAccount         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // SetNull, not Cascade: removing a shop must unassign its campaigns, never
+  // delete the spend history that proves what was spent.
+  shop    Shop?             @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  spend   AdCampaignSpend[]
+
+  @@unique([accountId, externalId])
+  @@index([shopId])
+}
+
+// One day of one campaign's delivery. Same units as AdSpend: minor units of
+// the ACCOUNT's currency, converted at read time. Only day-additive numbers —
+// reach does not sum across days, so it is deliberately absent.
+model AdCampaignSpend {
+  id              String   @id @default(cuid())
+  campaignId      String
+  date            DateTime // UTC midnight
+  spend           Int
+  impressions     Int
+  clicks          Int
+  linkClicks      Int      @default(0)
+  conversions     Float    @default(0)
+  conversionValue Int      @default(0)
+
+  campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, date])
   @@index([date])
 }
 
