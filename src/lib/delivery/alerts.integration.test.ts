@@ -232,6 +232,48 @@ describe('flushDeliveryAlerts', () => {
     // too, not just this file's 30.
     expect(await db.order.count({ where: { deliveryAlertedAt: null, shopId } })).toBe(0)
   })
+
+  it('still alerts a genuinely late order when the candidate queue is full of old, delivered ones', async () => {
+    // The starvation bug this test exists to catch: an on-time delivery is
+    // never stamped, so deliveryAlertedAt stays null forever. Ordered oldest
+    // first under CANDIDATE_LIMIT, a big enough backlog of old, delivered
+    // orders would permanently occupy every slot — the run would report
+    // alertsSent: 0 while looking perfectly healthy. More than CANDIDATE_LIMIT
+    // of them here (bulk-inserted for speed), all older than the one order
+    // that is genuinely late right now.
+    const OLD_COUNT = 501 // just over CANDIDATE_LIMIT (500)
+    const oldOrders = Array.from({ length: OLD_COUNT }, (_, i) => ({
+      id: `${TRACK}old${i}`, // doubles as its own shipment's tracking number below
+      shopId, externalId: `Eold${i}`, number: `ALRTold${i}`,
+      placedAt: new Date('2026-07-01T08:00:00Z'), status: 'completed', currency: 'NOK',
+      shippingCountry: 'NO',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+    }))
+    await db.order.createMany({ data: oldOrders })
+    await db.shipment.createMany({
+      data: oldOrders.map((o) => ({
+        trackingNumber: o.id, orderId: o.id,
+        availableAt: new Date('2026-07-03T09:00:00Z'), outcome: 'DELIVERED', terminal: true,
+      })),
+    })
+
+    const o = await order('1001') // placedAt 2026-08-03, no shipment: genuinely late right now
+    const fn = ok()
+
+    const r = await flushDeliveryAlerts({ now: NOW })
+    expect(r.sent).toBe(1)
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect((await db.order.findUniqueOrThrow({ where: { id: o.id } })).deliveryAlertedAt).not.toBeNull()
+  })
+
+  it('does not alert an order placed before the alert window, even if still outstanding', async () => {
+    // Without a floor, an order that never shipped and never alerted
+    // accumulates the same way an on-time delivery does. It alerted when it
+    // first went late, or the feature was not running yet — either way,
+    // paging someone about it today changes nothing.
+    await order('1001', { placedAt: new Date('2026-01-01T08:00:00Z') }) // ~230 days before NOW, well past the 90-day window
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+  })
 })
 
 describe('alertMessage', () => {

@@ -19,7 +19,22 @@ export type LateAlert = {
 /** Lines printed before the message summarises the rest. Slack limits payloads. */
 const MAX_LINES = 25
 
-/** How many candidates one run considers. Far above any real day's worth. */
+const DAY = 24 * 60 * 60 * 1000
+
+/**
+ * How far back a run will look for an order that has newly broken its promise.
+ * Bounds the candidate set in time, so the queue cannot silently fill with
+ * history that will never alert. Also stops a flood on the day the feature is
+ * switched on with a backdated tracking start.
+ */
+const ALERT_WINDOW_DAYS = 90
+
+/**
+ * How many candidates one run considers. With the outstanding-only filter and
+ * the time window below, this is bounded by orders genuinely in flight, not by
+ * total order history — what makes 500 a safe number rather than an
+ * optimistic one.
+ */
 const CANDIDATE_LIMIT = 500
 
 const SAYS: Record<DeliveryState, string> = {
@@ -83,6 +98,28 @@ export async function flushDeliveryAlerts(
         // delivery and the channel fills with orders nobody is waiting for.
         status: { notIn: [...VOIDED_STATUSES] },
         shop: { deliveryTrackingFrom: { not: null } },
+        // Only orders that could still be outstanding. An order whose every
+        // parcel is already with the customer can never be "late AND not yet
+        // available", and — because an on-time delivery is never stamped — such
+        // orders would otherwise sit in this filter forever. Ordered oldest
+        // first under a limit, they permanently crowd out the orders that
+        // actually need alerting, and the run reports alertsSent: 0 while
+        // looking perfectly healthy.
+        //
+        // `none: {}` keeps the order the warehouse never booked at all, which
+        // is the single most important thing this alert catches. A RETURNED
+        // parcel has a null availableAt by construction in map.ts, so returns
+        // stay in too.
+        OR: [
+          { shipments: { none: {} } },
+          { shipments: { some: { availableAt: null } } },
+        ],
+        // And a floor in time. Without one, orders that were never shipped and
+        // never alerted accumulate the same way. An order that went late months
+        // ago is not news now — it alerted when it first went late, or the
+        // feature was not running, and either way paging someone today changes
+        // nothing.
+        placedAt: { gte: new Date(now.getTime() - ALERT_WINDOW_DAYS * DAY) },
       },
       orderBy: { placedAt: 'asc' },
       take: CANDIDATE_LIMIT,
