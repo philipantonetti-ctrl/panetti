@@ -98,6 +98,42 @@ describe('delivery settings', () => {
     expect(await db.deliveryPromise.count()).toBe(2)
   })
 
+  it('saves two shops their own promise for the same country', async () => {
+    // The case this exists for: Panetti promises 3 days to Norway, Mazzetti 5,
+    // and both are Norwegian webshops. Keyed on country alone, the second row
+    // would collide with the first on [country, effectiveFrom].
+    const panetti = await db.shop.create({ data: { name: `Panetti ${TAG}`, currency: 'NOK' } })
+    const mazzetti = await db.shop.create({ data: { name: `Mazzetti ${TAG}`, currency: 'NOK' } })
+
+    const res = await put({
+      promises: [
+        { shopId: panetti.id, country: 'NO', days: 3, businessDays: true, effectiveFrom: '2026-01-01' },
+        { shopId: mazzetti.id, country: 'NO', days: 5, businessDays: true, effectiveFrom: '2026-01-01' },
+        { shopId: null, country: '*', days: 6, businessDays: true, effectiveFrom: '2026-01-01' },
+      ],
+    })
+    expect(res.status).toBe(200)
+
+    const saved = await db.deliveryPromise.findMany({ orderBy: { days: 'asc' } })
+    expect(saved).toHaveLength(3)
+    expect(saved.map((p) => [p.shopId, p.country, p.days])).toEqual([
+      [panetti.id, 'NO', 3],
+      [mazzetti.id, 'NO', 5],
+      [null, '*', 6],
+    ])
+  })
+
+  it('hands the shop back to the browser so the table can name it', async () => {
+    const shop = await db.shop.create({ data: { name: `Panetti ${TAG}`, currency: 'NOK' } })
+    await put({
+      promises: [
+        { shopId: shop.id, country: 'NO', days: 3, businessDays: true, effectiveFrom: '2026-01-01' },
+      ],
+    })
+    const body = await (await GET()).json()
+    expect(body.promises[0].shopId).toBe(shop.id)
+  })
+
   it('refuses a promise of zero days, which would make every order instantly late', async () => {
     const res = await put({ promises: [
       { country: 'NO', days: 0, businessDays: true, effectiveFrom: '2026-01-01' },

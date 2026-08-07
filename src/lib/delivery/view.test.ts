@@ -5,9 +5,14 @@ import type { PromisePoint } from './promise'
 const OSLO = 'Europe/Oslo'
 const NOW = new Date('2026-08-20T12:00:00Z')
 
+const PANETTI = 'shop-panetti'
+const MAZZETTI = 'shop-mazzetti'
+
 const promises: PromisePoint[] = [
-  { country: '*', days: 6, businessDays: true, effectiveFrom: new Date('2026-01-01') },
-  { country: 'NO', days: 3, businessDays: true, effectiveFrom: new Date('2026-01-01') },
+  { shopId: null, country: '*', days: 6, businessDays: true, effectiveFrom: new Date('2026-01-01') },
+  { shopId: null, country: 'NO', days: 3, businessDays: true, effectiveFrom: new Date('2026-01-01') },
+  // Mazzetti promises longer than Panetti to the same country.
+  { shopId: MAZZETTI, country: 'NO', days: 5, businessDays: true, effectiveFrom: new Date('2026-01-01') },
 ]
 
 const order = (over: Partial<DeliveryOrder> = {}): DeliveryOrder => ({
@@ -15,7 +20,7 @@ const order = (over: Partial<DeliveryOrder> = {}): DeliveryOrder => ({
   placedAt: new Date('2026-08-03T08:00:00Z'), // Monday
   status: 'completed',
   shippingCountry: 'NO',
-  shopName: 'Panetti', shopTimezone: OSLO,
+  shopId: PANETTI, shopName: 'Panetti', shopTimezone: OSLO,
   shopTrackingFrom: new Date('2026-01-01'),
   shipments: [],
   ...over,
@@ -157,6 +162,28 @@ describe('deliveryFor', () => {
     expect(v.deadline).toBeNull()
     expect(v.promiseDays).toBeNull()
     expect(v.late).toBe(false)
+  })
+
+  it('judges two shops in the same country against their own promises', () => {
+    // Panetti promises 3 days to Norway, Mazzetti 5. The same delivery, taking
+    // the same 4 days, is late for one and on time for the other.
+    const shipped = {
+      shipments: [parcel({
+        handedInAt: new Date('2026-08-04T16:00:00Z'),
+        availableAt: new Date('2026-08-07T09:00:00Z'), // Friday, 4 days out
+        outcome: 'DELIVERED',
+      })],
+    }
+    const panetti = deliveryFor(order(shipped), promises, OSLO, NOW)
+    const mazzetti = deliveryFor(
+      order({ ...shipped, shopId: MAZZETTI, shopName: 'Mazzetti' }),
+      promises, OSLO, NOW,
+    )
+
+    expect(panetti.promiseDays).toBe(3)
+    expect(panetti.late).toBe(true)
+    expect(mazzetti.promiseDays).toBe(5)
+    expect(mazzetti.late).toBe(false)
   })
 
   it('falls back to the star promise for a country with none of its own', () => {

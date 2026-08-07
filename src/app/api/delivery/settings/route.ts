@@ -25,6 +25,9 @@ const Body = z.object({
   promises: z
     .array(
       z.object({
+        // null means "every shop". Two shops in one country promise different
+        // things, so country alone cannot express the real policy.
+        shopId: z.string().min(1).nullable().optional(),
         country: z.string().trim().min(1).max(2).or(z.literal('*')),
         // At least one day. Zero would make every order late the moment it was
         // placed, which is the loudest possible way to be wrong.
@@ -51,7 +54,9 @@ export async function GET() {
     const [row, promises, shops, imports] = await Promise.all([
       db.deliveryConfig.findUnique({ where: { id: 'singleton' } }),
       db.deliveryPromise.findMany({
-        orderBy: [{ country: 'asc' }, { effectiveFrom: 'desc' }],
+        // Shop-specific rows first, then the all-shop ones, so the list reads
+        // in the same order the resolution actually applies them.
+        orderBy: [{ shopId: 'asc' }, { country: 'asc' }, { effectiveFrom: 'desc' }],
       }),
       db.shop.findMany({
         where: { active: true },
@@ -138,6 +143,7 @@ export async function PUT(req: Request) {
         await tx.deliveryPromise.deleteMany()
         await tx.deliveryPromise.createMany({
           data: b.promises!.map((p) => ({
+            shopId: p.shopId ?? null,
             country: p.country.toUpperCase(),
             days: p.days,
             businessDays: p.businessDays,

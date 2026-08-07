@@ -305,6 +305,7 @@ export async function GET(req: Request) {
           {
             id: o.id, number: o.number, placedAt: o.placedAt, status: o.status,
             shippingCountry: o.shippingCountry,
+            shopId: o.shopId,
             shopName: o.shop.name,
             shopTimezone: o.shop.timezone,
             shopTrackingFrom: o.shop.deliveryTrackingFrom,
