@@ -932,9 +932,14 @@ git commit -m "feat: sync a split account one campaign at a time"
 
 **Files:**
 - Create: `src/lib/ads/attribution.ts`
-- Modify: `src/lib/data/load.ts:160-181`
-- Modify: `src/app/api/marketing/route.ts:44`
+- Modify: `src/lib/data/load.ts:158-181`
 - Test: `src/lib/ads/attribution.test.ts`
+
+**Scope note (revised after reading the code):** the Marketing page is handled
+separately in Task 6B. `buildMarketing` consumes account-keyed rows carrying ten
+metric columns and resolves each row's shop *through its account*, so it needs a
+different resolver from this one. Do NOT touch `src/app/api/marketing/route.ts`
+in this task.
 
 **Interfaces:**
 - Consumes: the schema from Task 1
@@ -1161,20 +1166,260 @@ Replace the whole block from `const adAccounts = await db.adAccount.findMany({` 
 
 `AttributedSpend` and `EngineAdSpend` have identical shapes, so no mapping is needed. Delete the now-unused `accountById` and `spendRows` locals.
 
-- [ ] **Step 6: Point the marketing route at the resolver**
-
-In `src/app/api/marketing/route.ts`, replace the `db.adSpend.findMany({...})` call at line 44 with a call to `attributedSpend(shopIds, from, to)`, importing it from `@/lib/ads/attribution`. Keep whatever the route does with the rows afterwards; only the source changes.
-
-- [ ] **Step 7: Run the full suite**
+- [ ] **Step 6: Run the full suite**
 
 Run: `npx vitest run`
 Expected: PASS — every pre-existing test included. If `engine.test.ts` or the marketing route tests fail, the resolver's output shape does not match what they expect; fix the resolver, not the tests.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/lib/ads/attribution.ts src/lib/ads/attribution.test.ts src/lib/data/load.ts src/app/api/marketing/route.ts
+git add src/lib/ads/attribution.ts src/lib/ads/attribution.test.ts src/lib/data/load.ts
 git commit -m "feat: attribute ad spend to the store its campaign advertises for"
+```
+
+---
+
+### Task 6B: The Marketing page must not zero out split accounts
+
+**Files:**
+- Modify: `prisma/schema.prisma` (two columns on `AdCampaignSpend`)
+- Modify: `src/lib/ads/sync.ts` (carry the two new columns)
+- Modify: `src/lib/ads/attribution.ts` (second resolver)
+- Modify: `src/lib/ads/marketing.ts` (`SpendRow.shopId` override)
+- Modify: `src/app/api/marketing/route.ts`
+- Test: `src/lib/ads/attribution.test.ts`, `src/lib/ads/marketing.test.ts`
+
+**Interfaces:**
+- Consumes: `attributedSpend` and the campaign schema
+- Produces: `accountSpendRows(accountIds: string[], from: Date, to: Date): Promise<SpendRow[]>` where `SpendRow` gains `shopId?: string`
+
+**Why this task exists.** `buildMarketing` takes rows keyed by `accountId` carrying ten metric columns, and resolves each row's shop *through its account* (`marketing.ts:114`, `accountById`). Task 5 makes a split account write no `AdSpend` rows at all. So without this task the Marketing page shows **zero spend for exactly the accounts this feature is for**, while the Dashboard shows the real figure — the two screens disagreeing about the same money, which is the specific failure the shared-resolver rule exists to prevent.
+
+- [ ] **Step 1: Add the two missing metric columns**
+
+`AdCampaignSpend` omitted `videoViews3s` and `thruplays`. That was right when only profit consumed it; the Marketing page displays both for Meta, so a split Meta account would silently read zero. Add to `AdCampaignSpend` in `prisma/schema.prisma`, after `conversionValue`:
+
+```prisma
+  videoViews3s    Int      @default(0)
+  thruplays       Int      @default(0)
+```
+
+`reach` stays out: it does not sum across days, which is why `AdSpend` documents it as non-additive.
+
+Run: `npx prisma db push && npx prisma generate`
+
+- [ ] **Step 2: Carry them through the sync**
+
+In `storeCampaignDaily` in `src/lib/ads/sync.ts`, add both to the `metrics` object so they are written and updated like the rest:
+
+```ts
+        videoViews3s: r.videoViews3s,
+        thruplays: r.thruplays,
+```
+
+- [ ] **Step 3: Write the failing tests**
+
+Append to `src/lib/ads/attribution.test.ts`:
+
+```ts
+describe('accountSpendRows', () => {
+  it('returns AdSpend rows unchanged for a whole account', async () => {
+    const s = await shop('whole-ms')
+    const account = await db.adAccount.create({
+      data: { shopId: s.id, provider: 'meta', externalId: `${TAG}-5551110000`, name: `${TAG} whole`, currency: 'NOK' },
+    })
+    await db.adSpend.create({
+      data: {
+        accountId: account.id, date: DAY, spend: 500, impressions: 10, clicks: 2,
+        linkClicks: 1, conversions: 1, conversionValue: 250, videoViews3s: 7, thruplays: 3,
+      },
+    })
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ accountId: account.id, spend: 500, videoViews3s: 7, thruplays: 3 })
+    expect(rows[0].shopId).toBeUndefined() // no override: buildMarketing uses the account's own shop
+  })
+
+  it('rolls a split account up per shop, carrying a shopId override', async () => {
+    const [a, b, def] = [await shop('ms-a'), await shop('ms-b'), await shop('ms-def')]
+    const account = await splitAccountWith(def.id, [
+      { externalId: 'c1', shopId: a.id, spend: 1000 },
+      { externalId: 'c2', shopId: b.id, spend: 2000 },
+    ])
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    expect(rows).toHaveLength(2) // one per shop, not one per campaign
+    const byShop = Object.fromEntries(rows.map((r) => [r.shopId, r.spend]))
+    expect(byShop[a.id]).toBe(1000)
+    expect(byShop[b.id]).toBe(2000)
+  })
+
+  it('sums several campaigns that share a shop into one row', async () => {
+    const [a, def] = [await shop('ms-sum'), await shop('ms-sumdef')]
+    const account = await splitAccountWith(def.id, [
+      { externalId: 'c1', shopId: a.id, spend: 1000 },
+      { externalId: 'c2', shopId: a.id, spend: 250 },
+    ])
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].spend).toBe(1250)
+  })
+
+  it('never returns a split account total that differs from its campaign total', async () => {
+    const [a, def] = [await shop('ms-tot'), await shop('ms-totdef')]
+    const account = await splitAccountWith(def.id, [
+      { externalId: 'c1', shopId: a.id, spend: 1000 },
+      { externalId: 'c2', shopId: null, spend: 750 },
+    ])
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    expect(rows.reduce((sum, r) => sum + r.spend, 0)).toBe(1750) // nothing lost, nothing doubled
+  })
+})
+```
+
+Append to `src/lib/ads/marketing.test.ts` (match that file's existing fixture helpers):
+
+```ts
+it('honours a spend row shopId override instead of the account shop', () => {
+  const accounts = [{ id: 'acct', shopId: 'default-shop', provider: 'google', currency: 'NOK', dailyBudget: null }]
+  const spend = [
+    { accountId: 'acct', shopId: 'other-shop', date: new Date('2026-03-01T00:00:00Z'), spend: 1000,
+      impressions: 0, clicks: 0, linkClicks: 0, conversions: 0, conversionValue: 0, videoViews3s: 0, thruplays: 0 },
+  ]
+  const result = buildMarketing({ accounts, spend, engine: ENGINE, series: [], rates: RATES, to: new Date('2026-03-01T00:00:00Z') })
+
+  expect(result.shops.find((s) => s.shopId === 'other-shop')?.spend).toBe(1000)
+  expect(result.shops.find((s) => s.shopId === 'default-shop')?.spend ?? 0).toBe(0)
+})
+```
+
+- [ ] **Step 4: Run tests to verify they fail**
+
+Run: `npx vitest run src/lib/ads/attribution.test.ts src/lib/ads/marketing.test.ts`
+Expected: FAIL — `accountSpendRows` is not a function; the override test puts spend on the wrong shop.
+
+- [ ] **Step 5: Implement**
+
+In `src/lib/ads/marketing.ts`, add the optional field to `SpendRow`:
+
+```ts
+export type SpendRow = {
+  accountId: string
+  /** Set only by a split account: the shop this slice of the account's spend
+   *  belongs to, overriding the account's own. Absent means "use the account's". */
+  shopId?: string
+  date: Date
+  // ...existing fields unchanged
+}
+```
+
+and inside `buildMarketing`, wherever a row's shop is currently taken as `account.shopId`, take `row.shopId ?? account.shopId` instead. Change nothing else — budgets still come from the accounts, not the rows.
+
+In `src/lib/ads/attribution.ts`, add:
+
+```ts
+/**
+ * Account-keyed rows for the Marketing page, which groups by account and shows
+ * ten metric columns.
+ *
+ * A whole account's AdSpend rows pass through untouched. A split account has no
+ * AdSpend rows at all, so its campaign rows are rolled up per (date, resolved
+ * shop) and carry `shopId` so buildMarketing attributes them the same way the
+ * Dashboard does. Without this the Marketing page would show zero for exactly
+ * the accounts this feature exists for.
+ */
+export async function accountSpendRows(
+  accountIds: string[],
+  from: Date,
+  to: Date,
+): Promise<SpendRow[]> {
+  if (!accountIds.length) return []
+  const date = { gte: utcDay(from), lte: utcDay(to) }
+
+  const [whole, campaigns] = await Promise.all([
+    db.adSpend.findMany({
+      where: { accountId: { in: accountIds }, date },
+      select: {
+        accountId: true, date: true, spend: true, impressions: true, clicks: true,
+        linkClicks: true, conversions: true, conversionValue: true,
+        videoViews3s: true, thruplays: true,
+      },
+    }),
+    db.adCampaign.findMany({
+      where: { accountId: { in: accountIds }, account: { splitByCampaign: true } },
+      select: { id: true, shopId: true, accountId: true, account: { select: { shopId: true } } },
+    }),
+  ])
+
+  const campaignById = new Map(campaigns.map((c) => [c.id, c]))
+  const campaignRows = campaigns.length
+    ? await db.adCampaignSpend.findMany({
+        where: { campaignId: { in: campaigns.map((c) => c.id) }, date },
+      })
+    : []
+
+  // Rolled up per account, day and resolved shop — the Marketing page groups by
+  // account, so one row per campaign would multiply its row count for nothing.
+  const rolled = new Map<string, SpendRow>()
+  for (const r of campaignRows) {
+    const campaign = campaignById.get(r.campaignId)!
+    const shopId = campaign.shopId ?? campaign.account.shopId
+    const key = `${campaign.accountId}|${shopId}|${r.date.toISOString()}`
+    const existing = rolled.get(key)
+    if (existing) {
+      existing.spend += r.spend
+      existing.impressions += r.impressions
+      existing.clicks += r.clicks
+      existing.linkClicks += r.linkClicks
+      existing.conversions += r.conversions
+      existing.conversionValue += r.conversionValue
+      existing.videoViews3s += r.videoViews3s
+      existing.thruplays += r.thruplays
+    } else {
+      rolled.set(key, {
+        accountId: campaign.accountId,
+        shopId,
+        date: r.date,
+        spend: r.spend,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        linkClicks: r.linkClicks,
+        conversions: r.conversions,
+        conversionValue: r.conversionValue,
+        videoViews3s: r.videoViews3s,
+        thruplays: r.thruplays,
+      })
+    }
+  }
+
+  return [...whole, ...rolled.values()]
+}
+```
+
+Import `type SpendRow` from `./marketing` at the top of `attribution.ts`.
+
+In `src/app/api/marketing/route.ts`, replace the whole `const spend = await db.adSpend.findMany({...})` block (lines 44-61) with:
+
+```ts
+    const spend = await accountSpendRows(accounts.map((a) => a.id), from, to)
+```
+
+importing `accountSpendRows` from `@/lib/ads/attribution`. Remove the now-unused `utcDay` import if nothing else in the file uses it.
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `npx vitest run src/lib/ads src/app/api/marketing`
+Expected: PASS, including every pre-existing marketing test.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add prisma/schema.prisma src/lib/ads/sync.ts src/lib/ads/attribution.ts src/lib/ads/attribution.test.ts src/lib/ads/marketing.ts src/lib/ads/marketing.test.ts src/app/api/marketing/route.ts
+git commit -m "fix: keep split accounts visible on the Marketing page"
 ```
 
 ---
