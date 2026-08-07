@@ -15,6 +15,9 @@ describe('chunkRange', () => {
     const windows = chunkRange(d('2026-01-01'), d('2026-12-31'), 90)
     expect(windows).toHaveLength(5)
     expect(iso(windows[0].from)).toBe('2026-01-01')
+    expect(iso(windows[0].to)).toBe('2026-03-31')
+    expect(iso(windows[1].from)).toBe('2026-04-01')
+    expect(iso(windows[1].to)).toBe('2026-06-29')
     expect(iso(windows[4].to)).toBe('2026-12-31')
   })
 
