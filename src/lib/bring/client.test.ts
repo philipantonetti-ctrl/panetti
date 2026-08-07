@@ -28,6 +28,13 @@ describe('fetchTracking', () => {
     expect(String(fn.mock.calls[0][0])).toContain('q=A&q=B')
   })
 
+  it('issues no request at all for an empty list', async () => {
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+    expect(await fetchTracking(creds, [])).toEqual([])
+    expect(fn).not.toHaveBeenCalled()
+  })
+
   it('returns the consignments Bring sent back', async () => {
     stub(200, { consignmentSet: [{ consignmentId: 'A' }, { consignmentId: 'B' }] })
     expect(await fetchTracking(creds, ['A', 'B'])).toHaveLength(2)
@@ -50,6 +57,10 @@ describe('fetchTracking', () => {
     const now = 1_000_000
     expect(requestBudgetMs({ deadline: now + 5_000 }, now)).toBe(5_000)
     expect(requestBudgetMs({ deadline: now + 90_000 }, now)).toBe(30_000)
+    // No deadline at all: the caller gets the full ceiling. Task 8 calls this
+    // way whenever it runs outside the cron's budget, so this is the ordinary
+    // path, not an edge case.
+    expect(requestBudgetMs({}, now)).toBe(30_000)
     // An expired budget is still a valid timeout; the caller's loop is what stops.
     expect(requestBudgetMs({ deadline: now - 1 }, now)).toBe(1)
   })
