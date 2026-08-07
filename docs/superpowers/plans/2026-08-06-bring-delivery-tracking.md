@@ -2730,7 +2730,9 @@ Four collisions have already been found the hard way, each a variant of one thin
 
 Tagging fixtures is still worth doing and is specified per file, but sequencing is what actually makes these deterministic.
 
-Add a second Vitest project to `vitest.config.ts` so only these files lose parallelism and the other 120 keep it. Inside the returned config's `test` block, alongside the existing options:
+Add a second Vitest project to `vitest.config.ts` so only these files lose parallelism and the rest keep it.
+
+**Two edits, and the second is not optional.** Add the `projects` array below, **and delete the root-level `test.include`**, relocating its comment onto the `app` project's own `include`. With `extends: true`, a root `include` **leak-merges into every project's include** — the `delivery` project then matches the entire suite, runs ~245 files instead of 3, and takes 158s instead of 28s. Verified empirically on Vitest 4.1.10; the run still reports green, which is exactly why the count check below is mandatory.
 
 ```ts
       projects: [
@@ -2758,7 +2760,9 @@ Add a second Vitest project to `vitest.config.ts` so only these files lose paral
 
 `extends: true` inherits the root `plugins`, `env` and `environment`, so `DATABASE_URL` and `AUTH_SECRET` keep resolving exactly as they do today.
 
-**Verify the split dropped no files.** Record the file and test counts from `npm run test` *before* the change; after it they must be identical. A bad glob runs fewer tests and still reports success, which is the failure mode to watch for.
+**Verify the split changed no counts, in either direction.** Record the file and test counts from `npm run test` *before* the change; after it they must be identical.
+
+A bad glob fails in two ways and **both report green**: too narrow and it silently runs fewer tests; too wide (the `extends: true` leak above) and it runs the whole suite twice over. Check the per-project breakdown too — `delivery` should match exactly the `src/lib/{delivery,bring}/**/*.integration.test.ts` files and nothing else.
 
 > ### ⛔ MOVED TO TASK 8 — DO NOT IMPLEMENT IN TASK 9
 >
