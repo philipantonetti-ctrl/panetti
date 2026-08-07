@@ -29,6 +29,8 @@ export type DeliveryOrder = {
   placedAt: Date
   status: string
   shippingCountry: string | null
+  /** Which shop sold it. Promises are per shop as well as per country. */
+  shopId: string
   shopName: string
   shopTimezone: string | null
   shopTrackingFrom: Date | null
@@ -96,7 +98,7 @@ export function deliveryFor(
   if (VOIDED.has(order.status.toLowerCase())) return { ...base, state: 'VOIDED' }
 
   const tz = order.shopTimezone ?? fallbackTz
-  const promise = promiseOn(promises, order.shippingCountry, order.placedAt)
+  const promise = promiseOn(promises, order.shopId, order.shippingCountry, order.placedAt)
   // No promise in force means no judgement. Never a zero-day deadline, which
   // would make every order instantly late.
   const deadline = promise

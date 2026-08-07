@@ -125,6 +125,7 @@ export async function flushDeliveryAlerts(
       take: CANDIDATE_LIMIT,
       select: {
         id: true, number: true, placedAt: true, status: true, shippingCountry: true,
+        shopId: true,
         shop: { select: { name: true, timezone: true, deliveryTrackingFrom: true } },
         shipments: {
           select: {
@@ -144,6 +145,7 @@ export async function flushDeliveryAlerts(
       {
         id: o.id, number: o.number, placedAt: o.placedAt, status: o.status,
         shippingCountry: o.shippingCountry,
+        shopId: o.shopId,
         shopName: o.shop.name,
         shopTimezone: o.shop.timezone,
         shopTrackingFrom: o.shop.deliveryTrackingFrom,

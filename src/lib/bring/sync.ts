@@ -100,6 +100,9 @@ export async function syncShipments(
         select: {
           placedAt: true,
           shippingCountry: true,
+          // Promises are per shop as well as per country, so the tier a parcel
+          // lands in depends on which shop sold it.
+          shopId: true,
           shop: { select: { timezone: true } },
         },
       },
@@ -166,7 +169,7 @@ export async function syncShipments(
       // zero one, which would make every parcel look overdue and put the whole
       // backlog into the every-run tier.
       const promise = s.order
-        ? promiseOn(promises, s.order.shippingCountry, s.order.placedAt)
+        ? promiseOn(promises, s.order.shopId, s.order.shippingCountry, s.order.placedAt)
         : null
       const deadline =
         s.order && promise

@@ -50,6 +50,7 @@ model Shop {
   fulfillmentRates FulfillmentRate[]
   adAccounts       AdAccount[]
   b2bCustomers     B2bCustomer[]
+  deliveryPromises DeliveryPromise[]
 }
 
 model Product {
@@ -469,13 +470,19 @@ model ShipmentEvent {
 /// month's on-time rate.
 model DeliveryPromise {
   id            String   @id @default(cuid())
+  /// The shop this promise belongs to, or null for "every shop". Two shops in
+  /// one country genuinely promise different things — Panetti says 3 days to
+  /// Norway, Mazzetti says 5 — so country alone cannot express the real policy.
+  shopId        String?
   /// ISO-2 country code, or '*' for the fallback.
   country       String
   days          Int
   businessDays  Boolean  @default(true)
   effectiveFrom DateTime
 
-  @@unique([country, effectiveFrom])
+  shop Shop? @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, country, effectiveFrom])
   @@index([country, effectiveFrom])
 }
 

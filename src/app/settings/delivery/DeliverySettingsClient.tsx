@@ -6,6 +6,8 @@ import { useToast } from '@/components/toast/useToast'
 
 type PromiseRow = {
   id: string
+  /** null means the row applies to every shop. */
+  shopId: string | null
   country: string
   days: number
   businessDays: boolean
@@ -147,7 +149,7 @@ export function DeliverySettingsClient({ email }: { email: string }) {
           <div className="space-y-4">
             <BringSection data={data} reload={load} />
             <SlackSection data={data} reload={load} />
-            <PromisesSection promises={data.promises} reload={load} />
+            <PromisesSection promises={data.promises} shops={data.shops} reload={load} />
             <ShopsSection shops={data.shops} reload={load} />
             <ImportsSection imports={data.imports} />
           </div>
@@ -347,16 +349,39 @@ function SlackSection({ data, reload }: { data: Settings; reload: () => void }) 
 const countryLabel = (c: string) => (c === '*' ? 'All other countries' : c)
 
 function promisePayload(p: PromiseRow) {
-  return { country: p.country, days: p.days, businessDays: p.businessDays, effectiveFrom: p.effectiveFrom }
+  return {
+    shopId: p.shopId,
+    country: p.country,
+    days: p.days,
+    businessDays: p.businessDays,
+    effectiveFrom: p.effectiveFrom,
+  }
 }
 
-function PromisesSection({ promises, reload }: { promises: PromiseRow[]; reload: () => void }) {
+const ALL_SHOPS = 'All shops'
+const shopLabel = (shopId: string | null, shops: ShopRow[]) =>
+  shopId ? (shops.find((s) => s.id === shopId)?.name ?? 'Unknown shop') : ALL_SHOPS
+
+function PromisesSection({
+  promises,
+  shops,
+  reload,
+}: {
+  promises: PromiseRow[]
+  shops: ShopRow[]
+  reload: () => void
+}) {
   const [editing, setEditing] = useState<PromiseRow | 'new' | null>(null)
   const [removing, setRemoving] = useState<string | null>(null)
   const toast = useToast()
 
   async function remove(row: PromiseRow) {
-    if (!window.confirm(`Remove the promise for ${countryLabel(row.country)}?`)) return
+    if (
+      !window.confirm(
+        `Remove the ${shopLabel(row.shopId, shops)} promise for ${countryLabel(row.country)}?`,
+      )
+    )
+      return
     setRemoving(row.id)
     try {
       const next = promises.filter((p) => p.id !== row.id).map(promisePayload)
@@ -381,12 +406,13 @@ function PromisesSection({ promises, reload }: { promises: PromiseRow[]; reload:
   return (
     <Card
       title="Delivery promises"
-      subtitle="How many days you promise, per country. An order is late when it passes this. Change one and past figures stay as they were. Use * for every country without its own row."
+      subtitle="How many days you promise, per shop and country. The most specific row wins, so a Panetti row for Norway beats an All shops row for Norway. An order is late once it passes this. Changing one never rewrites past figures."
     >
       <div className="overflow-hidden rounded-[var(--radius-control)] border border-line">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
+              <th className="px-4 py-2 text-left">Shop</th>
               <th className="px-4 py-2 text-left">Country</th>
               <th className="px-4 py-2 text-right">Days</th>
               <th className="px-4 py-2 text-left">Business days</th>
@@ -397,14 +423,15 @@ function PromisesSection({ promises, reload }: { promises: PromiseRow[]; reload:
           <tbody>
             {promises.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-muted">
+                <td colSpan={6} className="px-4 py-6 text-center text-muted">
                   No promises set yet.
                 </td>
               </tr>
             )}
             {promises.map((p) => (
               <tr key={p.id} className="border-b border-line last:border-b-0">
-                <td className="px-4 py-2.5 font-medium text-ink">{countryLabel(p.country)}</td>
+                <td className="px-4 py-2.5 font-medium text-ink">{shopLabel(p.shopId, shops)}</td>
+                <td className="px-4 py-2.5 text-ink">{countryLabel(p.country)}</td>
                 <td className="num px-4 py-2.5 text-right text-ink">{p.days}</td>
                 <td className="px-4 py-2.5 text-ink">{p.businessDays ? 'Yes' : 'No'}</td>
                 <td className="px-4 py-2.5 text-muted">{p.effectiveFrom}</td>
@@ -439,6 +466,7 @@ function PromisesSection({ promises, reload }: { promises: PromiseRow[]; reload:
         <PromiseModal
           existing={editing === 'new' ? null : editing}
           all={promises}
+          shops={shops}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -453,14 +481,18 @@ function PromisesSection({ promises, reload }: { promises: PromiseRow[]; reload:
 function PromiseModal({
   existing,
   all,
+  shops,
   onClose,
   onSaved,
 }: {
   existing: PromiseRow | null
   all: PromiseRow[]
+  shops: ShopRow[]
   onClose: () => void
   onSaved: () => void
 }) {
+  // '' in the select means every shop, which the payload sends as null.
+  const [shopId, setShopId] = useState(existing?.shopId ?? '')
   const [country, setCountry] = useState(existing?.country ?? '')
   const [days, setDays] = useState(String(existing?.days ?? 3))
   const [businessDays, setBusinessDays] = useState(existing?.businessDays ?? true)
@@ -487,7 +519,13 @@ function PromiseModal({
       const others = (existing ? all.filter((p) => p.id !== existing.id) : all).map(promisePayload)
       const next = [
         ...others,
-        { country: country.trim().toUpperCase(), days: daysNum, businessDays, effectiveFrom },
+        {
+          shopId: shopId || null,
+          country: country.trim().toUpperCase(),
+          days: daysNum,
+          businessDays,
+          effectiveFrom,
+        },
       ]
       const res = await fetch('/api/delivery/settings', {
         method: 'PUT',
@@ -514,6 +552,27 @@ function PromiseModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-bold text-ink">{existing ? 'Edit promise' : 'Add promise'}</h2>
+
+        <label className={fieldLabel} htmlFor="promise-shop">
+          Shop
+        </label>
+        <select
+          id="promise-shop"
+          value={shopId}
+          onChange={(e) => setShopId(e.target.value)}
+          className={field}
+        >
+          <option value="">{ALL_SHOPS}</option>
+          {shops.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-[11px] text-muted">
+          Pick a shop when it promises something different from the rest. Two shops selling into
+          the same country can have their own promise, and the shop&rsquo;s own row always wins.
+        </p>
 
         <label className={fieldLabel} htmlFor="promise-country">
           Country
