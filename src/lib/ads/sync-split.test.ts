@@ -21,7 +21,23 @@ vi.mock('./google', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./google')>()),
   fetchGoogleCampaignDaily: vi.fn(async () => [ROW('c1', 'Norway', 1000), ROW('c2', 'Sweden', 2000)]),
   fetchGoogleDailyBudget: vi.fn(async () => 0),
-  fetchGoogleDaily: vi.fn(async () => []),
+  // A real row, not []: if a split account ever also reached storeDaily, this
+  // row would surface as an AdSpend row and the "writes NO AdSpend row" test
+  // below would actually fail instead of vacuously passing on an empty array.
+  fetchGoogleDaily: vi.fn(async () => [
+    {
+      date: new Date('2026-03-01T00:00:00Z'),
+      spend: 9999,
+      impressions: 3,
+      clicks: 1,
+      linkClicks: 1,
+      conversions: 0,
+      conversionValue: 0,
+      videoViews3s: 0,
+      thruplays: 0,
+      reach: 0,
+    },
+  ]),
 }))
 
 const { db } = await import('@/lib/db')
@@ -46,7 +62,7 @@ async function splitAccount() {
     data: {
       shopId: shop.id,
       provider: 'google',
-      externalId: '5550001111',
+      externalId: `${TAG}-5550001111`,
       name: `${TAG} acct`,
       currency: 'NOK',
       splitByCampaign: true,
@@ -106,5 +122,25 @@ describe('syncAdAccount for a split account', () => {
     await syncAdAccount({ ...account, splitByCampaign: false, connection: null })
 
     expect(await db.adCampaign.count({ where: { accountId: account.id } })).toBe(0)
+
+    const spend = await db.adSpend.findMany({ where: { accountId: account.id } })
+    expect(spend).toHaveLength(1)
+    expect(spend[0].spend).toBe(9999)
+  })
+
+  it('does not duplicate rows or double spend when synced twice', async () => {
+    const { account } = await splitAccount()
+
+    await syncAdAccount({ ...account, connection: null })
+    await syncAdAccount({ ...account, connection: null })
+
+    const campaigns = await db.adCampaign.findMany({ where: { accountId: account.id } })
+    expect(campaigns).toHaveLength(2) // c1 and c2, not four
+
+    const spend = await db.adCampaignSpend.findMany({
+      where: { campaignId: { in: campaigns.map((c) => c.id) } },
+    })
+    expect(spend).toHaveLength(2)                       // one row per campaign per day
+    expect(spend.map((s) => s.spend).sort((a, b) => a - b)).toEqual([1000, 2000]) // not [2000, 4000]
   })
 })
