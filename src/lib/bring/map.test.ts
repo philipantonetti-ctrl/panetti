@@ -122,7 +122,17 @@ describe('mapConsignments', () => {
   // SELECTORS match what Bring actually sends. Enable it the moment the probe
   // runs, and treat the recording as authoritative over Bring's documentation.
   it.skip('maps the recorded real response', async () => {
-    const real = (await import('./__fixtures__/real-package.json')).default as unknown
+    // Read at runtime, NOT imported. A static import of a file that does not
+    // exist is a COMPILE error even inside `it.skip` — skipping affects the
+    // runner, not the typechecker — and `next build` typechecks test files,
+    // so an import here breaks the deployment while the suite stays green.
+    // Same pattern parse.test.ts uses for its warehouse PDF fixture.
+    const { readFile } = await import('node:fs/promises')
+    const raw = await readFile(
+      new URL('./__fixtures__/real-package.json', import.meta.url),
+      'utf8',
+    )
+    const real = JSON.parse(raw) as unknown
     const mapped = mapConsignments([real].flat())
     expect(mapped.length).toBeGreaterThan(0)
     expect(mapped[0].trackingNumber).toBeTruthy()
