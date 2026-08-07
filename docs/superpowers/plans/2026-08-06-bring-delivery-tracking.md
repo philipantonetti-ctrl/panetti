@@ -536,9 +536,10 @@ git commit -m "feat: store the destination country on orders, and backfill histo
 
 **Interfaces:**
 - Consumes: nothing. Every test here stubs `fetch`, so this task needs no credentials and no recorded response.
-- Produces:
+- Produces (all three exported — `requestBudgetMs` is imported directly by the tests, and Task 8 relies on its clamping):
   ```ts
   export type BringCredentials = { uid: string; key: string; clientUrl: string }
+  export function requestBudgetMs(filter: BringFilter, now?: number): number
   export function fetchTracking(
     creds: BringCredentials,
     numbers: string[],
@@ -605,6 +606,19 @@ describe('fetchTracking', () => {
     expect(requestBudgetMs({ deadline: now + 90_000 }, now)).toBe(30_000)
     // An expired budget is still a valid timeout; the caller's loop is what stops.
     expect(requestBudgetMs({ deadline: now - 1 }, now)).toBe(1)
+    // No deadline at all: the full ceiling. Task 8 calls this way whenever it
+    // runs outside the cron's budget, so it is the ordinary path, and the
+    // house pattern (woo/client.test.ts:196) tests all four corners for a
+    // reason — nothing else in the suite would catch a regression here,
+    // because the fetch stub never inspects init.signal.
+    expect(requestBudgetMs({}, now)).toBe(30_000)
+  })
+
+  it('issues no request at all for an empty list', async () => {
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+    expect(await fetchTracking(creds, [])).toEqual([])
+    expect(fn).not.toHaveBeenCalled()
   })
 })
 ```
