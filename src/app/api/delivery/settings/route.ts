@@ -77,6 +77,9 @@ export async function GET() {
         hasSlackWebhook: Boolean(row?.slackWebhookUrl),
         lastSyncAt: row?.lastSyncAt?.toISOString() ?? null,
         lastError: row?.lastError ?? null,
+        // Its own field, separate from the Bring sync's lastError above — see
+        // the schema comment on DeliveryConfig.slackLastError.
+        slackLastError: row?.slackLastError ?? null,
         promises: promises.map((p) => ({
           ...p, effectiveFrom: p.effectiveFrom.toISOString().slice(0, 10),
         })),

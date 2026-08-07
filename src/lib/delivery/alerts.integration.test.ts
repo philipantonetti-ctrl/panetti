@@ -39,8 +39,11 @@ async function cleanup() {
       bringApiUid: null, bringApiKey: null, bringClientUrl: null, slackWebhookUrl: null,
       // Reset too, or a stale row from an earlier test in this file (or a
       // failed run) lets "clears the last error" pass without the code under
-      // test ever having cleared anything.
+      // test ever having cleared anything. lastError belongs to the Bring
+      // sync (src/lib/bring/sync.ts), not this file, but blanked anyway so
+      // the singleton starts every test fully clean, not just partially.
       lastError: null,
+      slackLastError: null,
     },
   })
 }
@@ -126,19 +129,37 @@ describe('flushDeliveryAlerts', () => {
     expect(r.skipped).toMatch(/403/)
 
     const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
-    expect(cfg.lastError).toMatch(/403/)
+    expect(cfg.slackLastError).toMatch(/403/)
   })
 
   it('clears the last error once Slack accepts again', async () => {
     await db.deliveryConfig.update({
-      where: { id: 'singleton' }, data: { lastError: 'Slack responded 403: invalid_token' },
+      where: { id: 'singleton' }, data: { slackLastError: 'Slack responded 403: invalid_token' },
     })
     await order('1001')
     ok()
 
     expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(1)
     const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
-    expect(cfg.lastError).toBeNull()
+    expect(cfg.slackLastError).toBeNull()
+  })
+
+  it('keeps the Slack error when a Bring sync runs afterwards', async () => {
+    // sync.ts clears DeliveryConfig.lastError on every successful run. Before
+    // these were separate fields it took the Slack failure with it, inside one
+    // cron tick, and the settings page went quiet about a webhook that was still
+    // broken.
+    await order('1001')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('invalid_token', { status: 403 })))
+    await flushDeliveryAlerts({ now: NOW })
+
+    // Exactly what the Bring sync does at the end of a run.
+    await db.deliveryConfig.update({
+      where: { id: 'singleton' }, data: { lastSyncAt: new Date(), lastError: null },
+    })
+
+    const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
+    expect(cfg.slackLastError).toMatch(/403/)
   })
 
   it('never alerts a refunded order, which is never going to be delivered', async () => {

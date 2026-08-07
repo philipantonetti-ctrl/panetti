@@ -186,8 +186,13 @@ export async function flushDeliveryAlerts(
     // not an unhandled rejection — and RECORDED, because a silently broken
     // webhook is indistinguishable from a quiet week with nothing late.
     const reason = e instanceof Error ? e.message : 'Slack post failed'
+    // slackLastError, not lastError: lastError belongs to the Bring sync,
+    // which clears its own field on every successful run (src/lib/bring/
+    // sync.ts). Sharing one column let a Bring sync in the same or a later
+    // cron tick wipe a Slack failure that was still live. Two subsystems,
+    // two fields.
     await db.deliveryConfig
-      .update({ where: { id: 'singleton' }, data: { lastError: reason } })
+      .update({ where: { id: 'singleton' }, data: { slackLastError: reason } })
       .catch(() => {
         // Bookkeeping is never worth failing an alert run over — same rule
         // recordRun follows in woo/sync.ts.
@@ -205,7 +210,7 @@ export async function flushDeliveryAlerts(
   // A stale error that outlives the outage is its own lie: clear it the moment
   // Slack accepts a message again. Best-effort, same as recording it.
   await db.deliveryConfig
-    .update({ where: { id: 'singleton' }, data: { lastError: null } })
+    .update({ where: { id: 'singleton' }, data: { slackLastError: null } })
     .catch(() => {
       // Bookkeeping is never worth failing an alert run over.
     })

@@ -489,6 +489,11 @@ model DeliveryConfig {
   slackWebhookUrl String? // encrypted
   lastSyncAt      DateTime?
   lastError       String?
+  /// Why the last Slack post failed; null when it worked. Deliberately NOT
+  /// `lastError`, which belongs to the Bring sync: that sync clears its own
+  /// field on every successful run, and sharing one column let it wipe a live
+  /// Slack failure within one cron tick. Two subsystems, two fields.
+  slackLastError  String?
 }
 
 /// Every warehouse file we ingested, so "did yesterday's file land, and did all

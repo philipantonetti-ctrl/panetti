@@ -31,6 +31,10 @@ type Settings = {
   hasSlackWebhook: boolean
   lastSyncAt: string | null
   lastError: string | null
+  // Its own field, not lastError above: that one belongs to the Bring sync
+  // and gets cleared on every successful run, which would otherwise wipe a
+  // still-live Slack failure within one cron tick.
+  slackLastError: string | null
   promises: PromiseRow[]
   shops: ShopRow[]
   imports: ImportRow[]
@@ -324,6 +328,12 @@ function SlackSection({ data, reload }: { data: Settings; reload: () => void }) 
           {testing ? 'Sending…' : 'Send test message'}
         </button>
       </div>
+
+      {data.slackLastError && (
+        <div className="mt-4 border-t border-line pt-3 text-[12px] text-loss">
+          <p>Last alert failed: {data.slackLastError}</p>
+        </div>
+      )}
     </Card>
   )
 }
