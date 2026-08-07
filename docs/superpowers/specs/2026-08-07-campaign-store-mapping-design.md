@@ -284,6 +284,36 @@ Written first, RED confirmed before GREEN.
 | `PATCH` campaigns | Admin-only; rejects a foreign campaign id and an unknown shop id |
 | Existing `engine.test.ts`, `marketing` routes | Unchanged and still passing |
 
+## Known follow-ups
+
+Recorded by the final whole-branch review after implementation. None is a
+correctness regression in the money; all were triaged as non-blocking.
+
+- **`attribution.test.ts` "ignores a whole account…" cannot fail.** Its fixture
+  account has no `AdCampaign` rows, so the unassigned count is 0 whether or not
+  the `account: { splitByCampaign: true }` predicate exists. That predicate is
+  the real guard — an account flipped back to whole KEEPS its campaign rows —
+  and nothing exercises it. The correct fixture is a whole account that still
+  carries `shopId: null` campaigns.
+- **The breakdown drill-down can list another shop's campaigns.** Scoping it via
+  `accountIdsForShops` fixed the empty/over-totalled row, but the provider still
+  answers per account, so a shop-A drill-down on a split account can show its
+  shop-B campaigns. A pre-existing leak class, now reachable more often. The fix
+  is to filter the returned entities by the campaign→shop map.
+- **The unassigned-campaign notice is range-independent.** It counts unassigned
+  campaigns on in-scope split accounts even when their fallback shop sits outside
+  the current filter, so it can name campaigns whose spend is not on screen.
+  Defensible — it is an admin call to action, not a figure — but it is not
+  scoped the way the numbers beside it are.
+- **The notice's singular branch ("1 campaign has") is untested.**
+- **`load.ts` runs `attributedSpend` and `relevantAdCurrencies` separately**, so
+  the same two helper queries execute twice on every dashboard load: six queries
+  where four would do. No N+1 and no correctness effect.
+- **The campaigns modal posts every row on save**, not only the edited ones, so
+  two admins editing the same account between load and save is last-write-wins.
+  The API already accepts a partial `assignments` array, so this is a one-line
+  UI change if it ever matters.
+
 ## Out of scope
 
 - Per-store daily budgets
