@@ -61,14 +61,34 @@ describe('deliveryStats', () => {
   it('counts what is late right now and what has no tracking at all', () => {
     const s = deliveryStats(
       [
-        v({ state: 'IN_TRANSIT', totalDays: null, late: true }),
-        v({ state: 'NO_TRACKING', totalDays: null, late: true }),
-        v({ state: 'NO_TRACKING', totalDays: null, late: false }),
+        v({ state: 'IN_TRANSIT', totalDays: null, availableAt: null, late: true }),
+        v({ state: 'NO_TRACKING', totalDays: null, availableAt: null, late: true }),
+        v({ state: 'NO_TRACKING', totalDays: null, availableAt: null, late: false }),
       ],
       ['NO', 'NO', 'NO'],
     )
     expect(s.lateNow).toBe(2)
     expect(s.noTracking).toBe(2)
+  })
+
+  it('does not queue an order that already arrived, however late it was', () => {
+    // It missed its promise, so it must hurt the on-time rate. But nobody is
+    // waiting for it any more, so it does not belong in a tile people read as
+    // a list of things to chase.
+    const s = deliveryStats(
+      [v({ totalDays: 5, promiseDays: 3, availableAt: new Date(), late: true })],
+      ['NO'],
+    )
+    expect(s.lateNow).toBe(0)
+    expect(s.onTimeRate).toBe(0)
+  })
+
+  it('keeps a returned parcel in the live queue, since the customer got nothing', () => {
+    const s = deliveryStats(
+      [v({ state: 'RETURNED', totalDays: null, availableAt: null, late: true })],
+      ['NO'],
+    )
+    expect(s.lateNow).toBe(1)
   })
 
   it('builds a distribution that shows the tail a median hides', () => {

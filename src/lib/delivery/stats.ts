@@ -84,7 +84,11 @@ export function deliveryStats(
     onTimeRate: rate(delivered),
     judged: delivered.filter((v) => v.promiseDays !== null).length,
     unjudged: delivered.filter((v) => v.promiseDays === null).length,
-    lateNow: views.filter((v) => v.late).length,
+    // "Late RIGHT NOW" is the live queue: missed its promise AND still not with
+    // the customer. `late` alone also covers orders that arrived late, which
+    // belong in the on-time rate but not in a tile someone reads as a to-do
+    // list. A returned parcel has no availableAt, so it correctly stays here.
+    lateNow: views.filter((v) => v.late && v.availableAt === null).length,
     noTracking: views.filter((v) => v.state === 'NO_TRACKING').length,
     distribution: [...counts.entries()]
       .map(([days, count]) => ({ days, count }))
