@@ -47,16 +47,36 @@ describe('AdCampaign', () => {
   })
 
   it('unassigns rather than deletes when a shop goes away', async () => {
-    const s = await shop('b')
+    // Two DIFFERENT shops: the account belongs to `owner`, but the campaign is
+    // assigned to `assigned`. Only deleting `assigned` exercises AdCampaign's
+    // own shopId relation — deleting `owner` would cascade Shop->AdAccount->
+    // AdCampaign and prove nothing about SetNull vs Cascade.
+    const owner = await shop('owner')
+    const assigned = await shop('assigned')
     const account = await db.adAccount.create({
-      data: { shopId: s.id, provider: 'meta', externalId: '9998887776', name: `${TAG} m`, currency: 'NOK' },
+      data: { shopId: owner.id, provider: 'meta', externalId: '9998887776', name: `${TAG} m`, currency: 'NOK' },
     })
     const campaign = await db.adCampaign.create({
-      data: { accountId: account.id, externalId: 'c2', name: `${TAG} c2`, shopId: s.id },
+      data: { accountId: account.id, externalId: 'c2', name: `${TAG} c2`, shopId: assigned.id },
     })
-    await db.shop.delete({ where: { id: s.id } })
-    // The account cascades with its shop; the campaign row goes with the account.
-    // What must NOT happen is a foreign-key error on delete.
-    expect(await db.adCampaign.findUnique({ where: { id: campaign.id } })).toBeNull()
+    await db.adCampaignSpend.create({
+      data: {
+        campaignId: campaign.id,
+        date: new Date('2026-03-02T00:00:00Z'),
+        spend: 500,
+        impressions: 5,
+        clicks: 1,
+      },
+    })
+
+    await db.shop.delete({ where: { id: assigned.id } })
+
+    // The campaign must survive, merely unassigned, and its spend history
+    // (the whole reason SetNull exists instead of Cascade) must survive with it.
+    const found = await db.adCampaign.findUnique({ where: { id: campaign.id } })
+    expect(found).not.toBeNull()
+    expect(found?.shopId).toBeNull()
+    const spendRows = await db.adCampaignSpend.findMany({ where: { campaignId: campaign.id } })
+    expect(spendRows).toHaveLength(1)
   })
 })
