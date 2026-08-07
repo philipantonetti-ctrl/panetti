@@ -26,12 +26,22 @@ export const maxDuration = 300
 const SHOPS_DEADLINE_MS = 240_000
 
 /**
- * Parcel polling gets whatever is left of the 300s ceiling, minus a margin for
- * the response itself. It is deliberately last of the data pulls: a parcel
- * checked twenty minutes late costs nobody anything, while a sale not synced
- * is a wrong number on the dashboard.
+ * Parcel polling is the LAST and greediest data pull, and it stops well short
+ * of the 300s ceiling on purpose.
+ *
+ * Last, because a parcel checked twenty minutes late costs nobody anything,
+ * while a sale not synced is a wrong number on the dashboard. Short, because
+ * whatever runs after it inherits only the remainder — and the delivery ALERT
+ * runs after it, deliberately, so that it judges the freshest tracking we have.
+ * An alert that never fires because polling ate the whole invocation is the one
+ * outcome this feature cannot afford.
+ *
+ * The gap left here covers the alert's own work: one query, one Slack post with
+ * a 10s timeout, one stamp. A run killed by the platform ceiling is still safe —
+ * orders stay unstamped and alert on the next run — but it would be silent, and
+ * silence is what we are paying to avoid.
  */
-const SHIPMENTS_DEADLINE_MS = 285_000
+const SHIPMENTS_DEADLINE_MS = 275_000
 
 /**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
@@ -72,17 +82,12 @@ export async function GET(req: Request) {
     // Each account keeps its own lastError; the settings page tells the story.
   }
 
-  // Parcel tracking. Best-effort like the rest: Bring being down must never
-  // fail the shop sync, and every parcel keeps its own lastError.
-  let shipments: ShipmentSyncResult = { polled: 0, updated: 0, failed: 0 }
-  try {
-    shipments = await syncShipments({ deadline: runStartedAt + SHIPMENTS_DEADLINE_MS })
-  } catch {
-    // Each shipment keeps its own lastError; the delivery page tells the story.
-  }
-
-  // Top up exchange rates here rather than inside someone's page load. A rate
-  // failure must never fail the sync, so it is best-effort.
+  // Top up exchange rates BEFORE parcel tracking, not after. Rates are one
+  // cheap bounded call; parcel polling is greedy and runs to its deadline. With
+  // the order reversed, a busy backlog of parcels could eat the whole
+  // invocation and quietly leave the rates stale — and a stale rate is a wrong
+  // money figure, which outranks a delivery date checked an hour late.
+  // Best-effort, like everything after the shops.
   try {
     const currencies = [
       ...new Set([
@@ -95,6 +100,16 @@ export async function GET(req: Request) {
     await ensureRates(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), now, currencies)
   } catch {
     // Rates stay as they were; convert() falls back to the nearest earlier rate.
+  }
+
+  // Parcel tracking, last of the data pulls. Best-effort like the rest: Bring
+  // being down must never fail the shop sync, and every parcel keeps its own
+  // lastError.
+  let shipments: ShipmentSyncResult = { polled: 0, updated: 0, failed: 0 }
+  try {
+    shipments = await syncShipments({ deadline: runStartedAt + SHIPMENTS_DEADLINE_MS })
+  } catch {
+    // Each shipment keeps its own lastError; the delivery page tells the story.
   }
 
   // Report honestly: a half-failed run that claimed success would hide stale figures.
