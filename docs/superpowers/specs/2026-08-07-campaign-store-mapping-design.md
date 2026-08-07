@@ -197,7 +197,7 @@ as the four commits that already exist about spend and counts reporting fiction.
 
 **Both providers therefore fetch the range in 90-day chunks** and concatenate.
 Ninety days stays under 5 000 rows up to ~55 campaigns, and the 365-day backfill
-becomes four requests rather than thirteen, which matters because
+becomes five requests rather than thirteen, which matters because
 `api/ad-accounts/route.ts:14` caps that request at `maxDuration = 60`. A routine
 sync re-fetches `RESTATE_DAYS` 35 and is a single chunk.
 
