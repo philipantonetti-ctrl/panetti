@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
-import { importTrackingFile } from '@/lib/bring/import'
+import { importTrackingFile, ImportParseError } from '@/lib/bring/import'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -28,8 +28,14 @@ export async function POST(req: Request) {
   } catch (e) {
     if (e instanceof AuthError)
       return NextResponse.json({ error: e.message }, { status: 403, headers: NO_STORE })
-    // The importer already recorded the failed attempt; this is the human's copy.
-    const error = e instanceof Error ? e.message : 'Could not read this file'
-    return NextResponse.json({ error }, { status: 400, headers: NO_STORE })
+    // Written for the uploader; safe to show verbatim.
+    if (e instanceof ImportParseError)
+      return NextResponse.json({ error: e.message }, { status: 400, headers: NO_STORE })
+    // Anything else is ours, not theirs. The detail goes to the log, never the client.
+    console.error(e)
+    return NextResponse.json(
+      { error: 'Something went wrong reading this file. Please try again.' },
+      { status: 500, headers: NO_STORE },
+    )
   }
 }

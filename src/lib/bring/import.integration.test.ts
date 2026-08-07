@@ -1,6 +1,17 @@
-import { describe, expect, it, beforeEach, afterAll } from 'vitest'
-import { db } from '@/lib/db'
-import { importTrackingFile } from './import'
+import { describe, expect, it, beforeEach, afterAll, vi } from 'vitest'
+
+// Wraps the REAL linkRows by default (every other test here exercises actual
+// linking behaviour unchanged) so one test can override it for a single call
+// to prove the link-phase failure path: that a TrackingImport row still gets
+// written, and the error still propagates, even when linking itself throws.
+vi.mock('./link', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./link')>()
+  return { ...actual, linkRows: vi.fn(actual.linkRows) }
+})
+
+const { db } = await import('@/lib/db')
+const { importTrackingFile } = await import('./import')
+const { linkRows } = await import('./link')
 
 let shopId: string
 
@@ -123,7 +134,17 @@ describe('importTrackingFile', () => {
 
   it('records a file it could not read at all, instead of losing the attempt', async () => {
     await expect(importTrackingFile(csv('x'), 'notes.docx', 'UPLOAD')).rejects.toThrow()
-    const row = await db.trackingImport.findFirst({ orderBy: { receivedAt: 'desc' } })
+    // MINOR FIX: the brief's version of this assertion was
+    // `findFirst({ orderBy: { receivedAt: 'desc' } })` — unscoped across the
+    // whole table. It only passed because this suite happens to be
+    // TrackingImport's sole writer; a parallel suite writing its own row
+    // between the create above and this read could win the race and make
+    // this assertion check someone else's row instead. Scoped to the one
+    // filename this test uses, the way cleanup() already scopes its delete.
+    const row = await db.trackingImport.findFirst({
+      where: { filename: 'notes.docx' },
+      orderBy: { receivedAt: 'desc' },
+    })
     expect(row?.error).toMatch(/Only PDF and CSV/)
     expect(row?.rowsParsed).toBe(0)
   })
@@ -132,5 +153,29 @@ describe('importTrackingFile', () => {
     await db.shop.update({ where: { id: shopId }, data: { deliveryTrackingFrom: null } })
     const r = await importTrackingFile(csv(`${ORDER1},370724403790000123\n`), 'today.csv', 'UPLOAD')
     expect(r.linked).toBe(0)
+  })
+
+  it('records the attempt even when linking itself fails, and still throws', async () => {
+    // Finding 1 (fix round 1): linkRows was unguarded, so a database failure
+    // there — a dropped connection, a constraint violation — recorded
+    // nothing. This proves the fix directly: force linkRows to fail for one
+    // call and check the TrackingImport row it must still leave behind,
+    // rather than only inferring it from the route's HTTP response.
+    vi.mocked(linkRows).mockImplementationOnce(async () => {
+      throw new Error('Can’t reach database server at `10.0.0.5:5432`')
+    })
+
+    await expect(
+      importTrackingFile(csv(`${ORDER1},370724403790000123\n`), 'today.csv', 'UPLOAD'),
+    ).rejects.toThrow(/reach database server/)
+
+    const row = await db.trackingImport.findFirst({
+      where: { filename: 'today.csv' },
+      orderBy: { receivedAt: 'desc' },
+    })
+    expect(row?.rowsParsed).toBe(1) // parsing succeeded; only linking failed
+    expect(row?.rowsLinked).toBe(0)
+    expect(row?.rowsUnmatched).toBe(0)
+    expect(row?.error).toMatch(/reach database server/)
   })
 })
