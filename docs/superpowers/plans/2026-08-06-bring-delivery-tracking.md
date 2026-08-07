@@ -4490,7 +4490,22 @@ export async function flushDeliveryAlerts(
   late.sort((a, b) => b.daysOver - a.daysOver)
 
   const appUrl = process.env.APP_URL ?? 'https://panetti.vercel.app'
-  await postSlack(slackWebhookUrl, alertMessage(late, appUrl))
+  try {
+    await postSlack(slackWebhookUrl, alertMessage(late, appUrl))
+  } catch (e) {
+    // postSlack throws deliberately, so nothing below marks these orders
+    // alerted. Caught here rather than propagated — Slack being down is a
+    // normal result, not an unhandled rejection — and RECORDED, because a
+    // silently broken webhook is indistinguishable from a quiet week with
+    // nothing late, which is the one failure this feature cannot afford.
+    const reason = e instanceof Error ? e.message : 'Slack post failed'
+    await db.deliveryConfig
+      .update({ where: { id: 'singleton' }, data: { lastError: reason } })
+      .catch(() => {
+        // Bookkeeping is never worth failing a run over — recordRun's rule.
+      })
+    return { sent: 0, skipped: reason }
+  }
 
   // Every one of them, not only the printed lines: a line we chose not to print
   // is not new tomorrow.
@@ -4498,6 +4513,12 @@ export async function flushDeliveryAlerts(
     where: { id: { in: late.map((l) => l.id) } },
     data: { deliveryAlertedAt: now },
   })
+
+  // A stale error outliving the outage is its own lie — the settings page would
+  // keep reporting a webhook that has been working for a week.
+  await db.deliveryConfig
+    .update({ where: { id: 'singleton' }, data: { lastError: null } })
+    .catch(() => {})
 
   return { sent: late.length, skipped: null }
 }
