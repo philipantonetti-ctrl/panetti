@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { syncAllShops } from '@/lib/woo/sync'
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
+import { syncShipments, type ShipmentSyncResult } from '@/lib/bring/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { db } from '@/lib/db'
 
@@ -25,6 +26,14 @@ export const maxDuration = 300
 const SHOPS_DEADLINE_MS = 240_000
 
 /**
+ * Parcel polling gets whatever is left of the 300s ceiling, minus a margin for
+ * the response itself. It is deliberately last of the data pulls: a parcel
+ * checked twenty minutes late costs nobody anything, while a sale not synced
+ * is a wrong number on the dashboard.
+ */
+const SHIPMENTS_DEADLINE_MS = 285_000
+
+/**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
  * dashboard see new sales without anyone pressing a button.
  *
@@ -46,7 +55,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Not allowed' }, { status: 401 })
   }
 
-  const results = await syncAllShops({ deadline: Date.now() + SHOPS_DEADLINE_MS })
+  // One clock for the whole run, so each stage's deadline is measured from the
+  // invocation's start rather than from whenever the stage before it finished.
+  const runStartedAt = Date.now()
+
+  const results = await syncAllShops({ deadline: runStartedAt + SHOPS_DEADLINE_MS })
   const failed = results.filter((r) => !r.ok).map((r) => r.shopName)
 
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
@@ -57,6 +70,15 @@ export async function GET(req: Request) {
     ads = await syncAllAdAccounts()
   } catch {
     // Each account keeps its own lastError; the settings page tells the story.
+  }
+
+  // Parcel tracking. Best-effort like the rest: Bring being down must never
+  // fail the shop sync, and every parcel keeps its own lastError.
+  let shipments: ShipmentSyncResult = { polled: 0, updated: 0, failed: 0 }
+  try {
+    shipments = await syncShipments({ deadline: runStartedAt + SHIPMENTS_DEADLINE_MS })
+  } catch {
+    // Each shipment keeps its own lastError; the delivery page tells the story.
   }
 
   // Top up exchange rates here rather than inside someone's page load. A rate
@@ -83,5 +105,8 @@ export async function GET(req: Request) {
     failed,
     adAccounts: ads.length,
     adFailed: ads.filter((r) => !r.ok).map((r) => r.name),
+    shipmentsPolled: shipments.polled,
+    shipmentsUpdated: shipments.updated,
+    shipmentsFailed: shipments.failed,
   })
 }
