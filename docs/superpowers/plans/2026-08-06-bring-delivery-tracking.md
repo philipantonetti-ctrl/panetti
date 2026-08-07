@@ -3027,6 +3027,25 @@ describe('deliveryFor', () => {
     expect(v.late).toBe(true)
   })
 
+  it('ignores availableAt on a parcel that was returned uncollected', () => {
+    // NOT hypothetical. availableAt and outcome are separate denormalised
+    // columns: a pickup-point parcel sets availableAt on READY_FOR_PICKUP, then
+    // is returned when nobody collects it. Trusting availableAt alone would
+    // count this as delivered in the median AND make `late` false, so it would
+    // never alert — for an order the customer never received.
+    const v = deliveryFor(order({
+      shipments: [parcel({
+        handedInAt: new Date('2026-08-04T16:00:00Z'),
+        availableAt: new Date('2026-08-06T09:00:00Z'),
+        outcome: 'RETURNED',
+      })],
+    }), promises, OSLO, NOW)
+    expect(v.state).toBe('RETURNED')
+    expect(v.availableAt).toBeNull()
+    expect(v.totalDays).toBeNull()
+    expect(v.late).toBe(true)
+  })
+
   it('makes no judgement at all when no promise is in force', () => {
     const v = deliveryFor(order({ shippingCountry: 'NO' }), [], OSLO, NOW)
     expect(v.deadline).toBeNull()
@@ -3168,8 +3187,19 @@ export function deliveryFor(
 
   // An order is available only when its LAST parcel is: a customer holding one
   // of two boxes has not received their order.
+  //
+  // The returned/cancelled guard is not belt-and-braces. `availableAt` and
+  // `outcome` are separate denormalised columns, and a pickup-point parcel
+  // genuinely sets availableAt (READY_FOR_PICKUP) BEFORE it is returned
+  // uncollected. Without this guard such an order would report totalDays — so it
+  // would count as delivered in the median — and `late` would be false, so it
+  // would never alert. The customer never received it. Same rule milestonesFrom
+  // applies in map.ts; the two must not drift.
   const allAvailable =
-    order.shipments.length > 0 && order.shipments.every((s) => s.availableAt !== null)
+    !returned &&
+    !cancelled &&
+    order.shipments.length > 0 &&
+    order.shipments.every((s) => s.availableAt !== null)
   const availableAt = allAvailable ? maxDate(order.shipments.map((s) => s.availableAt)) : null
 
   const allCollected =
