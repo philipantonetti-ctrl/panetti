@@ -2741,14 +2741,24 @@ Add a second Vitest project to `vitest.config.ts` so only these files lose paral
           test: {
             name: 'app',
             include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'],
-            exclude: ['src/lib/{delivery,bring}/**/*.integration.test.ts'],
+            exclude: [
+              'src/lib/{delivery,bring}/**/*.integration.test.ts',
+              'src/app/api/delivery/**/*.integration.test.ts',
+            ],
           },
         },
         {
           extends: true,
           test: {
             name: 'delivery',
-            include: ['src/lib/{delivery,bring}/**/*.integration.test.ts'],
+            // Must stay identical to the `app` project's exclude, so the two
+            // partition the suite exactly. The API-route half matters as much as
+            // the lib half: those tests write DeliveryPromise and the
+            // DeliveryConfig singleton, which no tag can isolate.
+            include: [
+              'src/lib/{delivery,bring}/**/*.integration.test.ts',
+              'src/app/api/delivery/**/*.integration.test.ts',
+            ],
             // These files share a fixed-id singleton, a table the settings route
             // rewrites wholesale, and a global alert query. No tag can separate
             // them; only running them one at a time can.
@@ -3513,7 +3523,12 @@ git commit -m "feat: one definition of an order's delivery, and the aggregates o
 - Create: `src/app/api/delivery/route.ts`
 - Create: `src/app/delivery/page.tsx`, `src/app/delivery/DeliveryClient.tsx`
 - Modify: `src/components/shell/AppShell.tsx`
+- Modify: `vitest.config.ts` — see the note below, do this **first**
 - Test: `src/app/api/delivery/route.integration.test.ts`
+
+**Before anything else, widen the Vitest `delivery` project's globs.** Task 9 created that project covering only `src/lib/{delivery,bring}/**/*.integration.test.ts`. This task adds the first integration test under `src/app/api/delivery/`, which that glob misses — so it would run in the parallel `app` project and race Task 14's settings test on `DeliveryPromise` and the `DeliveryConfig` singleton, exactly the collision the project split exists to prevent.
+
+Add `'src/app/api/delivery/**/*.integration.test.ts'` to **both** the `delivery` project's `include` and the `app` project's `exclude`. The two arrays must stay identical — that identity is what guarantees an exact partition with nothing dropped or double-counted. Confirm afterwards that `npm run test` reports the same total file and test counts as before, and that your new test file appears under the `delivery` project rather than `app`.
 
 **Interfaces:**
 - Consumes: `deliveryFor`, `deliveryStats`, `rangeFromQuery`, `shopIdsFromQuery`, `getSetting`.
