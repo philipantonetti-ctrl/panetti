@@ -48,7 +48,7 @@ export async function GET(req: Request) {
     // for the same spend.
     const rates = input.rates
 
-    const spend = await accountSpendRows(accounts.map((a) => a.id), from, to)
+    const spend = await accountSpendRows(accounts.map((a) => a.id), scopeIds, from, to)
 
     const engine = computeMetrics(input)
     const result = buildMarketing({ accounts, spend, engine, series: dailySeries(input), rates, to })

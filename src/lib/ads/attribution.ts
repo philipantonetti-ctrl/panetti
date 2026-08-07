@@ -24,6 +24,17 @@ function wholeAccountsFor(shopIds: string[]) {
   })
 }
 
+// A campaign resolves into these shops if it is assigned directly to one of
+// them, or it is unassigned and the account's own default shop is one of
+// them. Shared by every caller that needs "which campaigns land in these
+// shops" so a second copy of the condition can never drift from this one.
+function campaignsInShops(shopIds: string[]) {
+  return [
+    { shopId: { in: shopIds } },
+    { shopId: null, account: { shopId: { in: shopIds } } },
+  ]
+}
+
 // Split accounts: their campaigns are chosen on where THEY land, not on the
 // account's own shopId. An account whose default store sits outside the
 // selection can still hold campaigns that belong inside it — filtering on the
@@ -32,10 +43,7 @@ function splitCampaignsFor(shopIds: string[]) {
   return db.adCampaign.findMany({
     where: {
       account: { active: true, splitByCampaign: true },
-      OR: [
-        { shopId: { in: shopIds } },
-        { shopId: null, account: { shopId: { in: shopIds } } },
-      ],
+      OR: campaignsInShops(shopIds),
     },
     select: { id: true, shopId: true, accountId: true, account: { select: { shopId: true, currency: true } } },
   })
@@ -132,9 +140,18 @@ export async function accountIdsForShops(shopIds: string[]): Promise<string[]> {
  * shop) and carry `shopId` so buildMarketing attributes them the same way the
  * Dashboard does. Without this the Marketing page would show zero for exactly
  * the accounts this feature exists for.
+ *
+ * `shopIds` is the caller's OWN filter (Marketing's `scopeIds`), not derived
+ * from `accountIds`. An in-scope split account can still run campaigns for a
+ * shop the caller did not ask about — `accountIds` only says the account
+ * belongs in the response, not that every one of its campaigns does — so the
+ * campaign query is narrowed with the same `campaignsInShops` condition
+ * `splitCampaignsFor` uses, or an out-of-scope campaign's spend would leak
+ * into `byDay` (buildMarketing drops it from `byShop`/`total` but not there).
  */
 export async function accountSpendRows(
   accountIds: string[],
+  shopIds: string[],
   from: Date,
   to: Date,
 ): Promise<SpendRow[]> {
@@ -156,7 +173,11 @@ export async function accountSpendRows(
       },
     }),
     db.adCampaign.findMany({
-      where: { accountId: { in: accountIds }, account: { splitByCampaign: true } },
+      where: {
+        accountId: { in: accountIds },
+        account: { splitByCampaign: true },
+        OR: campaignsInShops(shopIds),
+      },
       select: { id: true, shopId: true, accountId: true, account: { select: { shopId: true } } },
     }),
   ])

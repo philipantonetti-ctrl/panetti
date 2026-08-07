@@ -134,7 +134,7 @@ describe('accountSpendRows', () => {
       },
     })
 
-    const rows = await accountSpendRows([account.id], DAY, DAY)
+    const rows = await accountSpendRows([account.id], [s.id], DAY, DAY)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ accountId: account.id, spend: 500, videoViews3s: 7, thruplays: 3 })
     expect(rows[0].shopId).toBeUndefined() // no override: buildMarketing uses the account's own shop
@@ -147,7 +147,7 @@ describe('accountSpendRows', () => {
       { externalId: 'c2', shopId: b.id, spend: 2000 },
     ])
 
-    const rows = await accountSpendRows([account.id], DAY, DAY)
+    const rows = await accountSpendRows([account.id], [a.id, b.id], DAY, DAY)
     expect(rows).toHaveLength(2) // one per shop, not one per campaign
     const byShop = Object.fromEntries(rows.map((r) => [r.shopId, r.spend]))
     expect(byShop[a.id]).toBe(1000)
@@ -161,7 +161,7 @@ describe('accountSpendRows', () => {
       { externalId: 'c2', shopId: a.id, spend: 250 },
     ])
 
-    const rows = await accountSpendRows([account.id], DAY, DAY)
+    const rows = await accountSpendRows([account.id], [a.id], DAY, DAY)
     expect(rows).toHaveLength(1)
     expect(rows[0].spend).toBe(1250)
   })
@@ -173,7 +173,7 @@ describe('accountSpendRows', () => {
       { externalId: 'c2', shopId: null, spend: 750 },
     ])
 
-    const rows = await accountSpendRows([account.id], DAY, DAY)
+    const rows = await accountSpendRows([account.id], [a.id, def.id], DAY, DAY)
     expect(rows.reduce((sum, r) => sum + r.spend, 0)).toBe(1750) // nothing lost, nothing doubled
     // The unassigned campaign (c2) must land on the account's own default
     // shop, not merely "somewhere non-dropping" — the sum alone would still
@@ -196,10 +196,35 @@ describe('accountSpendRows', () => {
       data: { accountId: account.id, date: DAY, spend: 99999, impressions: 0, clicks: 0 },
     })
 
-    const rows = await accountSpendRows([account.id], DAY, DAY)
+    const rows = await accountSpendRows([account.id], [a.id], DAY, DAY)
     // Only the campaign-derived row, never the legacy AdSpend row too.
     expect(rows).toHaveLength(1)
     expect(rows.reduce((sum, r) => sum + r.spend, 0)).toBe(1000)
+  })
+
+  // IMPORTANT: buildMarketing derives byShop/total from engine.byShop, which
+  // drops an out-of-scope shop's row — but byDay adds every SpendRow's minor
+  // spend unconditionally. Filtering Marketing to shop A on an account that
+  // also runs campaigns for shop B would put B's spend into the chart while
+  // the table and total both stayed correct, which is exactly the kind of
+  // mismatch nobody notices until the numbers are added up by hand.
+  it("drops a split account's campaign that resolves outside the requested shops", async () => {
+    const [inScope, outOfScope, def] = [
+      await shop('leak-in'),
+      await shop('leak-out'),
+      await shop('leak-def'),
+    ]
+    const account = await splitAccountWith(def.id, [
+      { externalId: 'c-in', shopId: inScope.id, spend: 1000 },
+      { externalId: 'c-out', shopId: outOfScope.id, spend: 5000 },
+    ])
+
+    // The account is in scope (its in-scope campaign put it there — see
+    // accountIdsForShops), but the caller only asked about `inScope`.
+    const rows = await accountSpendRows([account.id], [inScope.id], DAY, DAY)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].shopId).toBe(inScope.id)
+    expect(rows[0].spend).toBe(1000)
   })
 })
 
