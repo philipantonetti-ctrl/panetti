@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { useToast } from '@/components/toast/useToast'
+import { CampaignsModal } from './CampaignsModal'
 
 export type Row = {
   id: string
@@ -79,6 +80,7 @@ export function AdAccountsClient({
   const router = useRouter()
   const [manualOpen, setManualOpen] = useState(false)
   const [editing, setEditing] = useState<Row | null>(null)
+  const [campaignsFor, setCampaignsFor] = useState<string | null>(null)
   const [pickerId, setPickerId] = useState(picker)
   const [syncing, setSyncing] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -238,6 +240,12 @@ export function AdAccountsClient({
                         Edit
                       </button>
                       <button
+                        onClick={() => setCampaignsFor(a.id)}
+                        className="font-semibold text-accent hover:underline"
+                      >
+                        Campaigns
+                      </button>
+                      <button
                         onClick={() => void remove(a)}
                         disabled={deleting !== null}
                         className="font-semibold text-loss hover:underline disabled:opacity-60"
@@ -283,6 +291,18 @@ export function AdAccountsClient({
           onSaved={() => {
             setManualOpen(false)
             setEditing(null)
+            router.refresh()
+          }}
+        />
+      )}
+
+      {campaignsFor && (
+        <CampaignsModal
+          accountId={campaignsFor}
+          shops={shops}
+          onClose={() => setCampaignsFor(null)}
+          onSaved={() => {
+            setCampaignsFor(null)
             router.refresh()
           }}
         />
