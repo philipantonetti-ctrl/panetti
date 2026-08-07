@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useToast } from '@/components/toast/useToast'
 
 type ShopOption = { id: string; name: string }
 
@@ -16,7 +17,12 @@ type CampaignsPayload = {
  * Which store each campaign on an ad account advertises for. Sits beside
  * PickerModal in this file's neighbourhood: same "list things from a
  * platform, assign each to a shop" shape, so it borrows PickerModal's shell,
- * spacing and button classes rather than inventing a second look.
+ * spacing and button classes rather than inventing a second look. It also
+ * splits its errors the way PickerModal does: the load failure stays as
+ * inline `error` state (the modal has nothing worth showing until it loads),
+ * while the save result goes through `toast`, like AccountModal — an admin
+ * re-attributing a campaign's spend history needs the same confirmation its
+ * sibling modals give on Save.
  *
  * '' is the select's "unassigned" value, not a shop id — the account's own
  * shop is the fallback, and the API spells that fallback as `shopId: null`.
@@ -38,6 +44,7 @@ export function CampaignsModal({
   const [splitByCampaign, setSplitByCampaign] = useState(false)
   const [rows, setRows] = useState<(Campaign & { shopId: string })[]>([])
   const [busy, setBusy] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -73,12 +80,13 @@ export function CampaignsModal({
         }),
       })
       if (!res.ok) {
-        setError((await res.json().catch(() => null))?.error ?? 'Could not save the campaigns')
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the campaigns')
         return
       }
+      toast.success('Campaigns updated')
       onSaved()
     } catch {
-      setError('Could not reach the server')
+      toast.error('Could not reach the server')
     } finally {
       setBusy(false)
     }
