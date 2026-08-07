@@ -19,6 +19,9 @@ export type MarketingAccount = {
 
 export type SpendRow = {
   accountId: string
+  /** Set only by a split account: the shop this slice of the account's spend
+   *  belongs to, overriding the account's own. Absent means "use the account's". */
+  shopId?: string
   date: Date
   spend: number
   impressions: number
@@ -157,7 +160,10 @@ export function buildMarketing(args: {
     // bill in a currency that is neither the shop's nor USD.
     const minor = crossConvert(row.spend, account.currency, display, row.date, args.rates)
     const valueMinor = crossConvert(row.conversionValue, account.currency, display, row.date, args.rates)
-    const acc = byShop.get(account.shopId) ?? zero()
+    // A split account's row carries its own shopId, overriding the account's —
+    // a whole account's row has none, so it falls back to the account's own.
+    const shopId = row.shopId ?? account.shopId
+    const acc = byShop.get(shopId) ?? zero()
     acc.spend += minor
     if (account.provider === 'meta') acc.metaSpend += minor
     else acc.googleSpend += minor
@@ -168,7 +174,7 @@ export function buildMarketing(args: {
     acc.conversionValue += valueMinor
     acc.videoViews3s += row.videoViews3s
     acc.thruplays += row.thruplays
-    byShop.set(account.shopId, acc)
+    byShop.set(shopId, acc)
 
     const day = row.date.toISOString().slice(0, 10)
     byDay.set(day, (byDay.get(day) ?? 0) + minor)

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { attributedSpend, relevantAdCurrencies } from './attribution'
+import { attributedSpend, relevantAdCurrencies, accountSpendRows } from './attribution'
 
 const TAG = 'attribution-test'
 const DAY = new Date('2026-03-01T00:00:00Z')
@@ -118,5 +118,62 @@ describe('relevantAdCurrencies', () => {
 
     const currencies = await relevantAdCurrencies([a.id])
     expect(currencies).toContain('EUR')
+  })
+})
+
+describe('accountSpendRows', () => {
+  it('returns AdSpend rows unchanged for a whole account', async () => {
+    const s = await shop('whole-ms')
+    const account = await db.adAccount.create({
+      data: { shopId: s.id, provider: 'meta', externalId: `${TAG}-5551110000`, name: `${TAG} whole`, currency: 'NOK' },
+    })
+    await db.adSpend.create({
+      data: {
+        accountId: account.id, date: DAY, spend: 500, impressions: 10, clicks: 2,
+        linkClicks: 1, conversions: 1, conversionValue: 250, videoViews3s: 7, thruplays: 3,
+      },
+    })
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ accountId: account.id, spend: 500, videoViews3s: 7, thruplays: 3 })
+    expect(rows[0].shopId).toBeUndefined() // no override: buildMarketing uses the account's own shop
+  })
+
+  it('rolls a split account up per shop, carrying a shopId override', async () => {
+    const [a, b, def] = [await shop('ms-a'), await shop('ms-b'), await shop('ms-def')]
+    const account = await splitAccountWith(def.id, [
+      { externalId: 'c1', shopId: a.id, spend: 1000 },
+      { externalId: 'c2', shopId: b.id, spend: 2000 },
+    ])
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    expect(rows).toHaveLength(2) // one per shop, not one per campaign
+    const byShop = Object.fromEntries(rows.map((r) => [r.shopId, r.spend]))
+    expect(byShop[a.id]).toBe(1000)
+    expect(byShop[b.id]).toBe(2000)
+  })
+
+  it('sums several campaigns that share a shop into one row', async () => {
+    const [a, def] = [await shop('ms-sum'), await shop('ms-sumdef')]
+    const account = await splitAccountWith(def.id, [
+      { externalId: 'c1', shopId: a.id, spend: 1000 },
+      { externalId: 'c2', shopId: a.id, spend: 250 },
+    ])
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].spend).toBe(1250)
+  })
+
+  it('never returns a split account total that differs from its campaign total', async () => {
+    const [a, def] = [await shop('ms-tot'), await shop('ms-totdef')]
+    const account = await splitAccountWith(def.id, [
+      { externalId: 'c1', shopId: a.id, spend: 1000 },
+      { externalId: 'c2', shopId: null, spend: 750 },
+    ])
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    expect(rows.reduce((sum, r) => sum + r.spend, 0)).toBe(1750) // nothing lost, nothing doubled
   })
 })

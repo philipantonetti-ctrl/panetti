@@ -6,7 +6,7 @@ import { computeMetrics } from '@/lib/metrics'
 import { dailySeries } from '@/lib/metrics/trend'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { buildMarketing } from '@/lib/ads/marketing'
-import { utcDay } from '@/lib/dates'
+import { accountSpendRows } from '@/lib/ads/attribution'
 import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
 
@@ -41,24 +41,7 @@ export async function GET(req: Request) {
     // for the same spend.
     const rates = input.rates
 
-    const spend = await db.adSpend.findMany({
-      where: {
-        accountId: { in: accounts.map((a) => a.id) },
-        date: { gte: utcDay(from), lte: utcDay(to) },
-      },
-      select: {
-        accountId: true,
-        date: true,
-        spend: true,
-        impressions: true,
-        clicks: true,
-        linkClicks: true,
-        conversions: true,
-        conversionValue: true,
-        videoViews3s: true,
-        thruplays: true,
-      },
-    })
+    const spend = await accountSpendRows(accounts.map((a) => a.id), from, to)
 
     const engine = computeMetrics(input)
     const result = buildMarketing({ accounts, spend, engine, series: dailySeries(input), rates, to })

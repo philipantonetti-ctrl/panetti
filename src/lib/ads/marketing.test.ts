@@ -186,4 +186,19 @@ describe('buildMarketing', () => {
     expect(scoped.total.spend).toBe(0)
     expect(scoped.total.dailyBudget).toBeNull()
   })
+
+  it('honours a spend row shopId override instead of the account shop', () => {
+    const overrideAccounts = [
+      { id: 'acct-override', shopId: 'shop-b', provider: 'google', currency: 'NOK', dailyBudget: null },
+    ]
+    const overrideSpend = [
+      spendRow({ accountId: 'acct-override', shopId: 'shop-a', date: new Date('2026-07-01T00:00:00Z'), spend: 1000_00 }),
+    ]
+    const overridden = buildMarketing({ accounts: overrideAccounts, spend: overrideSpend, engine, series: [], rates, to: TO })
+
+    // 1000 NOK on the 1st at 0.1 -> $100.00, landing on shop-a (the override),
+    // not shop-b (the account's own shopId).
+    expect(overridden.byShop.find((r) => r.shopId === 'shop-a')?.spend).toBe(100_00)
+    expect(overridden.byShop.find((r) => r.shopId === 'shop-b')?.spend).toBe(0)
+  })
 })

@@ -1,5 +1,6 @@
 import { db } from '../db'
 import { utcDay } from '../dates'
+import type { SpendRow } from './marketing'
 
 /**
  * Stored ad spend, resolved to the shop that actually paid for it.
@@ -105,4 +106,81 @@ export async function relevantAdCurrencies(shopIds: string[]): Promise<string[]>
   if (!shopIds.length) return []
   const [wholeAccounts, campaigns] = await Promise.all([wholeAccountsFor(shopIds), splitCampaignsFor(shopIds)])
   return [...new Set([...wholeAccounts.map((a) => a.currency), ...campaigns.map((c) => c.account.currency)])]
+}
+
+/**
+ * Account-keyed rows for the Marketing page, which groups by account and shows
+ * ten metric columns.
+ *
+ * A whole account's AdSpend rows pass through untouched. A split account has no
+ * AdSpend rows at all, so its campaign rows are rolled up per (date, resolved
+ * shop) and carry `shopId` so buildMarketing attributes them the same way the
+ * Dashboard does. Without this the Marketing page would show zero for exactly
+ * the accounts this feature exists for.
+ */
+export async function accountSpendRows(
+  accountIds: string[],
+  from: Date,
+  to: Date,
+): Promise<SpendRow[]> {
+  if (!accountIds.length) return []
+  const date = { gte: utcDay(from), lte: utcDay(to) }
+
+  const [whole, campaigns] = await Promise.all([
+    db.adSpend.findMany({
+      where: { accountId: { in: accountIds }, date },
+      select: {
+        accountId: true, date: true, spend: true, impressions: true, clicks: true,
+        linkClicks: true, conversions: true, conversionValue: true,
+        videoViews3s: true, thruplays: true,
+      },
+    }),
+    db.adCampaign.findMany({
+      where: { accountId: { in: accountIds }, account: { splitByCampaign: true } },
+      select: { id: true, shopId: true, accountId: true, account: { select: { shopId: true } } },
+    }),
+  ])
+
+  const campaignById = new Map(campaigns.map((c) => [c.id, c]))
+  const campaignRows = campaigns.length
+    ? await db.adCampaignSpend.findMany({
+        where: { campaignId: { in: campaigns.map((c) => c.id) }, date },
+      })
+    : []
+
+  // Rolled up per account, day and resolved shop — the Marketing page groups by
+  // account, so one row per campaign would multiply its row count for nothing.
+  const rolled = new Map<string, SpendRow>()
+  for (const r of campaignRows) {
+    const campaign = campaignById.get(r.campaignId)!
+    const shopId = campaign.shopId ?? campaign.account.shopId
+    const key = `${campaign.accountId}|${shopId}|${r.date.toISOString()}`
+    const existing = rolled.get(key)
+    if (existing) {
+      existing.spend += r.spend
+      existing.impressions += r.impressions
+      existing.clicks += r.clicks
+      existing.linkClicks += r.linkClicks
+      existing.conversions += r.conversions
+      existing.conversionValue += r.conversionValue
+      existing.videoViews3s += r.videoViews3s
+      existing.thruplays += r.thruplays
+    } else {
+      rolled.set(key, {
+        accountId: campaign.accountId,
+        shopId,
+        date: r.date,
+        spend: r.spend,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        linkClicks: r.linkClicks,
+        conversions: r.conversions,
+        conversionValue: r.conversionValue,
+        videoViews3s: r.videoViews3s,
+        thruplays: r.thruplays,
+      })
+    }
+  }
+
+  return [...whole, ...rolled.values()]
 }

@@ -164,6 +164,8 @@ async function storeCampaignDaily(accountId: string, rows: CampaignDailyRow[]): 
         linkClicks: r.linkClicks,
         conversions: r.conversions,
         conversionValue: r.conversionValue,
+        videoViews3s: r.videoViews3s,
+        thruplays: r.thruplays,
       }
       const campaignId = idByExternal.get(r.campaignId)!
       return db.adCampaignSpend.upsert({

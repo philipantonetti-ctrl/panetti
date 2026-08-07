@@ -382,6 +382,8 @@ model AdCampaignSpend {
   linkClicks      Int      @default(0)
   conversions     Float    @default(0)
   conversionValue Int      @default(0)
+  videoViews3s    Int      @default(0)
+  thruplays       Int      @default(0)
 
   campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
