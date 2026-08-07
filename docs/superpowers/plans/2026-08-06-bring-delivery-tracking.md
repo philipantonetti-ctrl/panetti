@@ -31,7 +31,7 @@
 
 - **The delivery integration suites must not run concurrently with each other.** Tagging cannot save them: `DeliveryConfig` is a fixed-id singleton, and `PUT /api/delivery/settings` **deletes every `DeliveryPromise` row** as its real production behaviour (promises are rewritten wholesale, not diffed), so Task 14's suite will wipe Tasks 11 and 13's promises whenever they overlap. Scoping the fixtures is still worth doing and is specified per file above, but the sequencing is what actually makes them deterministic.
 
-  **Task 8 owns this change** — it is the first task to touch `DeliveryConfig`. Add a second Vitest project to `vitest.config.ts` so only these files lose parallelism and the other 118 keep it:
+  **Task 9 Step 7 owns this change.** It was originally assigned to Task 8, but Task 8 is blocked on an external credential and Tasks 11 and 13 cannot be correct without it. Add a second Vitest project to `vitest.config.ts` so only these files lose parallelism and the rest keep it:
 
   ```ts
   // in the returned config's `test` block, alongside the existing options
@@ -2700,9 +2700,54 @@ export function promiseOn(
 Run: `npx vitest run src/lib/delivery/`
 Expected: 20 passed.
 
-- [ ] **Step 7: Give the sync its deadlines**
+- [ ] **Step 7: Stop the delivery integration suites running concurrently**
 
-Now `nextPollFor` can be told when each parcel is due, so the parcels somebody is about to ask about get checked on every run.
+**Moved here from Task 8, deliberately.** Task 8 is blocked on an external credential, and Tasks 11 and 13 cannot be made correct without this. It is independent of everything else in this task.
+
+Four collisions have already been found the hard way, each a variant of one thing: Vitest runs test **files** in parallel against one shared PostgreSQL, and the delivery suites share state that no naming convention can separate.
+
+- `DeliveryConfig` is a fixed-id singleton (`id: 'singleton'`).
+- `PUT /api/delivery/settings` **deletes every `DeliveryPromise` row** — real production behaviour, since promises are rewritten wholesale rather than diffed — so Task 14's suite wipes Tasks 11 and 13's promises.
+- `flushDeliveryAlerts()` (Task 13) queries **every delivery-tracked shop** with no shop filter, because that is what it must do in production. Any other delivery suite's tracked fixture shop running concurrently lands in its results and corrupts its counts.
+- Order numbers are matched **across all shops** by `linkRows`, which is why Tasks 6 and 7 collided on the literal `1001` until Task 7 renamed its fixtures.
+
+Tagging fixtures is still worth doing and is specified per file, but sequencing is what actually makes these deterministic.
+
+Add a second Vitest project to `vitest.config.ts` so only these files lose parallelism and the other 120 keep it. Inside the returned config's `test` block, alongside the existing options:
+
+```ts
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: 'app',
+            include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'],
+            exclude: ['src/lib/{delivery,bring}/**/*.integration.test.ts'],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'delivery',
+            include: ['src/lib/{delivery,bring}/**/*.integration.test.ts'],
+            // These files share a fixed-id singleton, a table the settings route
+            // rewrites wholesale, and a global alert query. No tag can separate
+            // them; only running them one at a time can.
+            fileParallelism: false,
+          },
+        },
+      ],
+```
+
+`extends: true` inherits the root `plugins`, `env` and `environment`, so `DATABASE_URL` and `AUTH_SECRET` keep resolving exactly as they do today.
+
+**Verify the split dropped no files.** Record the file and test counts from `npm run test` *before* the change; after it they must be identical. A bad glob runs fewer tests and still reports success, which is the failure mode to watch for.
+
+> ### ⛔ MOVED TO TASK 8 — DO NOT IMPLEMENT IN TASK 9
+>
+> Everything from here to the end of this task wires per-parcel deadlines into
+> `src/lib/bring/sync.ts`, **a file Task 8 creates**. Attempting it in Task 9
+> fails on a nonexistent file. Task 8 carries its own copy; this is reference only.
 
 In `src/lib/bring/sync.ts`, add the imports:
 
@@ -2753,10 +2798,13 @@ And replace the `nextPollFor` call:
       const { nextPollAt, terminal } = nextPollFor(m, deadline, now)
 ```
 
+⛔ **End of the Task 8 material. Task 9 resumes here.**
+
 - [ ] **Step 8: Run the full suite**
 
 Run: `npm run test`
-Expected: all pass, `sync.integration.test.ts` included and unedited.
+
+Expected: every test that passed before the Vitest project split still passes, and the **file and test counts are unchanged**. The suite now reports two projects, `app` and `delivery`; the delivery one runs its files one at a time. `src/lib/bring/sync.ts` does not exist yet and is not part of this task.
 
 - [ ] **Step 9: Commit**
 
@@ -3536,8 +3584,10 @@ describe('GET /api/delivery', () => {
 
   it('reports the orders that are late right now', async () => {
     await db.order.create({
+      // Order numbers are matched ACROSS ALL SHOPS by linkRows, so a bare
+      // '1001' collides with other delivery suites' fixtures. Prefix it.
       data: {
-        shopId, externalId: 'E1', number: '1001',
+        shopId, externalId: 'E1', number: 'RTE1001',
         placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed', currency: 'NOK',
         shippingCountry: 'NO',
         grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
@@ -3545,7 +3595,7 @@ describe('GET /api/delivery', () => {
     })
     const body = await (await GET(new Request(url))).json()
     expect(body.stats.noTracking).toBe(1)
-    expect(body.late[0].number).toBe('1001')
+    expect(body.late[0].number).toBe('RTE1001')
     expect(body.late[0].state).toBe('NO_TRACKING')
   })
 
@@ -3981,8 +4031,11 @@ beforeEach(async () => {
 
 async function order(number: string, over: Record<string, unknown> = {}) {
   return db.order.create({
+    // Order numbers are matched ACROSS ALL SHOPS by linkRows, and
+    // flushDeliveryAlerts scans every tracked shop with no shop filter. Both
+    // make a bare '1001' collide with other delivery suites. Prefix every one.
     data: {
-      shopId, externalId: `E${number}`, number,
+      shopId, externalId: `E${number}`, number: `ALRT${number}`,
       placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed', currency: 'NOK',
       shippingCountry: 'NO',
       grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
