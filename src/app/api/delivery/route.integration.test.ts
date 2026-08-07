@@ -84,4 +84,46 @@ describe('GET /api/delivery', () => {
     const body = await (await GET(new Request(url))).json()
     expect(body.unlinked).toEqual([{ trackingNumber: UNLINKED, lastStatus: 'IN_TRANSIT' }])
   })
+
+  it('reports the true count of unlinked parcels, not just the capped list', async () => {
+    // Just over route.ts's take:50 cap, so the cap actually bites while the
+    // fixture stays cheap. Every tracking number carries TRACK so cleanup()
+    // can reach every one of them on the next run — a bare literal here is
+    // exactly the trap 'lists parcels no order claimed' above already hit once.
+    await db.shipment.createMany({
+      data: Array.from({ length: 51 }, (_, i) => ({
+        trackingNumber: `${TRACK}U${i}`,
+        lastStatus: 'IN_TRANSIT',
+      })),
+    })
+    const body = await (await GET(new Request(url))).json()
+    expect(body.unlinked.length).toBe(50)
+    // Not an exact count: unlinked parcels have no shop to scope by by design
+    // (that is the whole point of "visible rather than lost"), so this only
+    // asserts what the fix promises — the total is never silently equal to
+    // the capped page — rather than assuming nothing else is ever unlinked.
+    expect(body.unlinkedTotal).toBeGreaterThan(body.unlinked.length)
+    expect(body.unlinkedTotal).toBeGreaterThanOrEqual(51)
+  })
+
+  it('reports the true count of late orders, not just the shown page', async () => {
+    // Just over route.ts's LATE_LIMIT (200), so the cap bites but the fixture
+    // stays cheap. Same shape as 'reports the orders that are late right now'
+    // above, just 201 of them in one createMany.
+    const count = 201
+    await db.order.createMany({
+      data: Array.from({ length: count }, (_, i) => ({
+        shopId, externalId: `LATEBULK-${i}`, number: `RTE9${String(i).padStart(4, '0')}`,
+        placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed', currency: 'NOK',
+        shippingCountry: 'NO',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      })),
+    })
+    const body = await (await GET(new Request(url))).json()
+    expect(body.late.length).toBe(200)
+    // Exact, unlike unlinkedTotal above: late orders ARE scoped to this test's
+    // one tagged (and tracked) shop — the 11 seeded shops are all UNTRACKED
+    // and never contribute — so the true count is fully known here.
+    expect(body.lateTotal).toBe(count)
+  })
 })

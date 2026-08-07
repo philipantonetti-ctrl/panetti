@@ -37,7 +37,9 @@ type ImportRow = {
 type Payload = {
   stats: DeliveryStats
   late: LateOrder[]
+  lateTotal: number
   unlinked: UnlinkedParcel[]
+  unlinkedTotal: number
   imports: ImportRow[]
   trackedShops: number
 }
@@ -302,7 +304,11 @@ function CountryTable({ rows }: { rows: CountryStat[] }) {
 }
 
 /** The only part anyone acts on, so it is the part with the most room. */
-function LateList({ rows }: { rows: LateOrder[] }) {
+function LateList({ rows, total }: { rows: LateOrder[]; total: number }) {
+  // `total` can exceed `rows.length`: the route caps the list it sends. A
+  // silent cap here would read as "that's all of them" on the one screen
+  // whose job is to say how much is actually wrong.
+  const capped = total > rows.length
   return (
     <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <div className="px-5 py-3.5">
@@ -310,6 +316,12 @@ function LateList({ rows }: { rows: LateOrder[] }) {
         <p className="mt-0.5 text-[12px] text-muted">
           Missed its promise, worst first. Includes orders that have since arrived.
         </p>
+        {capped && (
+          <p className="num mt-0.5 text-[12px] text-warn">
+            Showing the {rows.length.toLocaleString('en-US')} furthest past their promise, of{' '}
+            {total.toLocaleString('en-US')}.
+          </p>
+        )}
       </div>
       {rows.length === 0 ? (
         <p className="px-5 pb-5 text-[13px] text-muted">Nothing is late in this range.</p>
@@ -381,8 +393,12 @@ function LateList({ rows }: { rows: LateOrder[] }) {
  * but the count in the heading is always real, so "0" here is a checked fact,
  * not silence.
  */
-function UnlinkedParcels({ items }: { items: UnlinkedParcel[] }) {
+function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: number }) {
   const [open, setOpen] = useState(false)
+  // `total` can exceed `items.length`: the route caps the list it sends. This
+  // heading exists specifically to make a linking outage visible, so it must
+  // never quietly understate it the moment the outage is largest.
+  const capped = total > items.length
   return (
     <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <button
@@ -392,7 +408,14 @@ function UnlinkedParcels({ items }: { items: UnlinkedParcel[] }) {
         className="flex w-full items-center justify-between px-5 py-3.5 text-left"
       >
         <span className="text-[13px] font-semibold text-ink">
-          Unlinked parcels <span className="font-normal text-muted">({items.length})</span>
+          Unlinked parcels{' '}
+          <span className="num font-normal text-muted">
+            (
+            {capped
+              ? `${items.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}`
+              : items.length.toLocaleString('en-US')}
+            )
+          </span>
         </span>
         <span aria-hidden="true" className="text-faint">
           {open ? '▾' : '▸'}
@@ -595,8 +618,8 @@ export function DeliveryClient({
                   <Split stats={data.stats} />
                   <Distribution data={data.stats.distribution} />
                   <CountryTable rows={data.stats.byCountry} />
-                  <LateList rows={data.late} />
-                  <UnlinkedParcels items={data.unlinked} />
+                  <LateList rows={data.late} total={data.lateTotal} />
+                  <UnlinkedParcels items={data.unlinked} total={data.unlinkedTotal} />
                   <div className="space-y-3">
                     <UploadBox onImported={reload} />
                     <ImportsList items={data.imports} />

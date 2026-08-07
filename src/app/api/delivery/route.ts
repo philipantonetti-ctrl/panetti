@@ -11,7 +11,11 @@ import { deliveryStats } from '@/lib/delivery/stats'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
-/** How many late orders the page lists before it asks you to narrow the range. */
+/**
+ * How many late rows the payload carries in full, worst first. `lateTotal`
+ * carries the true count so the page can say so out loud when this cap
+ * bites, rather than silently showing a partial list as if it were whole.
+ */
 const LATE_LIMIT = 200
 
 /**
@@ -47,8 +51,14 @@ export async function GET(req: Request) {
       rows.map((r) => r.order.shippingCountry),
     )
 
-    const late = rows
-      .filter((r) => r.view.late)
+    // The true totals, not the capped array lengths. Both lists are capped for
+    // the payload's sake, and a heading that reports the cap is a wrong number
+    // exactly when the situation is worst — 300 unlinked parcels would read as
+    // "50", on the one section whose whole job is to make a linking outage
+    // visible.
+    const lateMatching = rows.filter((r) => r.view.late)
+    const lateTotal = lateMatching.length
+    const late = lateMatching
       .sort((a, b) => (b.view.daysOver ?? 0) - (a.view.daysOver ?? 0))
       .slice(0, LATE_LIMIT)
       .map((r) => ({
@@ -62,13 +72,14 @@ export async function GET(req: Request) {
         trackingNumbers: r.view.trackingNumbers,
       }))
 
-    const [unlinked, imports] = await Promise.all([
+    const [unlinked, unlinkedTotal, imports] = await Promise.all([
       db.shipment.findMany({
         where: { orderId: null },
         orderBy: { createdAt: 'desc' },
         take: 50,
         select: { trackingNumber: true, lastStatus: true },
       }),
+      db.shipment.count({ where: { orderId: null } }),
       db.trackingImport.findMany({
         orderBy: { receivedAt: 'desc' },
         take: 10,
@@ -83,7 +94,9 @@ export async function GET(req: Request) {
       {
         stats,
         late,
+        lateTotal,
         unlinked,
+        unlinkedTotal,
         imports: imports.map((i) => ({ ...i, receivedAt: i.receivedAt.toISOString() })),
         trackedShops: shops.filter((s) => s.deliveryTrackingFrom !== null).length,
       },
