@@ -255,4 +255,39 @@ describe('syncShipments', () => {
     expect(okShipment.lastError).toBeNull()
     expect(await db.shipmentEvent.count({ where: { shipmentId: okShipment.id } })).toBe(1)
   })
+
+  it('does not claim a successful sync when it reached no parcel at all', async () => {
+    // A revoked Mybring key fails every request. Before this, the run still
+    // stamped lastSyncAt and cleared lastError — and since this is the only
+    // writer of that field, it could never be non-null. The settings page read
+    // "Last synced: a minute ago" forever while nothing was being tracked.
+    await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<() => Promise<Response>>(async () => new Response('invalid api key', { status: 401 })),
+    )
+
+    const r = await syncShipments({ now })
+    expect(r.polled).toBe(0)
+    expect(r.failed).toBe(1)
+
+    const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
+    expect(cfg.lastError).toMatch(/could not reach bring/i)
+    expect(cfg.lastSyncAt).toBeNull()
+  })
+
+  it('clears the error and stamps the time once a run reaches Bring again', async () => {
+    await db.deliveryConfig.update({
+      where: { id: 'singleton' },
+      data: { lastError: 'Could not reach Bring for any parcel (3 failed).' },
+    })
+    await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
+    stubBring([consignment(T1, [{ status: 'IN_TRANSIT', dateIso: '2026-08-02T06:00:00Z' }])])
+
+    await syncShipments({ now })
+
+    const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
+    expect(cfg.lastError).toBeNull()
+    expect(cfg.lastSyncAt).not.toBeNull()
+  })
 })

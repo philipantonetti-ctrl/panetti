@@ -42,7 +42,17 @@ export function median(values: number[]): number | null {
 const rate = (delivered: OrderDelivery[]) => {
   const judged = delivered.filter((v) => v.promiseDays !== null)
   if (judged.length === 0) return null
-  return judged.filter((v) => v.totalDays! <= v.promiseDays!).length / judged.length
+  // Reuse deliveryFor's verdict rather than recomputing a worse one. `late`
+  // already accounts for business days, the per-country promise and the shop's
+  // timezone. Comparing raw calendar days against promiseDays here silently
+  // disagreed with it: a Thursday order delivered Monday against a 3
+  // business-day promise counted against this rate while being correctly
+  // absent from the late list on the same page — the tile and the list
+  // contradicting each other about the same order.
+  //
+  // `late`, not `lateNow`: an order that ARRIVED late must still count against
+  // the rate. Only the live queue cares whether it has since turned up.
+  return judged.filter((v) => !v.late).length / judged.length
 }
 
 /**

@@ -40,12 +40,33 @@ describe('deliveryStats', () => {
   })
 
   it('rates on time against the promise each order actually had', () => {
+    // `late` is stated on each fixture rather than left to default, because it
+    // is what the rate now reads. deliveryFor is the only thing entitled to
+    // decide lateness — it knows the business-day deadline — so a fixture that
+    // means "this one missed its promise" has to say so.
     const s = deliveryStats(
-      [v({ totalDays: 2, promiseDays: 3 }), v({ totalDays: 5, promiseDays: 3 })],
+      [
+        v({ totalDays: 2, promiseDays: 3, late: false }),
+        v({ totalDays: 5, promiseDays: 3, late: true }),
+      ],
       ['NO', 'NO'],
     )
     expect(s.judged).toBe(2)
     expect(s.onTimeRate).toBe(0.5)
+  })
+
+  it('trusts the business-day verdict over a raw calendar-day comparison', () => {
+    // Placed Thursday, three BUSINESS days promised, delivered Monday. That is
+    // 4 calendar days against a promise of 3, so a naive totalDays <=
+    // promiseDays test calls it late — but the deadline was Tuesday and
+    // deliveryFor correctly says it was not. The rate must agree with the late
+    // list on the same page, or the tile accuses an order the list exonerates.
+    const s = deliveryStats(
+      [v({ totalDays: 4, promiseDays: 3, late: false, availableAt: new Date() })],
+      ['NO'],
+    )
+    expect(s.onTimeRate).toBe(1)
+    expect(s.lateNow).toBe(0)
   })
 
   it('leaves an unpromised order out of the rate and says how many', () => {
@@ -100,8 +121,13 @@ describe('deliveryStats', () => {
   })
 
   it('breaks down by destination country, busiest first', () => {
+    // `late` stated explicitly for the same reason as the rate test above.
     const s = deliveryStats(
-      [v({ totalDays: 2 }), v({ totalDays: 4 }), v({ totalDays: 7 })],
+      [
+        v({ totalDays: 2, late: false }),
+        v({ totalDays: 4, late: true }),
+        v({ totalDays: 7, late: true }),
+      ],
       ['NO', 'NO', 'SE'],
     )
     expect(s.byCountry[0]).toEqual({ country: 'NO', delivered: 2, medianDays: 3, onTimeRate: 0.5 })

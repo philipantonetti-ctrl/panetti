@@ -227,8 +227,26 @@ export async function syncShipments(
     }
   }
 
+  // Only claim a successful sync when one actually happened.
+  //
+  // This is the only writer of DeliveryConfig.lastError anywhere, so clearing
+  // it unconditionally meant the field could never be non-null: a revoked
+  // Mybring key produced "Last synced: a minute ago", no error, forever, while
+  // every parcel quietly recorded its own failure on a screen nobody reads.
+  // Same silent-success seam that slackLastError already closed for the alert
+  // half; this is the Bring half of it.
+  //
+  // A partial failure still counts as a sync — parcels that did poll are
+  // genuinely fresh, and their own lastError carries the detail. Only a run
+  // that reached nothing at all is a failed run.
+  const reachedNothing = polled === 0 && failed > 0
   await db.deliveryConfig
-    .update({ where: { id: 'singleton' }, data: { lastSyncAt: new Date(), lastError: null } })
+    .update({
+      where: { id: 'singleton' },
+      data: reachedNothing
+        ? { lastError: `Could not reach Bring for any parcel (${failed} failed).` }
+        : { lastSyncAt: new Date(), lastError: null },
+    })
     .catch(() => {})
 
   return { polled, updated, failed }
