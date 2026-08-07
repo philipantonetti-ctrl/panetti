@@ -24,14 +24,24 @@ export default defineConfig(({ mode }) => {
             // scripts/ too: the build's schema-push decision is logic that can break a
             // deployment, so it is tested like anything else that can.
             include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'],
-            exclude: ['src/lib/{delivery,bring}/**/*.integration.test.ts'],
+            exclude: [
+              'src/lib/{delivery,bring}/**/*.integration.test.ts',
+              'src/app/api/delivery/**/*.integration.test.ts',
+            ],
           },
         },
         {
           extends: true,
           test: {
             name: 'delivery',
-            include: ['src/lib/{delivery,bring}/**/*.integration.test.ts'],
+            // Must stay identical to the `app` project's exclude, so the two
+            // partition the suite exactly. The API-route half matters as much as
+            // the lib half: those tests write DeliveryPromise and the
+            // DeliveryConfig singleton, which no tag can isolate.
+            include: [
+              'src/lib/{delivery,bring}/**/*.integration.test.ts',
+              'src/app/api/delivery/**/*.integration.test.ts',
+            ],
             // These files share a fixed-id singleton, a table the settings route
             // rewrites wholesale, and a global alert query. No tag can separate
             // them; only running them one at a time can.

@@ -1,0 +1,612 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
+import { DateFilter } from '@/components/filters/DateFilter'
+import { UploadBox } from './UploadBox'
+import { useLiveTick } from '@/lib/use-live-tick'
+import type { Preset } from '@/lib/dates'
+import type { DeliveryStats, CountryStat } from '@/lib/delivery/stats'
+import type { DeliveryState } from '@/lib/delivery/view'
+
+type LateOrder = {
+  id: string
+  number: string
+  shop: string
+  country: string | null
+  daysOver: number
+  promiseDays: number | null
+  state: DeliveryState
+  trackingNumbers: string[]
+}
+
+type UnlinkedParcel = { trackingNumber: string; lastStatus: string | null }
+
+type ImportRow = {
+  id: string
+  filename: string
+  receivedAt: string
+  rowsParsed: number
+  rowsLinked: number
+  rowsUnmatched: number
+  error: string | null
+}
+
+type Payload = {
+  stats: DeliveryStats
+  late: LateOrder[]
+  unlinked: UnlinkedParcel[]
+  imports: ImportRow[]
+  trackedShops: number
+}
+
+/**
+ * A missing figure prints "—", never "0" — a zero reads as "delivered same
+ * day" or "nothing is late", and both are lies when the truth is "we don't
+ * know yet". Every formatter below returns this for a null input.
+ */
+const DASH = '—'
+
+function formatDays(v: number | null): string {
+  if (v === null) return DASH
+  return Number.isInteger(v) ? `${v}` : v.toFixed(1)
+}
+
+function formatPct(v: number | null): string {
+  if (v === null) return DASH
+  return `${Math.round(v * 100)}%`
+}
+
+const trackingUrl = (n: string) => `https://tracking.bring.com/tracking/${encodeURIComponent(n)}`
+
+const STATE_LABEL: Record<DeliveryState, string> = {
+  UNTRACKED: 'Not tracked',
+  BEFORE_TRACKING: 'Before tracking',
+  VOIDED: 'Voided',
+  NO_TRACKING: 'No tracking',
+  BOOKED: 'Booked',
+  IN_TRANSIT: 'In transit',
+  AVAILABLE: 'Available',
+  RETURNED: 'Returned',
+  CANCELLED: 'Cancelled',
+}
+
+// A settled bad outcome (arrived late, returned, cancelled) reads as loss; a
+// still-moving or still-unbooked order reads as at-risk. The "days over"
+// column already carries how bad, so the badge only needs to say what kind.
+const STATE_TONE: Record<DeliveryState, string> = {
+  UNTRACKED: 'bg-panel text-muted',
+  BEFORE_TRACKING: 'bg-panel text-muted',
+  VOIDED: 'bg-panel text-muted',
+  NO_TRACKING: 'bg-warn-soft text-warn',
+  BOOKED: 'bg-panel text-muted',
+  IN_TRANSIT: 'bg-panel text-muted',
+  AVAILABLE: 'bg-warn-soft text-loss',
+  RETURNED: 'bg-warn-soft text-loss',
+  CANCELLED: 'bg-warn-soft text-loss',
+}
+
+function StateBadge({ state }: { state: DeliveryState }) {
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${STATE_TONE[state]}`}>
+      {STATE_LABEL[state]}
+    </span>
+  )
+}
+
+/** Skeletons in the shape of the content — never a spinner in the middle of a table. */
+function Skeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="skeleton h-[92px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
+      <div className="skeleton h-[160px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
+      <div className="skeleton h-[280px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
+    </div>
+  )
+}
+
+/**
+ * Nothing below this would be honest: every tile would show a real-looking
+ * zero, implying orders were checked and none were late — when really none
+ * were ever looked at. So the page says the true thing instead.
+ */
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-start gap-3 rounded-[var(--radius-card)] border border-line bg-surface px-6 py-8">
+      <h2 className="text-[15px] font-semibold text-ink">No shop is set up for delivery tracking yet.</h2>
+      <p className="max-w-xl text-[13px] text-muted">
+        Once a shop has a tracking start date, its orders show up here with how long they took to
+        reach the customer, what is still moving, and what we could not account for.
+      </p>
+      <Link
+        href="/settings/delivery"
+        className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-[13px] font-semibold text-white transition-opacity duration-150 hover:opacity-90"
+      >
+        Go to delivery settings
+      </Link>
+    </div>
+  )
+}
+
+function Tile({
+  label,
+  value,
+  tone,
+  hint,
+  note,
+}: {
+  label: string
+  value: string
+  tone?: string
+  hint: string
+  note?: React.ReactNode
+}) {
+  return (
+    <div className="px-5 py-4" title={hint}>
+      <p className="text-[11px] font-semibold tracking-wide text-faint">{label}</p>
+      <p className={`num mt-1 text-[22px] font-semibold ${tone ?? 'text-ink'}`}>{value}</p>
+      {note && <p className="mt-1 text-[11px] text-muted">{note}</p>}
+    </div>
+  )
+}
+
+/**
+ * The headline. Median, never average — two parcels stuck in customs would
+ * drag a mean into fiction. On-time rate judges the WHOLE set that missed its
+ * promise (including ones that arrived late); "late right now" is the
+ * narrower live queue — the two must not be swapped.
+ */
+function Tiles({ stats }: { stats: DeliveryStats }) {
+  return (
+    <section className="grid grid-cols-2 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface lg:grid-cols-4">
+      <div className="border-b border-line lg:border-b-0 lg:border-r">
+        <Tile
+          label="MEDIAN DAYS TO DELIVERY"
+          value={stats.medianDays === null ? DASH : `${formatDays(stats.medianDays)} days`}
+          hint="Placed to available for pickup or delivered — the middle order, not the average."
+        />
+      </div>
+      <div className="border-b border-line lg:border-b-0 lg:border-r">
+        <Tile
+          label="ON-TIME RATE"
+          value={formatPct(stats.onTimeRate)}
+          hint="Share of judged, delivered orders that arrived within their promise."
+          note={
+            stats.unjudged > 0
+              ? `${stats.unjudged} delivered orders had no promise in force and are not rated`
+              : undefined
+          }
+        />
+      </div>
+      <div className="lg:border-r lg:border-line">
+        <Tile
+          label="LATE RIGHT NOW"
+          value={stats.lateNow.toLocaleString('en-US')}
+          tone={stats.lateNow > 0 ? 'text-loss' : undefined}
+          hint="Missed its promise and still not with the customer — the list to chase."
+        />
+      </div>
+      <Tile
+        label="NO TRACKING"
+        value={stats.noTracking.toLocaleString('en-US')}
+        tone={stats.noTracking > 0 ? 'text-warn' : undefined}
+        hint="Expected a parcel for this order; the warehouse has not booked one."
+      />
+    </section>
+  )
+}
+
+function SplitBar({ label, value, max }: { label: string; value: number | null; max: number }) {
+  const pct = value === null ? 0 : Math.max(value > 0 ? 3 : 0, (value / max) * 100)
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-[12px] text-muted">{label}</span>
+        <span className="num text-[13px] font-semibold text-ink">
+          {value === null ? DASH : `${formatDays(value)} days`}
+        </span>
+      </div>
+      <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-line">
+        <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
+/** Warehouse against transit, on one scale, so the longer half is obvious at a glance. */
+function Split({ stats }: { stats: DeliveryStats }) {
+  const max = Math.max(stats.medianWarehouseDays ?? 0, stats.medianTransitDays ?? 0, 1)
+  return (
+    <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
+      <h2 className="text-[13px] font-semibold text-ink">Warehouse vs. transit</h2>
+      <p className="mt-0.5 text-[12px] text-muted">
+        Median days from order to handover, and from handover to the customer.
+      </p>
+      <div className="mt-4 space-y-3">
+        <SplitBar label="In the warehouse" value={stats.medianWarehouseDays} max={max} />
+        <SplitBar label="In transit" value={stats.medianTransitDays} max={max} />
+      </div>
+    </section>
+  )
+}
+
+/** Every day count that occurred — the tail a median alone hides. */
+function Distribution({ data }: { data: DeliveryStats['distribution'] }) {
+  const max = Math.max(1, ...data.map((d) => d.count))
+  return (
+    <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
+      <h2 className="text-[13px] font-semibold text-ink">How long delivered orders took</h2>
+      <p className="mt-0.5 text-[12px] text-muted">One bar per day count, so the tail is visible.</p>
+      {data.length === 0 ? (
+        <p className="mt-4 text-[13px] text-muted">No delivered orders in this range yet.</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <div className="flex h-[110px] min-w-max items-end gap-1.5">
+            {data.map((d) => (
+              <div key={d.days} className="flex w-7 flex-col items-center gap-1">
+                <div
+                  className="w-full rounded-t-sm bg-accent"
+                  style={{ height: `${Math.max(3, (d.count / max) * 88)}px` }}
+                  title={`${d.count} ${d.count === 1 ? 'order' : 'orders'} took ${d.days} ${d.days === 1 ? 'day' : 'days'}`}
+                />
+                <span className="num text-[10px] text-faint">{d.days}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** stats.byCountry is already sorted busiest first. */
+function CountryTable({ rows }: { rows: CountryStat[] }) {
+  return (
+    <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+      <div className="px-5 py-3.5">
+        <h2 className="text-[13px] font-semibold text-ink">By country</h2>
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-5 pb-5 text-[13px] text-muted">No delivered orders in this range yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                <th className="px-5 py-2 text-left">Country</th>
+                <th className="px-4 py-2 text-right">Delivered</th>
+                <th className="px-4 py-2 text-right">Median days</th>
+                <th className="px-5 py-2 text-right">On-time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr
+                  key={r.country}
+                  className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-panel"
+                >
+                  <td className="px-5 py-2.5 font-medium text-ink">{r.country}</td>
+                  <td className="num px-4 py-2.5 text-right text-ink">{r.delivered.toLocaleString('en-US')}</td>
+                  <td className="num px-4 py-2.5 text-right text-ink">{formatDays(r.medianDays)}</td>
+                  <td className="num px-5 py-2.5 text-right text-ink">{formatPct(r.onTimeRate)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** The only part anyone acts on, so it is the part with the most room. */
+function LateList({ rows }: { rows: LateOrder[] }) {
+  return (
+    <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+      <div className="px-5 py-3.5">
+        <h2 className="text-[13px] font-semibold text-ink">Late</h2>
+        <p className="mt-0.5 text-[12px] text-muted">
+          Missed its promise, worst first. Includes orders that have since arrived.
+        </p>
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-5 pb-5 text-[13px] text-muted">Nothing is late in this range.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                <th className="px-5 py-2 text-left">Order</th>
+                <th className="px-4 py-2 text-left">Shop</th>
+                <th className="px-4 py-2 text-left">Country</th>
+                <th className="px-4 py-2 text-right">Days over</th>
+                <th className="px-4 py-2 text-right">Promise</th>
+                <th className="px-4 py-2 text-left">State</th>
+                <th className="px-5 py-2 text-left">Tracking</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr
+                  key={r.id}
+                  className="border-b border-line transition-colors duration-150 last:border-b-0 hover:bg-panel"
+                >
+                  <td className="px-5 py-2.5 font-medium">
+                    <Link href={`/orders?q=${encodeURIComponent(r.number)}`} className="text-accent hover:underline">
+                      {r.number}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2.5 text-ink">{r.shop}</td>
+                  <td className="px-4 py-2.5 text-ink">{r.country ? r.country.toUpperCase() : DASH}</td>
+                  <td className="num px-4 py-2.5 text-right font-semibold text-loss">{r.daysOver}</td>
+                  <td className="num px-4 py-2.5 text-right text-muted">
+                    {r.promiseDays === null ? DASH : `${r.promiseDays}d`}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <StateBadge state={r.state} />
+                  </td>
+                  <td className="px-5 py-2.5">
+                    <div className="flex flex-wrap gap-x-2 gap-y-1">
+                      {r.trackingNumbers.length === 0 ? (
+                        <span className="text-muted">{DASH}</span>
+                      ) : (
+                        r.trackingNumbers.map((t) => (
+                          <a
+                            key={t}
+                            href={trackingUrl(t)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent hover:underline"
+                          >
+                            {t}
+                          </a>
+                        ))
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Collapsed by default — most days this is empty and nobody needs to see it —
+ * but the count in the heading is always real, so "0" here is a checked fact,
+ * not silence.
+ */
+function UnlinkedParcels({ items }: { items: UnlinkedParcel[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left"
+      >
+        <span className="text-[13px] font-semibold text-ink">
+          Unlinked parcels <span className="font-normal text-muted">({items.length})</span>
+        </span>
+        <span aria-hidden="true" className="text-faint">
+          {open ? '▾' : '▸'}
+        </span>
+      </button>
+
+      {open &&
+        (items.length === 0 ? (
+          <p className="border-t border-line px-5 py-4 text-[13px] text-muted">
+            None right now — every parcel Bring has told us about is linked to an order.
+          </p>
+        ) : (
+          <div className="overflow-x-auto border-t border-line">
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
+                  <th className="px-5 py-2 text-left">Tracking number</th>
+                  <th className="px-5 py-2 text-left">Last status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((p) => (
+                  <tr key={p.trackingNumber} className="border-b border-line last:border-b-0 hover:bg-panel">
+                    <td className="px-5 py-2.5">
+                      <a
+                        href={trackingUrl(p.trackingNumber)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent hover:underline"
+                      >
+                        {p.trackingNumber}
+                      </a>
+                    </td>
+                    <td className="px-5 py-2.5 text-ink">{p.lastStatus ?? DASH}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+    </section>
+  )
+}
+
+function ImportsList({ items }: { items: ImportRow[] }) {
+  return (
+    <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+      <div className="px-5 py-3.5">
+        <h2 className="text-[13px] font-semibold text-ink">Recent imports</h2>
+      </div>
+      {items.length === 0 ? (
+        <p className="px-5 pb-5 text-[13px] text-muted">No files imported yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                <th className="px-5 py-2 text-left">File</th>
+                <th className="px-4 py-2 text-left">Received</th>
+                <th className="px-4 py-2 text-right">Parsed</th>
+                <th className="px-4 py-2 text-right">Linked</th>
+                <th className="px-4 py-2 text-right">Unmatched</th>
+                <th className="px-5 py-2 text-left">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((i) => (
+                <tr key={i.id} className="border-b border-line last:border-b-0 hover:bg-panel">
+                  <td className="px-5 py-2.5 text-ink">{i.filename}</td>
+                  <td className="px-4 py-2.5 text-muted">{new Date(i.receivedAt).toLocaleString()}</td>
+                  <td className="num px-4 py-2.5 text-right text-ink">{i.rowsParsed}</td>
+                  <td className="num px-4 py-2.5 text-right text-ink">{i.rowsLinked}</td>
+                  <td className={`num px-4 py-2.5 text-right ${i.rowsUnmatched > 0 ? 'text-warn' : 'text-ink'}`}>
+                    {i.rowsUnmatched}
+                  </td>
+                  <td className="max-w-[220px] truncate px-5 py-2.5 text-loss" title={i.error ?? undefined}>
+                    {i.error ?? ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * How long orders take to reach the customer, and what we cannot account for.
+ * Follows ProductsClient's fetch-and-filter shape: shop and date filters live
+ * in the header, a plain effect refetches on any change, and `reload` gives
+ * UploadBox a way to trigger the same refetch after an import.
+ */
+export function DeliveryClient({
+  email,
+  shops,
+  initialPreset,
+}: {
+  email: string
+  shops: Shop[]
+  initialPreset?: Preset
+}) {
+  const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [selected, setSelected] = useState<string[]>([])
+  const [data, setData] = useState<Payload | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  // Bumped by `reload()` below to force the same effect to refetch outside of
+  // a filter change or the live tick — the only other two things that do.
+  const [reloadKey, setReloadKey] = useState(0)
+
+  const tick = useLiveTick()
+
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (preset === 'custom' && from && to) {
+      params.set('from', from)
+      params.set('to', to)
+    } else if (preset !== 'custom') {
+      params.set('preset', preset)
+    }
+    if (selected.length) params.set('shops', selected.join(','))
+
+    const ctrl = new AbortController()
+    fetch(`/api/delivery?${params}`, { signal: ctrl.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error((await res.json()).error ?? 'Could not load')
+        return res.json()
+      })
+      .then((json: Payload) => {
+        setData(json)
+        setError('')
+      })
+      .catch((e: Error) => {
+        if (e.name !== 'AbortError') setError(e.message)
+      })
+      .finally(() => setLoading(false))
+    return () => ctrl.abort() // a superseded response must never overwrite a newer one
+  }, [preset, from, to, selected, tick, reloadKey])
+
+  function reload() {
+    setLoading(true)
+    setReloadKey((k) => k + 1)
+  }
+
+  return (
+    <AppShell email={email}>
+      <PageHeader
+        title="Delivery"
+        subtitle="How many days an order takes to reach the customer, and what we could not account for."
+      >
+        <ShopFilter
+          shops={shops}
+          selected={selected}
+          onChange={(next) => {
+            setLoading(true)
+            setSelected(next)
+          }}
+        />
+        <DateFilter
+          preset={preset}
+          from={from}
+          to={to}
+          onChange={(next) => {
+            setLoading(true)
+            setPreset(next.preset)
+            if (next.from !== undefined) setFrom(next.from)
+            if (next.to !== undefined) setTo(next.to)
+          }}
+        />
+      </PageHeader>
+
+      <PageBody>
+        {selected.includes(NO_SHOPS) ? (
+          <p className="rounded-[var(--radius-card)] border border-line bg-surface px-5 py-8 text-center text-[13px] text-muted">
+            No shops selected.
+          </p>
+        ) : (
+          <>
+            {error && (
+              <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-loss">
+                {error}
+              </div>
+            )}
+
+            {loading && !data ? (
+              <Skeleton />
+            ) : data ? (
+              data.trackedShops === 0 ? (
+                <EmptyState />
+              ) : (
+                <div
+                  aria-busy={loading}
+                  className={`space-y-4 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}
+                >
+                  <Tiles stats={data.stats} />
+                  <Split stats={data.stats} />
+                  <Distribution data={data.stats.distribution} />
+                  <CountryTable rows={data.stats.byCountry} />
+                  <LateList rows={data.late} />
+                  <UnlinkedParcels items={data.unlinked} />
+                  <div className="space-y-3">
+                    <UploadBox onImported={reload} />
+                    <ImportsList items={data.imports} />
+                  </div>
+                </div>
+              )
+            ) : null}
+          </>
+        )}
+      </PageBody>
+    </AppShell>
+  )
+}
