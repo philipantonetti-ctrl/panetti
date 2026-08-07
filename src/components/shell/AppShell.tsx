@@ -169,6 +169,18 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       {
+        href: '/settings/delivery',
+        label: 'Delivery',
+        icon: icon(
+          <>
+            <path d="M3 7h11v10H3z" />
+            <path d="M14 10h4l3 3v4h-7z" />
+            <circle cx="7" cy="18" r="1.5" />
+            <circle cx="17" cy="18" r="1.5" />
+          </>,
+        ),
+      },
+      {
         href: '/settings',
         label: 'Settings',
         icon: icon(
