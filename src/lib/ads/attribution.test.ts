@@ -180,6 +180,27 @@ describe('accountSpendRows', () => {
     // pass if the fallback resolved to a wrong shop.
     expect(rows.find((r) => r.shopId === def.id)?.spend).toBe(750)
   })
+
+  // CRITICAL: an account gets ticked "split by campaign", the PATCH sets
+  // lastSyncAt: null so the next sync backfills a year of AdCampaignSpend, but
+  // nothing ever deletes the OLD AdSpend rows that predate the flip. Reading
+  // both tables for the same account would roughly double its spend forever.
+  // This is not "structurally impossible" — it is exactly what the PATCH
+  // route's own behaviour produces the moment someone ticks the box.
+  it('does not double-count a split account that still has a leftover AdSpend row', async () => {
+    const [a, def] = [await shop('legacy-a'), await shop('legacy-def')]
+    const account = await splitAccountWith(def.id, [{ externalId: 'c1', shopId: a.id, spend: 1000 }])
+    // A pre-existing AdSpend row from before the account was split — never
+    // cleaned up, exactly as the real PATCH flow leaves it.
+    await db.adSpend.create({
+      data: { accountId: account.id, date: DAY, spend: 99999, impressions: 0, clicks: 0 },
+    })
+
+    const rows = await accountSpendRows([account.id], DAY, DAY)
+    // Only the campaign-derived row, never the legacy AdSpend row too.
+    expect(rows).toHaveLength(1)
+    expect(rows.reduce((sum, r) => sum + r.spend, 0)).toBe(1000)
+  })
 })
 
 describe('accountIdsForShops', () => {

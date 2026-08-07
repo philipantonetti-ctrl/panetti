@@ -143,7 +143,12 @@ export async function accountSpendRows(
 
   const [whole, campaigns] = await Promise.all([
     db.adSpend.findMany({
-      where: { accountId: { in: accountIds }, date },
+      // A split account writes only AdCampaignSpend — see the double-counting
+      // rule in attributedSpend above. Without this guard, an account ticked
+      // "split by campaign" that still has a year of pre-split AdSpend rows
+      // (nothing ever deletes them) would have BOTH tables read here, roughly
+      // doubling its spend for as long as those rows exist.
+      where: { accountId: { in: accountIds }, date, account: { splitByCampaign: false } },
       select: {
         accountId: true, date: true, spend: true, impressions: true, clicks: true,
         linkClicks: true, conversions: true, conversionValue: true,
