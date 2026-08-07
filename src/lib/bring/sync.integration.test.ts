@@ -48,7 +48,13 @@ async function cleanup() {
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: TRACK } } })
 }
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  // Fix round 1: the transaction-failure test below spies on db.$transaction.
+  // Restored here rather than only at the end of that one test, so a spy left
+  // behind by an assertion failure can never leak into a later test.
+  vi.restoreAllMocks()
+})
 afterAll(cleanup)
 
 beforeEach(async () => {
@@ -203,5 +209,50 @@ describe('syncShipments', () => {
     const r = await syncShipments({ now, deadline: Date.now() - 1 })
     expect(r.polled).toBe(0)
     expect(fn).not.toHaveBeenCalled()
+  })
+
+  // Fix round 1: the per-parcel success-path db.$transaction had no guard, so
+  // a single failing write (a connection blip, a transaction timeout on a
+  // parcel with a long history) propagated out of syncShipments entirely and
+  // aborted every batch still queued behind it — worse under oldest-first
+  // ordering, since the failing row would then sit at the head of the queue
+  // and starve everything else on every later run too.
+  it('a failed write for one parcel does not abort the batch behind it', async () => {
+    // T1 sorts first (earlier nextPollAt), so its write is the one forced to
+    // fail; T2 must still be reached, polled and stored despite T1's failure.
+    await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01T00:00:00Z') } })
+    await db.shipment.create({ data: { trackingNumber: T2, nextPollAt: new Date('2026-01-02T00:00:00Z') } })
+    stubBring([
+      consignment(T1, [{ status: 'HANDED_IN', dateIso: '2026-08-01T16:00:00Z' }]),
+      consignment(T2, [{ status: 'HANDED_IN', dateIso: '2026-08-01T16:00:00Z' }]),
+    ])
+
+    // Reject the FIRST call to db.$transaction (T1's write), then fall
+    // through to the real implementation so T2's write behaves normally.
+    const realTransaction = db.$transaction.bind(db)
+    let transactionCalls = 0
+    vi.spyOn(db, '$transaction').mockImplementation((async (...args: unknown[]) => {
+      transactionCalls++
+      if (transactionCalls === 1) throw new Error('connection blip')
+      return (realTransaction as unknown as (...a: unknown[]) => unknown)(...args)
+    }) as unknown as typeof db.$transaction)
+
+    const r = await syncShipments({ now })
+
+    expect(r.polled).toBe(2)
+    expect(r.failed).toBe(1)
+    expect(r.updated).toBe(1)
+
+    const failedShipment = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+    expect(failedShipment.lastError).toMatch(/connection blip/)
+    expect(failedShipment.terminal).toBe(false)
+    expect(failedShipment.nextPollAt).toEqual(new Date(now.getTime() + HOUR))
+    // The failed write must not have partially landed.
+    expect(await db.shipmentEvent.count({ where: { shipmentId: failedShipment.id } })).toBe(0)
+
+    const okShipment = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T2 } })
+    expect(okShipment.handedInAt).toEqual(new Date('2026-08-01T16:00:00Z'))
+    expect(okShipment.lastError).toBeNull()
+    expect(await db.shipmentEvent.count({ where: { shipmentId: okShipment.id } })).toBe(1)
   })
 })

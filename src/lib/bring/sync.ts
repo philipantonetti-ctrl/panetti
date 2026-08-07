@@ -180,33 +180,50 @@ export async function syncShipments(
 
       const { nextPollAt, terminal } = nextPollFor(m, deadline, now)
 
-      await db.$transaction(async (tx) => {
-        // One insert for the whole event set, not one per event: a parcel's
-        // history is re-sent in full on every poll, so this runs constantly.
-        // skipDuplicates leans on @@unique([shipmentId, status, occurredAt]) —
-        // that constraint is what makes re-ingesting a restated history a no-op
-        // rather than a pile of duplicates.
-        await tx.shipmentEvent.createMany({
-          data: found.events.map((e) => ({
-            shipmentId: s.id,
-            status: e.status,
-            occurredAt: e.occurredAt,
-            description: e.description,
-            location: e.location,
-          })),
-          skipDuplicates: true,
+      try {
+        await db.$transaction(async (tx) => {
+          // One insert for the whole event set, not one per event: a parcel's
+          // history is re-sent in full on every poll, so this runs constantly.
+          // skipDuplicates leans on @@unique([shipmentId, status, occurredAt]) —
+          // that constraint is what makes re-ingesting a restated history a no-op
+          // rather than a pile of duplicates.
+          await tx.shipmentEvent.createMany({
+            data: found.events.map((e) => ({
+              shipmentId: s.id,
+              status: e.status,
+              occurredAt: e.occurredAt,
+              description: e.description,
+              location: e.location,
+            })),
+            skipDuplicates: true,
+          })
+          await tx.shipment.update({
+            where: { id: s.id },
+            data: {
+              bookedAt: m.bookedAt, handedInAt: m.handedInAt,
+              availableAt: m.availableAt, collectedAt: m.collectedAt,
+              outcome: m.outcome, lastStatus: m.lastStatus,
+              nextPollAt, terminal, lastError: null,
+            },
+          })
         })
-        await tx.shipment.update({
-          where: { id: s.id },
-          data: {
-            bookedAt: m.bookedAt, handedInAt: m.handedInAt,
-            availableAt: m.availableAt, collectedAt: m.collectedAt,
-            outcome: m.outcome, lastStatus: m.lastStatus,
-            nextPollAt, terminal, lastError: null,
-          },
-        })
-      })
-      updated++
+        updated++
+      } catch (e) {
+        // One parcel's write must not end the run. Without this, a single bad
+        // row — a connection blip, or a transaction timeout on a parcel with a
+        // long history — aborts every batch still queued behind it. Worse under
+        // oldest-first ordering: a persistently-failing row holds the head of
+        // the queue and starves everything else on every later run too, which
+        // is the exact outage syncAllShops's lastRunAt rule exists to prevent.
+        const error = e instanceof Error ? e.message : 'Could not store this parcel'
+        failed++
+        await db.shipment
+          .update({
+            where: { id: s.id },
+            data: { lastError: error, nextPollAt: new Date(now.getTime() + HOUR) },
+          })
+          .catch(() => {})
+      }
     }
   }
 
