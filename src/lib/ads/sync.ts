@@ -2,14 +2,15 @@ import { db } from '../db'
 import { utcDay } from '../dates'
 import { decryptSecret } from '../secrets'
 import { platformApp } from './platform-app'
-import { fetchMetaDaily, fetchMetaDailyBudget } from './meta'
-import { fetchGoogleDaily, fetchGoogleDailyBudget } from './google'
+import { fetchMetaDaily, fetchMetaDailyBudget, fetchMetaCampaignDaily } from './meta'
+import { fetchGoogleDaily, fetchGoogleDailyBudget, fetchGoogleCampaignDaily } from './google'
 import {
   AdApiError,
   type AdCredentials,
   type DailyRow,
   type GoogleCredentials,
   type MetaCredentials,
+  type CampaignDailyRow,
 } from './types'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -31,6 +32,7 @@ export type AdAccountRow = {
   credentials: string | null
   loginCustomerId?: string | null
   lastSyncAt: Date | null
+  splitByCampaign?: boolean
   /** Set when the account was connected by logging in rather than pasting. */
   connection?: { provider: string; secret: string; expiresAt: Date | null } | null
 }
@@ -101,6 +103,17 @@ function fetchBudget(account: AdAccountRow, creds: AdCredentials): Promise<numbe
     : fetchGoogleDailyBudget(creds as GoogleCredentials, account.externalId)
 }
 
+function fetchCampaignDaily(
+  account: AdAccountRow,
+  creds: AdCredentials,
+  from: Date,
+  to: Date,
+): Promise<CampaignDailyRow[]> {
+  return account.provider === 'meta'
+    ? fetchMetaCampaignDaily(creds as MetaCredentials, account.externalId, from, to)
+    : fetchGoogleCampaignDaily(creds as GoogleCredentials, account.externalId, from, to)
+}
+
 async function storeDaily(accountId: string, rows: DailyRow[]): Promise<number> {
   await db.$transaction(
     rows.map((r) => {
@@ -125,11 +138,53 @@ async function storeDaily(accountId: string, rows: DailyRow[]): Promise<number> 
   return rows.length
 }
 
+/**
+ * Campaign rows for a split account. The AdCampaign row is upserted for its
+ * NAME only — shopId is a person's decision and the sync must never touch it,
+ * or renaming a campaign in the platform would silently unassign its store.
+ */
+async function storeCampaignDaily(accountId: string, rows: CampaignDailyRow[]): Promise<number> {
+  const idByExternal = new Map<string, string>()
+  for (const externalId of new Set(rows.map((r) => r.campaignId))) {
+    const name = rows.find((r) => r.campaignId === externalId)!.campaignName
+    const campaign = await db.adCampaign.upsert({
+      where: { accountId_externalId: { accountId, externalId } },
+      create: { accountId, externalId, name },
+      update: { name },
+    })
+    idByExternal.set(externalId, campaign.id)
+  }
+
+  await db.$transaction(
+    rows.map((r) => {
+      const metrics = {
+        spend: r.spend,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        linkClicks: r.linkClicks,
+        conversions: r.conversions,
+        conversionValue: r.conversionValue,
+      }
+      const campaignId = idByExternal.get(r.campaignId)!
+      return db.adCampaignSpend.upsert({
+        where: { campaignId_date: { campaignId, date: r.date } },
+        create: { campaignId, date: r.date, ...metrics },
+        update: metrics,
+      })
+    }),
+  )
+  return rows.length
+}
+
 export async function syncAdAccount(account: AdAccountRow, now = new Date()): Promise<AdSyncResult> {
   try {
     const creds = await resolveCredentials(account)
     const { from, to } = syncWindow(account.lastSyncAt, now)
-    const days = await storeDaily(account.id, await fetchDaily(account, creds, from, to))
+    // A split account writes campaign rows and NEVER an AdSpend row. Both would
+    // silently double this account's cost everywhere it is read.
+    const days = account.splitByCampaign
+      ? await storeCampaignDaily(account.id, await fetchCampaignDaily(account, creds, from, to))
+      : await storeDaily(account.id, await fetchDaily(account, creds, from, to))
 
     // Budgets are decoration on top of the spend history: refreshed when the
     // platform answers, kept as they were when it does not.
