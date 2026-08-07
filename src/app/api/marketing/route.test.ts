@@ -143,4 +143,36 @@ describe('GET /api/marketing', () => {
     expect(body.byShop).toHaveLength(0)
     expect(body.total.spend).toBe(0)
   })
+
+  it("shows a split account's spend on the shop its campaign resolves to, even when the account's own shop is filtered out", async () => {
+    // The split account's own default shop sits OUTSIDE the filter below — only
+    // its campaign, assigned to `shopId` (the filtered-in shop), is in scope.
+    // This is the ordinary "filter the Marketing page to a couple of stores"
+    // action, and exactly the case this feature exists for.
+    const otherShop = await db.shop.create({ data: { name: `Shop B ${MARK}`, currency: 'NOK' } })
+    const splitAccount = await db.adAccount.create({
+      data: {
+        shopId: otherShop.id,
+        provider: 'google',
+        externalId: `mkt-split-${Date.now()}`,
+        name: `Split Account ${MARK}`,
+        currency: 'NOK',
+        splitByCampaign: true,
+      },
+    })
+    const campaign = await db.adCampaign.create({
+      data: { accountId: splitAccount.id, externalId: 'split-c1', name: 'Split campaign', shopId },
+    })
+    await db.adCampaignSpend.create({
+      data: { campaignId: campaign.id, date: new Date('2026-03-10T00:00:00Z'), spend: 12345, impressions: 0, clicks: 0 },
+    })
+
+    // Filter to the campaign's shop only — the split account's own shop (B) is excluded.
+    const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const row = body.byShop.find((r: { shopId: string }) => r.shopId === shopId)
+    // 500.00 NOK from the whole account (beforeEach) + 123.45 NOK from the split campaign.
+    expect(row.spend).toBe(50000 + 12345)
+  })
 })

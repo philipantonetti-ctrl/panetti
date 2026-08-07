@@ -6,7 +6,7 @@ import { computeMetrics } from '@/lib/metrics'
 import { dailySeries } from '@/lib/metrics/trend'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { buildMarketing } from '@/lib/ads/marketing'
-import { accountSpendRows } from '@/lib/ads/attribution'
+import { accountIdsForShops, accountSpendRows } from '@/lib/ads/attribution'
 import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
 
@@ -27,9 +27,16 @@ export async function GET(req: Request) {
     const input = await loadMetricsInput({ shopIds, from, to, timezone })
     const scopeIds = input.shops.map((s) => s.id)
 
+    // A whole account is in scope on its own shopId; a split account is in
+    // scope when one of ITS CAMPAIGNS resolves into scope, which can happen
+    // even while the account's own default shop is filtered out. Filtering
+    // this query on the account's shopId alone would silently drop that
+    // account's in-scope campaigns — the same bug attributedSpend's callers
+    // already avoid.
+    const ids = await accountIdsForShops(scopeIds)
     const [accounts, connectedCount] = await Promise.all([
       db.adAccount.findMany({
-        where: { active: true, shopId: { in: scopeIds } },
+        where: { id: { in: ids } },
         select: { id: true, shopId: true, provider: true, currency: true, dailyBudget: true },
       }),
       db.adAccount.count({ where: { active: true } }),

@@ -37,7 +37,7 @@ function splitCampaignsFor(shopIds: string[]) {
         { shopId: null, account: { shopId: { in: shopIds } } },
       ],
     },
-    select: { id: true, shopId: true, account: { select: { shopId: true, currency: true } } },
+    select: { id: true, shopId: true, accountId: true, account: { select: { shopId: true, currency: true } } },
   })
 }
 
@@ -106,6 +106,21 @@ export async function relevantAdCurrencies(shopIds: string[]): Promise<string[]>
   if (!shopIds.length) return []
   const [wholeAccounts, campaigns] = await Promise.all([wholeAccountsFor(shopIds), splitCampaignsFor(shopIds)])
   return [...new Set([...wholeAccounts.map((a) => a.currency), ...campaigns.map((c) => c.account.currency)])]
+}
+
+/**
+ * Which ad accounts have spend belonging to these shops.
+ *
+ * A whole account qualifies on its own shopId. A split account qualifies on
+ * where its CAMPAIGNS resolve — its own shop may sit outside the selection
+ * while its campaigns sit inside it. Filtering on the account alone is the bug
+ * this exists to prevent, and it is the same rule attributedSpend follows, so
+ * the Marketing page and the Dashboard agree on which accounts are in scope.
+ */
+export async function accountIdsForShops(shopIds: string[]): Promise<string[]> {
+  if (!shopIds.length) return []
+  const [wholeAccounts, campaigns] = await Promise.all([wholeAccountsFor(shopIds), splitCampaignsFor(shopIds)])
+  return [...new Set([...wholeAccounts.map((a) => a.id), ...campaigns.map((c) => c.accountId)])]
 }
 
 /**

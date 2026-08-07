@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { attributedSpend, relevantAdCurrencies, accountSpendRows } from './attribution'
+import { attributedSpend, relevantAdCurrencies, accountSpendRows, accountIdsForShops } from './attribution'
 
 const TAG = 'attribution-test'
 const DAY = new Date('2026-03-01T00:00:00Z')
@@ -175,5 +175,38 @@ describe('accountSpendRows', () => {
 
     const rows = await accountSpendRows([account.id], DAY, DAY)
     expect(rows.reduce((sum, r) => sum + r.spend, 0)).toBe(1750) // nothing lost, nothing doubled
+    // The unassigned campaign (c2) must land on the account's own default
+    // shop, not merely "somewhere non-dropping" — the sum alone would still
+    // pass if the fallback resolved to a wrong shop.
+    expect(rows.find((r) => r.shopId === def.id)?.spend).toBe(750)
+  })
+})
+
+describe('accountIdsForShops', () => {
+  it("includes a split account whose campaign is in scope, even when the account's own shop is not", async () => {
+    const [a, def] = [await shop('ids-a'), await shop('ids-def')]
+    const account = await splitAccountWith(def.id, [{ externalId: 'c1', shopId: a.id, spend: 1000 }])
+
+    // Only shop A is selected. The account's own shopId is `def`, which is not.
+    const ids = await accountIdsForShops([a.id])
+    expect(ids).toContain(account.id)
+  })
+
+  it('includes a whole account on its own shopId', async () => {
+    const s = await shop('ids-whole')
+    const account = await db.adAccount.create({
+      data: { shopId: s.id, provider: 'meta', externalId: `${TAG}-ids-whole`, name: `${TAG} ids whole`, currency: 'NOK' },
+    })
+
+    const ids = await accountIdsForShops([s.id])
+    expect(ids).toContain(account.id)
+  })
+
+  it('excludes a split account with no campaigns anywhere in scope', async () => {
+    const [def, elsewhere] = [await shop('ids-excl-def'), await shop('ids-excl-elsewhere')]
+    const account = await splitAccountWith(def.id, [{ externalId: 'c1', shopId: elsewhere.id, spend: 1000 }])
+
+    const ids = await accountIdsForShops([def.id])
+    expect(ids).not.toContain(account.id)
   })
 })
