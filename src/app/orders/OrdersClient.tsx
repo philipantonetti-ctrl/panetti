@@ -196,21 +196,35 @@ function DeliveryCell({ d, placedAt, timezone, now }: { d: Delivery; placedAt: s
  * bought — and what the order truly earned after every cost. Each order shows
  * in its own currency; an order only ever has one.
  */
+/** The URL params this page accepts, read once on mount. */
+function initialParams() {
+  if (typeof window === 'undefined') return { source: '', q: '' }
+  const p = new URLSearchParams(window.location.search)
+  return { source: p.get('source') ?? '', q: p.get('q')?.trim() ?? '' }
+}
+
 export function OrdersClient({ email, shops }: { email: string; shops: Shop[] }) {
-  const [preset, setPreset] = useState<Preset | 'custom'>('this_month')
+  const initial = initialParams()
+  // A search arriving in the URL comes from somewhere specific — a Slack
+  // delivery alert, or the Delivery page's late list — and those orders are old
+  // by definition, because that is what being late means. Opening on the
+  // default month would hide the very order the link was about, so a seeded
+  // search widens the range to match. An order number is specific enough that a
+  // wide range costs nothing.
+  const [preset, setPreset] = useState<Preset | 'custom'>(
+    initial.q ? 'last_12_months' : 'this_month',
+  )
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [status, setStatus] = useState('')
   // /b2b links here with ?source=b2b. Read it once, from window rather than
   // useSearchParams, so this client component needs no Suspense boundary.
-  const [source, setSource] = useState(() =>
-    typeof window === 'undefined'
-      ? ''
-      : new URLSearchParams(window.location.search).get('source') ?? '',
-  )
-  const [q, setQ] = useState('')
-  const [query, setQuery] = useState('') // q, debounced
+  const [source, setSource] = useState(initial.source)
+  // Slack alerts and the Delivery page link here with ?q=<order number>. Both
+  // fire once per order, so this link is the only handle anyone gets on it.
+  const [q, setQ] = useState(initial.q)
+  const [query, setQuery] = useState(initial.q) // q, debounced
   const [refresh, setRefresh] = useState(0)
 
   const [orders, setOrders] = useState<OrderRow[]>([])

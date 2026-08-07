@@ -88,6 +88,41 @@ function renderPage(body: unknown = payload) {
   render(<OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} />)
 }
 
+describe('arriving from a delivery alert', () => {
+  const withUrl = (search: string) => {
+    vi.stubGlobal('window', Object.assign(window, {}))
+    window.history.replaceState({}, '', `/orders${search}`)
+  }
+
+  afterEach(() => window.history.replaceState({}, '', '/orders'))
+
+  it('seeds the search from ?q and widens the range so an old order is reachable', async () => {
+    // A Slack alert and the Delivery page both link here with ?q=<number>, and
+    // each order alerts exactly once — so this link is the only handle anyone
+    // gets on it. Opening on the default month would hide it, because a late
+    // order is old by definition.
+    withUrl('?q=10356')
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('10356')).toBeTruthy())
+    expect((screen.getByPlaceholderText(/search/i) as HTMLInputElement).value).toBe('10356')
+
+    const url = String(vi.mocked(fetch).mock.calls[0][0])
+    expect(url).toContain('preset=last_12_months')
+    expect(url).toContain('q=10356')
+  })
+
+  it('is unchanged when no search arrives in the URL', async () => {
+    withUrl('')
+    renderPage()
+
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled())
+    const url = String(vi.mocked(fetch).mock.calls[0][0])
+    expect(url).toContain('preset=this_month')
+    expect(url).not.toContain('q=')
+  })
+})
+
 describe('status badges', () => {
   it('reads one Woo status as the two facts shown side by side', () => {
     expect(paymentBadge('completed').label).toBe('Paid')
