@@ -406,12 +406,61 @@ describe('fetchMetaCampaignDaily', () => {
     ).rejects.toThrow(/too many rows/i)
   })
 
-  it('splits a long range into chunked requests', async () => {
-    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(json({ data: [] })))
+  it('splits a long range into chunked requests and accumulates rows from every window', async () => {
+    // Each call returns a campaign the other windows do not, so a reassignment
+    // bug (only the last window's rows survive) or a dropped-chunking bug
+    // (only the first window's rows exist) both show up in the id list.
+    let call = 0
+    const fetchMock = vi.fn().mockImplementation(() => {
+      call += 1
+      return Promise.resolve(
+        json({
+          data: [
+            {
+              campaign_id: `c${call}`,
+              campaign_name: `Campaign ${call}`,
+              date_start: '2026-03-01',
+              spend: '1.00',
+            },
+          ],
+        }),
+      )
+    })
     vi.stubGlobal('fetch', fetchMock)
 
-    await fetchMetaCampaignDaily(CREDS_M, '999', new Date('2026-01-01T00:00:00Z'), new Date('2026-12-31T00:00:00Z'))
+    const rows = await fetchMetaCampaignDaily(
+      CREDS_M,
+      '999',
+      new Date('2026-01-01T00:00:00Z'),
+      new Date('2026-12-31T00:00:00Z'),
+    )
 
     expect(fetchMock).toHaveBeenCalledTimes(5) // 365 days / 90
+    expect(rows).toHaveLength(5)
+    expect(rows.map((r) => r.campaignId)).toEqual(['c1', 'c2', 'c3', 'c4', 'c5'])
+  })
+
+  it('skips a row with no campaign id rather than inventing one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(
+        json({
+          data: [
+            { date_start: '2026-03-01', spend: '5.00' },
+            { campaign_id: '111', campaign_name: 'Real', date_start: '2026-03-01', spend: '7.00' },
+          ],
+        }),
+      ),
+    )
+
+    const rows = await fetchMetaCampaignDaily(
+      CREDS_M,
+      '999',
+      new Date('2026-03-01T00:00:00Z'),
+      new Date('2026-03-01T00:00:00Z'),
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].campaignId).toBe('111')
   })
 })
