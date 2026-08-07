@@ -6,7 +6,7 @@ import { computeMetrics } from '@/lib/metrics'
 import { dailySeries } from '@/lib/metrics/trend'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { buildMarketing } from '@/lib/ads/marketing'
-import { accountIdsForShops, accountSpendRows } from '@/lib/ads/attribution'
+import { accountIdsForShops, accountSpendRows, unassignedCampaignCount } from '@/lib/ads/attribution'
 import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
 
@@ -50,6 +50,11 @@ export async function GET(req: Request) {
 
     const spend = await accountSpendRows(accounts.map((a) => a.id), scopeIds, from, to)
 
+    // The design's "loudly" half of the unassigned-campaign fallback: money
+    // is never silently dropped (it lands on the account's default shop), but
+    // that must be visible rather than silent, so the page carries a count.
+    const unassignedCampaigns = await unassignedCampaignCount(accounts.map((a) => a.id))
+
     const engine = computeMetrics(input)
     const result = buildMarketing({ accounts, spend, engine, series: dailySeries(input), rates, to })
 
@@ -57,6 +62,7 @@ export async function GET(req: Request) {
       {
         ...result,
         connected: connectedCount > 0,
+        unassignedCampaigns,
         range: { from: from.toISOString(), to: to.toISOString() },
       },
       { headers: NO_STORE },

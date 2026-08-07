@@ -115,6 +115,7 @@ describe('GET /api/marketing', () => {
     // One shop selected -> its own currency, no conversion.
     expect(body.displayCurrency).toBe('NOK')
     expect(body.connected).toBe(true)
+    expect(body.unassignedCampaigns).toBe(0) // no split accounts in this fixture
 
     const row = body.byShop.find((r: { shopId: string }) => r.shopId === shopId)
     expect(row.spend).toBe(50000) // 500.00 NOK, the May row ignored
@@ -174,5 +175,35 @@ describe('GET /api/marketing', () => {
     const row = body.byShop.find((r: { shopId: string }) => r.shopId === shopId)
     // 500.00 NOK from the whole account (beforeEach) + 123.45 NOK from the split campaign.
     expect(row.spend).toBe(50000 + 12345)
+  })
+
+  // Task 6: the design requires the unassigned-campaign fallback to be
+  // visible, not silent — a count of campaigns still on shopId: null, so an
+  // admin can go assign them rather than never learning the fallback fired.
+  it('counts campaigns still on the account default, so the fallback is visible', async () => {
+    const splitAccount = await db.adAccount.create({
+      data: {
+        shopId,
+        provider: 'google',
+        externalId: `mkt-unassigned-${Date.now()}`,
+        name: `Unassigned Account ${MARK}`,
+        currency: 'NOK',
+        splitByCampaign: true,
+      },
+    })
+    await db.adCampaign.create({
+      data: { accountId: splitAccount.id, externalId: 'u1', name: 'Unassigned 1', shopId: null },
+    })
+    await db.adCampaign.create({
+      data: { accountId: splitAccount.id, externalId: 'u2', name: 'Unassigned 2', shopId: null },
+    })
+    await db.adCampaign.create({
+      data: { accountId: splitAccount.id, externalId: 'u3', name: 'Assigned', shopId },
+    })
+
+    const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.unassignedCampaigns).toBe(2)
   })
 })

@@ -132,6 +132,21 @@ export async function accountIdsForShops(shopIds: string[]): Promise<string[]> {
 }
 
 /**
+ * How many of these accounts' campaigns still have no store — the design's
+ * "loudly" half of the fallback. A campaign with shopId: null attributes to
+ * the account's default shop, which is correct but silent unless this count
+ * is shown; excluding that spend instead would understate ad cost and make
+ * profit look better than reality, which is worse. Only split accounts have
+ * campaigns at all, so a whole account in `accountIds` contributes nothing.
+ */
+export async function unassignedCampaignCount(accountIds: string[]): Promise<number> {
+  if (!accountIds.length) return 0
+  return db.adCampaign.count({
+    where: { accountId: { in: accountIds }, account: { splitByCampaign: true }, shopId: null },
+  })
+}
+
+/**
  * Account-keyed rows for the Marketing page, which groups by account and shows
  * ten metric columns.
  *

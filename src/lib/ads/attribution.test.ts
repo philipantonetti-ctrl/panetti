@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { attributedSpend, relevantAdCurrencies, accountSpendRows, accountIdsForShops } from './attribution'
+import {
+  attributedSpend,
+  relevantAdCurrencies,
+  accountSpendRows,
+  accountIdsForShops,
+  unassignedCampaignCount,
+} from './attribution'
 
 const TAG = 'attribution-test'
 const DAY = new Date('2026-03-01T00:00:00Z')
@@ -254,5 +260,34 @@ describe('accountIdsForShops', () => {
 
     const ids = await accountIdsForShops([def.id])
     expect(ids).not.toContain(account.id)
+  })
+})
+
+describe('unassignedCampaignCount', () => {
+  it('counts campaigns with no store assigned, on split accounts only', async () => {
+    const [a, def] = [await shop('uac-a'), await shop('uac-def')]
+    const account = await splitAccountWith(def.id, [
+      { externalId: 'c1', shopId: a.id, spend: 1000 }, // assigned: not counted
+      { externalId: 'c2', shopId: null, spend: 500 }, // unassigned: counted
+      { externalId: 'c3', shopId: null, spend: 250 }, // unassigned: counted
+    ])
+
+    expect(await unassignedCampaignCount([account.id])).toBe(2)
+  })
+
+  it('is zero when every campaign has a store', async () => {
+    const [a, def] = [await shop('uac-zero-a'), await shop('uac-zero-def')]
+    const account = await splitAccountWith(def.id, [{ externalId: 'c1', shopId: a.id, spend: 1000 }])
+
+    expect(await unassignedCampaignCount([account.id])).toBe(0)
+  })
+
+  it('ignores a whole account, which has no campaigns to leave unassigned', async () => {
+    const s = await shop('uac-whole')
+    const account = await db.adAccount.create({
+      data: { shopId: s.id, provider: 'meta', externalId: `${TAG}-uac-whole`, name: `${TAG} uac whole`, currency: 'NOK' },
+    })
+
+    expect(await unassignedCampaignCount([account.id])).toBe(0)
   })
 })

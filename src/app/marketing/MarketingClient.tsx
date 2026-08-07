@@ -19,6 +19,11 @@ type Payload = {
   total: MarketingShopRow
   series: MarketingSeriesPoint[]
   connected: boolean
+  // How many campaigns on a split account in scope still have no store. Their
+  // spend already lands on the account's default shop (never dropped), but
+  // the design requires that fallback to be visible, not silent — the same
+  // reasoning as ProductsClient's uncosted-products notice.
+  unassignedCampaigns: number
   // Already sent by the route (src/app/api/marketing/route.ts) — the resolved
   // range for whichever preset or custom dates are in effect. BreakdownTable
   // needs concrete dates, not a preset name, so this is read rather than
@@ -210,6 +215,16 @@ export function MarketingClient({
               <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-loss">
                 {error}
               </div>
+            )}
+
+            {data && data.unassignedCampaigns > 0 && (
+              <p className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-muted">
+                {data.unassignedCampaigns} {data.unassignedCampaigns === 1 ? 'campaign has' : 'campaigns have'} no
+                store assigned, so their spend falls back to their account&apos;s default store.{' '}
+                <Link href="/settings/ad-accounts" className="font-semibold text-accent hover:underline">
+                  Assign campaigns
+                </Link>
+              </p>
             )}
 
             {loading && !data ? (

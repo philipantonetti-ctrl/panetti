@@ -86,6 +86,7 @@ const payload = {
   }),
   series: [],
   connected: true,
+  unassignedCampaigns: 0,
   // Real route response includes this (src/app/api/marketing/route.ts:81); the
   // existing Payload type here just never declared it before BreakdownTable
   // needed a concrete range to ask its own endpoint for.
@@ -118,6 +119,33 @@ describe('MarketingClient', () => {
     expect(screen.getAllByText('6.28×').length).toBeGreaterThan(0)
     expect(screen.getByText('Panetti Norway')).toBeTruthy()
     expect(screen.getByText('No ad spend in this period.')).toBeTruthy()
+    // Zero unassigned campaigns: the fallback notice must not render at all.
+    expect(screen.queryByText(/no store assigned/i)).toBeNull()
+  })
+
+  // Task 6: the design requires the unassigned-campaign fallback to be
+  // visible, matching ProductsClient's uncosted-products notice — a count, a
+  // plain sentence and a link, never rendered when the count is zero (proven
+  // by the previous test's own assertion against the same payload shape).
+  it('shows a count and a link when campaigns still need a store', async () => {
+    const withUnassigned = { ...payload, unassignedCampaigns: 3 }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(withUnassigned), { status: 200 }))),
+    )
+
+    render(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    expect(screen.getByText(/3 campaigns have no store assigned/i)).toBeTruthy()
+    const link = screen.getByRole('link', { name: 'Assign campaigns' })
+    expect(link.getAttribute('href')).toBe('/settings/ad-accounts')
   })
 
   it('shows the connect doorway and fetches nothing when no account exists', async () => {
