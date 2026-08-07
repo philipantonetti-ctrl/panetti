@@ -29,6 +29,16 @@ export type DailyRow = {
   reach: number
 }
 
+/**
+ * One day of ONE CAMPAIGN's delivery. Same units and same day-additive rule as
+ * DailyRow; the campaign's own id and name ride along so the sync can keep the
+ * AdCampaign row's name fresh without a second request.
+ */
+export type CampaignDailyRow = DailyRow & {
+  campaignId: string
+  campaignName: string
+}
+
 export type VerifiedAccount = { name: string; currency: string }
 
 /** A provider's own words, surfaced to the UI — never an HTML dump. */

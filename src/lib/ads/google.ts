@@ -4,10 +4,12 @@ import {
   AdApiError,
   type BreakdownEntry,
   type BreakdownLevel,
+  type CampaignDailyRow,
   type DailyRow,
   type GoogleCredentials,
   type VerifiedAccount,
 } from './types'
+import { CHUNK_DAYS, chunkRange } from './windows'
 
 /**
  * Google Ads API v25 over REST.
@@ -271,4 +273,46 @@ export async function fetchGoogleBreakdown(
   return rows
     .map((r) => mapBreakdownRow(target.level, r))
     .filter((entry): entry is BreakdownEntry => entry !== null)
+}
+
+/**
+ * One row per campaign per day, for a split account.
+ *
+ * `fetchGoogleBreakdown` keeps segments.date out of its SELECT on purpose — in
+ * the SELECT it segments by day, "which is a different table and a far larger
+ * one". Here that segmentation is exactly what is wanted, so it goes in both,
+ * and the range is fetched in windows to keep any one answer small.
+ */
+export async function fetchGoogleCampaignDaily(
+  creds: GoogleCredentials,
+  customerId: string,
+  from: Date,
+  to: Date,
+): Promise<CampaignDailyRow[]> {
+  const rows: CampaignDailyRow[] = []
+  for (const window of chunkRange(from, to, CHUNK_DAYS)) {
+    const query =
+      'SELECT campaign.id, campaign.name, segments.date, metrics.cost_micros, ' +
+      'metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value ' +
+      `FROM campaign WHERE segments.date BETWEEN '${day(window.from)}' AND '${day(window.to)}'`
+    rows.push(...toCampaignDailyRows(await searchStream(creds, customerId, query)))
+  }
+  return rows
+}
+
+/**
+ * Reuses toDailyRows for the metrics so a campaign's numbers can never disagree
+ * with the same campaign's numbers elsewhere. A row with no campaign id is
+ * skipped for the reason mapBreakdownRow gives: it has nothing to key on.
+ */
+export function toCampaignDailyRows(results: GoogleResult[]): CampaignDailyRow[] {
+  const out: CampaignDailyRow[] = []
+  for (const r of results) {
+    const id = r.campaign?.id
+    if (!id) continue
+    const [daily] = toDailyRows([r])
+    if (!daily) continue
+    out.push({ ...daily, campaignId: id, campaignName: r.campaign?.name || id })
+  }
+  return out
 }

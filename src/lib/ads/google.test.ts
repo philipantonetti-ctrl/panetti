@@ -1,11 +1,13 @@
 ﻿import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchGoogleBreakdown,
+  fetchGoogleCampaignDaily,
   fetchGoogleDaily,
   fetchGoogleDailyBudget,
   googleAccessToken,
   microsToMinor,
   parseGoogleChunks,
+  toCampaignDailyRows,
   toDailyRows,
   verifyGoogle,
 } from './google'
@@ -346,6 +348,85 @@ describe('fetchGoogleBreakdown', () => {
     const rows = await fetchGoogleBreakdown(CREDS, { level: 'campaign', customerId: '1' }, FROM, TO)
     expect(rows).toHaveLength(1)
     expect(rows[0].id).toBe('777')
+  })
+})
+
+describe('fetchGoogleCampaignDaily', () => {
+  it('returns one row per campaign per day', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(
+        json([
+          {
+            results: [
+              {
+                campaign: { id: '111', name: 'Norway Brand' },
+                segments: { date: '2026-03-01' },
+                metrics: { costMicros: '1230000', impressions: '90', clicks: '4', conversions: 1.5, conversionsValue: '250.5' },
+              },
+              {
+                campaign: { id: '222', name: 'Sweden Brand' },
+                segments: { date: '2026-03-01' },
+                metrics: { costMicros: '4560000', impressions: '10', clicks: '1' },
+              },
+            ],
+          },
+        ]),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rows = await fetchGoogleCampaignDaily(CREDS, '123', new Date('2026-03-01T00:00:00Z'), new Date('2026-03-01T00:00:00Z'))
+
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({
+      campaignId: '111',
+      campaignName: 'Norway Brand',
+      spend: 123, // 1_230_000 micros / 10_000
+      impressions: 90,
+      clicks: 4,
+      linkClicks: 4,
+      conversions: 1.5,
+      conversionValue: 25050,
+    })
+    expect(rows[1]).toMatchObject({ campaignId: '222', spend: 456 })
+  })
+
+  it('asks for segments.date in the SELECT, not only the WHERE', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(json([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchGoogleCampaignDaily(CREDS, '123', new Date('2026-03-01T00:00:00Z'), new Date('2026-03-02T00:00:00Z'))
+
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body as string) as { query: string }
+    expect(body.query).toContain('SELECT campaign.id, campaign.name, segments.date')
+    expect(body.query).toContain("BETWEEN '2026-03-01' AND '2026-03-02'")
+  })
+
+  it('splits a long range into chunked requests and concatenates them', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('oauth2')
+          ? json({ access_token: 'live-token' })
+          : json([{ results: [{ campaign: { id: '1', name: 'C' }, segments: { date: '2026-01-01' }, metrics: { costMicros: '10000' } }] }]),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rows = await fetchGoogleCampaignDaily(CREDS, '123', new Date('2026-01-01T00:00:00Z'), new Date('2026-12-31T00:00:00Z'))
+
+    // 365 days / 90 = 5 windows, so 5 searchStream calls and 5 rows back.
+    const searchCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('searchStream'))
+    expect(searchCalls).toHaveLength(5)
+    expect(rows).toHaveLength(5)
+  })
+
+  it('skips a row with no campaign id rather than inventing one', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(tokenResponse())
+      .mockResolvedValueOnce(json([{ results: [{ segments: { date: '2026-03-01' }, metrics: { costMicros: '10000' } }] }]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await fetchGoogleCampaignDaily(CREDS, '123', new Date('2026-03-01T00:00:00Z'), new Date('2026-03-01T00:00:00Z'))).toEqual([])
   })
 })
 
