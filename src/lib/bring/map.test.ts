@@ -159,13 +159,14 @@ describe('mapConsignments', () => {
     expect(p.milestones.lastStatus).toBeNull()
   })
 
-  // SKIPPED: needs src/lib/bring/__fixtures__/real-package.json, which does not
-  // exist yet — the Phase 0 probe is blocked on the client supplying a
-  // warehouse-booked tracking number. Everything above is synthetic and proves
-  // the milestone rules; this is the only test that would prove our field
-  // SELECTORS match what Bring actually sends. Enable it the moment the probe
-  // runs, and treat the recording as authoritative over Bring's documentation.
-  it.skip('maps the recorded real response', async () => {
+  // The one test that proves our field SELECTORS match what Bring actually
+  // sends, rather than what its documentation claims. Recorded from
+  // api.bring.com on 2026-08-07 with the client's own credentials, against a
+  // parcel genuinely in transit at the time. Personal details in the response
+  // (sender name, street, phone) are redacted — the mapper reads none of them.
+  //
+  // If Bring ever changes a field name, this is the test that fails.
+  it('maps the recorded real response', async () => {
     // Read at runtime, NOT imported. A static import of a file that does not
     // exist is a COMPILE error even inside `it.skip` — skipping affects the
     // runner, not the typechecker — and `next build` typechecks test files,
@@ -176,10 +177,32 @@ describe('mapConsignments', () => {
       new URL('./__fixtures__/real-package.json', import.meta.url),
       'utf8',
     )
-    const real = JSON.parse(raw) as unknown
-    const mapped = mapConsignments([real].flat())
-    expect(mapped.length).toBeGreaterThan(0)
-    expect(mapped[0].trackingNumber).toBeTruthy()
-    expect(mapped[0].events.length).toBeGreaterThan(0)
+    // `consignmentSet` is what fetchTracking hands the mapper — the client
+    // unwraps the envelope, so the mapper never sees `apiVersion` and friends.
+    const real = (JSON.parse(raw) as { consignmentSet: unknown[] }).consignmentSet
+    const [p] = mapConsignments(real)
+
+    expect(p.trackingNumber).toBe('370722152545632402')
+    expect(p.events).toHaveLength(8)
+
+    // Milestones derived from real events, not invented ones.
+    expect(p.milestones.bookedAt).toEqual(new Date('2026-07-30T15:07:59+02:00'))
+    expect(p.milestones.handedInAt).toEqual(new Date('2026-08-05T17:10:36+02:00'))
+    // Genuinely still moving when this was recorded: no availability, no
+    // outcome, and the clock therefore still running.
+    expect(p.milestones.availableAt).toBeNull()
+    expect(p.milestones.collectedAt).toBeNull()
+    expect(p.milestones.outcome).toBeNull()
+    expect(p.milestones.lastStatus).toBe('TRANSPORT_TO_RECIPIENT')
+
+    // description/city/countryCode all read correctly off a real event.
+    const latest = p.events.find((e) => e.status === 'TRANSPORT_TO_RECIPIENT')!
+    expect(latest.description).toMatch(/on its way/i)
+    expect(latest.location).toBe('OSLO, NO')
+
+    // Bring repeats IN_TRANSIT at three different times. They are three
+    // distinct events, and the unique constraint keys on the timestamp too, so
+    // all three survive rather than collapsing into one.
+    expect(p.events.filter((e) => e.status === 'IN_TRANSIT')).toHaveLength(3)
   })
 })
