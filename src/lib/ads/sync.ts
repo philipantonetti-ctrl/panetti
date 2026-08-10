@@ -47,7 +47,14 @@ export type AdSyncResult = {
 
 export function syncWindow(lastSyncAt: Date | null, now: Date): { from: Date; to: Date } {
   const to = utcDay(now)
-  const back = lastSyncAt ? RESTATE_DAYS : BACKFILL_DAYS
+  if (!lastSyncAt) return { from: new Date(to.getTime() - BACKFILL_DAYS * DAY_MS), to }
+
+  // lastSyncAt is a DATE, not a yes/no. An account that stopped syncing for 60
+  // days needs those 60 days re-fetched as well as the restate window, because
+  // nothing else will ever go back for them: the next successful sync writes
+  // lastSyncAt = now and the hole becomes permanent and invisible.
+  const daysSince = Math.ceil((to.getTime() - utcDay(lastSyncAt).getTime()) / DAY_MS)
+  const back = Math.min(BACKFILL_DAYS, Math.max(RESTATE_DAYS, daysSince + RESTATE_DAYS))
   return { from: new Date(to.getTime() - back * DAY_MS), to }
 }
 
