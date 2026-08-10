@@ -4,8 +4,15 @@ import { useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { useToast } from '@/components/toast/useToast'
 import { PRESET_LABELS, type Preset } from '@/lib/dates'
+import { DISPLAY_CURRENCIES } from '@/lib/settings'
 
-type Values = { timezone: string; defaultPreset: string; dateFormat: string; currencyFormat: string }
+type Values = {
+  timezone: string
+  defaultPreset: string
+  dateFormat: string
+  currencyFormat: string
+  displayCurrency: string
+}
 
 const INPUT =
   'w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink'
@@ -101,6 +108,21 @@ export function GeneralClient({ email, initial }: { email: string; initial: Valu
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
+
+          <label className="mt-4 block text-[12px] font-medium text-ink">Display currency</label>
+          <select
+            aria-label="Display currency"
+            value={values.displayCurrency}
+            onChange={set('displayCurrency')}
+            className={`mt-1 ${INPUT}`}
+          >
+            {DISPLAY_CURRENCIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-muted">
+            Used when several stores are combined. A single store always shows its own currency.
+          </p>
 
           <button
             onClick={save}

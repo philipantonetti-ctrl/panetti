@@ -14,6 +14,7 @@ const initial = {
   defaultPreset: 'this_month',
   dateFormat: 'MMM-dd-yyyy',
   currencyFormat: 'symbol-after',
+  displayCurrency: 'USD',
 }
 
 const realLocation = window.location
@@ -57,5 +58,17 @@ describe('GeneralClient save', () => {
 
     await screen.findByText(/Bad timezone/i)
     expect(reload).not.toHaveBeenCalled()
+  })
+
+  it('sends the chosen display currency', async () => {
+    stubReload()
+    renderWith(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+
+    fireEvent.change(screen.getByLabelText('Display currency'), { target: { value: 'NOK' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save settings/i }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string)
+    expect(body.displayCurrency).toBe('NOK')
   })
 })

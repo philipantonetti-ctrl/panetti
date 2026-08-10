@@ -17,6 +17,7 @@ export default async function GeneralSettingsPage() {
         defaultPreset: setting.defaultPreset,
         dateFormat: setting.dateFormat,
         currencyFormat: setting.currencyFormat,
+        displayCurrency: setting.displayCurrency,
       }}
     />
   )

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
-import { CURRENCY_FORMATS, DATE_FORMATS, getSetting } from '@/lib/settings'
+import { CURRENCY_FORMATS, DATE_FORMATS, DISPLAY_CURRENCIES, getSetting } from '@/lib/settings'
 import { PRESET_LABELS } from '@/lib/dates'
 
 export async function GET() {
@@ -28,6 +28,9 @@ const Body = z.object({
   defaultPreset: z.string().refine((p) => p in PRESET_LABELS, 'Pick a date range'),
   dateFormat: z.string().refine((f) => DATE_FORMATS.includes(f), 'Pick a date format'),
   currencyFormat: z.string().refine((f) => CURRENCY_FORMATS.includes(f), 'Pick a currency format'),
+  displayCurrency: z
+    .string()
+    .refine((c) => DISPLAY_CURRENCIES.includes(c), 'Pick a display currency'),
 })
 
 export async function PUT(req: Request) {

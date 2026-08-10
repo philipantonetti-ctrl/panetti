@@ -5,6 +5,7 @@ import { zoneDayEndUtc, zoneDayStartUtc } from '../tz'
 import { buildRateTable } from '../metrics/fx'
 import { ensureRates, loadRates } from '../fx/rates'
 import { attributedSpend, relevantAdCurrencies } from '../ads/attribution'
+import { getSetting } from '../settings'
 import type { CostBook, EngineAdSpend, EngineExpense, EngineOrder, EngineShop, Recurrence } from '../metrics/types'
 import type { MetricsInput } from '../metrics/engine'
 
@@ -21,7 +22,7 @@ export type LoadArgs = {
  *
  * The display currency is decided here, and it follows one rule:
  *   exactly one shop  -> that shop's own currency
- *   several shops     -> USD, so the totals mean something
+ *   several shops     -> the workspace's displayCurrency setting (default USD)
  */
 export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const { from, to } = args
@@ -34,7 +35,14 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const shops: EngineShop[] = shopRows.map((s) => ({ id: s.id, name: s.name, currency: s.currency }))
   const shopIds = shops.map((s) => s.id)
 
-  const displayCurrency = shops.length === 1 ? shops[0].currency : 'USD'
+  // Several shops have to cross into one currency to be summable. WHICH one is
+  // a workspace choice, read here rather than passed in: all four callers
+  // already fetch the setting for `timezone`, and one that forgot to pass a
+  // second field would render a page quoting a different currency from the one
+  // beside it. One shop needs no crossing, so it keeps its own currency and the
+  // figure still matches the platform exactly.
+  const setting = await getSetting()
+  const displayCurrency = shops.length === 1 ? shops[0].currency : setting.displayCurrency
 
   const tz = args.timezone ?? 'UTC'
 
