@@ -8,11 +8,18 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    // vite-tsconfig-paths@6.1.1's plugin silently fails to resolve `@/*` on
-    // vite@8 (every test file importing via `@/` throws "Cannot find
-    // package"). Vite's own native resolver does the same job and works;
-    // the plugin is left in place as a harmless no-op rather than pulled,
-    // to keep this fix a one-line addition.
+    // Resolve `@/*` with Vite's own resolver rather than the plugin below.
+    //
+    // vite-tsconfig-paths resolves through `unrs-resolver`, which ships a
+    // NATIVE binary installed by a postinstall script. Where that script is
+    // blocked — a sandbox, a locked-down CI, `npm ci --ignore-scripts` — the
+    // binary is absent and the plugin then fails to resolve `@/*` SILENTLY:
+    // every test importing `@/lib/...` dies with "Cannot find package", which
+    // reads as a broken repo rather than a missing binary. Vite 8 resolves
+    // tsconfig paths natively with no binary at all, and its own deprecation
+    // warning recommends exactly this option, so it is both the fix and the
+    // direction of travel. The plugin stays as a harmless no-op to keep the
+    // change to one line.
     resolve: { tsconfigPaths: true },
     plugins: [tsconfigPaths(), react()],
     test: {
