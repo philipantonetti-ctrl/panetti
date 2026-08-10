@@ -59,18 +59,41 @@ export async function ensureRates(from: Date, to: Date, currencies: string[]): P
   if (wanted.length === 0) return
 
   const end = utcDay(to)
+
+  // `newest` below only proves SOME currency was synced recently — it says
+  // nothing about whether a specific `wanted` one was ever fetched. An
+  // operator picking a display currency no shop or ad account trades in
+  // (e.g. SEK, GBP) can hit this function while every OTHER currency is
+  // fresh; without this check the freshness shortcut fires, that currency
+  // gets no rows at all, and crossConvert (rateOn returning undefined) then
+  // returns the amount unconverted — silently, reading as a real number.
+  const held = await db.fxRate.findMany({
+    where: { quote: DISPLAY, base: { in: wanted } },
+    select: { base: true },
+  })
+  const heldSet = new Set(held.map((r) => r.base))
+  const missingEntirely = wanted.some((c) => !heldSet.has(c))
+
   const newest = await db.fxRate.findFirst({
     where: { quote: DISPLAY, date: { lte: end } },
     orderBy: { date: 'desc' },
     select: { date: true },
   })
 
-  if (newest && Math.round((end.getTime() - utcDay(newest.date).getTime()) / DAY_MS) <= FRESH_DAYS) {
+  if (
+    !missingEntirely &&
+    newest &&
+    Math.round((end.getTime() - utcDay(newest.date).getTime()) / DAY_MS) <= FRESH_DAYS
+  ) {
     return // current enough — nothing the provider could add
   }
 
   // Ask only for what is missing, and never for days before the range itself.
-  const startDay = newest
+  // A currency missing entirely needs the WHOLE range fetched, not just since
+  // the (otherwise irrelevant) newest row of some other currency — starting
+  // from `newest` would cover it only from today onward and leave the rest
+  // of the requested range unconverted.
+  const startDay = !missingEntirely && newest
     ? new Date(Math.max(utcDay(from).getTime(), utcDay(newest.date).getTime() + DAY_MS))
     : utcDay(from)
   if (startDay > end) return

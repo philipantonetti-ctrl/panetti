@@ -1,7 +1,7 @@
 import { utcDay } from '../dates'
 import { zonedDayStr } from '../tz'
 import { pct } from '../money'
-import { convert } from './fx'
+import { crossConvert } from './fx'
 import { EXCLUDED_STATUSES, type EngineOrder, type RateTable } from './types'
 
 export type LeaderboardRow = {
@@ -48,11 +48,13 @@ export function leaderboard(input: LeaderboardInput): LeaderboardRow[] {
   const rows = ambassadors.map((person) => {
     const mine = live.filter((o) => o.ambassadorId === person.id)
 
+    // crossConvert, not convert: displayCurrency is an operator choice and not
+    // always USD. See the identical fix and reasoning in metrics/engine.ts.
     let sales = 0
     let commission = 0
     for (const o of mine) {
-      sales += convert(o.netSales, o.currency, o.placedAt, displayCurrency, rates)
-      commission += convert(pct(o.netSales, o.commissionRate), o.currency, o.placedAt, displayCurrency, rates)
+      sales += crossConvert(o.netSales, o.currency, displayCurrency, o.placedAt, rates)
+      commission += crossConvert(pct(o.netSales, o.commissionRate), o.currency, displayCurrency, o.placedAt, rates)
     }
 
     return {

@@ -41,7 +41,23 @@ export default defineConfig(({ mode }) => {
               'src/lib/{delivery,bring}/**/*.integration.test.ts',
               'src/app/api/delivery/**/*.integration.test.ts',
               'src/app/api/orders/route.test.ts',
+              'src/lib/data/load.test.ts',
+              'src/lib/data/load.integration.test.ts',
             ],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'setting',
+            // load.test.ts WRITES the real workspace Setting singleton
+            // (displayCurrency) mid-test; load.integration.test.ts READS it
+            // through getSetting() and asserts it defaults to USD. Run in the
+            // `app` project's normal parallelism, the two race on one
+            // un-taggable row — same shape of problem the `delivery` project
+            // below already solves, and the same fix: run them one at a time.
+            include: ['src/lib/data/load.test.ts', 'src/lib/data/load.integration.test.ts'],
+            fileParallelism: false,
           },
         },
         {

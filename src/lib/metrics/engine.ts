@@ -3,7 +3,7 @@ import { zonedDayStr } from '../tz'
 import { pct, sum } from '../money'
 import { costOn } from './costs'
 import { expenseInRange } from './expenses'
-import { convert, crossConvert } from './fx'
+import { crossConvert } from './fx'
 import {
   EXCLUDED_STATUSES,
   ZERO_FIGURES,
@@ -156,14 +156,18 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const shopOrders = live.filter((e) => e.order.shopId === shop.id)
 
     // Convert an amount from this order's currency into the display currency,
-    // at the rate that applied on the day the order was placed.
+    // at the rate that applied on the day the order was placed. `crossConvert`,
+    // not `convert`: displayCurrency is now an operator choice (Settings ->
+    // General), not always USD, and plain `convert` multiplies by the
+    // from->USD rate regardless of what `display` actually is — correct only
+    // when display happens to be USD. See fx.ts's own doc comment on `convert`.
     const conv = (amount: number, order: EngineOrder) =>
-      convert(amount, order.currency, order.placedAt, displayCurrency, rates)
+      crossConvert(amount, order.currency, displayCurrency, order.placedAt, rates)
 
     // Product costs and fulfillment rates are held in the SHOP's currency,
     // which a B2B order invoiced in another currency does not share.
     const convCost = (amount: number, order: EngineOrder) =>
-      convert(amount, order.costCurrency, order.placedAt, displayCurrency, rates)
+      crossConvert(amount, order.costCurrency, displayCurrency, order.placedAt, rates)
 
     const grossSales = sum(shopOrders.map((e) => e.sign * conv(e.order.grossSales, e.order)))
     const discounts = sum(shopOrders.map((e) => e.sign * conv(e.order.discountTotal, e.order)))
@@ -235,7 +239,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const operationalExpenses = sum(
       expenses
         .filter((e) => e.shopId === shop.id)
-        .map((e) => convert(expenseInRange(e, from, to), e.currency, from, displayCurrency, rates)),
+        .map((e) => crossConvert(expenseInRange(e, from, to), e.currency, displayCurrency, from, rates)),
     )
 
     const netProfit =
