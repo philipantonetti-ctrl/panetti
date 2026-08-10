@@ -8,6 +8,12 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
+    // vite-tsconfig-paths@6.1.1's plugin silently fails to resolve `@/*` on
+    // vite@8 (every test file importing via `@/` throws "Cannot find
+    // package"). Vite's own native resolver does the same job and works;
+    // the plugin is left in place as a harmless no-op rather than pulled,
+    // to keep this fix a one-line addition.
+    resolve: { tsconfigPaths: true },
     plugins: [tsconfigPaths(), react()],
     test: {
       environment: 'node',
