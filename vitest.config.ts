@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
               'src/app/api/delivery/**/*.integration.test.ts',
               'src/app/api/orders/route.test.ts',
               'src/lib/advisor/**/*.integration.test.ts',
+              'src/app/api/cron/briefing/route.integration.test.ts',
             ],
           },
         },
@@ -53,6 +54,7 @@ export default defineConfig(({ mode }) => {
               // state a file touches, not what it is called.
               'src/app/api/orders/route.test.ts',
               'src/lib/advisor/**/*.integration.test.ts',
+              'src/app/api/cron/briefing/route.integration.test.ts',
             ],
             // These files share a fixed-id singleton, a table the settings route
             // rewrites wholesale, and a global alert query. No tag can separate

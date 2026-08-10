@@ -100,6 +100,15 @@ describe('the schedule itself', () => {
   it('is registered as a 15-minute cron in vercel.json', async () => {
     const { readFileSync } = await import('fs')
     const cfg = JSON.parse(readFileSync('vercel.json', 'utf8'))
-    expect(cfg.crons).toEqual([{ path: '/api/cron/sync', schedule: '*/15 * * * *' }])
+    // The briefing runs on its OWN route on its own schedule, not as a stage
+    // in this one: this run is budgeted tight against the 300s ceiling, and
+    // an unbounded model call ahead of the delivery alert it cannot afford to
+    // starve (see this file's own comments) is exactly the risk that avoids.
+    // Pinned as the whole array, not toContainEqual, so this still notices a
+    // third cron appearing or the briefing cron disappearing.
+    expect(cfg.crons).toEqual([
+      { path: '/api/cron/sync', schedule: '*/15 * * * *' },
+      { path: '/api/cron/briefing', schedule: '0 5 * * *' },
+    ])
   })
 })
