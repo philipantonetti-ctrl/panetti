@@ -328,19 +328,23 @@ In `src/app/settings/general/page.tsx`, add `displayCurrency: setting.displayCur
 
 - [ ] **Step 10: Write the settings component test**
 
-Add to `src/app/settings/general/GeneralClient.test.tsx` (the file exists; match its imports and its existing `initial` fixture, adding `displayCurrency: 'USD'` to it):
+`src/app/settings/general/GeneralClient.test.tsx` already exists and already has the machinery for this. Do NOT write a fresh `render()` call — the component uses `useToast` and would throw outside a provider, and saving triggers `window.location.reload`. The file's own `renderWith` helper (line 32) handles both.
+
+Two edits to that file:
+
+1. Add `displayCurrency: 'USD'` to the existing `initial` fixture (line 12).
+2. Add this test inside the existing `describe('GeneralClient save', …)` block:
 
 ```tsx
   it('sends the chosen display currency', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) })
-    vi.stubGlobal('fetch', fetchMock)
+    stubReload()
+    renderWith(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
 
-    render(<GeneralClient email="a@b.c" initial={initial} />)
     fireEvent.change(screen.getByLabelText('Display currency'), { target: { value: 'NOK' } })
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Save settings/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string)
     expect(body.displayCurrency).toBe('NOK')
   })
 ```
