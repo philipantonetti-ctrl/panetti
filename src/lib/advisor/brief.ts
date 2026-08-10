@@ -41,8 +41,8 @@ const BRIEF_JSON_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          headline: { type: 'string' },
-          why: { type: 'string' },
+          headline: { type: 'string', minLength: 1 },
+          why: { type: 'string', minLength: 1 },
           factIds: { type: 'array', items: { type: 'string' } },
           severity: { type: 'string', enum: ['high', 'medium', 'low'] },
           action: { anyOf: [{ type: 'string' }, { type: 'null' }] },

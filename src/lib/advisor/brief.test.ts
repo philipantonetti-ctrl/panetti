@@ -46,6 +46,15 @@ describe('validateItems', () => {
     ])
     expect(kept).toHaveLength(1)
   })
+
+  it('drops an item that mixes a real fact with an invented one', () => {
+    // The whole game. An item resting on one real figure and one nobody
+    // computed is not partly true — it is a fabricated number wearing a
+    // citation. `every`, not `some`, is what makes that impossible.
+    expect(
+      validateItems([item({ factIds: ['revenue:shop_se', 'revenue:invented'] })], [fact('revenue:shop_se')]),
+    ).toEqual([])
+  })
 })
 
 describe('generateBrief', () => {
