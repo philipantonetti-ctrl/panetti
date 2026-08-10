@@ -17,13 +17,22 @@ function stubFetch(body: unknown, ok = true) {
 
 describe('Chat', () => {
   it('shows the question and then the answer', async () => {
-    stubFetch({ reply: 'Sweden fell because advertising efficiency dropped.', messages: [] })
+    const fetchMock = stubFetch({ reply: 'Sweden fell because advertising efficiency dropped.', messages: [] })
     render(<Chat />)
 
     fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'Why was Sweden down?' } })
     fireEvent.click(screen.getByRole('button', { name: /send/i }))
 
     expect(screen.getByText('Why was Sweden down?')).toBeInTheDocument()
+    // The exact contract Task 10's route depends on: a fresh mount's
+    // transcript is empty, so this first call must carry only the one new
+    // turn -- a wrong field name or a dropped transcript would leave every
+    // bubble-level assertion in this file green while breaking the route.
+    expect(fetchMock).toHaveBeenCalledWith('/api/advisor/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'Why was Sweden down?' }] }),
+    })
     await waitFor(() =>
       expect(screen.getByText(/advertising efficiency dropped/)).toBeInTheDocument(),
     )

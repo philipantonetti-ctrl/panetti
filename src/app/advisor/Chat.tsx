@@ -30,9 +30,13 @@ export function Chat() {
       // sessionStorage is synchronous and the deps array is empty, so this
       // effect runs exactly once, on mount, to hydrate from it — not the
       // render-loop resync the cascading-render warning below guards against.
+      // A cast is compile-time only -- a truthy but wrong-shaped value would
+      // otherwise reach setBubbles and throw inside bubbles.map() during
+      // render, outside this try/catch, taking the whole Advisor page down
+      // with it rather than just failing to restore the chat.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setBubbles(parsed.bubbles ?? [])
-      transcript.current = parsed.transcript ?? []
+      setBubbles(Array.isArray(parsed.bubbles) ? parsed.bubbles : [])
+      transcript.current = Array.isArray(parsed.transcript) ? parsed.transcript : []
     } catch {
       // A corrupt entry is not worth a broken page.
     }
