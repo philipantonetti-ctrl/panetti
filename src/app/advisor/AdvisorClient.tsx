@@ -28,7 +28,14 @@ function figure(fact: Fact): string {
 
   const one = (n: number | null) => {
     if (n === null) return '—'
-    if (unit === 'money') return (n / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })
+    if (unit === 'money') {
+      if (!fact.currency) return n.toLocaleString(undefined, { maximumFractionDigits: 0 })
+      return (n / 100).toLocaleString(undefined, {
+        style: 'currency',
+        currency: fact.currency,
+        maximumFractionDigits: 0,
+      })
+    }
     if (unit === 'percent') return `${(n * 100).toFixed(1)}%`
     if (unit === 'ratio') return n.toFixed(1)
     if (unit === 'days') return `${n} d`
