@@ -564,3 +564,32 @@ model TrackingImport {
 
   @@index([receivedAt])
 }
+
+/// One morning's briefing. Written by cron, read on the Advisor page.
+///
+/// Stored rather than computed on open: the page is then instant, the cost is
+/// one generation a day rather than one a page load, and there is a history to
+/// look back at.
+model Briefing {
+  id        String   @id @default(cuid())
+  /// The calendar day it describes, in the workspace timezone. Unique, so a
+  /// re-run replaces rather than duplicates and the cron is safely idempotent.
+  day       DateTime @unique
+  from      DateTime
+  to        DateTime
+  /// The computed facts, as JSON text — the same convention TrackingImport
+  /// uses. Stored so the page prints figures from data rather than from prose,
+  /// and so a failed generation retries against the same facts rather than
+  /// against a database that has since moved on.
+  facts     String
+  /// The model's ordered items. Null while generating, and after a failure —
+  /// the facts still render, so the page is never blank.
+  items     String?
+  /// Why generation failed; null when it worked. Shown on the page, the way a
+  /// shop's lastError is.
+  error     String?
+  model     String?
+  createdAt DateTime @default(now())
+
+  @@index([day])
+}
