@@ -453,7 +453,18 @@ export type MoneyFactsArgs = {
   days?: number
 }
 
-const EMPTY_MARKETING: Partial<MarketingShopRow> = { spend: 0, roas: null, dailyBudget: null }
+/**
+ * The three fields this file reads, and only those.
+ *
+ * Deliberately NOT `Partial<MarketingShopRow>` forced back with `as`. That
+ * cast claims three fields are all twenty-six, so a later read of a fourth
+ * compiles cleanly and yields undefined — which reaches severity.ts as NaN,
+ * and `NaN < MIN_SHARE` is false, so the materiality gate fails OPEN and a
+ * junk fact ships. Narrowing the type makes that a compile error instead.
+ */
+type SpendFields = Pick<MarketingShopRow, 'spend' | 'roas' | 'dailyBudget'>
+
+const EMPTY_MARKETING: SpendFields = { spend: 0, roas: null, dailyBudget: null }
 
 export function moneyFacts(args: MoneyFactsArgs): Fact[] {
   const { now, before, nowMarketing, beforeMarketing } = args
