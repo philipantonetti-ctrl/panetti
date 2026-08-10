@@ -128,7 +128,21 @@ The rule, which stays honest about what conversion is happening:
 
 `load.ts:37` is the only line of logic that changes. FX needs no work:
 `load.ts:174` already seeds `inPlay` with `displayCurrency` before calling
-`ensureRates`, so rates for the chosen currency are fetched automatically.
+`ensureRates`, so rates for the chosen currency are fetched automatically, and
+`crossConvert` (`metrics/fx.ts:103`) already handles an arbitrary target.
+
+`loadMetricsInput` reads the setting itself rather than taking it as an
+argument. Its four callers already pass `timezone` from `getSetting()`, so a
+second field would work — but a caller that forgot would render a page quoting a
+different currency from the one beside it, which is the drift this codebase
+guards against everywhere else. `getSetting()` already falls back to defaults on
+any DB failure, so it cannot break a build-time prerender.
+
+**Products is not affected.** `load-products.ts` refuses mixed currencies
+outright (`MixedCurrencyError`, `load-products.ts:61`) and only ever reports one
+store's own currency, so there is nothing for a display setting to choose. The
+setting governs the Dashboard and Marketing, which are the pages that
+consolidate.
 
 The Settings field says plainly: *Used when several stores are combined. A
 single store always shows its own currency.*
