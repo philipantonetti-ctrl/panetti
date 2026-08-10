@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { PageBody, PageHeader } from '@/components/shell/AppShell'
 import type { Fact } from '@/lib/advisor/types'
 import type { BriefItem } from '@/lib/advisor/brief'
+import { Chat } from './Chat'
 
 export type Briefing = {
   day: string
@@ -169,6 +170,10 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
             {!briefing.items && briefing.facts.length > 0 && <FactList facts={briefing.facts} />}
           </div>
         )}
+
+        <div className="mt-4">
+          <Chat />
+        </div>
       </PageBody>
     </>
   )
