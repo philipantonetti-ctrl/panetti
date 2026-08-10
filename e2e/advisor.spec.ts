@@ -36,8 +36,13 @@ test.describe('Advisor', () => {
     await signIn(page, 'admin@ecom.test')
     await page.goto('/advisor')
     const empty = page.getByText(/No briefing yet/i)
-    const written = page.getByRole('button', { name: /refresh/i })
-    // One of the two is always true; both prove the page rendered its state.
+    // The page header's subtitle is set from briefing.from/to, and only when a
+    // Briefing row exists (AdvisorClient.tsx: `briefing ? ... : undefined`) — so
+    // unlike the always-rendered Refresh button, this actually distinguishes the
+    // two branches. Matched by shape, not a literal date: which week it is
+    // depends on when this environment's cron last ran.
+    const written = page.getByText(/\d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}/)
+    // Exactly one of the two is true, whichever state this environment is in.
     await expect(empty.or(written).first()).toBeVisible()
   })
 
