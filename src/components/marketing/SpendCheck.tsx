@@ -19,6 +19,13 @@ import type { SpendCheckAccount, SpendCheckResult } from '@/lib/ads/spend-check'
  * whole account in Ads Manager, that partial total looks like missing spend
  * when nothing is actually missing — so the panel says so, in plain words,
  * whenever the page isn't showing every store.
+ *
+ * `partialAccounts` covers the same caution for the one case `allStores`
+ * cannot see: "all stores" (the empty selection) still only ever means all
+ * ACTIVE stores, so a split account with a campaign mapped to a deactivated
+ * shop is partial even though nothing was filtered. The route computes this
+ * from the data (src/lib/ads/attribution.ts, hasPartialSplitAccounts) and
+ * the caution shows whenever either signal is true.
  */
 
 const STATUS_TEXT: Record<SpendCheckAccount['status'], string> = {
@@ -36,19 +43,42 @@ function ago(date: Date | null): string {
   return `${Math.round(hours / 24)}d ago`
 }
 
+function formatDay(day: string): string {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/**
+ * "3 / 10" alone reads the same whether an account synced 1-3 Aug then
+ * stopped, or delivered on the 8th, 9th and 10th — those mean completely
+ * different things. `null` means no data at all, which is handled by simply
+ * showing nothing here (the count on its own already says "0").
+ */
+function dataSpan(a: Pick<SpendCheckAccount, 'firstDay' | 'lastDay'>): string | null {
+  if (!a.firstDay || !a.lastDay) return null
+  return a.firstDay === a.lastDay ? formatDay(a.firstDay) : `${formatDay(a.firstDay)}–${formatDay(a.lastDay)}`
+}
+
 export function SpendCheck({
   data,
   currency,
   allStores,
+  partialAccounts = false,
 }: {
   data: SpendCheckResult
   currency: string
   allStores: boolean
+  /** True when a split account in scope has a campaign resolving outside it — see the note above. */
+  partialAccounts?: boolean
 }) {
   const [open, setOpen] = useState(false)
   if (data.accounts.length === 0) return null
 
   const troubled = data.accounts.filter((a) => a.status !== 'ok')
+  const showPartialCaution = !allStores || partialAccounts
 
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface">
@@ -77,11 +107,11 @@ export function SpendCheck({
 
       {open && (
         <div className="border-t border-line">
-          {!allStores && (
+          {showPartialCaution && (
             <p data-testid="spend-check-caution" className="border-b border-line px-5 py-3 text-[13px] text-muted">
-              Showing selected stores only. An ad account that runs campaigns for several stores
-              will show just the part that belongs to these stores, so it can read lower than the
-              total in Ads Manager. Choose all stores to compare like for like.
+              This may be showing only part of an ad account. An account that runs campaigns for
+              several stores shows just the part that belongs to the stores in view here, so its
+              total can read lower than what you see in Ads Manager.
             </p>
           )}
 
@@ -114,8 +144,9 @@ export function SpendCheck({
                     <td className="num px-5 py-3 text-right text-muted">
                       {formatMoney(a.convertedTotal, currency)}
                     </td>
-                    <td className="num px-5 py-3 text-right text-muted">
-                      {a.daysWithData} / {a.daysInRange}
+                    <td data-testid={`days-${a.id}`} className="num px-5 py-3 text-right text-muted">
+                      <div>{a.daysWithData} / {a.daysInRange}</div>
+                      {dataSpan(a) && <div className="text-[11px] text-faint">{dataSpan(a)}</div>}
                     </td>
                     <td className="num px-5 py-3 text-right text-muted">{ago(a.lastSyncAt)}</td>
                     <td className={`px-5 py-3 ${a.status === 'ok' ? 'text-muted' : 'text-loss'}`}>

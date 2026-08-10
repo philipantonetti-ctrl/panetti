@@ -30,6 +30,12 @@ type Payload = {
   // the design requires that fallback to be visible, not silent — the same
   // reasoning as ProductsClient's uncosted-products notice.
   unassignedCampaigns: number
+  // True when a split account in scope has a campaign resolving outside
+  // scope — "all stores" still only ever means all ACTIVE stores, so this
+  // can be true even with nothing filtered (src/lib/ads/attribution.ts,
+  // hasPartialSplitAccounts). Drives SpendCheck's partial-scope caution
+  // alongside the ShopFilter selection itself.
+  partialAccounts: boolean
   // Already sent by the route (src/app/api/marketing/route.ts) — the resolved
   // range for whichever preset or custom dates are in effect. BreakdownTable
   // needs concrete dates, not a preset name, so this is read rather than
@@ -187,8 +193,8 @@ export function MarketingClient({
       <PageHeader
         title="Marketing"
         subtitle={
-          hasAccounts && shops.length > 1 && currency === 'USD'
-            ? 'Shops trade in different currencies, so totals are consolidated to USD at each day’s own rate.'
+          hasAccounts && shops.length > 1
+            ? `Shops trade in different currencies, so totals are consolidated to ${currency} at each day’s own rate.`
             : undefined
         }
       >
@@ -270,7 +276,12 @@ export function MarketingClient({
                   <SingleStoreOnly />
                 )}
 
-                <SpendCheck data={data.spendCheck} currency={currency} allStores={selected.length === 0} />
+                <SpendCheck
+                  data={data.spendCheck}
+                  currency={currency}
+                  allStores={selected.length === 0}
+                  partialAccounts={data.partialAccounts}
+                />
               </div>
             ) : null}
           </>

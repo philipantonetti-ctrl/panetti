@@ -12,12 +12,19 @@ import { db } from '../db'
  * Dated in 2027, past every seeded rate, so these tests control the conditions.
  */
 
-const CUR = 'ZZZ' // a currency no other test or seed uses
-const OTHER = 'YYY' // a second currency no other test or seed uses
+// ISK and BGN: real, convertible ISO codes (src/lib/currencies.ts) that no
+// other test or seed in this repo uses — chosen so a currency that genuinely
+// needs a fetch behaves like a real one, not a code the provider would
+// reject outright.
+const CUR = 'ISK'
+const OTHER = 'BGN'
+// AED: a real ISO code, but NOT in our CONVERTIBLE list — Frankfurter cannot
+// quote it. This is the FIX 1 currency: a B2B order or expense in AED.
+const UNQUOTED = 'AED'
 
 async function wipe() {
   await db.fxRate.deleteMany({
-    where: { OR: [{ base: CUR }, { base: OTHER }, { date: { gte: new Date('2027-01-01') } }] },
+    where: { OR: [{ base: CUR }, { base: OTHER }, { base: UNQUOTED }, { date: { gte: new Date('2027-01-01') } }] },
   })
 }
 
@@ -39,10 +46,13 @@ afterEach(async () => {
 const hold = (day: string) =>
   db.fxRate.create({ data: { date: new Date(`${day}T00:00:00Z`), base: CUR, quote: 'USD', rate: 0.1 } })
 
+const holdOther = (day: string) =>
+  db.fxRate.create({ data: { date: new Date(`${day}T00:00:00Z`), base: OTHER, quote: 'USD', rate: 0.2 } })
+
 describe('ensureRates', () => {
-  // The bug: Fri held, Sat/Sun missing forever -> a pointless call every request.
-  it('does not call the provider when it already holds a recent rate', async () => {
-    await hold('2027-01-20')
+  it('does not call the provider when it holds history back to the start of the range and stays fresh', async () => {
+    await hold('2027-01-01') // covers the start of the range being viewed
+    await hold('2027-01-20') // and stays fresh towards `to`
     await ensureRates(new Date('2027-01-01'), new Date('2027-01-22'), [CUR])
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -75,12 +85,10 @@ describe('ensureRates', () => {
   // skipped the provider call entirely, leaving that currency with zero rows
   // — crossConvert then returns amounts unconverted, silently.
   it('fetches a currency that has no rows at all, even though another currency is fresh', async () => {
-    // OTHER is fresh (inside FRESH_DAYS of `to`), so the old code's shortcut
-    // would fire and CUR — which has never been held, and is never created
-    // here — would get nothing.
-    await db.fxRate.create({
-      data: { date: new Date('2027-01-20T00:00:00Z'), base: OTHER, quote: 'USD', rate: 0.2 },
-    })
+    // OTHER is fresh (inside FRESH_DAYS of `to`), so a shortcut that looked
+    // only at `newest` would fire and CUR — which has never been held, and is
+    // never created here — would get nothing.
+    await holdOther('2027-01-20')
 
     await ensureRates(new Date('2027-01-01'), new Date('2027-01-22'), [CUR])
 
@@ -89,5 +97,42 @@ describe('ensureRates', () => {
     // OTHER's newest day, which would leave the earlier part of the range
     // unconverted for CUR.
     expect(String(fetchMock.mock.calls[0][0])).toContain('2027-01-01..2027-01-22')
+  })
+
+  // FIX 1: a currency Frankfurter does not quote (heldSet can never gain a
+  // row for it, no matter how many times we ask) must never keep the
+  // freshness shortcut closed. Before the fix this currency alone was enough
+  // to force startDay to the whole range and call the provider on EVERY
+  // request, forever — exactly the "external API that could not help, on
+  // every request, forever" failure FRESH_DAYS exists to prevent.
+  it('does not force a fetch for a currency the provider cannot quote, when other rates are fresh', async () => {
+    await holdOther('2027-01-20') // some OTHER currency, fresh relative to `to`
+    await ensureRates(new Date('2027-01-01'), new Date('2027-01-22'), [UNQUOTED])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // Companion to the above: a real, CONVERTIBLE currency with no rows at all
+  // must still force a fetch — FIX 1 only exempts currencies the provider
+  // cannot quote, not ordinary ones that simply have never been synced. This
+  // is unaffected by FIX 1 (it already passed before it, and still does).
+  it('still forces a fetch for a convertible currency that holds no rows at all', async () => {
+    await ensureRates(new Date('2027-01-01'), new Date('2027-01-22'), [CUR])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  // FIX 2: the real bug. An operator switches the display currency today;
+  // that currency's only row lands OUTSIDE the range someone views later
+  // (e.g. last year). The OLD `held` check ("does this currency have ANY
+  // row, EVER") found that out-of-range row and treated the currency as
+  // covered, so the shortcut fired and no fetch happened — `rateOn` then fell
+  // back to the EARLIEST row it held (today's rate) for every day of the
+  // viewed range, converting all of history at today's rate.
+  it('forces a fetch when the only rows it holds fall OUTSIDE the range being viewed', async () => {
+    await holdOther('2027-01-04') // some OTHER currency, fresh and INSIDE the range
+    await hold('2027-01-20') // CUR's only row: AFTER the range being viewed
+    await ensureRates(new Date('2027-01-01'), new Date('2027-01-05'), [CUR])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('2027-01-01..2027-01-05')
   })
 })

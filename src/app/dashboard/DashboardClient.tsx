@@ -96,8 +96,8 @@ export function DashboardClient({
       <PageHeader
         title="Dashboard"
         subtitle={
-          shops.length > 1 && currency === 'USD'
-            ? 'Shops trade in different currencies, so totals are consolidated to USD at each order’s own rate.'
+          shops.length > 1
+            ? `Shops trade in different currencies, so totals are consolidated to ${currency} at each order’s own rate.`
             : undefined
         }
       >

@@ -6,6 +6,7 @@ import {
   accountSpendRows,
   accountIdsForShops,
   unassignedCampaignCount,
+  hasPartialSplitAccounts,
 } from './attribution'
 
 const TAG = 'attribution-test'
@@ -260,6 +261,43 @@ describe('accountIdsForShops', () => {
 
     const ids = await accountIdsForShops([def.id])
     expect(ids).not.toContain(account.id)
+  })
+})
+
+describe('hasPartialSplitAccounts', () => {
+  // FIX 4: the exact "all stores but partial" case — nothing was filtered
+  // (scopeIds is the full active-shop list), but a split account still has a
+  // campaign mapped to a shop outside that scope (standing in for a
+  // deactivated one, which the ShopFilter selection can never surface).
+  it('is true when an in-scope split account has a campaign resolving outside the given shops', async () => {
+    const [inScope, outside, def] = [
+      await shop('partial-in'),
+      await shop('partial-out'),
+      await shop('partial-def'),
+    ]
+    await splitAccountWith(def.id, [
+      { externalId: 'c-in', shopId: inScope.id, spend: 1000 },
+      { externalId: 'c-out', shopId: outside.id, spend: 500 },
+    ])
+
+    // `outside` is never passed — this stands in for "all active stores",
+    // which never includes a deactivated one.
+    expect(await hasPartialSplitAccounts([inScope.id])).toBe(true)
+  })
+
+  it('is false when every in-scope split account resolves entirely inside the given shops', async () => {
+    const [a, b, def] = [await shop('whole-a'), await shop('whole-b'), await shop('whole-def')]
+    await splitAccountWith(def.id, [
+      { externalId: 'c1', shopId: a.id, spend: 1000 },
+      { externalId: 'c2', shopId: b.id, spend: 500 },
+    ])
+
+    expect(await hasPartialSplitAccounts([a.id, b.id])).toBe(false)
+  })
+
+  it('is false when there are no split accounts in scope at all', async () => {
+    const s = await shop('no-split')
+    expect(await hasPartialSplitAccounts([s.id])).toBe(false)
   })
 })
 

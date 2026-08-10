@@ -1,5 +1,6 @@
 import { db } from '../db'
 import { eachDay, utcDay } from '../dates'
+import { isConvertible } from '../currencies'
 import type { RateRow } from '../metrics/fx'
 
 const DISPLAY = 'USD'
@@ -50,6 +51,19 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const FRESH_DAYS = 4
 
 /**
+ * ECB reference rates — the history Frankfurter serves — begin here. A range
+ * whose `from` predates this can never gain a row before it, no matter how
+ * many times we ask. The "held back to the start of the range" check just
+ * below is bounded at whichever is LATER, `from` or this date, so that a
+ * range starting before the provider's own history can still resolve to
+ * "not missing" once we hold its earliest obtainable coverage — otherwise
+ * `missingEntirely` would stay true forever for that range and reproduce the
+ * exact FIX 1 problem (an external call on every request, forever) for a
+ * request the provider could never satisfy either way.
+ */
+const PROVIDER_HISTORY_START = new Date('1999-01-04T00:00:00Z')
+
+/**
  * Top up the rates we hold if they have fallen behind the range being asked
  * about. Called before computing metrics, and hourly by the scheduled sync so
  * that a user's request rarely has to do it at all.
@@ -60,6 +74,14 @@ export async function ensureRates(from: Date, to: Date, currencies: string[]): P
 
   const end = utcDay(to)
 
+  // Only currencies Frankfurter can actually quote (src/lib/currencies.ts,
+  // backed by the same ECB list) can ever gain a row. A currency it does not
+  // quote — a B2B order invoiced in AED, say — would otherwise sit in
+  // `wanted` forever with no row possible, keeping `missingEntirely` true on
+  // every single request from here on: an external call that could not help,
+  // on every request, forever. Such a currency is simply never "missing".
+  const wantedConvertible = wanted.filter(isConvertible)
+
   // `newest` below only proves SOME currency was synced recently — it says
   // nothing about whether a specific `wanted` one was ever fetched. An
   // operator picking a display currency no shop or ad account trades in
@@ -67,12 +89,24 @@ export async function ensureRates(from: Date, to: Date, currencies: string[]): P
   // fresh; without this check the freshness shortcut fires, that currency
   // gets no rows at all, and crossConvert (rateOn returning undefined) then
   // returns the amount unconverted — silently, reading as a real number.
+  //
+  // `held` is bounded to rows AT OR BEFORE the start of the range, not "ANY
+  // row, ever": a currency that only just started being held (e.g. a display
+  // currency switched on today) can hold rows for today while having NONE
+  // for the range being viewed. Treating "any row anywhere" as sufficient let
+  // that currency's rows for a PAST range go unfetched — rateOn then fell
+  // back to the earliest row it did hold (today's), converting the whole of
+  // history at today's rate. Bounded at the later of `from` and the
+  // provider's own history start (see PROVIDER_HISTORY_START above).
+  const from0 = utcDay(from)
+  const heldBoundary = from0 < PROVIDER_HISTORY_START ? PROVIDER_HISTORY_START : from0
   const held = await db.fxRate.findMany({
-    where: { quote: DISPLAY, base: { in: wanted } },
+    where: { quote: DISPLAY, base: { in: wantedConvertible }, date: { lte: heldBoundary } },
     select: { base: true },
+    distinct: ['base'],
   })
   const heldSet = new Set(held.map((r) => r.base))
-  const missingEntirely = wanted.some((c) => !heldSet.has(c))
+  const missingEntirely = wantedConvertible.some((c) => !heldSet.has(c))
 
   const newest = await db.fxRate.findFirst({
     where: { quote: DISPLAY, date: { lte: end } },

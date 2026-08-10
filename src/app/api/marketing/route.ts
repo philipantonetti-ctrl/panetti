@@ -7,7 +7,12 @@ import { dailySeries } from '@/lib/metrics/trend'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { buildMarketing } from '@/lib/ads/marketing'
 import { buildSpendCheck } from '@/lib/ads/spend-check'
-import { accountIdsForShops, accountSpendRows, unassignedCampaignCount } from '@/lib/ads/attribution'
+import {
+  accountIdsForShops,
+  accountSpendRows,
+  unassignedCampaignCount,
+  hasPartialSplitAccounts,
+} from '@/lib/ads/attribution'
 import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
 
@@ -62,12 +67,45 @@ export async function GET(req: Request) {
     const engine = computeMetrics(input)
     const result = buildMarketing({ accounts, spend, engine, series: dailySeries(input), rates, to })
 
-    // Built from the SAME rows buildMarketing just consumed, so the panel and
-    // the headline cannot describe different money.
+    // accountIdsForShops filters `active: true` in both its sub-queries
+    // (attribution.ts), so `accounts` above can only ever hold active ones —
+    // an account switched off after spending would otherwise just vanish,
+    // from the headline (by design) but also from the Spend Check panel
+    // (not by design), with nothing saying money went missing. The panel —
+    // and ONLY the panel — also looks at inactive accounts belonging to
+    // these shops that still hold spend in the viewed range, so a human
+    // sees them. `spend` and the totals above are left untouched.
+    const inactiveAccounts = await db.adAccount.findMany({
+      where: { active: false, shopId: { in: scopeIds } },
+      select: {
+        id: true, shopId: true, provider: true, currency: true, dailyBudget: true,
+        name: true, active: true, lastSyncAt: true, lastError: true,
+      },
+    })
+    const inactiveSpend = inactiveAccounts.length
+      ? await accountSpendRows(inactiveAccounts.map((a) => a.id), scopeIds, from, to)
+      : []
+    // Only ones that actually have spend in range are worth surfacing — an
+    // inactive account with none would just be noise nobody needs to see.
+    const inactiveWithSpend = inactiveAccounts.filter((a) =>
+      inactiveSpend.some((r) => r.accountId === a.id),
+    )
+
+    // "All stores" (an empty ShopFilter selection) still only ever means all
+    // ACTIVE stores, so a split account with a campaign mapped to a
+    // deactivated shop can be partial even when nothing was filtered — the
+    // exact case the client-side caution (driven off the selection alone)
+    // cannot see. Computed from the data so SpendCheck can show the caution
+    // whenever it is actually true, not only when a filter is active.
+    const partialAccounts = await hasPartialSplitAccounts(scopeIds)
+
+    // Built from the SAME rows buildMarketing just consumed (plus the
+    // inactive accounts above), so the panel and the headline cannot
+    // describe different money.
     const now = new Date()
     const spendCheck = buildSpendCheck({
-      accounts,
-      spend,
+      accounts: [...accounts, ...inactiveWithSpend],
+      spend: [...spend, ...inactiveSpend],
       rates,
       from,
       to,
@@ -81,6 +119,7 @@ export async function GET(req: Request) {
         spendCheck,
         connected: connectedCount > 0,
         unassignedCampaigns,
+        partialAccounts,
         range: { from: from.toISOString(), to: to.toISOString() },
       },
       { headers: NO_STORE },

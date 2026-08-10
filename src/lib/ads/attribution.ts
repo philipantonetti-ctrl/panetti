@@ -132,6 +132,32 @@ export async function accountIdsForShops(shopIds: string[]): Promise<string[]> {
 }
 
 /**
+ * True when at least one in-scope split account has a campaign that resolves
+ * OUTSIDE this scope — the account is "whole" in Ads Manager, but its
+ * nativeTotal here only ever covers the part inside `shopIds`.
+ *
+ * Needed because "all stores" (an empty ShopFilter selection) still only
+ * ever means all ACTIVE stores: a split account with a campaign mapped to a
+ * DEACTIVATED shop has that campaign excluded by `campaignsInShops` even
+ * though nothing was filtered, so the caution the UI shows for a partial
+ * view has to be able to fire from the data itself, not just the selection.
+ */
+export async function hasPartialSplitAccounts(shopIds: string[]): Promise<boolean> {
+  if (!shopIds.length) return false
+  const inScope = await splitCampaignsFor(shopIds)
+  if (!inScope.length) return false
+
+  // Every campaign belonging to the SAME accounts, regardless of where it
+  // resolves. If that is more than what resolved into scope, at least one of
+  // those accounts has a campaign sitting outside `shopIds`.
+  const accountIds = [...new Set(inScope.map((c) => c.accountId))]
+  const total = await db.adCampaign.count({
+    where: { accountId: { in: accountIds }, account: { active: true, splitByCampaign: true } },
+  })
+  return total > inScope.length
+}
+
+/**
  * How many of these accounts' campaigns still have no store — the design's
  * "loudly" half of the fallback. A campaign with shopId: null attributes to
  * the account's default shop, which is correct but silent unless this count

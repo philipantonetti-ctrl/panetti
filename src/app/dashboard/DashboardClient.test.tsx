@@ -35,6 +35,39 @@ function renderPage() {
   return fetchMock
 }
 
+// FIX 6: the whole point of this branch was to let the operator consolidate
+// into a currency other than USD. Gating the notice on currency === 'USD'
+// made it vanish for exactly that case, leaving a DKK+NOK view with
+// converted figures and no sentence saying so.
+describe('DashboardClient consolidation notice', () => {
+  it('shows the notice for multiple shops in NOK, not just USD', async () => {
+    const withNok = { ...payload, metrics: { ...payload.metrics, displayCurrency: 'NOK' } }
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(withNok), { status: 200 }))))
+
+    render(
+      <DashboardClient
+        email="admin@test.local"
+        shops={[
+          { id: 'a', name: 'Panetti Norway', currency: 'NOK' },
+          { id: 'b', name: 'Panetti Denmark', currency: 'DKK' },
+        ]}
+      />,
+    )
+    await act(async () => {})
+
+    expect(screen.getByText(/consolidated to NOK/)).toBeTruthy()
+  })
+
+  it('does not show the notice for a single shop', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))))
+
+    render(<DashboardClient email="admin@test.local" shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]} />)
+    await act(async () => {})
+
+    expect(screen.queryByText(/consolidated to/)).toBeNull()
+  })
+})
+
 describe('DashboardClient live refresh', () => {
   it('refetches metrics when the window regains focus — silently, nothing dims', async () => {
     vi.useFakeTimers()

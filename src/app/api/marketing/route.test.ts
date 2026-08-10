@@ -206,4 +206,99 @@ describe('GET /api/marketing', () => {
     const body = await res.json()
     expect(body.unassignedCampaigns).toBe(2)
   })
+
+  // FIX 3: accountIdsForShops filters active:true in both its sub-queries, so
+  // switching an ad account off after it spent money made that spend vanish
+  // from the Spend Check panel too, with nothing saying anything went
+  // missing. The panel must surface it (status 'inactive', needsAttention),
+  // while the headline totals stay exactly what they were — an inactive
+  // account is excluded from money on purpose.
+  it('lists an inactive account with spend in range on the Spend Check panel, without moving the totals', async () => {
+    const inactive = await db.adAccount.create({
+      data: {
+        shopId,
+        provider: 'meta',
+        externalId: `mkt-inactive-${Date.now()}`,
+        name: `Inactive Account ${MARK}`,
+        currency: 'NOK',
+        active: false,
+      },
+    })
+    await db.adSpend.create({
+      data: { accountId: inactive.id, date: new Date('2026-03-10T00:00:00Z'), spend: 400_00, impressions: 0, clicks: 0 },
+    })
+
+    const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    // Headline totals: only the active account's 500.00 NOK, unchanged.
+    const row = body.byShop.find((r: { shopId: string }) => r.shopId === shopId)
+    expect(row.spend).toBe(50000)
+    expect(body.total.spend).toBe(50000)
+
+    // The panel: the inactive account is listed, flagged, and raises the banner.
+    const panelAccount = body.spendCheck.accounts.find((a: { id: string }) => a.id === inactive.id)
+    expect(panelAccount).toBeDefined()
+    expect(panelAccount.status).toBe('inactive')
+    expect(panelAccount.nativeTotal).toBe(400_00)
+    expect(body.spendCheck.needsAttention).toBe(true)
+  })
+
+  it('does not list an inactive account that has no spend in the range', async () => {
+    const inactive = await db.adAccount.create({
+      data: {
+        shopId,
+        provider: 'meta',
+        externalId: `mkt-inactive-empty-${Date.now()}`,
+        name: `Inactive Empty ${MARK}`,
+        currency: 'NOK',
+        active: false,
+      },
+    })
+
+    const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.spendCheck.accounts.some((a: { id: string }) => a.id === inactive.id)).toBe(false)
+  })
+
+  // FIX 4: "all stores" (no shops= param) still only ever means all ACTIVE
+  // shops. A split account with a campaign resolving to a DEACTIVATED shop
+  // therefore reads partial even when the caution driven off the selection
+  // (allStores) is suppressed — this is the false mismatch the caution
+  // exists to prevent, firing exactly where the client-side signal cannot.
+  it('reports partialAccounts=true for the all-stores view when a split account has a campaign on a deactivated shop', async () => {
+    const deactivated = await db.shop.create({ data: { name: `Deactivated ${MARK}`, currency: 'NOK', active: false } })
+    const splitAccount = await db.adAccount.create({
+      data: {
+        shopId,
+        provider: 'google',
+        externalId: `mkt-partial-${Date.now()}`,
+        name: `Partial Account ${MARK}`,
+        currency: 'NOK',
+        splitByCampaign: true,
+      },
+    })
+    await db.adCampaign.create({
+      data: { accountId: splitAccount.id, externalId: 'partial-in', name: 'In scope', shopId },
+    })
+    await db.adCampaign.create({
+      data: { accountId: splitAccount.id, externalId: 'partial-out', name: 'On deactivated shop', shopId: deactivated.id },
+    })
+
+    // No `shops=` param at all: the "all stores" request the UI sends when
+    // nothing is filtered (MarketingClient only sets it when selected.length).
+    const res = await get('from=2026-03-01&to=2026-03-31')
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.partialAccounts).toBe(true)
+  })
+
+  it('reports partialAccounts=false when every split account resolves entirely inside the active shops', async () => {
+    const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.partialAccounts).toBe(false)
+  })
 })
