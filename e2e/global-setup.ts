@@ -6,7 +6,7 @@
  */
 export default async function globalSetup() {
   const base = 'http://localhost:3000'
-  for (const path of ['/login', '/dashboard', '/orders', '/portal', '/account', '/settings/shops', '/b2b']) {
+  for (const path of ['/login', '/dashboard', '/advisor', '/orders', '/portal', '/account', '/settings/shops', '/b2b']) {
     try {
       await fetch(`${base}${path}`, { redirect: 'manual' })
     } catch {

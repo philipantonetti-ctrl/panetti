@@ -46,6 +46,8 @@ collide with WooCommerce.
 - `src/lib/metrics/` — all the money maths. Pure functions, heavily tested. **Start here.**
 - `src/lib/woo/` — talking to WooCommerce.
 - `src/lib/auth/` — logins and the rule that an ambassador only ever sees their own data.
+- `src/lib/advisor/` — the morning briefing and the chat. The facts are computed
+  by the engine; the model only ranks and explains them.
 - `src/app/` — the pages and API routes. Thin: they just call the above.
 
 ## Connecting a real shop
@@ -76,6 +78,17 @@ nobody keeps running last week's page.
 The webhook receiver needs the deployment's public URL (`APP_URL`, or on
 Vercel the production URL is picked up automatically) and verifies every
 delivery against a per-shop HMAC secret the app generates itself.
+
+## The advisor
+
+Every morning a briefing is written from the last seven days against the seven
+before them, and stored. The figures are computed by `src/lib/metrics/` — the same
+code every other page uses — and Claude is given them and asked only what deserves
+attention and why. It never calculates: an item citing a figure that was not
+computed is discarded, and the page prints numbers from the facts rather than from
+the model's words.
+
+Needs `ANTHROPIC_API_KEY`. Without it the page says so and shows the facts alone.
 
 ## Deploying
 
