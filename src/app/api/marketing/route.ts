@@ -6,6 +6,7 @@ import { computeMetrics } from '@/lib/metrics'
 import { dailySeries } from '@/lib/metrics/trend'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { buildMarketing } from '@/lib/ads/marketing'
+import { buildSpendCheck } from '@/lib/ads/spend-check'
 import { accountIdsForShops, accountSpendRows, unassignedCampaignCount } from '@/lib/ads/attribution'
 import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
@@ -37,7 +38,10 @@ export async function GET(req: Request) {
     const [accounts, connectedCount] = await Promise.all([
       db.adAccount.findMany({
         where: { id: { in: ids } },
-        select: { id: true, shopId: true, provider: true, currency: true, dailyBudget: true },
+        select: {
+          id: true, shopId: true, provider: true, currency: true, dailyBudget: true,
+          name: true, active: true, lastSyncAt: true, lastError: true,
+        },
       }),
       db.adAccount.count({ where: { active: true } }),
     ])
@@ -58,9 +62,23 @@ export async function GET(req: Request) {
     const engine = computeMetrics(input)
     const result = buildMarketing({ accounts, spend, engine, series: dailySeries(input), rates, to })
 
+    // Built from the SAME rows buildMarketing just consumed, so the panel and
+    // the headline cannot describe different money.
+    const now = new Date()
+    const spendCheck = buildSpendCheck({
+      accounts,
+      spend,
+      rates,
+      from,
+      to,
+      displayCurrency: result.displayCurrency,
+      now,
+    })
+
     return NextResponse.json(
       {
         ...result,
+        spendCheck,
         connected: connectedCount > 0,
         unassignedCampaigns,
         range: { from: from.toISOString(), to: to.toISOString() },
