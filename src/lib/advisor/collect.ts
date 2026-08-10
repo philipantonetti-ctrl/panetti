@@ -142,7 +142,7 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
   const shopShares = new Map(
     priorEngine.byShop.map((s) => [s.shopId, baseline > 0 ? s.netRevenue / baseline : 0]),
   )
-  let uncostedByShop: { shopId: string; shopName: string; count: number }[] = []
+  const uncostedByShop: { shopId: string; shopName: string; count: number }[] = []
 
   for (const group of groupByCurrency(shops)) {
     const groupIds = group.shops.map((s) => s.id)
