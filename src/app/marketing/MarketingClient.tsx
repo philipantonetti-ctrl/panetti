@@ -8,16 +8,22 @@ import { DateFilter } from '@/components/filters/DateFilter'
 import { MarketingStats } from '@/components/marketing/MarketingStats'
 import { MarketingChart } from '@/components/marketing/MarketingChart'
 import { MarketingTable } from '@/components/marketing/MarketingTable'
+import { PlatformCard } from '@/components/marketing/PlatformCard'
+import { PlatformTable } from '@/components/marketing/PlatformTable'
+import { SpendCheck } from '@/components/marketing/SpendCheck'
 import { BreakdownTable } from './BreakdownTable'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { Preset } from '@/lib/dates'
-import type { MarketingSeriesPoint, MarketingShopRow } from '@/lib/ads/marketing'
+import type { MarketingPlatformRow, MarketingSeriesPoint, MarketingShopRow } from '@/lib/ads/marketing'
+import type { SpendCheckResult } from '@/lib/ads/spend-check'
 
 type Payload = {
   displayCurrency: string
   byShop: MarketingShopRow[]
+  byPlatform: MarketingPlatformRow[]
   total: MarketingShopRow
   series: MarketingSeriesPoint[]
+  spendCheck: SpendCheckResult
   connected: boolean
   // How many campaigns on a split account in scope still have no store. Their
   // spend already lands on the account's default shop (never dropped), but
@@ -156,6 +162,11 @@ export function MarketingClient({
         return res.json()
       })
       .then((json: Payload) => {
+        // JSON has no Date type; SpendCheck does date arithmetic on this.
+        json.spendCheck.accounts = json.spendCheck.accounts.map((a) => ({
+          ...a,
+          lastSyncAt: a.lastSyncAt ? new Date(a.lastSyncAt) : null,
+        }))
         setData(json)
         setError('')
       })
@@ -236,7 +247,12 @@ export function MarketingClient({
               >
                 <MarketingStats total={data.total} currency={currency} />
 
-                <MarketingChart series={data.series} currency={currency} />
+                <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+                  <PlatformCard rows={data.byPlatform} total={data.total.spend} currency={currency} />
+                  <MarketingChart series={data.series} currency={currency} />
+                </div>
+
+                <PlatformTable rows={data.byPlatform} currency={currency} />
 
                 <MarketingTable rows={data.byShop} total={data.total} currency={currency} />
 
@@ -253,6 +269,8 @@ export function MarketingClient({
                 ) : (
                   <SingleStoreOnly />
                 )}
+
+                <SpendCheck data={data.spendCheck} currency={currency} allStores={selected.length === 0} />
               </div>
             ) : null}
           </>

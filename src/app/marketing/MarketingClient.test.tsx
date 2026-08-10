@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, act, fireEvent } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
 import { MarketingClient } from './MarketingClient'
 import type { MarketingShopRow } from '@/lib/ads/marketing'
 
@@ -84,7 +85,9 @@ const payload = {
     conversionValue: 753600,
     costPerPurchase: 10000,
   }),
+  byPlatform: [],
   series: [],
+  spendCheck: { accounts: [], needsAttention: false },
   connected: true,
   unassignedCampaigns: 0,
   // Real route response includes this (src/app/api/marketing/route.ts:81); the
@@ -118,9 +121,51 @@ describe('MarketingClient', () => {
     expect(screen.getAllByText('$1,200.00').length).toBeGreaterThan(0)
     expect(screen.getAllByText('6.28×').length).toBeGreaterThan(0)
     expect(screen.getByText('Panetti Norway')).toBeTruthy()
-    expect(screen.getByText('No ad spend in this period.')).toBeTruthy()
+    // Both the chart and the platform card say this independently when there's
+    // no spend — two honest instances of the same sentence, not a bug.
+    expect(screen.getAllByText('No ad spend in this period.').length).toBeGreaterThan(0)
     // Zero unassigned campaigns: the fallback notice must not render at all.
     expect(screen.queryByText(/no store assigned/i)).toBeNull()
+  })
+
+  it('shows the platform card once data arrives', async () => {
+    const withPlatform = {
+      ...payload,
+      byPlatform: [
+        {
+          provider: 'meta',
+          label: 'Meta',
+          spend: 100_00,
+          impressions: 1000,
+          clicks: 20,
+          conversions: 2,
+          conversionValue: 50_00,
+          share: 1,
+          cpc: 500,
+          cpm: 10000,
+          ctr: 0.02,
+          platformRoas: 0.5,
+          costPerPurchase: 5000,
+        },
+      ],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(withPlatform), { status: 200 }))),
+    )
+
+    render(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    // PlatformCard and PlatformTable both print the label, so there are two —
+    // this test only cares that the platform data made it onto the page.
+    expect((await screen.findAllByText('Meta')).length).toBeGreaterThan(0)
   })
 
   // Task 6: the design requires the unassigned-campaign fallback to be
