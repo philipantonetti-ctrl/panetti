@@ -135,4 +135,34 @@ describe('ensureRates', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(String(fetchMock.mock.calls[0][0])).toContain('2027-01-01..2027-01-05')
   })
+
+  // FIX 3: the provider (Frankfurter/ECB) publishes nothing for non-trading
+  // days. If the range being viewed STARTS on a weekend or holiday, the rows
+  // we get back begin on the first trading day AFTER the range start —
+  // `held`'s old "date <= start of range" test then NEVER matches, no matter
+  // how many times we fetch, so every single page load re-fetches the same
+  // range and re-upserts it, forever. This is the narrower survivor of FIX 2
+  // above: the earliest row we hold must count as "held" even when it lands a
+  // couple of days after the range start, as long as the gap is small enough
+  // to be explained by the provider simply having nothing to publish for
+  // those days (a weekend, plus a holiday).
+  it('does not force a fetch when the earliest held row falls just after the range start (weekend gap)', async () => {
+    await hold('2027-01-03') // earliest row available: first trading day after a weekend start
+    await hold('2027-01-20') // and stays fresh towards `to`
+    await ensureRates(new Date('2027-01-01'), new Date('2027-01-22'), [CUR])
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // Companion to FIX 3: the tolerance that lets a weekend gap count as "held"
+  // must stay narrow. A currency whose earliest row is genuinely far after
+  // the range start (viewing last year, but the only row is from just now)
+  // must still force the whole-range fetch — otherwise this fix would widen
+  // back into FIX 2's bug (history silently converted at today's rate).
+  it('still forces a fetch when the earliest held row is far after the range start', async () => {
+    await hold('2027-06-01') // CUR's only row, months after the viewed range
+    await ensureRates(new Date('2026-01-01'), new Date('2026-01-31'), [CUR])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('2026-01-01..2026-01-31')
+  })
 })

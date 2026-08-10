@@ -100,13 +100,34 @@ export async function ensureRates(from: Date, to: Date, currencies: string[]): P
   // provider's own history start (see PROVIDER_HISTORY_START above).
   const from0 = utcDay(from)
   const heldBoundary = from0 < PROVIDER_HISTORY_START ? PROVIDER_HISTORY_START : from0
-  const held = await db.fxRate.findMany({
-    where: { quote: DISPLAY, base: { in: wantedConvertible }, date: { lte: heldBoundary } },
-    select: { base: true },
-    distinct: ['base'],
+
+  // Strictly "AT OR BEFORE heldBoundary" is too strict: the provider (ECB via
+  // Frankfurter) publishes no rate at all for weekends or holidays, so when a
+  // viewed range STARTS on one of those days, the fetch that (correctly)
+  // covers it writes its first row on the next trading day AFTER the start —
+  // never ON or before it. A "<= heldBoundary" test then never matches, so
+  // `missingEntirely` stays true and the SAME range gets re-fetched and
+  // re-upserted on every subsequent request, forever: the exact "external
+  // call that cannot help, on every request" failure FRESH_DAYS exists to
+  // prevent, just reached from the held side instead of the freshness side.
+  // So a currency counts as held once its EARLIEST row is at or before
+  // `heldBoundary + FRESH_DAYS`: wide enough to absorb a weekend plus one
+  // holiday sitting right at the start of the range, narrow enough that a
+  // currency whose history genuinely begins much later (FIX 2's case — the
+  // display currency switched on today, viewed against last year) still
+  // counts as missing. Reusing FRESH_DAYS rather than a new constant keeps
+  // "how stale is tolerable" answered in exactly one place.
+  const heldTolerance = new Date(heldBoundary.getTime() + FRESH_DAYS * DAY_MS)
+  const earliestHeld = await db.fxRate.groupBy({
+    by: ['base'],
+    where: { quote: DISPLAY, base: { in: wantedConvertible } },
+    _min: { date: true },
   })
-  const heldSet = new Set(held.map((r) => r.base))
-  const missingEntirely = wantedConvertible.some((c) => !heldSet.has(c))
+  const earliestByBase = new Map(earliestHeld.map((r) => [r.base, r._min.date]))
+  const missingEntirely = wantedConvertible.some((c) => {
+    const earliest = earliestByBase.get(c)
+    return !earliest || earliest > heldTolerance
+  })
 
   const newest = await db.fxRate.findFirst({
     where: { quote: DISPLAY, date: { lte: end } },
