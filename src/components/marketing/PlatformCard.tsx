@@ -27,7 +27,7 @@ export function PlatformCard({
       <h2 className="text-[13px] font-semibold text-ink">Ad spend</h2>
 
       {rows.length === 0 ? (
-        <p className="mt-4 text-[13px] text-muted">No ad spend in this period.</p>
+        <p className="mt-4 text-[13px] text-muted">No spend to break down.</p>
       ) : (
         <>
           <div className="mt-4 space-y-3">

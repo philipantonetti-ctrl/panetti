@@ -44,6 +44,6 @@ describe('PlatformCard', () => {
 
   it('says so plainly when nothing was spent', () => {
     render(<PlatformCard rows={[]} total={0} currency="NOK" />)
-    expect(screen.getByText(/no ad spend/i)).toBeInTheDocument()
+    expect(screen.getByText(/no spend to break down/i)).toBeInTheDocument()
   })
 })

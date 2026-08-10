@@ -121,9 +121,10 @@ describe('MarketingClient', () => {
     expect(screen.getAllByText('$1,200.00').length).toBeGreaterThan(0)
     expect(screen.getAllByText('6.28×').length).toBeGreaterThan(0)
     expect(screen.getByText('Panetti Norway')).toBeTruthy()
-    // Both the chart and the platform card say this independently when there's
-    // no spend — two honest instances of the same sentence, not a bug.
-    expect(screen.getAllByText('No ad spend in this period.').length).toBeGreaterThan(0)
+    // MarketingChart is the only place this exact sentence renders now —
+    // PlatformCard's empty state says "No spend to break down." instead, so
+    // the two surfaces state different, true things rather than echoing.
+    expect(screen.getByText('No ad spend in this period.')).toBeTruthy()
     // Zero unassigned campaigns: the fallback notice must not render at all.
     expect(screen.queryByText(/no store assigned/i)).toBeNull()
   })
