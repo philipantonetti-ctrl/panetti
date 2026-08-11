@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactElement, ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render as rtlRender, screen, act, fireEvent } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { ToastProvider } from '@/components/toast/ToastProvider'
 import { MarketingClient } from './MarketingClient'
@@ -10,8 +10,11 @@ import type { MarketingShopRow } from '@/lib/ads/marketing'
 // The refresh button (Task 7) calls the real useToast(), which throws without
 // a ToastProvider ancestor — production gets one from the root layout, so
 // every render here needs the same wrapper rather than a per-test one-off.
-function render(ui: ReactElement) {
-  return rtlRender(<ToastProvider>{ui}</ToastProvider>)
+// Named to match the sibling convention (AdAccountsClient.test.tsx's
+// renderPage), not aliased onto testing-library's own `render` — that alias
+// reads as the real thing and hides the wrapping from anyone skimming a test.
+function renderPage(ui: ReactElement) {
+  return render(<ToastProvider>{ui}</ToastProvider>)
 }
 
 vi.mock('next/navigation', () => ({
@@ -112,7 +115,7 @@ describe('MarketingClient', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -164,7 +167,7 @@ describe('MarketingClient', () => {
       vi.fn(() => Promise.resolve(new Response(JSON.stringify(withPlatform), { status: 200 }))),
     )
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -189,7 +192,7 @@ describe('MarketingClient', () => {
       vi.fn(() => Promise.resolve(new Response(JSON.stringify(withUnassigned), { status: 200 }))),
     )
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -211,7 +214,7 @@ describe('MarketingClient', () => {
     const withNok = { ...payload, displayCurrency: 'NOK' }
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(withNok), { status: 200 }))))
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[
@@ -229,7 +232,7 @@ describe('MarketingClient', () => {
   it('does not show the consolidation notice for a single shop', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))))
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -273,7 +276,7 @@ describe('MarketingClient', () => {
     }
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(withPartial), { status: 200 }))))
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -290,7 +293,7 @@ describe('MarketingClient', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<MarketingClient email="admin@test.local" shops={[]} hasAccounts={false} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={[]} hasAccounts={false} />)
     await act(async () => {})
 
     expect(screen.getByText('No ad accounts connected yet')).toBeTruthy()
@@ -329,7 +332,7 @@ describe('MarketingClient', () => {
   it('shows the breakdown only for a single store', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
-    render(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
 
     // Default selection is every shop — neither the switcher nor the table,
@@ -366,7 +369,7 @@ describe('MarketingClient', () => {
   it('treats "no shops" as not exactly one, not as a shop named none', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
-    render(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
 
     fireEvent.click(screen.getByRole('button', { name: 'Shops' }))
@@ -381,7 +384,7 @@ describe('MarketingClient', () => {
   it('switches the table between Meta and Google', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
-    render(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
     selectOnly('Panetti Norway')
     await act(async () => {})
@@ -397,7 +400,7 @@ describe('MarketingClient', () => {
   it('starts on Meta', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
-    render(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
     selectOnly('Panetti Norway')
     await act(async () => {})
@@ -423,7 +426,7 @@ describe('MarketingClient', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -448,7 +451,7 @@ describe('MarketingClient', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -483,7 +486,7 @@ describe('MarketingClient', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -502,5 +505,86 @@ describe('MarketingClient', () => {
       release(new Response('{}', { status: 200 }))
     })
     expect(button).not.toBeDisabled()
+  })
+
+  it('shows the sync error and does not refetch', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      String(url) === '/api/ads/sync'
+        ? Promise.resolve(
+            new Response(JSON.stringify({ error: 'Meta token expired' }), { status: 500 }),
+          )
+        : Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    const marketingCallsBefore = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/marketing'),
+    ).length
+
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await act(async () => {})
+
+    expect(screen.getByText('Meta token expired')).toBeTruthy()
+    // A failed sync must not silently re-pull as though it worked — the
+    // database never changed, so there is nothing new to fetch.
+    const marketingCallsAfter = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/marketing'),
+    ).length
+    expect(marketingCallsAfter).toBe(marketingCallsBefore)
+  })
+
+  it('falls back to a generic message when the sync error body is not JSON', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      String(url) === '/api/ads/sync'
+        ? Promise.resolve(new Response('not json', { status: 500 }))
+        : Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await act(async () => {})
+
+    expect(screen.getByText('Sync failed')).toBeTruthy()
+  })
+
+  it('shows a network-failure toast when the sync request throws', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      String(url) === '/api/ads/sync'
+        ? Promise.reject(new Error('network down'))
+        : Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await act(async () => {})
+
+    expect(screen.getByText('Could not reach the server')).toBeTruthy()
   })
 })
