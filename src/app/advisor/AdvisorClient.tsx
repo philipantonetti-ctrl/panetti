@@ -280,27 +280,81 @@ function Report({ facts }: { facts: Fact[] }) {
         <p className="text-[13px] text-muted">
           <span className="tabular-nums font-semibold text-ink">{moves.length}</span> movements worth
           reporting, <span className="tabular-nums font-semibold text-ink">{fell}</span> of them down.
-          Shops are ordered worst first.
+          {/* By how much moved, not by how bad: a shop whose profit tripled is
+              worth reading about too, and calling that "worst" would be a lie
+              about a green figure. */}{' '}
+          Shops are ordered by how much moved.
         </p>
       )}
 
-      {ordered.map((group) => (
-        <section key={group.key} className="overflow-hidden rounded-[12px] border border-line bg-surface">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 border-b border-line bg-panel px-4 py-2">
-            <h2 className="text-[13px] font-semibold text-ink">{group.name}</h2>
-            {stale.has(group.key) && (
-              <p className="text-[12px] text-warn">
-                Not syncing. These figures are what we last saw, not what the shop sold.
-              </p>
-            )}
-          </div>
-          <div className="divide-y divide-line">
-            {group.facts.map((fact) => (
-              <Row key={fact.id} fact={fact} />
-            ))}
-          </div>
-        </section>
-      ))}
+      {/* A native disclosure, not a hand-rolled one: keyboard operation, the
+          open/closed state and find-in-page all come free, and DESIGN.md asks
+          for standard controls rather than our own invention for a task the
+          reader already knows how to do.
+
+          The worst shop opens by default. Seven closed rows would answer
+          "which shops moved" but not "what is on fire", which is the question
+          this page exists for. */}
+      {ordered.map((group, i) => {
+        const worst = group.facts.reduce<Fact | null>(
+          (w, f) => (w === null || f.severity > w.severity ? f : w),
+          null,
+        )
+        const d = worst ? delta(worst) : null
+
+        return (
+          <details
+            key={group.key}
+            open={i === 0}
+            className="group overflow-hidden rounded-[12px] border border-line bg-surface"
+          >
+            <summary className="flex cursor-pointer list-none items-center gap-x-3 bg-panel px-4 py-2.5 hover:bg-accent-soft [&::-webkit-details-marker]:hidden">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="shrink-0 text-faint transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none"
+              >
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+
+              <h2 className="text-[13px] font-semibold text-ink">{group.name}</h2>
+
+              {stale.has(group.key) && (
+                <span className="text-[12px] text-warn">Not syncing, figures are stale</span>
+              )}
+
+              {/* Closed, this line is the whole summary of the shop: how many
+                  movements, and the worst of them. Open, the rows below say it
+                  in full, so it steps back rather than repeating itself. */}
+              <span className="ml-auto flex items-baseline gap-3 group-open:hidden">
+                <span className="tabular-nums text-[12px] text-muted">
+                  {group.facts.length} {group.facts.length === 1 ? 'movement' : 'movements'}
+                </span>
+                {d && (
+                  <span
+                    className={`tabular-nums text-[13px] font-semibold ${d.down ? 'text-loss' : 'text-gain'}`}
+                  >
+                    {d.text}
+                  </span>
+                )}
+              </span>
+            </summary>
+
+            <div className="divide-y divide-line border-t border-line">
+              {group.facts.map((fact) => (
+                <Row key={fact.id} fact={fact} />
+              ))}
+            </div>
+          </details>
+        )
+      })}
     </div>
   )
 }
