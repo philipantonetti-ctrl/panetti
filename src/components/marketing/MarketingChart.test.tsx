@@ -10,8 +10,8 @@ import { MarketingChart } from './MarketingChart'
 // need a measured container and would fail.
 
 const series = [
-  { date: '2026-07-01', spend: 150_00, grossRevenue: 500_00, metaSpend: 100_00, googleSpend: 50_00 },
-  { date: '2026-07-02', spend: 200_00, grossRevenue: 700_00, metaSpend: 120_00, googleSpend: 80_00 },
+  { date: '2026-07-01', spend: 150_00, grossRevenue: 500_00, netProfit: 0, metaSpend: 100_00, googleSpend: 50_00 },
+  { date: '2026-07-02', spend: 200_00, grossRevenue: 700_00, netProfit: 0, metaSpend: 120_00, googleSpend: 80_00 },
 ]
 
 describe('MarketingChart', () => {

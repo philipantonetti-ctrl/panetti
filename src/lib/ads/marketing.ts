@@ -89,6 +89,8 @@ export type MarketingSeriesPoint = {
   date: string
   spend: number
   grossRevenue: number
+  /** Whole-store, already net of ad spend (engine.ts). POAS divides by spend. */
+  netProfit: number
   metaSpend: number
   googleSpend: number
 }
@@ -292,6 +294,7 @@ export function buildMarketing(args: {
     date: p.date,
     spend: byDay.get(p.date) ?? 0,
     grossRevenue: p.grossRevenue,
+    netProfit: p.netProfit,
     metaSpend: platformByDay.get(p.date)?.meta ?? 0,
     googleSpend: platformByDay.get(p.date)?.google ?? 0,
   }))

@@ -150,8 +150,8 @@ describe('buildMarketing', () => {
 
   it('merges spend into the daily series by date', () => {
     expect(result.series).toEqual([
-      { date: '2026-07-01', spend: 100_00, grossRevenue: 300_00, metaSpend: 100_00, googleSpend: 0 },
-      { date: '2026-07-02', spend: 255_00, grossRevenue: 400_00, metaSpend: 200_00, googleSpend: 55_00 },
+      { date: '2026-07-01', spend: 100_00, grossRevenue: 300_00, netProfit: 0, metaSpend: 100_00, googleSpend: 0 },
+      { date: '2026-07-02', spend: 255_00, grossRevenue: 400_00, netProfit: 0, metaSpend: 200_00, googleSpend: 55_00 },
     ])
   })
 
@@ -309,5 +309,18 @@ describe('per-platform series', () => {
     expect(day.metaSpend).toBe(10_00)
     expect(day.googleSpend).toBe(50_00)
     expect(day.metaSpend + day.googleSpend).toBe(day.spend)
+  })
+
+  it('carries whole-store net profit down the daily series, for POAS', () => {
+    const result = buildMarketing({
+      accounts,
+      spend,
+      engine,
+      series: [{ date: '2026-07-01', grossRevenue: 500_00, netRevenue: 300_00, netProfit: 120_00 }],
+      rates,
+      to: TO,
+    })
+
+    expect(result.series[0].netProfit).toBe(120_00)
   })
 })
