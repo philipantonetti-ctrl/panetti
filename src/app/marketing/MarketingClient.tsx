@@ -132,11 +132,17 @@ export function MarketingClient({
   shops,
   initialPreset,
   hasAccounts,
+  platforms = [],
 }: {
   email: string
   shops: Shop[]
   initialPreset?: Preset
   hasAccounts: boolean
+  // Workspace-level list of connected platforms, from the server component
+  // (src/app/marketing/page.tsx) — never from a /api/marketing response,
+  // whose byPlatform narrows to whatever platform filter is active and would
+  // strand the dropdown on the one option already chosen.
+  platforms?: { provider: string; label: string }[]
 }) {
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
@@ -186,16 +192,6 @@ export function MarketingClient({
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
   }, [preset, from, to, selected, platform, tick, hasAccounts])
 
-  // byPlatform narrows to the selection once a filter is active, which would
-  // strand the dropdown on the one option already chosen. The full list is
-  // remembered from the last unfiltered response.
-  const [allPlatforms, setAllPlatforms] = useState<{ provider: string; label: string }[]>([])
-  useEffect(() => {
-    if (!platform && data) {
-      setAllPlatforms(data.byPlatform.map((p) => ({ provider: p.provider, label: p.label })))
-    }
-  }, [platform, data])
-
   const currency = data?.displayCurrency ?? 'USD'
   // A real shop id only when exactly one is chosen — ShopFilter's own "all"
   // (empty array) and its explicit "none" sentinel both fail this on purpose.
@@ -214,7 +210,7 @@ export function MarketingClient({
         {hasAccounts && (
           <>
             <PlatformFilter
-              options={allPlatforms}
+              options={platforms}
               selected={platform}
               onChange={(next) => {
                 setLoading(true)

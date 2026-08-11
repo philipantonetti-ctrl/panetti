@@ -399,49 +399,19 @@ describe('MarketingClient', () => {
     expect(breakdownProps().provider).toBe('meta')
   })
 
-  // The existing `withPlatform` fixture (above) carries only one entry in
-  // byPlatform — PlatformFilter renders nothing below two options by design,
-  // so this test needs its own two-platform payload or the combobox query
-  // below would fail for the wrong reason.
-  const withTwoPlatforms = {
-    ...payload,
-    byPlatform: [
-      {
-        provider: 'meta',
-        label: 'Meta',
-        spend: 100_00,
-        impressions: 1000,
-        clicks: 20,
-        conversions: 2,
-        conversionValue: 50_00,
-        share: 0.6,
-        cpc: 500,
-        cpm: 10000,
-        ctr: 0.02,
-        platformRoas: 0.5,
-        costPerPurchase: 5000,
-      },
-      {
-        provider: 'google',
-        label: 'Google',
-        spend: 60_00,
-        impressions: 800,
-        clicks: 15,
-        conversions: 1,
-        conversionValue: 30_00,
-        share: 0.4,
-        cpc: 400,
-        cpm: 7500,
-        ctr: 0.019,
-        platformRoas: 0.5,
-        costPerPurchase: 6000,
-      },
-    ],
-  }
+  // The platform list is now a server-supplied prop (workspace configuration,
+  // src/app/marketing/page.tsx), not derived from the response's byPlatform —
+  // so this test drives PlatformFilter via that prop directly. The base
+  // `payload` fixture (byPlatform: []) is enough; only the prop needs two
+  // entries for the combobox to render at all.
+  const twoPlatforms = [
+    { provider: 'meta', label: 'Meta' },
+    { provider: 'google', label: 'Google' },
+  ]
 
   it('asks the server for one platform when one is chosen', async () => {
     const fetchMock = vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify(withTwoPlatforms), { status: 200 })),
+      Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
     )
     vi.stubGlobal('fetch', fetchMock)
 
@@ -450,6 +420,7 @@ describe('MarketingClient', () => {
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
         hasAccounts={true}
+        platforms={twoPlatforms}
       />,
     )
     await act(async () => {})

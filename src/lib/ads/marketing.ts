@@ -103,6 +103,18 @@ export type MarketingResult = {
   series: MarketingSeriesPoint[]
 }
 
+const PLATFORM_LABELS: Record<string, string> = { meta: 'Meta', google: 'Google' }
+
+/**
+ * Display label for an ad provider. Exported so the marketing page's server
+ * component (which lists connected platforms straight from the DB, outside
+ * any buildMarketing call) and buildMarketing's own byPlatform rows can never
+ * name the same provider two different ways.
+ */
+export function platformLabel(provider: string): string {
+  return PLATFORM_LABELS[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1)
+}
+
 type Ratioless = Omit<
   MarketingShopRow,
   | 'roas'
@@ -204,7 +216,6 @@ export function buildMarketing(args: {
   const byShop = new Map<string, Acc>()
   const byDay = new Map<string, number>()
 
-  const PLATFORM_LABELS: Record<string, string> = { meta: 'Meta', google: 'Google' }
   type PlatformAcc = {
     spend: number
     impressions: number
@@ -303,7 +314,7 @@ export function buildMarketing(args: {
   const platformRows: MarketingPlatformRow[] = [...byPlatform.entries()]
     .map(([provider, p]) => ({
       provider,
-      label: PLATFORM_LABELS[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1),
+      label: platformLabel(provider),
       ...p,
       // Zero spend has no shares to divide, and NaN would render as a broken bar.
       share: platformSpend > 0 ? p.spend / platformSpend : 0,
