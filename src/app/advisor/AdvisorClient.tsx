@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { PageBody, PageHeader } from '@/components/shell/AppShell'
-import type { Fact } from '@/lib/advisor/types'
+import type { Fact, FactKind } from '@/lib/advisor/types'
 import type { BriefItem } from '@/lib/advisor/brief'
 import { Chat } from './Chat'
 
@@ -61,6 +61,32 @@ const SEVERITY_LABEL: Record<BriefItem['severity'], string> = {
   low: 'Low',
 }
 
+// The prompt tells the model to combine related facts into one item (see
+// brief.ts), so a card routinely cites revenue + ROAS + margin for the same
+// shop. Without a kind label those three lines share one identical
+// shop-name caption over three different numbers, and SPEND_VS_BUDGET reads
+// exactly like a period-over-period move it is not.
+const FACT_LABEL: Record<FactKind, string> = {
+  REVENUE_MOVE: 'Revenue',
+  PROFIT_MOVE: 'Profit',
+  MARGIN_MOVE: 'Margin',
+  ROAS_MOVE: 'ROAS',
+  SPEND_VS_BUDGET: 'Spend vs budget',
+  DELIVERY_DAYS_MOVE: 'Delivery days',
+  ON_TIME_MOVE: 'On-time rate',
+  LATE_NOW: 'Late right now',
+  PRODUCT_RATE_MOVE: 'Product sales',
+  B2B_QUIET: 'Gone quiet',
+  AMBASSADOR_MOVE: 'Ambassador sales',
+  UNCOSTED_PRODUCTS: 'Uncosted products',
+  SHOP_SYNC_FAILING: 'Sync failing',
+  MISSING_FX: 'Missing exchange rate',
+}
+
+function label(fact: Fact): string {
+  return [FACT_LABEL[fact.kind], fact.shopName, fact.subject].filter(Boolean).join(' · ')
+}
+
 function Card({ item, facts }: { item: BriefItem; facts: Fact[] }) {
   const cited = facts.filter((f) => item.factIds.includes(f.id))
 
@@ -77,9 +103,7 @@ function Card({ item, facts }: { item: BriefItem; facts: Fact[] }) {
         <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
           {cited.map((fact) => (
             <div key={fact.id} className="text-[13px]">
-              <dt className="text-muted">
-                {[fact.shopName, fact.subject].filter(Boolean).join(' · ') || 'Total'}
-              </dt>
+              <dt className="text-muted">{label(fact)}</dt>
               <dd className="tabular-nums text-ink">{figure(fact)}</dd>
             </div>
           ))}
@@ -97,9 +121,7 @@ function FactList({ facts }: { facts: Fact[] }) {
     <ul className="divide-y divide-line rounded-[12px] border border-line bg-surface">
       {facts.map((fact) => (
         <li key={fact.id} className="flex items-baseline justify-between gap-4 px-4 py-2 text-[13px]">
-          <span className="text-muted">
-            {[fact.shopName, fact.subject].filter(Boolean).join(' · ') || fact.kind}
-          </span>
+          <span className="text-muted">{label(fact)}</span>
           <span className="tabular-nums text-ink">{figure(fact)}</span>
         </li>
       ))}
@@ -110,12 +132,24 @@ function FactList({ facts }: { facts: Fact[] }) {
 export function AdvisorClient({ initial }: { initial: Briefing | null }) {
   const [briefing, setBriefing] = useState(initial)
   const [busy, setBusy] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
 
   async function refresh() {
     setBusy(true)
+    setRefreshError(null)
     try {
       const res = await fetch('/api/advisor', { method: 'POST' })
-      if (res.ok) setBriefing((await res.json()).briefing)
+      if (res.ok) {
+        setBriefing((await res.json()).briefing)
+        return
+      }
+      // A non-ok response (a 5xx from a collector that ran into the platform's
+      // own time limit, most likely) used to leave the button re-enabling
+      // with nothing said. Read whatever the route did manage to explain.
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      setRefreshError(body?.error || `The refresh failed (${res.status}).`)
+    } catch {
+      setRefreshError('The refresh failed. Check your connection and try again.')
     } finally {
       setBusy(false)
     }
@@ -136,6 +170,12 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
       </PageHeader>
 
       <PageBody>
+        {refreshError && (
+          <div className="mb-4 rounded-[12px] border border-line bg-surface p-4">
+            <p className="text-[13px] font-medium text-ink">Refresh failed: {refreshError}</p>
+          </div>
+        )}
+
         {!briefing ? (
           <div className="rounded-[12px] border border-line bg-surface p-6">
             <p className="text-[14px] font-medium text-ink">No briefing yet</p>
@@ -156,7 +196,7 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
               </div>
             )}
 
-            {briefing.items?.length === 0 && !briefing.error && (
+            {briefing.items?.length === 0 && briefing.facts.length === 0 && !briefing.error && (
               <div className="rounded-[12px] border border-line bg-surface p-6">
                 <p className="text-[14px] font-medium text-ink">Nothing needs your attention</p>
                 <p className="mt-1 text-[13px] text-muted">
@@ -169,7 +209,12 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
               <Card key={`${item.headline}-${i}`} item={item} facts={briefing.facts} />
             ))}
 
-            {!briefing.items && briefing.facts.length > 0 && <FactList facts={briefing.facts} />}
+            {/* items is [] both for a quiet week (facts also []) and for a week
+                the model's items were all dropped by validateItems — the two
+                are indistinguishable from items alone, so this falls back to
+                the facts whenever there is nothing else on the page to show
+                them, rather than only when items is strictly null. */}
+            {!briefing.items?.length && briefing.facts.length > 0 && <FactList facts={briefing.facts} />}
           </div>
         )}
 

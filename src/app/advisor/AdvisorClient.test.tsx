@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import type { Fact } from '@/lib/advisor/types'
 import { AdvisorClient, type Briefing } from './AdvisorClient'
@@ -96,5 +96,61 @@ describe('AdvisorClient', () => {
     render(<AdvisorClient initial={briefing({ items: null, facts: [noCurrency] })} />)
     expect(screen.getByText(/1,500/)).toBeInTheDocument()
     expect(screen.queryByText(/150,000/)).not.toBeInTheDocument()
+  })
+
+  it('shows the facts, not a false all-clear, when the model’s items were all dropped', () => {
+    // generateBrief returns items: [] both for a quiet week and for a week
+    // where validateItems dropped every item the model returned. facts is
+    // non-empty here, so this is the second case, and the facts must render
+    // instead of the "nothing needs your attention" message that contradicts them.
+    render(<AdvisorClient initial={briefing({ items: [] })} />)
+    expect(screen.queryByText(/Nothing needs your attention/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Panetti Sweden/)).toBeInTheDocument()
+  })
+
+  it('labels cited facts by kind, so two facts for one shop read differently', () => {
+    const roas: Fact = {
+      id: 'roas:shop_se',
+      kind: 'ROAS_MOVE',
+      shopId: 'shop_se',
+      shopName: 'Panetti Sweden',
+      subject: null,
+      current: 1.8,
+      previous: 2.4,
+      deltaPct: -0.25,
+      unit: 'ratio',
+      severity: 0.5,
+    }
+    render(
+      <AdvisorClient
+        initial={briefing({
+          facts: [fact, roas],
+          items: [{ ...briefing().items![0], factIds: ['revenue:shop_se', 'roas:shop_se'] }],
+        })}
+      />,
+    )
+    expect(screen.getByText(/Revenue · Panetti Sweden/)).toBeInTheDocument()
+    expect(screen.getByText(/ROAS · Panetti Sweden/)).toBeInTheDocument()
+  })
+
+  describe('a failed refresh', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('explains a non-ok response instead of just re-enabling the button', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'Could not write the briefing' }) }),
+      )
+      render(<AdvisorClient initial={briefing()} />)
+      fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+      await waitFor(() => expect(screen.getByText(/Could not write the briefing/)).toBeInTheDocument())
+    })
+
+    it('explains a request that threw rather than resolved', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+      render(<AdvisorClient initial={briefing()} />)
+      fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+      await waitFor(() => expect(screen.getByText(/Refresh failed/i)).toBeInTheDocument())
+    })
   })
 })
