@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
+import { PlatformFilter } from '@/components/filters/PlatformFilter'
 import { MarketingStats } from '@/components/marketing/MarketingStats'
 import { MarketingChart } from '@/components/marketing/MarketingChart'
 import { MarketingTable } from '@/components/marketing/MarketingTable'
@@ -141,6 +142,7 @@ export function MarketingClient({
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [selected, setSelected] = useState<string[]>([])
+  const [platform, setPlatform] = useState<string | null>(null)
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -160,6 +162,7 @@ export function MarketingClient({
       params.set('preset', preset)
     }
     if (selected.length) params.set('shops', selected.join(','))
+    if (platform) params.set('platform', platform)
 
     const ctrl = new AbortController()
     fetch(`/api/marketing?${params}`, { signal: ctrl.signal })
@@ -181,7 +184,17 @@ export function MarketingClient({
       })
       .finally(() => setLoading(false))
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
-  }, [preset, from, to, selected, tick, hasAccounts])
+  }, [preset, from, to, selected, platform, tick, hasAccounts])
+
+  // byPlatform narrows to the selection once a filter is active, which would
+  // strand the dropdown on the one option already chosen. The full list is
+  // remembered from the last unfiltered response.
+  const [allPlatforms, setAllPlatforms] = useState<{ provider: string; label: string }[]>([])
+  useEffect(() => {
+    if (!platform && data) {
+      setAllPlatforms(data.byPlatform.map((p) => ({ provider: p.provider, label: p.label })))
+    }
+  }, [platform, data])
 
   const currency = data?.displayCurrency ?? 'USD'
   // A real shop id only when exactly one is chosen — ShopFilter's own "all"
@@ -200,6 +213,14 @@ export function MarketingClient({
       >
         {hasAccounts && (
           <>
+            <PlatformFilter
+              options={allPlatforms}
+              selected={platform}
+              onChange={(next) => {
+                setLoading(true)
+                setPlatform(next)
+              }}
+            />
             <ShopFilter
               shops={shops}
               selected={selected}
@@ -255,7 +276,11 @@ export function MarketingClient({
 
                 <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
                   <PlatformCard rows={data.byPlatform} total={data.total.spend} currency={currency} />
-                  <MarketingChart series={data.series} currency={currency} />
+                  <MarketingChart
+                    series={data.series}
+                    currency={currency}
+                    platformFiltered={platform !== null}
+                  />
                 </div>
 
                 <PlatformTable rows={data.byPlatform} currency={currency} />
