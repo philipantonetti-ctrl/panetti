@@ -1,6 +1,6 @@
 import { db } from '../db'
 import { getSetting } from '../settings'
-import { utcDay } from '../dates'
+import { todayInZone } from '../tz'
 import { groupByCurrency } from '../currency-groups'
 import { loadMetricsInput } from '../data/load'
 import { loadProductsInput } from '../data/load-products'
@@ -45,8 +45,12 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
   const { timezone } = await getSetting()
 
   // Through YESTERDAY, not today: a briefing read at 07:00 that includes three
-  // hours of today would compare a part-day against seven whole ones.
-  const to = new Date(utcDay(now).getTime() - DAY_MS)
+  // hours of today would compare a part-day against seven whole ones. "Today"
+  // is HIS calendar day, the same todayInZone write.ts upserts against —
+  // using UTC's day here instead let Refresh, pressed late evening UTC,
+  // silently replace the morning's briefing with a window computed for the
+  // wrong day.
+  const to = new Date(todayInZone(timezone, now).getTime() - DAY_MS)
   const from = new Date(to.getTime() - (WINDOW_DAYS - 1) * DAY_MS)
   const before = previousRange(from, to)
 

@@ -1,6 +1,6 @@
 import { db } from '../db'
 import { getSetting } from '../settings'
-import { zonedDayStr } from '../tz'
+import { todayInZone } from '../tz'
 import { collectFacts } from './collect'
 import { anthropicModel, generateBrief, type BriefingModel } from './brief'
 
@@ -24,8 +24,10 @@ export async function writeBriefing(
 ): Promise<{ day: Date; items: number; error: string | null }> {
   const { timezone } = await getSetting()
   // The day in HIS calendar, not UTC's: a briefing written at 05:00 UTC belongs
-  // to the Oslo morning it is read in.
-  const day = new Date(`${zonedDayStr(now, timezone)}T00:00:00.000Z`)
+  // to the Oslo morning it is read in. collectFacts' window uses the same
+  // helper, so pressing Refresh near midnight UTC can never upsert this day
+  // against a window that was actually computed for a different one.
+  const day = todayInZone(timezone, now)
 
   const collected = await collectFacts(now)
   const factsData = {
