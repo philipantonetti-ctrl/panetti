@@ -55,6 +55,25 @@ function figure(fact: Fact): string {
   return previous === null ? one(current) : `${one(previous)} → ${one(current)}${move}`
 }
 
+/**
+ * What the window means, in words.
+ *
+ * "2026-08-04 to 2026-08-10" is the machine's way of putting it, and it says
+ * nothing about the thing every row on this page is actually doing: comparing
+ * that week against the one before. Without that sentence the arrow in
+ * "NOK 52,442 → NOK 3,321" is an unexplained convention.
+ */
+function windowSentence(from: string, to: string): string {
+  const end = new Date(`${to}T00:00:00Z`)
+  const start = new Date(`${from}T00:00:00Z`)
+  if (Number.isNaN(end.getTime()) || Number.isNaN(start.getTime())) return `${from} to ${to}`
+
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1
+  const day = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', timeZone: 'UTC' })
+
+  return `${day(start)} to ${day(end)}, against the ${days} days before`
+}
+
 const SEVERITY_LABEL: Record<BriefItem['severity'], string> = {
   high: 'High',
   medium: 'Medium',
@@ -348,6 +367,18 @@ function Report({ facts }: { facts: Fact[] }) {
             </summary>
 
             <div className="divide-y divide-line border-t border-line">
+              {/* Once per open shop, aligned with the columns it names. The
+                  arrow in "NOK 52,442 → NOK 3,321" is only obvious to someone
+                  who already knows what this page does. */}
+              <div className="hidden px-4 pb-1 pt-2 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_5.5rem] sm:gap-x-6">
+                <span />
+                <span className="text-right text-[11px] font-medium tracking-wide text-faint">
+                  Before → after
+                </span>
+                <span className="text-right text-[11px] font-medium tracking-wide text-faint">
+                  Change
+                </span>
+              </div>
               {group.facts.map((fact) => (
                 <Row key={fact.id} fact={fact} />
               ))}
@@ -385,7 +416,7 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
     }
   }
 
-  const subtitle = briefing ? `${briefing.from} to ${briefing.to}` : undefined
+  const subtitle = briefing ? windowSentence(briefing.from, briefing.to) : undefined
 
   return (
     <>

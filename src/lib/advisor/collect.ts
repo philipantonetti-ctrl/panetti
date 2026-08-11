@@ -16,7 +16,7 @@ import { moneyFacts } from './facts/money'
 import { deliveryFacts } from './facts/delivery'
 import { productFacts } from './facts/products'
 import { ambassadorFacts, b2bQuietFacts, type B2bHistory } from './facts/customers'
-import { qualityFacts } from './facts/quality'
+import { missingRateCurrencies, qualityFacts } from './facts/quality'
 import { isQuality, type Fact } from './types'
 
 /**
@@ -257,10 +257,13 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
       })
     ).map((r) => r.base),
   )
-  const missingRates =
-    engine.displayCurrency === 'USD'
-      ? currencies.filter((c) => c !== 'USD' && !haveRates.has(c))
-      : []
+  // Every currency the period touches, the display currency included: crossing
+  // into it reads its own USD rate too, so a workspace consolidating into NOK
+  // needs NOK's rate as much as the shops' own.
+  const missingRates = missingRateCurrencies({
+    inPlay: [...currencies, engine.displayCurrency],
+    held: haveRates,
+  })
 
   facts.push(
     ...qualityFacts({

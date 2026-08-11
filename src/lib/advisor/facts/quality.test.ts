@@ -1,6 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import { isQuality } from '../types'
-import { qualityFacts } from './quality'
+import { missingRateCurrencies, qualityFacts } from './quality'
+
+describe('missingRateCurrencies', () => {
+  it('reports a currency in play with no rate held', () => {
+    expect(missingRateCurrencies({ inPlay: ['NOK', 'SEK'], held: new Set(['NOK']) })).toEqual(['SEK'])
+  })
+
+  it('reports nothing when every rate is held', () => {
+    expect(missingRateCurrencies({ inPlay: ['NOK', 'SEK'], held: new Set(['NOK', 'SEK']) })).toEqual([])
+  })
+
+  it('never reports USD, which is the pivot and needs no rate against itself', () => {
+    expect(missingRateCurrencies({ inPlay: ['USD', 'NOK'], held: new Set(['NOK']) })).toEqual([])
+  })
+
+  it('reports a missing rate even when the workspace consolidates into NOK', () => {
+    // The bug this function replaces: gating on displayCurrency === 'USD'
+    // silently switched the warning off for every other display currency,
+    // and this workspace consolidates into NOK. Rates pivot through USD
+    // whatever the display currency is, so the check must run regardless.
+    expect(
+      missingRateCurrencies({ inPlay: ['NOK', 'SEK', 'DKK'], held: new Set(['NOK']) }),
+    ).toEqual(['DKK', 'SEK'])
+  })
+
+  it('never reports a currency the rate provider cannot quote', () => {
+    // An AED B2B order can never gain a row, so flagging it would be a
+    // warning nobody could ever clear.
+    expect(missingRateCurrencies({ inPlay: ['AED'], held: new Set() })).toEqual([])
+  })
+
+  it('collapses a currency named twice', () => {
+    expect(missingRateCurrencies({ inPlay: ['SEK', 'SEK'], held: new Set() })).toEqual(['SEK'])
+  })
+})
 
 describe('qualityFacts', () => {
   it('reports products with no cost, because profit is overstated without one', () => {
