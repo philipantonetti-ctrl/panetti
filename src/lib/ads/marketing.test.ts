@@ -150,8 +150,8 @@ describe('buildMarketing', () => {
 
   it('merges spend into the daily series by date', () => {
     expect(result.series).toEqual([
-      { date: '2026-07-01', spend: 100_00, grossRevenue: 300_00, metaSpend: 100_00, googleSpend: 0 },
-      { date: '2026-07-02', spend: 255_00, grossRevenue: 400_00, metaSpend: 200_00, googleSpend: 55_00 },
+      { date: '2026-07-01', spend: 100_00, grossRevenue: 300_00, netProfit: 0, metaSpend: 100_00, googleSpend: 0 },
+      { date: '2026-07-02', spend: 255_00, grossRevenue: 400_00, netProfit: 0, metaSpend: 200_00, googleSpend: 55_00 },
     ])
   })
 
@@ -309,5 +309,56 @@ describe('per-platform series', () => {
     expect(day.metaSpend).toBe(10_00)
     expect(day.googleSpend).toBe(50_00)
     expect(day.metaSpend + day.googleSpend).toBe(day.spend)
+  })
+
+  it('carries whole-store net profit down the daily series, for POAS', () => {
+    const result = buildMarketing({
+      accounts,
+      spend,
+      engine,
+      series: [{ date: '2026-07-01', grossRevenue: 500_00, netRevenue: 300_00, netProfit: 120_00 }],
+      rates,
+      to: TO,
+    })
+
+    expect(result.series[0].netProfit).toBe(120_00)
+  })
+})
+
+describe('platform filter', () => {
+  it('narrows spend and its ad-side metrics to one provider', () => {
+    const all = buildMarketing({ accounts, spend, engine, series, rates, to: TO })
+    const meta = buildMarketing({ accounts, spend, engine, series, rates, to: TO, platform: 'meta' })
+
+    expect(meta.total.spend).toBeLessThan(all.total.spend)
+    expect(meta.total.spend).toBe(all.total.metaSpend)
+    expect(meta.total.googleSpend).toBe(0)
+    expect(meta.byPlatform.map((p) => p.provider)).toEqual(['meta'])
+  })
+
+  it('dashes the whole-store ratios, because they would inflate not narrow', () => {
+    const meta = buildMarketing({ accounts, spend, engine, series, rates, to: TO, platform: 'meta' })
+    const shopA = meta.byShop.find((r) => r.shopId === 'shop-a')!
+
+    expect(shopA.roas).toBeNull()
+    expect(shopA.cpa).toBeNull()
+    expect(meta.total.roas).toBeNull()
+    expect(meta.total.cpa).toBeNull()
+
+    // The store facts themselves are still true and stay on screen.
+    expect(shopA.grossRevenue).toBe(500_00)
+    expect(shopA.orders).toBe(10)
+    // Platform-attributed ratios divide platform value by platform spend, so
+    // they remain honest under the filter.
+    expect(shopA.platformRoas).not.toBeNull()
+  })
+
+  it('still computes the whole-store ratios when no filter is active', () => {
+    const all = buildMarketing({ accounts, spend, engine, series, rates, to: TO })
+    const shopA = all.byShop.find((r) => r.shopId === 'shop-a')!
+
+    expect(shopA.roas).not.toBeNull()
+    expect(shopA.cpa).not.toBeNull()
+    expect(all.total.roas).not.toBeNull()
   })
 })
