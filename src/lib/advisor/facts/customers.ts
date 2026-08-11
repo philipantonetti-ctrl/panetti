@@ -79,6 +79,8 @@ export type AmbassadorFactsArgs = {
   before: LeaderboardRow[]
   /** The previous window's total revenue, display currency. */
   baseline: number
+  /** The engine's display currency — sales figures are already converted into it. */
+  currency: string
 }
 
 /** Who is selling more or less than they were. Money gates apply, unchanged. */
@@ -101,6 +103,7 @@ export function ambassadorFacts(args: AmbassadorFactsArgs): Fact[] {
       current: person.sales,
       previous,
       unit: 'money',
+      currency: args.currency,
       impact: person.sales - previous,
       baseline: args.baseline,
     })

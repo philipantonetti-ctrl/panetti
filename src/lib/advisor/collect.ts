@@ -218,6 +218,9 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
         timezone,
       }),
       baseline,
+      // Sales in both leaderboards are already converted to this — the same
+      // value money.ts uses for every other money fact this file produces.
+      currency: engine.displayCurrency,
     }),
   )
 

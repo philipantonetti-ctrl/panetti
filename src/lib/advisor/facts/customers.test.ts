@@ -76,12 +76,16 @@ describe('ambassadorFacts', () => {
       now: [person('amb_1', 'Emma', 40_000)],
       before: [person('amb_1', 'Emma', 100_000)],
       baseline: 1_000_000,
+      currency: 'USD',
     })
     expect(facts).toHaveLength(1)
     expect(facts[0].kind).toBe('AMBASSADOR_MOVE')
     expect(facts[0].subject).toBe('Emma')
     expect(facts[0].id).toBe('ambassador:amb_1')
     expect(facts[0].shopId).toBeNull()
+    // The bug this guards: movingFact drops currency unless it's threaded
+    // through explicitly, and the page's fallback used to print raw minor units.
+    expect(facts[0].currency).toBe('USD')
   })
 
   it('says nothing about a small ambassador swinging hard', () => {
@@ -89,6 +93,7 @@ describe('ambassadorFacts', () => {
       now: [person('amb_1', 'Emma', 100)],
       before: [person('amb_1', 'Emma', 400)],
       baseline: 1_000_000,
+      currency: 'USD',
     })
     expect(facts).toEqual([])
   })
@@ -98,6 +103,7 @@ describe('ambassadorFacts', () => {
       now: [person('amb_new', 'Nils', 200_000)],
       before: [],
       baseline: 1_000_000,
+      currency: 'USD',
     })
     expect(facts).toEqual([])
   })

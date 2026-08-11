@@ -2,6 +2,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import '@testing-library/jest-dom/vitest'
+import type { Fact } from '@/lib/advisor/types'
 import { AdvisorClient, type Briefing } from './AdvisorClient'
 
 const fact = {
@@ -74,5 +75,26 @@ describe('AdvisorClient', () => {
   it('says plainly that a quiet week is a quiet week', () => {
     render(<AdvisorClient initial={briefing({ items: [], facts: [] })} />)
     expect(screen.getByText(/Nothing needs your attention/i)).toBeInTheDocument()
+  })
+
+  it('prints the right magnitude for a money fact with no currency', () => {
+    // ambassadorFacts once produced exactly this shape: unit 'money' with no
+    // currency key at all. previous/100 = 1,000 and current/100 = 1,500 — the
+    // bug rendered these as the raw minor units, 100,000 and 150,000.
+    const noCurrency: Fact = {
+      id: 'ambassador:amb_1',
+      kind: 'AMBASSADOR_MOVE',
+      shopId: null,
+      shopName: null,
+      subject: 'Emma',
+      current: 150_000,
+      previous: 100_000,
+      deltaPct: 0.5,
+      unit: 'money',
+      severity: 0.6,
+    }
+    render(<AdvisorClient initial={briefing({ items: null, facts: [noCurrency] })} />)
+    expect(screen.getByText(/1,500/)).toBeInTheDocument()
+    expect(screen.queryByText(/150,000/)).not.toBeInTheDocument()
   })
 })

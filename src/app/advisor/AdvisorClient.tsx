@@ -30,7 +30,9 @@ function figure(fact: Fact): string {
   const one = (n: number | null) => {
     if (n === null) return '—'
     if (unit === 'money') {
-      if (!fact.currency) return n.toLocaleString(undefined, { maximumFractionDigits: 0 })
+      // Money is always integer minor units, currency or not — a missing
+      // currency should cost the symbol, never the magnitude.
+      if (!fact.currency) return (n / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })
       return (n / 100).toLocaleString(undefined, {
         style: 'currency',
         currency: fact.currency,
