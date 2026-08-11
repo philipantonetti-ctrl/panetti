@@ -3,9 +3,13 @@
 /**
  * Which ad platform the page describes.
  *
- * Options come from the response's own `byPlatform`, so only platforms that
- * actually have a connected account are offered and the client can never send
- * a value the server would reject with a 400.
+ * Options arrive as a prop from the server component (page.tsx), which reads
+ * the distinct active providers straight from the database — not from the
+ * response's own `byPlatform`, which narrows to whatever platform filter is
+ * already active and would strand this control on the one option it just
+ * picked. Either way, only platforms with a genuinely connected account are
+ * offered, so the client can never send a value the server would reject with
+ * a 400.
  */
 export function PlatformFilter({
   options,

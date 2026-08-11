@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { useToast } from '@/components/toast/useToast'
 import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
 import { PlatformFilter } from '@/components/filters/PlatformFilter'
@@ -153,6 +154,9 @@ export function MarketingClient({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [provider, setProvider] = useState<'meta' | 'google'>('meta')
+  const [syncing, setSyncing] = useState(false)
+  const [refreshNonce, setRefreshNonce] = useState(0)
+  const toast = useToast()
 
   // The cron keeps the DATABASE current; this keeps the TAB current.
   const tick = useLiveTick()
@@ -190,12 +194,31 @@ export function MarketingClient({
       })
       .finally(() => setLoading(false))
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
-  }, [preset, from, to, selected, platform, tick, hasAccounts])
+  }, [preset, from, to, selected, platform, tick, refreshNonce, hasAccounts])
 
   const currency = data?.displayCurrency ?? 'USD'
   // A real shop id only when exactly one is chosen — ShopFilter's own "all"
   // (empty array) and its explicit "none" sentinel both fail this on purpose.
   const singleShopId = selected.length === 1 && selected[0] !== NO_SHOPS ? selected[0] : null
+
+  async function refresh() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/ads/sync', { method: 'POST' })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Sync failed')
+        return
+      }
+      // The sync wrote to the database; this pulls it into the tab.
+      setLoading(true)
+      setRefreshNonce((n) => n + 1)
+      toast.success('Ad spend refreshed')
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   return (
     <AppShell email={email}>
@@ -236,6 +259,14 @@ export function MarketingClient({
                 if (next.to !== undefined) setTo(next.to)
               }}
             />
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={syncing}
+              className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 hover:border-faint disabled:opacity-50"
+            >
+              {syncing ? 'Refreshing…' : 'Refresh ad data'}
+            </button>
           </>
         )}
       </PageHeader>

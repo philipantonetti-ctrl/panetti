@@ -1,10 +1,18 @@
 // @vitest-environment jsdom
-import type { ReactNode } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, act, fireEvent } from '@testing-library/react'
+import { render as rtlRender, screen, act, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
+import { ToastProvider } from '@/components/toast/ToastProvider'
 import { MarketingClient } from './MarketingClient'
 import type { MarketingShopRow } from '@/lib/ads/marketing'
+
+// The refresh button (Task 7) calls the real useToast(), which throws without
+// a ToastProvider ancestor — production gets one from the root layout, so
+// every render here needs the same wrapper rather than a per-test one-off.
+function render(ui: ReactElement) {
+  return rtlRender(<ToastProvider>{ui}</ToastProvider>)
+}
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/marketing',
@@ -432,5 +440,67 @@ describe('MarketingClient', () => {
 
     const calls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0]))
     expect(calls.some((u) => u.includes('platform=meta'))).toBe(true)
+  })
+
+  it('syncs, then reloads the numbers the sync just wrote', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    const before = fetchMock.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await act(async () => {})
+
+    const calls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0]))
+    expect(calls).toContain('/api/ads/sync')
+    // The sync only changes the DATABASE; the tab still holds the old numbers
+    // until it asks again. More calls than the sync alone proves the refetch.
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(before + 1)
+  })
+
+  // The disabled state is asserted separately: an ordinary mocked response
+  // resolves inside the same act() flush, so the button is enabled again by
+  // the time a naive test looks. Holding the sync open with a deferred
+  // promise is what makes "still running" observable at all.
+  it('cannot be pressed twice while it is running', async () => {
+    let release: (v: Response) => void = () => {}
+    const fetchMock = vi.fn((url: string) =>
+      String(url) === '/api/ads/sync'
+        ? new Promise<Response>((resolve) => {
+            release = resolve
+          })
+        : Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    const button = screen.getByRole('button', { name: /refresh/i })
+    fireEvent.click(button)
+    await act(async () => {})
+
+    expect(button).toBeDisabled()
+
+    await act(async () => {
+      release(new Response('{}', { status: 200 }))
+    })
+    expect(button).not.toBeDisabled()
   })
 })
