@@ -85,6 +85,23 @@ describe('leaderboard', () => {
     expect(rows.find((r) => r.name === 'Sofia Lind')?.shops).toEqual([])
   })
 
+  it('converts a DKK order into a NOK display currency using the true cross rate', () => {
+    // Same defect class as engine.ts: NOK 0.10 USD, DKK 0.15 USD, so the true
+    // DKK->NOK cross rate is 1.5. Plain `convert` would instead apply the bare
+    // DKK->USD rate (0.15) and call the result NOK — a tenfold undercount.
+    const dkRates = buildRateTable([
+      { date: new Date('2026-07-01'), currency: 'NOK', rate: 0.1 },
+      { date: new Date('2026-07-01'), currency: 'DKK', rate: 0.15 },
+    ])
+    const rows = leaderboard({
+      ambassadors: people,
+      orders: [order({ ambassadorId: 'a1', currency: 'DKK', netSales: 100000 })],
+      rates: dkRates, displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+    expect(rows[0].sales).toBe(150000) // 100000 x (0.15 / 0.10)
+    expect(rows[0].commission).toBe(15000) // 10% of the converted sale
+  })
+
   it('includes an ambassador with no sales, ranked last with zeroes', () => {
     const rows = leaderboard({
       ambassadors: people,

@@ -51,6 +51,8 @@ const marketing = (rows: MarketingShopRow[]): MarketingResult => ({
   displayCurrency: 'USD',
   byShop: rows,
   total: mktRow({ shopId: '', shopName: 'Total' }),
+  // Empty on purpose: moneyFacts reads byShop, never the per-platform split.
+  byPlatform: [],
   series: [],
 })
 

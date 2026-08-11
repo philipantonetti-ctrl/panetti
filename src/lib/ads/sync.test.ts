@@ -41,14 +41,46 @@ afterEach(async () => {
 })
 
 describe('syncWindow', () => {
-  it('backfills a year on first sync, 35 days after that', () => {
+  it('backfills a year on first sync, and covers the restate window after that', () => {
     const now = new Date('2026-07-29T10:00:00Z')
     const first = syncWindow(null, now)
     expect(first.to).toEqual(new Date('2026-07-29T00:00:00Z'))
     expect((first.to.getTime() - first.from.getTime()) / DAY_MS).toBe(365)
 
+    // Synced yesterday: one day of gap plus the 35-day restate window. The
+    // extra day costs nothing — every write is an upsert keyed on (account, date).
     const later = syncWindow(new Date('2026-07-28T00:00:00Z'), now)
-    expect((later.to.getTime() - later.from.getTime()) / DAY_MS).toBe(35)
+    expect((later.to.getTime() - later.from.getTime()) / DAY_MS).toBe(36)
+  })
+
+  it('reaches back to the last successful sync, not a fixed 35 days', () => {
+    // A token expired on 11 June and nobody noticed until 10 August. The
+    // account kept its old lastSyncAt while it errored, which is correct.
+    // What is not correct is fetching only 35 days on recovery and then
+    // stamping lastSyncAt = now: days 36-60 are then never fetched by
+    // anything, ever, and the hole is sealed silently.
+    const now = new Date('2026-08-10T10:00:00Z')
+    const stale = syncWindow(new Date('2026-06-11T00:00:00Z'), now)
+
+    // 60 days of gap plus the 35-day restate window.
+    expect((stale.to.getTime() - stale.from.getTime()) / DAY_MS).toBe(95)
+
+    // The point of the number: the day after the last sync is inside the window.
+    expect(stale.from.getTime()).toBeLessThan(new Date('2026-06-12T00:00:00Z').getTime())
+  })
+
+  it('caps a very stale account at the backfill limit rather than asking for ten years', () => {
+    const now = new Date('2026-08-10T10:00:00Z')
+    const ancient = syncWindow(new Date('2024-01-01T00:00:00Z'), now)
+    expect((ancient.to.getTime() - ancient.from.getTime()) / DAY_MS).toBe(365)
+  })
+
+  it('floors at the restate window when lastSyncAt is in the future', () => {
+    // Clock skew between the app server and the database must not produce a
+    // negative window that fetches nothing.
+    const now = new Date('2026-08-10T10:00:00Z')
+    const skewed = syncWindow(new Date('2026-08-20T00:00:00Z'), now)
+    expect((skewed.to.getTime() - skewed.from.getTime()) / DAY_MS).toBe(35)
   })
 })
 

@@ -257,6 +257,7 @@ model Setting {
   defaultPreset  String @default("this_month")
   dateFormat     String @default("MMM-dd-yyyy")
   currencyFormat String @default("symbol-after") // symbol-after | code-after | symbol-before
+  displayCurrency String @default("USD") // used only when several shops are combined
 }
 
 model FxRate {

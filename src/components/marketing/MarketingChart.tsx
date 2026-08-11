@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   CartesianGrid,
   Line,
@@ -19,6 +20,8 @@ import type { MarketingSeriesPoint } from '@/lib/ads/marketing'
 
 const REVENUE = 'var(--color-series-revenue)'
 const SPEND = 'var(--color-series-profit)'
+const META = 'var(--color-series-revenue)'
+const GOOGLE = 'var(--color-series-profit)'
 
 function tickDate(iso: string): string {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
@@ -73,6 +76,7 @@ export function MarketingChart({
   series: MarketingSeriesPoint[]
   currency: string
 }) {
+  const [byPlatform, setByPlatform] = useState(false)
   const hasSpend = series.some((p) => p.spend !== 0)
 
   if (!hasSpend) {
@@ -86,17 +90,35 @@ export function MarketingChart({
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[13px] font-semibold text-ink">Ad spend &amp; gross revenue over time</h2>
+        <h2 className="text-[13px] font-semibold text-ink">
+          {byPlatform ? 'Ad spend by platform over time' : 'Ad spend & gross revenue over time'}
+        </h2>
 
         <div className="flex items-center gap-4 text-[12px]">
-          <span className="flex items-center gap-1.5 text-muted">
-            <span aria-hidden="true" className="h-0.5 w-4 rounded-full" style={{ background: REVENUE }} />
-            Gross revenue
-          </span>
-          <span className="flex items-center gap-1.5 text-muted">
-            <span aria-hidden="true" className="h-0.5 w-4 rounded-full" style={{ background: SPEND }} />
-            Ad spend
-          </span>
+          {(byPlatform
+            ? [
+                { label: 'Meta', color: META },
+                { label: 'Google', color: GOOGLE },
+              ]
+            : [
+                { label: 'Gross revenue', color: REVENUE },
+                { label: 'Ad spend', color: SPEND },
+              ]
+          ).map((s) => (
+            <span key={s.label} className="flex items-center gap-1.5 text-muted">
+              <span aria-hidden="true" className="h-0.5 w-4 rounded-full" style={{ background: s.color }} />
+              {s.label}
+            </span>
+          ))}
+
+          <button
+            type="button"
+            aria-pressed={byPlatform}
+            onClick={() => setByPlatform((v) => !v)}
+            className="rounded-[var(--radius-control)] border border-line px-2.5 py-1 text-[12px] font-semibold text-muted hover:bg-panel hover:text-ink"
+          >
+            By platform
+          </button>
         </div>
       </div>
 
@@ -126,28 +148,37 @@ export function MarketingChart({
               cursor={{ stroke: 'var(--color-decor)', strokeWidth: 1 }}
             />
 
-            <Line
-              // Straight segments between real days. A smoothed curve would invent
-              // movement between points that never happened.
-              type="linear"
-              dataKey="grossRevenue"
-              name="Gross revenue"
-              stroke={REVENUE}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--color-surface)' }}
-              isAnimationActive={false}
-            />
-            <Line
-              type="linear"
-              dataKey="spend"
-              name="Ad spend"
-              stroke={SPEND}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--color-surface)' }}
-              isAnimationActive={false}
-            />
+            {byPlatform ? (
+              <>
+                <Line type="linear" dataKey="metaSpend" name="Meta" stroke={META} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--color-surface)' }} isAnimationActive={false} />
+                <Line type="linear" dataKey="googleSpend" name="Google" stroke={GOOGLE} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--color-surface)' }} isAnimationActive={false} />
+              </>
+            ) : (
+              <>
+                <Line
+                  // Straight segments between real days. A smoothed curve would invent
+                  // movement between points that never happened.
+                  type="linear"
+                  dataKey="grossRevenue"
+                  name="Gross revenue"
+                  stroke={REVENUE}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--color-surface)' }}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey="spend"
+                  name="Ad spend"
+                  stroke={SPEND}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--color-surface)' }}
+                  isAnimationActive={false}
+                />
+              </>
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>

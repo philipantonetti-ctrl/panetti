@@ -171,6 +171,40 @@ describe('computeMetrics', () => {
     expect(res.displayCurrency).toBe('USD')
   })
 
+  it('consolidates a NOK+DKK pair into NOK using the true cross rate, not the DKK->USD rate', () => {
+    // NOK 0.10 USD, DKK 0.15 USD -> the true DKK->NOK cross rate is 1.5
+    // (0.15 / 0.10). A regression back to plain `convert` would instead
+    // multiply the DKK shop by its bare DKK->USD rate (0.15) and label the
+    // result NOK — a tenfold undercount, not a rounding error, so a wrong
+    // answer here cannot be mistaken for the right one.
+    const dkShops: EngineShop[] = [
+      { id: 'no', name: 'Mazzetti.no', currency: 'NOK' },
+      { id: 'dk', name: 'Mazzetti.dk', currency: 'DKK' },
+    ]
+    const nokDkkRates = buildRateTable([
+      { date: new Date('2026-07-01'), currency: 'NOK', rate: 0.1 },
+      { date: new Date('2026-07-01'), currency: 'DKK', rate: 0.15 },
+    ])
+
+    const res = computeMetrics({
+      shops: dkShops,
+      orders: [
+        order({ id: 'n1', shopId: 'no', currency: 'NOK' }),
+        order({ id: 'd1', shopId: 'dk', currency: 'DKK' }),
+      ],
+      expenses: [], costs, rates: nokDkkRates,
+      displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
+    })
+
+    const no = res.byShop.find((s) => s.shopId === 'no')!
+    const dk = res.byShop.find((s) => s.shopId === 'dk')!
+
+    expect(no.netSales).toBe(90000) // NOK shop, no conversion needed: from === display
+    expect(dk.netSales).toBe(135000) // 90000 x (0.15 / 0.10) — the true DKK->NOK cross rate
+    expect(res.total.netSales).toBe(225000)
+    expect(res.displayCurrency).toBe('NOK')
+  })
+
   it('returns a row for a shop with no orders rather than dropping it', () => {
     const res = computeMetrics({
       shops, orders: [order({ shopId: 'no' })], expenses: [], costs, rates,

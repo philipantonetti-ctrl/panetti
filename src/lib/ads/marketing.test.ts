@@ -150,8 +150,8 @@ describe('buildMarketing', () => {
 
   it('merges spend into the daily series by date', () => {
     expect(result.series).toEqual([
-      { date: '2026-07-01', spend: 100_00, grossRevenue: 300_00 },
-      { date: '2026-07-02', spend: 255_00, grossRevenue: 400_00 },
+      { date: '2026-07-01', spend: 100_00, grossRevenue: 300_00, metaSpend: 100_00, googleSpend: 0 },
+      { date: '2026-07-02', spend: 255_00, grossRevenue: 400_00, metaSpend: 200_00, googleSpend: 55_00 },
     ])
   })
 
@@ -200,5 +200,114 @@ describe('buildMarketing', () => {
     // not shop-b (the account's own shopId).
     expect(overridden.byShop.find((r) => r.shopId === 'shop-a')?.spend).toBe(100_00)
     expect(overridden.byShop.find((r) => r.shopId === 'shop-b')?.spend).toBe(0)
+  })
+})
+
+describe('byPlatform', () => {
+  const built = () =>
+    buildMarketing({
+      accounts,
+      spend: [
+        spendRow({ accountId: 'acc-meta', date: new Date('2026-07-01T00:00:00Z'), spend: 100_00, impressions: 1000, clicks: 50 }),
+        spendRow({ accountId: 'acc-google', date: new Date('2026-07-01T00:00:00Z'), spend: 50_00, impressions: 400, clicks: 20 }),
+      ],
+      engine,
+      series: [],
+      rates,
+      to: TO,
+    })
+
+  it('splits spend by platform and the parts add up to the whole', () => {
+    // The invariant that matters: the platform card and the headline card are
+    // reading the same money. If these can ever disagree, one of the two
+    // screens is lying and there is no way to tell which.
+    const result = built()
+    const platformTotal = result.byPlatform.reduce((n, p) => n + p.spend, 0)
+
+    expect(platformTotal).toBe(result.total.spend)
+    expect(platformTotal).toBe(result.byShop.reduce((n, r) => n + r.spend, 0))
+  })
+
+  it('converts each platform at its own account currency', () => {
+    // NOK at 0.1 and EUR at 1.0 on 1 July: 100.00 NOK -> 10.00 USD,
+    // 50.00 EUR -> 50.00 USD. A single blended rate would get both wrong.
+    const result = built()
+    const meta = result.byPlatform.find((p) => p.provider === 'meta')!
+    const google = result.byPlatform.find((p) => p.provider === 'google')!
+
+    expect(meta.spend).toBe(10_00)
+    expect(google.spend).toBe(50_00)
+  })
+
+  it('sorts the biggest spender first', () => {
+    expect(built().byPlatform.map((p) => p.provider)).toEqual(['google', 'meta'])
+  })
+
+  it('gives an unknown provider its own row instead of folding it into Google', () => {
+    // The old code was `provider === 'meta' ? meta : google`, so a third
+    // platform would have silently inflated Google's number forever.
+    const result = buildMarketing({
+      accounts: [...accounts, { id: 'acc-tiktok', shopId: 'shop-a', provider: 'tiktok', currency: 'EUR', dailyBudget: null }],
+      spend: [spendRow({ accountId: 'acc-tiktok', date: new Date('2026-07-01T00:00:00Z'), spend: 25_00 })],
+      engine,
+      series: [],
+      rates,
+      to: TO,
+    })
+
+    expect(result.byPlatform.find((p) => p.provider === 'google')).toBeUndefined()
+    expect(result.byPlatform.find((p) => p.provider === 'tiktok')?.spend).toBe(25_00)
+  })
+
+  it('reports share as 0 rather than NaN when nothing was spent', () => {
+    const result = buildMarketing({
+      accounts,
+      spend: [spendRow({ accountId: 'acc-meta', date: new Date('2026-07-01T00:00:00Z'), spend: 0 })],
+      engine,
+      series: [],
+      rates,
+      to: TO,
+    })
+    expect(result.byPlatform[0].share).toBe(0)
+  })
+
+  it('labels a split account row by platform too', () => {
+    // A split-by-campaign row carries its own shopId. It is still Meta money
+    // and must reach the Meta bucket, or the accounts this feature exists for
+    // would show zero on the platform card.
+    const result = buildMarketing({
+      accounts,
+      spend: [
+        spendRow({ accountId: 'acc-meta', shopId: 'shop-b', date: new Date('2026-07-01T00:00:00Z'), spend: 100_00 }),
+      ],
+      engine,
+      series: [],
+      rates,
+      to: TO,
+    })
+    expect(result.byPlatform.find((p) => p.provider === 'meta')?.spend).toBe(10_00)
+  })
+})
+
+describe('per-platform series', () => {
+  it('carries each platform down the daily series', () => {
+    const result = buildMarketing({
+      accounts,
+      spend: [
+        spendRow({ accountId: 'acc-meta', date: new Date('2026-07-01T00:00:00Z'), spend: 100_00 }),
+        spendRow({ accountId: 'acc-google', date: new Date('2026-07-01T00:00:00Z'), spend: 50_00 }),
+      ],
+      engine,
+      // A full SeriesPoint (trend.ts:32) — netRevenue and netProfit are
+      // required and unused here, so they are zero rather than cast away.
+      series: [{ date: '2026-07-01', grossRevenue: 500_00, netRevenue: 0, netProfit: 0 }],
+      rates,
+      to: TO,
+    })
+
+    const day = result.series[0]
+    expect(day.metaSpend).toBe(10_00)
+    expect(day.googleSpend).toBe(50_00)
+    expect(day.metaSpend + day.googleSpend).toBe(day.spend)
   })
 })

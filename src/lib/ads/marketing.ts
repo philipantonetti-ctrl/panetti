@@ -62,11 +62,41 @@ export type MarketingShopRow = {
   holdRate: number | null // thruplays / 3-second plays
 }
 
-export type MarketingSeriesPoint = { date: string; spend: number; grossRevenue: number }
+/**
+ * One platform's totals across every shop in scope.
+ *
+ * Accumulated in the same pass as the shop rows, from the same converted
+ * amounts, so `sum(byPlatform.spend) === total.spend` holds by construction
+ * rather than by agreement between two functions.
+ */
+export type MarketingPlatformRow = {
+  provider: string // 'meta' | 'google', or whatever an account reports
+  label: string // 'Meta' | 'Google', title-cased fallback for anything else
+  spend: number // display currency minor units
+  impressions: number
+  clicks: number
+  conversions: number
+  conversionValue: number // display currency minor units
+  share: number // 0..1 of total spend; 0 when nothing was spent
+  cpc: number | null
+  cpm: number | null
+  ctr: number | null
+  platformRoas: number | null
+  costPerPurchase: number | null
+}
+
+export type MarketingSeriesPoint = {
+  date: string
+  spend: number
+  grossRevenue: number
+  metaSpend: number
+  googleSpend: number
+}
 
 export type MarketingResult = {
   displayCurrency: string
   byShop: MarketingShopRow[]
+  byPlatform: MarketingPlatformRow[]
   total: MarketingShopRow
   series: MarketingSeriesPoint[]
 }
@@ -152,6 +182,17 @@ export function buildMarketing(args: {
   const byShop = new Map<string, Acc>()
   const byDay = new Map<string, number>()
 
+  const PLATFORM_LABELS: Record<string, string> = { meta: 'Meta', google: 'Google' }
+  type PlatformAcc = {
+    spend: number
+    impressions: number
+    clicks: number
+    conversions: number
+    conversionValue: number
+  }
+  const byPlatform = new Map<string, PlatformAcc>()
+  const platformByDay = new Map<string, { meta: number; google: number }>()
+
   for (const row of args.spend) {
     const account = accountById.get(row.accountId)
     if (!account) continue // an account outside the current shop scope
@@ -176,8 +217,25 @@ export function buildMarketing(args: {
     acc.thruplays += row.thruplays
     byShop.set(shopId, acc)
 
+    // Keyed on the provider string itself. The previous shape was
+    // `provider === 'meta' ? meta : google`, which quietly filed any third
+    // platform under Google and would have overstated it forever.
+    const platform = byPlatform.get(account.provider) ?? {
+      spend: 0, impressions: 0, clicks: 0, conversions: 0, conversionValue: 0,
+    }
+    platform.spend += minor
+    platform.impressions += row.impressions
+    platform.clicks += row.clicks
+    platform.conversions += row.conversions
+    platform.conversionValue += valueMinor
+    byPlatform.set(account.provider, platform)
+
     const day = row.date.toISOString().slice(0, 10)
     byDay.set(day, (byDay.get(day) ?? 0) + minor)
+    const split = platformByDay.get(day) ?? { meta: 0, google: 0 }
+    if (account.provider === 'meta') split.meta += minor
+    else if (account.provider === 'google') split.google += minor
+    platformByDay.set(day, split)
   }
 
   // Every shop in scope gets a row — a shop without ad accounts shows zero
@@ -213,11 +271,30 @@ export function buildMarketing(args: {
     grossRevenue: args.engine.total.grossRevenue,
   })
 
+  const platformSpend = [...byPlatform.values()].reduce((n, p) => n + p.spend, 0)
+  const platformRows: MarketingPlatformRow[] = [...byPlatform.entries()]
+    .map(([provider, p]) => ({
+      provider,
+      label: PLATFORM_LABELS[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1),
+      ...p,
+      // Zero spend has no shares to divide, and NaN would render as a broken bar.
+      share: platformSpend > 0 ? p.spend / platformSpend : 0,
+      cpc: p.spend > 0 && p.clicks > 0 ? Math.round(p.spend / p.clicks) : null,
+      cpm: p.impressions > 0 ? Math.round((p.spend / p.impressions) * 1000) : null,
+      ctr: p.impressions > 0 ? p.clicks / p.impressions : null,
+      platformRoas: p.spend > 0 ? p.conversionValue / p.spend : null,
+      costPerPurchase:
+        p.spend > 0 && p.conversions > 0 ? Math.round(p.spend / p.conversions) : null,
+    }))
+    .sort((a, b) => b.spend - a.spend)
+
   const series = args.series.map((p) => ({
     date: p.date,
     spend: byDay.get(p.date) ?? 0,
     grossRevenue: p.grossRevenue,
+    metaSpend: platformByDay.get(p.date)?.meta ?? 0,
+    googleSpend: platformByDay.get(p.date)?.google ?? 0,
   }))
 
-  return { displayCurrency: display, byShop: rows, total, series }
+  return { displayCurrency: display, byShop: rows, byPlatform: platformRows, total, series }
 }

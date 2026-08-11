@@ -8,6 +8,19 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
+    // Resolve `@/*` with Vite's own resolver rather than the plugin below.
+    //
+    // vite-tsconfig-paths resolves through `unrs-resolver`, which ships a
+    // NATIVE binary installed by a postinstall script. Where that script is
+    // blocked — a sandbox, a locked-down CI, `npm ci --ignore-scripts` — the
+    // binary is absent and the plugin then fails to resolve `@/*` SILENTLY:
+    // every test importing `@/lib/...` dies with "Cannot find package", which
+    // reads as a broken repo rather than a missing binary. Vite 8 resolves
+    // tsconfig paths natively with no binary at all, and its own deprecation
+    // warning recommends exactly this option, so it is both the fix and the
+    // direction of travel. The plugin stays as a harmless no-op to keep the
+    // change to one line.
+    resolve: { tsconfigPaths: true },
     plugins: [tsconfigPaths(), react()],
     test: {
       environment: 'node',
@@ -30,15 +43,33 @@ export default defineConfig(({ mode }) => {
               'src/app/api/orders/route.test.ts',
               'src/lib/advisor/**/*.integration.test.ts',
               'src/app/api/cron/briefing/route.integration.test.ts',
+              'src/lib/data/load.test.ts',
+              'src/lib/data/load.integration.test.ts',
             ],
           },
         },
         {
           extends: true,
           test: {
+            name: 'setting',
+            // load.test.ts WRITES the real workspace Setting singleton
+            // (displayCurrency) mid-test; load.integration.test.ts READS it
+            // through getSetting() and asserts it defaults to USD. Run in the
+            // `app` project's normal parallelism, the two race on one
+            // un-taggable row — same shape of problem the `delivery` project
+            // below already solves, and the same fix: run them one at a time.
+            include: ['src/lib/data/load.test.ts', 'src/lib/data/load.integration.test.ts'],
+            fileParallelism: false,
+          },
+        },
+        {
+          extends: true,
+          test: {
             name: 'delivery',
-            // Must stay identical to the `app` project's exclude, so the two
-            // partition the suite exactly. The API-route half matters as much as
+            // Together with the `setting` project's own include list just above,
+            // this must stay exactly the `app` project's 5-pattern exclude list —
+            // the three projects partition the suite exactly, with no file run
+            // twice and none skipped. The API-route half matters as much as
             // the lib half: those tests write DeliveryPromise and the
             // DeliveryConfig singleton, which no tag can isolate.
             include: [

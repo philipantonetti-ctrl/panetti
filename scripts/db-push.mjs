@@ -58,6 +58,35 @@ export function decide({ vercelEnv, databaseUrl, force = false }) {
   return { action: 'push', reason: 'production build' }
 }
 
+/**
+ * Prisma hides a whole class of changes behind `--accept-data-loss`, and only
+ * some of that class can actually destroy something. Adding a unique
+ * constraint cannot: it either succeeds, or it fails loudly on a duplicate
+ * row. Dropping a column can, and must keep failing the build.
+ *
+ * This is an ALLOWLIST on purpose. A denylist of known-destructive phrasings
+ * would silently start accepting whatever wording Prisma invents next, and the
+ * first anyone would know of it is a column that did not come back.
+ *
+ * Why it exists: swapping DeliveryPromise's unique key on 2026-08-07 blocked
+ * every deployment for a day. `db push` runs non-interactively in CI, so its
+ * "use --accept-data-loss" prompt is not a prompt — it is a dead build, and
+ * the schema change behind it was provably safe.
+ *
+ * @param {string} output combined stdout+stderr of the failed push
+ * @returns {boolean} true only when EVERY warning is a constraint addition
+ */
+export function retryable(output) {
+  const warnings = [...String(output).matchAll(/^\s*•\s*(.+?)\s*$/gm)].map((m) => m[1])
+  // No warnings means the push died of something else — an unreachable
+  // database, a malformed schema. Retrying with a data-loss flag would fail
+  // again and teach the operator nothing.
+  if (warnings.length === 0) return false
+  return warnings.every((w) =>
+    /^A (unique constraint|primary key) covering the columns .* will be added\./.test(w),
+  )
+}
+
 const isMain = import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('db-push.mjs')
 
 if (isMain) {
@@ -80,6 +109,36 @@ if (isMain) {
   }
 
   console.log(`[db-push] applying the schema — ${reason}`)
-  const run = spawnSync('prisma db push --skip-generate', { stdio: 'inherit', shell: true })
-  process.exit(run.status ?? 1)
+
+  // Captured rather than inherited, because the retry decision below has to
+  // read the warnings. Everything is echoed either way, so the build log looks
+  // the same as it always did.
+  const run = spawnSync('prisma db push --skip-generate', { shell: true, encoding: 'utf8' })
+  const output = `${run.stdout ?? ''}${run.stderr ?? ''}`
+  process.stdout.write(output)
+
+  if ((run.status ?? 1) === 0) process.exit(0)
+
+  if (!retryable(output)) {
+    console.error(
+      '\n[db-push] the schema was NOT applied, and this is not a refusal we retry.\n' +
+        '  Prisma only warns like this when something can actually be lost —\n' +
+        '  a dropped column, a dropped table, a required column on rows that\n' +
+        '  already exist. Fix the schema change, or apply it by hand against\n' +
+        '  the database with a human watching.\n',
+    )
+    process.exit(run.status ?? 1)
+  }
+
+  // Every warning was a constraint being added. That cannot delete anything:
+  // the worst it can do is fail on a duplicate, which fails the build anyway.
+  console.log(
+    '[db-push] every warning above is a constraint being added, which cannot\n' +
+      '  destroy data — retrying once with --accept-data-loss.',
+  )
+  const retry = spawnSync('prisma db push --skip-generate --accept-data-loss', {
+    stdio: 'inherit',
+    shell: true,
+  })
+  process.exit(retry.status ?? 1)
 }
