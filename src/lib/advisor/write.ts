@@ -30,15 +30,21 @@ export async function writeBriefing(
   const day = todayInZone(timezone, now)
 
   const collected = await collectFacts(now)
-  const factsData = {
+  const facts = {
     from: collected.from,
     to: collected.to,
     facts: JSON.stringify(collected.facts),
-    items: null,
-    error: null,
-    model: null,
   }
-  await db.briefing.upsert({ where: { day }, create: { day, ...factsData }, update: factsData })
+  // Only the facts. A re-run on a day that already has a good briefing must not
+  // null its items out before the new attempt is known to have worked: a
+  // platform kill between here and the update below would then have destroyed
+  // a briefing that was fine, and left error null so nothing said so. The
+  // previous briefing stands until there is something better to replace it.
+  await db.briefing.upsert({
+    where: { day },
+    create: { day, ...facts, items: null, error: null, model: null },
+    update: facts,
+  })
 
   const brief = await generateBrief(collected, model)
   await db.briefing.update({

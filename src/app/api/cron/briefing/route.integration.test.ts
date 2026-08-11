@@ -123,6 +123,30 @@ describe('writeBriefing', () => {
     expect((factsSeenDuringTheCall as unknown[]).length).toBeGreaterThan(0)
   })
 
+  it('keeps yesterday-good items when a re-run on the same day dies', async () => {
+    // The two-phase write must not null out a briefing that is already fine
+    // before the new attempt has earned the right to replace it. A kill
+    // between the facts write and the model result would otherwise destroy a
+    // good briefing AND leave error null, so nothing on the page said so.
+    const good = vi.fn().mockResolvedValue({ items: [item], model: 'claude-opus-5' })
+    await writeBriefing(NOW, good)
+
+    // Captured, never asserted in here: generateBrief catches everything the
+    // model throws, so an expect() inside this mock would be swallowed and
+    // stored as an error rather than failing the test.
+    let itemsMidRerun: string | null = null
+    const killed = vi.fn().mockImplementation(async () => {
+      const row = await db.briefing.findUnique({ where: { day: DAY } })
+      itemsMidRerun = row!.items
+      throw new Error('killed mid-call')
+    })
+    await writeBriefing(NOW, killed)
+
+    expect(killed).toHaveBeenCalled()
+    // The previous good briefing was still standing when the re-run died.
+    expect(itemsMidRerun).not.toBeNull()
+  })
+
   it('replaces rather than duplicates when run twice on one day', async () => {
     const model = vi.fn().mockResolvedValue({ items: [item], model: 'claude-opus-5' })
     await writeBriefing(NOW, model)
