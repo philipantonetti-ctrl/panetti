@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
-import type { ReactNode } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
+import { ToastProvider } from '@/components/toast/ToastProvider'
 import { MarketingClient } from './MarketingClient'
 import type { MarketingShopRow } from '@/lib/ads/marketing'
+
+// The refresh button (Task 7) calls the real useToast(), which throws without
+// a ToastProvider ancestor — production gets one from the root layout, so
+// every render here needs the same wrapper rather than a per-test one-off.
+// Named to match the sibling convention (AdAccountsClient.test.tsx's
+// renderPage), not aliased onto testing-library's own `render` — that alias
+// reads as the real thing and hides the wrapping from anyone skimming a test.
+function renderPage(ui: ReactElement) {
+  return render(<ToastProvider>{ui}</ToastProvider>)
+}
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/marketing',
@@ -104,7 +115,7 @@ describe('MarketingClient', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -156,7 +167,7 @@ describe('MarketingClient', () => {
       vi.fn(() => Promise.resolve(new Response(JSON.stringify(withPlatform), { status: 200 }))),
     )
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -181,7 +192,7 @@ describe('MarketingClient', () => {
       vi.fn(() => Promise.resolve(new Response(JSON.stringify(withUnassigned), { status: 200 }))),
     )
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -203,7 +214,7 @@ describe('MarketingClient', () => {
     const withNok = { ...payload, displayCurrency: 'NOK' }
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(withNok), { status: 200 }))))
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[
@@ -221,7 +232,7 @@ describe('MarketingClient', () => {
   it('does not show the consolidation notice for a single shop', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))))
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -265,7 +276,7 @@ describe('MarketingClient', () => {
     }
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(withPartial), { status: 200 }))))
 
-    render(
+    renderPage(
       <MarketingClient
         email="admin@test.local"
         shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
@@ -282,7 +293,7 @@ describe('MarketingClient', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<MarketingClient email="admin@test.local" shops={[]} hasAccounts={false} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={[]} hasAccounts={false} />)
     await act(async () => {})
 
     expect(screen.getByText('No ad accounts connected yet')).toBeTruthy()
@@ -321,7 +332,7 @@ describe('MarketingClient', () => {
   it('shows the breakdown only for a single store', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
-    render(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
 
     // Default selection is every shop — neither the switcher nor the table,
@@ -358,7 +369,7 @@ describe('MarketingClient', () => {
   it('treats "no shops" as not exactly one, not as a shop named none', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
-    render(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
 
     fireEvent.click(screen.getByRole('button', { name: 'Shops' }))
@@ -373,7 +384,7 @@ describe('MarketingClient', () => {
   it('switches the table between Meta and Google', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
-    render(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
     selectOnly('Panetti Norway')
     await act(async () => {})
@@ -386,10 +397,57 @@ describe('MarketingClient', () => {
     expect(breakdownProps().shopId).toBe('a') // same store — only the platform moved
   })
 
+  // FINDING 2: `provider` (the drill-down's own Meta/Google switcher) never
+  // reacted to the page's `platform` filter, so filtering the page to Google
+  // still left the drill-down open on Meta campaigns underneath a header
+  // claiming a Google-only scope — two scopes on one screen. Locking the
+  // drill-down to the active filter, and hiding the switcher rather than
+  // leaving a control that offers a contradictory choice, is chosen over
+  // merely seeding it: a visible Meta/Google tablist would still let the
+  // client click the "wrong" one while the header says otherwise.
+  it('locks the drill-down to the page platform filter and hides its own switcher', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ...payload,
+              platform: String(url).includes('platform=google') ? 'google' : null,
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    )
+
+    renderPage(
+      <MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} platforms={twoPlatforms} />,
+    )
+    await act(async () => {})
+    selectOnly('Panetti Norway')
+    await act(async () => {})
+
+    // No page filter yet: the switcher is a real choice, defaulted to Meta.
+    expect(screen.getByRole('tab', { name: 'Meta' })).toBeTruthy()
+    expect(breakdownProps().provider).toBe('meta')
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ad platform/i }), {
+      target: { value: 'google' },
+    })
+    await act(async () => {})
+
+    // Filtered to Google: the switcher would only ever offer a contradiction,
+    // so it is gone, and the drill-down follows the page's own scope.
+    expect(screen.queryByRole('tab', { name: 'Meta' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: 'Google' })).toBeNull()
+    expect(breakdownProps().provider).toBe('google')
+  })
+
   it('starts on Meta', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
-    render(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
     selectOnly('Panetti Norway')
     await act(async () => {})
@@ -397,5 +455,255 @@ describe('MarketingClient', () => {
     expect(screen.getByRole('tab', { name: 'Meta' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByRole('tab', { name: 'Google' }).getAttribute('aria-selected')).toBe('false')
     expect(breakdownProps().provider).toBe('meta')
+  })
+
+  // The platform list is now a server-supplied prop (workspace configuration,
+  // src/app/marketing/page.tsx), not derived from the response's byPlatform —
+  // so this test drives PlatformFilter via that prop directly. The base
+  // `payload` fixture (byPlatform: []) is enough; only the prop needs two
+  // entries for the combobox to render at all.
+  const twoPlatforms = [
+    { provider: 'meta', label: 'Meta' },
+    { provider: 'google', label: 'Google' },
+  ]
+
+  it('asks the server for one platform when one is chosen', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+        platforms={twoPlatforms}
+      />,
+    )
+    await act(async () => {})
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ad platform/i }), {
+      target: { value: 'meta' },
+    })
+    await act(async () => {})
+
+    const calls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0]))
+    expect(calls.some((u) => u.includes('platform=meta'))).toBe(true)
+  })
+
+  // FINDING 1: `platform` is pending client state — it flips the instant the
+  // user picks a new option, before the refetch it triggers has resolved.
+  // `data` only changes on fetch SUCCESS. So gating the chart on `platform`
+  // (rather than on the platform that produced `data`) makes the ROAS/POAS
+  // lines reappear the moment "All platforms" is picked, even though `data`
+  // still holds a Meta-only fetch's numbers — worse, permanently, if the
+  // refetch then fails, since nothing ever clears `loading` back onto fresh
+  // data. This test drives exactly that sequence and must still find the
+  // ratio lines absent once the "All platforms" refetch has failed.
+  it('keeps ROAS and POAS hidden after switching to All platforms while the refetch is still Meta-only or has failed', async () => {
+    const seriesWithSpend = [
+      {
+        date: '2026-07-01',
+        spend: 50_00,
+        grossRevenue: 100_00,
+        netProfit: 20_00,
+        metaSpend: 50_00,
+        googleSpend: 0,
+      },
+    ]
+    const metaPayload = { ...payload, platform: 'meta', series: seriesWithSpend }
+    const allPayload = { ...payload, platform: null, series: seriesWithSpend }
+
+    // The route echoes back whichever platform it actually applied
+    // (src/app/api/marketing/route.ts) — the mock mirrors that contract so
+    // this test exercises the same shape production sends.
+    let sawMeta = false
+    const fetchMock = vi.fn((url: string) => {
+      const u = String(url)
+      if (u.includes('platform=meta')) {
+        sawMeta = true
+        return Promise.resolve(new Response(JSON.stringify(metaPayload), { status: 200 }))
+      }
+      if (sawMeta) {
+        // The refetch triggered by picking "All platforms" back off Meta —
+        // simulated as failing outright, so `data` never updates.
+        return Promise.reject(new Error('network down'))
+      }
+      return Promise.resolve(new Response(JSON.stringify(allPayload), { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+        platforms={twoPlatforms}
+      />,
+    )
+    await act(async () => {})
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ad platform/i }), {
+      target: { value: 'meta' },
+    })
+    await act(async () => {})
+
+    expect(screen.queryByText('ROAS')).not.toBeInTheDocument()
+    expect(screen.queryByText('POAS')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ad platform/i }), {
+      target: { value: '' },
+    })
+    await act(async () => {})
+
+    // The refetch failed: `data` is still the Meta-only fetch's payload, so
+    // the chart must still treat this as filtered — the pending selection
+    // (now "All platforms") must not leak into what is actually on screen.
+    expect(screen.queryByText('ROAS')).not.toBeInTheDocument()
+    expect(screen.queryByText('POAS')).not.toBeInTheDocument()
+  })
+
+  it('syncs, then reloads the numbers the sync just wrote', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    const before = fetchMock.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await act(async () => {})
+
+    const calls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0]))
+    expect(calls).toContain('/api/ads/sync')
+    // The sync only changes the DATABASE; the tab still holds the old numbers
+    // until it asks again. More calls than the sync alone proves the refetch.
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(before + 1)
+  })
+
+  // The disabled state is asserted separately: an ordinary mocked response
+  // resolves inside the same act() flush, so the button is enabled again by
+  // the time a naive test looks. Holding the sync open with a deferred
+  // promise is what makes "still running" observable at all.
+  it('cannot be pressed twice while it is running', async () => {
+    let release: (v: Response) => void = () => {}
+    const fetchMock = vi.fn((url: string) =>
+      String(url) === '/api/ads/sync'
+        ? new Promise<Response>((resolve) => {
+            release = resolve
+          })
+        : Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    const button = screen.getByRole('button', { name: /refresh/i })
+    fireEvent.click(button)
+    await act(async () => {})
+
+    expect(button).toBeDisabled()
+
+    await act(async () => {
+      release(new Response('{}', { status: 200 }))
+    })
+    expect(button).not.toBeDisabled()
+  })
+
+  it('shows the sync error and does not refetch', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      String(url) === '/api/ads/sync'
+        ? Promise.resolve(
+            new Response(JSON.stringify({ error: 'Meta token expired' }), { status: 500 }),
+          )
+        : Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    const marketingCallsBefore = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/marketing'),
+    ).length
+
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await act(async () => {})
+
+    expect(screen.getByText('Meta token expired')).toBeTruthy()
+    // A failed sync must not silently re-pull as though it worked — the
+    // database never changed, so there is nothing new to fetch.
+    const marketingCallsAfter = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/marketing'),
+    ).length
+    expect(marketingCallsAfter).toBe(marketingCallsBefore)
+  })
+
+  it('falls back to a generic message when the sync error body is not JSON', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      String(url) === '/api/ads/sync'
+        ? Promise.resolve(new Response('not json', { status: 500 }))
+        : Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await act(async () => {})
+
+    expect(screen.getByText('Sync failed')).toBeTruthy()
+  })
+
+  it('shows a network-failure toast when the sync request throws', async () => {
+    const fetchMock = vi.fn((url: string) =>
+      String(url) === '/api/ads/sync'
+        ? Promise.reject(new Error('network down'))
+        : Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+      />,
+    )
+    await act(async () => {})
+
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
+    await act(async () => {})
+
+    expect(screen.getByText('Could not reach the server')).toBeTruthy()
   })
 })

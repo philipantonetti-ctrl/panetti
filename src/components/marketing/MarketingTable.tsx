@@ -64,6 +64,15 @@ const DEFAULT_HIDDEN = [
 
 const STORAGE_KEY = 'marketing-columns'
 
+// roas and cpa divide WHOLE-STORE gross revenue and orders by ad spend
+// (marketing.ts's `ratios()`), so a platform filter nulls them out rather
+// than inflating them. The static column hint doesn't say that, so under a
+// filter the dash reads as missing data instead of a deliberate refusal —
+// this is the explanation swapped in for both the header and the cell.
+const FILTERED_RATIO_KEYS = new Set<Column['key']>(['roas', 'cpa'])
+const FILTERED_RATIO_HINT =
+  "Whole-store figures can't be divided by one platform's spend, so this is blank while the platform filter is active."
+
 function useVisibleColumns() {
   const [hidden, setHidden] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set(DEFAULT_HIDDEN)
@@ -117,10 +126,15 @@ export function MarketingTable({
   rows,
   total,
   currency,
+  platformFiltered = false,
 }: {
   rows: MarketingShopRow[]
   total: MarketingShopRow
   currency: string
+  /** From the caller's SETTLED platform (MarketingClient passes
+   *  `data.platform`, echoed by the route), not a pending filter selection —
+   *  the same principle MarketingChart's own `platformFiltered` follows. */
+  platformFiltered?: boolean
 }) {
   const [sortBy, setSortBy] = useState<keyof MarketingShopRow>('spend')
   const [desc, setDesc] = useState(true)
@@ -198,7 +212,11 @@ export function MarketingTable({
                   <th
                     key={column.key}
                     className={`px-4 py-2 text-right ${stripeOf(i)}`}
-                    title={column.hint}
+                    title={
+                      platformFiltered && FILTERED_RATIO_KEYS.has(column.key)
+                        ? FILTERED_RATIO_HINT
+                        : column.hint
+                    }
                     aria-sort={active ? (desc ? 'descending' : 'ascending') : undefined}
                   >
                     <button
@@ -229,7 +247,13 @@ export function MarketingTable({
                   {row.shopName}
                 </td>
                 {columns.map((column, i) => (
-                  <td key={column.key} className={`num px-4 py-2.5 text-right text-ink ${stripeOf(i)}`}>
+                  <td
+                    key={column.key}
+                    className={`num px-4 py-2.5 text-right text-ink ${stripeOf(i)}`}
+                    title={
+                      platformFiltered && FILTERED_RATIO_KEYS.has(column.key) ? FILTERED_RATIO_HINT : undefined
+                    }
+                  >
                     {cellText(column, row[column.key] as number | null, currency)}
                   </td>
                 ))}
@@ -241,7 +265,13 @@ export function MarketingTable({
             <tr className="border-t border-line bg-panel font-semibold">
               <td className="sticky left-0 z-10 bg-inherit px-5 py-3 text-ink">Total</td>
               {columns.map((column, i) => (
-                <td key={column.key} className={`num px-4 py-3 text-right text-ink ${stripeOf(i)}`}>
+                <td
+                  key={column.key}
+                  className={`num px-4 py-3 text-right text-ink ${stripeOf(i)}`}
+                  title={
+                    platformFiltered && FILTERED_RATIO_KEYS.has(column.key) ? FILTERED_RATIO_HINT : undefined
+                  }
+                >
                   {cellText(column, total[column.key] as number | null, currency)}
                 </td>
               ))}

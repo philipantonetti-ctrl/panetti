@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { useToast } from '@/components/toast/useToast'
 import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
+import { PlatformFilter } from '@/components/filters/PlatformFilter'
 import { MarketingStats } from '@/components/marketing/MarketingStats'
 import { MarketingChart } from '@/components/marketing/MarketingChart'
 import { MarketingTable } from '@/components/marketing/MarketingTable'
@@ -42,12 +44,28 @@ type Payload = {
   // re-derived: re-resolving 'this_month' client-side would risk disagreeing
   // with the server's own timezone-aware resolution near a day boundary.
   range: { from: string; to: string }
+  // Echoed straight from the query the route actually served (route.ts) —
+  // NOT re-derived from the client's own `platform` state, which is pending
+  // the instant a filter changes and can outrun the fetch it triggered. The
+  // chart and table divide whole-store figures by spend; they must gate that
+  // display on the platform that produced the numbers on screen, not the one
+  // the user just clicked, or a failed refetch leaves them showing inflated
+  // ratios forever (see the `platformFiltered` prop below).
+  platform: string | null
 }
 
 const PLATFORMS: { id: 'meta' | 'google'; label: string }[] = [
   { id: 'meta', label: 'Meta' },
   { id: 'google', label: 'Google' },
 ]
+
+/** Narrows the page's free-text platform filter to the two the drill-down
+ *  actually knows how to show. Anything else (workspace has some third
+ *  provider connected) leaves the switcher in charge rather than locking to
+ *  a platform BreakdownTable cannot render. */
+function asBreakdownProvider(platform: string | null): 'meta' | 'google' | null {
+  return platform === 'meta' || platform === 'google' ? platform : null
+}
 
 /** Two options, so a segmented control — a dropdown would hide half of them. */
 function PlatformSwitcher({
@@ -131,20 +149,30 @@ export function MarketingClient({
   shops,
   initialPreset,
   hasAccounts,
+  platforms = [],
 }: {
   email: string
   shops: Shop[]
   initialPreset?: Preset
   hasAccounts: boolean
+  // Workspace-level list of connected platforms, from the server component
+  // (src/app/marketing/page.tsx) — never from a /api/marketing response,
+  // whose byPlatform narrows to whatever platform filter is active and would
+  // strand the dropdown on the one option already chosen.
+  platforms?: { provider: string; label: string }[]
 }) {
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [selected, setSelected] = useState<string[]>([])
+  const [platform, setPlatform] = useState<string | null>(null)
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [provider, setProvider] = useState<'meta' | 'google'>('meta')
+  const [syncing, setSyncing] = useState(false)
+  const [refreshNonce, setRefreshNonce] = useState(0)
+  const toast = useToast()
 
   // The cron keeps the DATABASE current; this keeps the TAB current.
   const tick = useLiveTick()
@@ -160,6 +188,7 @@ export function MarketingClient({
       params.set('preset', preset)
     }
     if (selected.length) params.set('shops', selected.join(','))
+    if (platform) params.set('platform', platform)
 
     const ctrl = new AbortController()
     fetch(`/api/marketing?${params}`, { signal: ctrl.signal })
@@ -173,6 +202,10 @@ export function MarketingClient({
           ...a,
           lastSyncAt: a.lastSyncAt ? new Date(a.lastSyncAt) : null,
         }))
+        // Normalised, not trusted blindly: an older route response (or a test
+        // fixture predating this field) has no `platform` key at all, and
+        // `undefined !== null` would wrongly read as "filtered".
+        json.platform = json.platform ?? null
         setData(json)
         setError('')
       })
@@ -181,12 +214,39 @@ export function MarketingClient({
       })
       .finally(() => setLoading(false))
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
-  }, [preset, from, to, selected, tick, hasAccounts])
+  }, [preset, from, to, selected, platform, tick, refreshNonce, hasAccounts])
 
   const currency = data?.displayCurrency ?? 'USD'
   // A real shop id only when exactly one is chosen — ShopFilter's own "all"
   // (empty array) and its explicit "none" sentinel both fail this on purpose.
   const singleShopId = selected.length === 1 && selected[0] !== NO_SHOPS ? selected[0] : null
+  // A page filter narrowed to Meta and a drill-down open on Google would put
+  // two scopes on one screen under one header. Read off the pending
+  // `platform` selection (not `data.platform`): BreakdownTable makes its own
+  // independent fetch and shows its own loading/error state, so — unlike the
+  // whole-store ratios in Finding 1 — there is no stale-data risk in
+  // following the filter immediately.
+  const lockedProvider = asBreakdownProvider(platform)
+  const breakdownProvider = lockedProvider ?? provider
+
+  async function refresh() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/ads/sync', { method: 'POST' })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Sync failed')
+        return
+      }
+      // The sync wrote to the database; this pulls it into the tab.
+      setLoading(true)
+      setRefreshNonce((n) => n + 1)
+      toast.success('Ad spend refreshed')
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   return (
     <AppShell email={email}>
@@ -200,6 +260,14 @@ export function MarketingClient({
       >
         {hasAccounts && (
           <>
+            <PlatformFilter
+              options={platforms}
+              selected={platform}
+              onChange={(next) => {
+                setLoading(true)
+                setPlatform(next)
+              }}
+            />
             <ShopFilter
               shops={shops}
               selected={selected}
@@ -219,6 +287,14 @@ export function MarketingClient({
                 if (next.to !== undefined) setTo(next.to)
               }}
             />
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={syncing}
+              className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 hover:border-faint disabled:opacity-50"
+            >
+              {syncing ? 'Refreshing…' : 'Refresh ad data'}
+            </button>
           </>
         )}
       </PageHeader>
@@ -255,19 +331,33 @@ export function MarketingClient({
 
                 <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
                   <PlatformCard rows={data.byPlatform} total={data.total.spend} currency={currency} />
-                  <MarketingChart series={data.series} currency={currency} />
+                  <MarketingChart
+                    series={data.series}
+                    currency={currency}
+                    // Gated on the platform that produced `data`, not the
+                    // pending `platform` selection — see the `Payload.platform`
+                    // comment above for why that distinction is load-bearing.
+                    platformFiltered={data.platform !== null}
+                  />
                 </div>
 
                 <PlatformTable rows={data.byPlatform} currency={currency} />
 
-                <MarketingTable rows={data.byShop} total={data.total} currency={currency} />
+                <MarketingTable
+                  rows={data.byShop}
+                  total={data.total}
+                  currency={currency}
+                  platformFiltered={data.platform !== null}
+                />
 
                 {singleShopId ? (
                   <div className="space-y-3">
-                    <PlatformSwitcher provider={provider} onChange={setProvider} />
+                    {/* A page platform filter is already a scope decision; a
+                        visible switcher would just offer to contradict it. */}
+                    {!lockedProvider && <PlatformSwitcher provider={provider} onChange={setProvider} />}
                     <BreakdownTable
                       shopId={singleShopId}
-                      provider={provider}
+                      provider={breakdownProvider}
                       from={data.range.from}
                       to={data.range.to}
                     />

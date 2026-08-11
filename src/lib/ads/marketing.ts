@@ -89,6 +89,8 @@ export type MarketingSeriesPoint = {
   date: string
   spend: number
   grossRevenue: number
+  /** Whole-store, already net of ad spend (engine.ts). POAS divides by spend. */
+  netProfit: number
   metaSpend: number
   googleSpend: number
 }
@@ -99,6 +101,18 @@ export type MarketingResult = {
   byPlatform: MarketingPlatformRow[]
   total: MarketingShopRow
   series: MarketingSeriesPoint[]
+}
+
+const PLATFORM_LABELS: Record<string, string> = { meta: 'Meta', google: 'Google' }
+
+/**
+ * Display label for an ad provider. Exported so the marketing page's server
+ * component (which lists connected platforms straight from the DB, outside
+ * any buildMarketing call) and buildMarketing's own byPlatform rows can never
+ * name the same provider two different ways.
+ */
+export function platformLabel(provider: string): string {
+  return PLATFORM_LABELS[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1)
 }
 
 type Ratioless = Omit<
@@ -116,12 +130,20 @@ type Ratioless = Omit<
   | 'holdRate'
 >
 
-/** A ratio with a zero denominator is not a number, and printing one would lie. */
-const ratios = (row: Ratioless): MarketingShopRow => ({
+/**
+ * A ratio with a zero denominator is not a number, and printing one would lie.
+ *
+ * `wholeStore` is false when a platform filter is active. `roas` and `cpa`
+ * divide WHOLE-STORE revenue and orders by spend, so narrowing spend to one
+ * platform does not narrow them — it inflates them. A 5.5x store ROAS would
+ * read 7.5x for no reason but a dropdown. They dash instead.
+ */
+const ratios = (row: Ratioless, wholeStore = true): MarketingShopRow => ({
   ...row,
-  roas: row.spend > 0 ? row.grossRevenue / row.spend : null,
+  roas: wholeStore && row.spend > 0 ? row.grossRevenue / row.spend : null,
   platformRoas: row.spend > 0 ? row.conversionValue / row.spend : null,
-  cpa: row.spend > 0 && row.orders > 0 ? Math.round(row.spend / row.orders) : null,
+  cpa:
+    wholeStore && row.spend > 0 && row.orders > 0 ? Math.round(row.spend / row.orders) : null,
   costPerPurchase:
     row.spend > 0 && row.conversions > 0 ? Math.round(row.spend / row.conversions) : null,
   avgPurchaseValue: row.conversions > 0 ? Math.round(row.conversionValue / row.conversions) : null,
@@ -142,14 +164,26 @@ export function buildMarketing(args: {
   rates: RateTable
   /** Range end: a current setting like the budget converts at the current rate. */
   to: Date
+  /** Only this provider's accounts count. Whole-store ratios dash out. */
+  platform?: string | null
 }): MarketingResult {
   const display = args.engine.displayCurrency
-  const accountById = new Map(args.accounts.map((a) => [a.id, a]))
+
+  // Filtered HERE rather than trusting the caller to have done it, because
+  // `wholeStore` is derived from the same argument. A caller that filtered the
+  // accounts but forgot the flag would publish inflated store ROAS; this way
+  // the data and the flag cannot disagree.
+  const accounts = args.platform
+    ? args.accounts.filter((a) => a.provider === args.platform)
+    : args.accounts
+  const wholeStore = !args.platform
+
+  const accountById = new Map(accounts.map((a) => [a.id, a]))
 
   // Budgets come from the accounts themselves, not the spend rows — an account
   // that spent nothing this period still has its budget set.
   const budgetByShop = new Map<string, number>()
-  for (const account of args.accounts) {
+  for (const account of accounts) {
     if (account.dailyBudget === null) continue
     const minor = crossConvert(account.dailyBudget, account.currency, display, args.to, args.rates)
     budgetByShop.set(account.shopId, (budgetByShop.get(account.shopId) ?? 0) + minor)
@@ -182,7 +216,6 @@ export function buildMarketing(args: {
   const byShop = new Map<string, Acc>()
   const byDay = new Map<string, number>()
 
-  const PLATFORM_LABELS: Record<string, string> = { meta: 'Meta', google: 'Google' }
   type PlatformAcc = {
     spend: number
     impressions: number
@@ -242,40 +275,46 @@ export function buildMarketing(args: {
   // spend and dashes, not absence.
   const rows = args.engine.byShop.map((shop) => {
     const acc = byShop.get(shop.shopId) ?? zero()
-    return ratios({
-      shopId: shop.shopId,
-      shopName: shop.shopName,
-      dailyBudget: budgetByShop.get(shop.shopId) ?? null,
-      ...acc,
-      orders: shop.orders,
-      grossRevenue: shop.grossRevenue,
-    })
+    return ratios(
+      {
+        shopId: shop.shopId,
+        shopName: shop.shopName,
+        dailyBudget: budgetByShop.get(shop.shopId) ?? null,
+        ...acc,
+        orders: shop.orders,
+        grossRevenue: shop.grossRevenue,
+      },
+      wholeStore,
+    )
   })
 
   const budgets = rows.filter((r) => r.dailyBudget !== null)
-  const total = ratios({
-    shopId: '',
-    shopName: 'Total',
-    dailyBudget: budgets.length ? budgets.reduce((n, r) => n + (r.dailyBudget ?? 0), 0) : null,
-    spend: rows.reduce((n, r) => n + r.spend, 0),
-    metaSpend: rows.reduce((n, r) => n + r.metaSpend, 0),
-    googleSpend: rows.reduce((n, r) => n + r.googleSpend, 0),
-    impressions: rows.reduce((n, r) => n + r.impressions, 0),
-    clicks: rows.reduce((n, r) => n + r.clicks, 0),
-    linkClicks: rows.reduce((n, r) => n + r.linkClicks, 0),
-    conversions: rows.reduce((n, r) => n + r.conversions, 0),
-    conversionValue: rows.reduce((n, r) => n + r.conversionValue, 0),
-    videoViews3s: rows.reduce((n, r) => n + r.videoViews3s, 0),
-    thruplays: rows.reduce((n, r) => n + r.thruplays, 0),
-    orders: args.engine.total.orders,
-    grossRevenue: args.engine.total.grossRevenue,
-  })
+  const total = ratios(
+    {
+      shopId: '',
+      shopName: 'Total',
+      dailyBudget: budgets.length ? budgets.reduce((n, r) => n + (r.dailyBudget ?? 0), 0) : null,
+      spend: rows.reduce((n, r) => n + r.spend, 0),
+      metaSpend: rows.reduce((n, r) => n + r.metaSpend, 0),
+      googleSpend: rows.reduce((n, r) => n + r.googleSpend, 0),
+      impressions: rows.reduce((n, r) => n + r.impressions, 0),
+      clicks: rows.reduce((n, r) => n + r.clicks, 0),
+      linkClicks: rows.reduce((n, r) => n + r.linkClicks, 0),
+      conversions: rows.reduce((n, r) => n + r.conversions, 0),
+      conversionValue: rows.reduce((n, r) => n + r.conversionValue, 0),
+      videoViews3s: rows.reduce((n, r) => n + r.videoViews3s, 0),
+      thruplays: rows.reduce((n, r) => n + r.thruplays, 0),
+      orders: args.engine.total.orders,
+      grossRevenue: args.engine.total.grossRevenue,
+    },
+    wholeStore,
+  )
 
   const platformSpend = [...byPlatform.values()].reduce((n, p) => n + p.spend, 0)
   const platformRows: MarketingPlatformRow[] = [...byPlatform.entries()]
     .map(([provider, p]) => ({
       provider,
-      label: PLATFORM_LABELS[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1),
+      label: platformLabel(provider),
       ...p,
       // Zero spend has no shares to divide, and NaN would render as a broken bar.
       share: platformSpend > 0 ? p.spend / platformSpend : 0,
@@ -292,6 +331,7 @@ export function buildMarketing(args: {
     date: p.date,
     spend: byDay.get(p.date) ?? 0,
     grossRevenue: p.grossRevenue,
+    netProfit: p.netProfit,
     metaSpend: platformByDay.get(p.date)?.meta ?? 0,
     googleSpend: platformByDay.get(p.date)?.google ?? 0,
   }))

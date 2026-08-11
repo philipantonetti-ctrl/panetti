@@ -80,6 +80,35 @@ describe('MarketingTable', () => {
     expect(screen.getByText('Total')).toBeTruthy()
   })
 
+  // FINDING 3: under a platform filter, Store ROAS and CPA dash out (they
+  // divide whole-store figures by one platform's spend — see marketing.ts's
+  // `ratios()`), but the static column hint never said why, so the dashes
+  // read as missing data rather than a deliberate refusal. `platformFiltered`
+  // must come from the caller's SETTLED platform (MarketingClient passes
+  // `data.platform`, not the pending filter selection) — this component only
+  // renders what it is told.
+  it('explains why Store ROAS and CPA are dashed under a platform filter', () => {
+    render(
+      <MarketingTable
+        rows={[row({ shopId: 'a', shopName: 'Panetti Norway', spend: 35500, orders: 10, grossRevenue: 500000 })]}
+        total={row({ shopId: '', shopName: 'Total', spend: 35500, orders: 10, grossRevenue: 500000 })}
+        currency="USD"
+        platformFiltered
+      />,
+    )
+
+    // Two headers (Store ROAS, CPA) and their dashed cells in both the body
+    // row and the total row all carry the same explanation.
+    const explained = screen.getAllByTitle(/platform filter/i)
+    expect(explained.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('does not need to explain Store ROAS and CPA when no platform filter is active', () => {
+    render(<MarketingTable rows={[FILLED]} total={FILLED} currency="USD" />)
+
+    expect(screen.queryAllByTitle(/platform filter/i)).toHaveLength(0)
+  })
+
   it('brings a hidden metric out through Select metrics and remembers it', () => {
     render(<MarketingTable rows={[FILLED]} total={FILLED} currency="USD" />)
 

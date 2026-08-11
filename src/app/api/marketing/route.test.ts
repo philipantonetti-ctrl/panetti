@@ -301,4 +301,70 @@ describe('GET /api/marketing', () => {
     const body = await res.json()
     expect(body.partialAccounts).toBe(false)
   })
+
+  it('narrows every surface to one platform', async () => {
+    // A second, google-provider account with its own in-range spend, so the
+    // filter has something to actually exclude — without it, byPlatform
+    // would read ['meta'] whether or not the filter worked at all.
+    const google = await db.adAccount.create({
+      data: {
+        shopId,
+        provider: 'google',
+        externalId: `mkt-google-${Date.now()}`,
+        name: `Google Account ${MARK}`,
+        currency: 'NOK',
+        dailyBudget: 500000,
+      },
+    })
+    await db.adSpend.create({
+      data: { accountId: google.id, date: new Date('2026-03-10T00:00:00Z'), spend: 15000, impressions: 1000, clicks: 20 },
+    })
+
+    const res = await get('from=2026-03-01&to=2026-03-31&platform=meta')
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.byPlatform.map((p: { provider: string }) => p.provider)).toEqual(['meta'])
+    // The spend check panel describes the same accounts the totals do, or the
+    // panel would "prove" a total that is not on screen.
+    expect(
+      body.spendCheck.accounts.every((a: { provider: string }) => a.provider === 'meta'),
+    ).toBe(true)
+  })
+
+  it('refuses an unknown platform rather than answering with a plausible zero', async () => {
+    const res = await get('from=2026-03-01&to=2026-03-31&platform=tiktok')
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Unknown ad platform')
+  })
+
+  // Human ruling: filtering to a platform that IS connected somewhere in the
+  // workspace, then scoping to a store that has no account on that platform,
+  // is a true empty result (the store spent nothing there) — not a typo. Only
+  // a platform absent from the WHOLE workspace is the error case.
+  it('answers with zeros, not an error, when the platform is connected elsewhere in the workspace but not to the selected shop', async () => {
+    const otherShop = await db.shop.create({ data: { name: `Shop B ${MARK}`, currency: 'NOK' } })
+    await db.adAccount.create({
+      data: {
+        shopId: otherShop.id,
+        provider: 'google',
+        externalId: `mkt-google-elsewhere-${Date.now()}`,
+        name: `Google Elsewhere ${MARK}`,
+        currency: 'NOK',
+      },
+    })
+
+    // `shopId` only ever had the meta account from beforeEach — google is
+    // real, just not here.
+    const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopId}&platform=google`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    expect(body.byPlatform).toEqual([])
+    const row = body.byShop.find((r: { shopId: string }) => r.shopId === shopId)
+    expect(row.spend).toBe(0)
+    expect(row.roas).toBeNull()
+    expect(row.cpa).toBeNull()
+  })
 })
