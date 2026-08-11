@@ -1033,29 +1033,14 @@ that makes a filter appear to do nothing:
   }, [preset, from, to, selected, platform, tick, hasAccounts])
 ```
 
-Render it beside the other filters in `PageHeader`, above `ShopFilter`:
-
-```tsx
-            <PlatformFilter
-              options={(data?.byPlatform ?? []).map((p) => ({
-                provider: p.provider,
-                label: p.label,
-              }))}
-              selected={platform}
-              onChange={(next) => {
-                setLoading(true)
-                setPlatform(next)
-              }}
-            />
-```
-
-Note the options come from `data.byPlatform`, which under an active filter holds
-only the selected platform. Keep the last unfiltered list so the control can
-still offer the way back:
+The options cannot come straight from `data.byPlatform`: once a filter is on,
+the server narrows `byPlatform` to the selected platform, so the dropdown would
+be left holding only the option already chosen and the user could never get back
+to All platforms. Remember the last unfiltered list instead:
 
 ```ts
-  // byPlatform narrows to the selection once a filter is on, which would leave
-  // the dropdown holding only the option already chosen. The full list is
+  // byPlatform narrows to the selection once a filter is active, which would
+  // strand the dropdown on the one option already chosen. The full list is
   // remembered from the last unfiltered response.
   const [allPlatforms, setAllPlatforms] = useState<{ provider: string; label: string }[]>([])
   useEffect(() => {
@@ -1065,7 +1050,18 @@ still offer the way back:
   }, [platform, data])
 ```
 
-and pass `options={allPlatforms}`.
+Then render it beside the other filters in `PageHeader`, above `ShopFilter`:
+
+```tsx
+            <PlatformFilter
+              options={allPlatforms}
+              selected={platform}
+              onChange={(next) => {
+                setLoading(true)
+                setPlatform(next)
+              }}
+            />
+```
 
 Finally tell the chart:
 
