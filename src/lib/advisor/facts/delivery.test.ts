@@ -43,6 +43,18 @@ describe('deliveryFacts', () => {
     expect(facts.find((f) => f.kind === 'DELIVERY_DAYS_MOVE')).toBeUndefined()
   })
 
+  it('also ignores it when the FEW parcels are on the before side', () => {
+    // Every other case here has before.delivered at the stats() default of
+    // 40, so `|| deliveredBefore < MIN_DELIVERED` was never the reason a
+    // fact got dropped. Same slip, same shape, low count on the other side.
+    const facts = deliveryFacts({
+      ...where,
+      now: stats({ medianDays: 9, delivered: 40 }),
+      before: stats({ delivered: 3 }),
+    })
+    expect(facts.find((f) => f.kind === 'DELIVERY_DAYS_MOVE')).toBeUndefined()
+  })
+
   it('says nothing when a window has no delivered parcels at all', () => {
     const facts = deliveryFacts({
       ...where,
@@ -85,6 +97,13 @@ describe('deliveryFacts', () => {
 
   it('stays quiet about a handful of late orders', () => {
     const facts = deliveryFacts({ ...where, now: stats({ lateNow: 3 }), before: stats({ lateNow: 1 }) })
+    expect(facts.find((f) => f.kind === 'LATE_NOW')).toBeUndefined()
+  })
+
+  it('stays quiet about a late queue that shrank, even above the floor', () => {
+    // now.lateNow clears MIN_LATE_NOW on its own; nothing here exercised the
+    // "and it grew" half until this shrank from an even bigger queue.
+    const facts = deliveryFacts({ ...where, now: stats({ lateNow: 8 }), before: stats({ lateNow: 15 }) })
     expect(facts.find((f) => f.kind === 'LATE_NOW')).toBeUndefined()
   })
 })

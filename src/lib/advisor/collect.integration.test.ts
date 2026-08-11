@@ -33,7 +33,7 @@ async function order(number: string, placedAt: Date, netSales: number) {
 }
 
 beforeAll(async () => {
-  const shop = await db.shop.create({ data: { name: 'Advisor Test Shop', currency: 'NOK' } })
+  const shop = await db.shop.create({ data: { name: '[advisor-test] Shop', currency: 'NOK' } })
   shopId = shop.id
   const product = await db.product.create({
     data: { shopId, externalId: 'adv-1', sku: 'ADV-1', name: 'Advisor Test Product' },

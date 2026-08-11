@@ -25,7 +25,7 @@ const item: BriefItem = {
  *
  * Mirrors collect.integration.test.ts (Task 6) exactly — same shape of
  * fixture, same two-window trick — but named distinctly so it cannot collide
- * with that file's 'Advisor Test Shop', and torn down in afterAll so
+ * with that file's '[advisor-test] Shop', and torn down in afterAll so
  * load.integration.test.ts's hardcoded "the seeded eleven" sees exactly
  * eleven again once this file finishes.
  */
@@ -57,7 +57,7 @@ async function order(number: string, placedAt: Date, netSales: number) {
 }
 
 beforeAll(async () => {
-  const shop = await db.shop.create({ data: { name: 'Briefing Cron Test Shop', currency: 'NOK' } })
+  const shop = await db.shop.create({ data: { name: '[briefing-test] Cron Shop', currency: 'NOK' } })
   shopId = shop.id
   const product = await db.product.create({
     data: { shopId, externalId: 'brf-1', sku: 'BRF-1', name: 'Briefing Cron Test Product' },

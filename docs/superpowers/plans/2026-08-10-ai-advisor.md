@@ -1100,7 +1100,7 @@ describe('b2bQuietFacts', () => {
   })
 
   it('reports a WEEKLY customer at a gap that is fine for a monthly one', () => {
-    // Gaps of 7 and 7 days; median 7. Last order 26 days ago — nearly four
+    // Gaps of 7 and 8 days; median 7.5. Last order 26 days ago — nearly four
     // times their own rhythm, which one fixed threshold would have missed.
     const facts = b2bQuietFacts({
       customers: [history(['2026-06-30', '2026-07-07', '2026-07-15'])],
