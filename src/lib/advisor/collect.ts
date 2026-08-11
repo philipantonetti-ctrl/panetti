@@ -84,7 +84,7 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
     select: { id: true, shopId: true, provider: true, currency: true, dailyBudget: true },
   })
 
-  const marketingFor = async (start: Date, end: Date, engineResult = engine) => {
+  const marketingFor = async (start: Date, end: Date, engineResult = engine, rates = input.rates) => {
     const spend = await accountSpendRows(
       accounts.map((a) => a.id),
       shopIds,
@@ -96,14 +96,14 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
       spend,
       engine: engineResult,
       series: [],
-      rates: input.rates,
+      rates,
       to: end,
     })
   }
 
   const [nowMarketing, beforeMarketing] = await Promise.all([
     marketingFor(from, to, engine),
-    marketingFor(before.from, before.to, priorEngine),
+    marketingFor(before.from, before.to, priorEngine, priorInput.rates),
   ])
 
   facts.push(
