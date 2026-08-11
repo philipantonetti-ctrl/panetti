@@ -41,7 +41,7 @@ export async function GET(req: Request) {
     // account's in-scope campaigns — the same bug attributedSpend's callers
     // already avoid.
     const ids = await accountIdsForShops(scopeIds)
-    const [accounts, connectedCount] = await Promise.all([
+    const [accounts, connectedCount, connectedProviders] = await Promise.all([
       db.adAccount.findMany({
         where: { id: { in: ids } },
         select: {
@@ -50,12 +50,18 @@ export async function GET(req: Request) {
         },
       }),
       db.adAccount.count({ where: { active: true } }),
+      // Workspace-wide, like connectedCount — NOT the shop-scoped `accounts`
+      // below. Meta filtered onto a Meta-less store is a true empty result
+      // (the store just spent nothing there); only a platform absent from
+      // the whole workspace is a typo pretending to be a legitimate zero.
+      db.adAccount.findMany({
+        where: { active: true },
+        distinct: ['provider'],
+        select: { provider: true },
+      }),
     ])
 
-    // Validated against the providers actually connected. A typo must not read
-    // as a legitimate zero — the same reason google.ts refuses to treat an
-    // unparseable response as an empty one.
-    if (platform && !accounts.some((a) => a.provider === platform)) {
+    if (platform && !connectedProviders.some((p) => p.provider === platform)) {
       return NextResponse.json(
         { error: 'Unknown ad platform' },
         { status: 400, headers: NO_STORE },
