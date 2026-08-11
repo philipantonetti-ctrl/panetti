@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     const { timezone } = await getSetting()
     const { from, to } = rangeFromQuery(params, new Date(), timezone)
     const shopIds = shopIdsFromQuery(params)
+    const platform = params.get('platform')
 
     // The order side reuses the dashboard's own loader and engine, so orders
     // and gross revenue here mean exactly what they mean one tab over.
@@ -51,21 +52,44 @@ export async function GET(req: Request) {
       db.adAccount.count({ where: { active: true } }),
     ])
 
+    // Validated against the providers actually connected. A typo must not read
+    // as a legitimate zero — the same reason google.ts refuses to treat an
+    // unparseable response as an empty one.
+    if (platform && !accounts.some((a) => a.provider === platform)) {
+      return NextResponse.json(
+        { error: 'Unknown ad platform' },
+        { status: 400, headers: NO_STORE },
+      )
+    }
+    // One scoped list feeds every surface — totals, chart, tables and the
+    // Spend Check panel — so the page cannot show two scopes at once.
+    const scopedAccounts = platform
+      ? accounts.filter((a) => a.provider === platform)
+      : accounts
+
     // loadMetricsInput already tops up every ad-account currency in scope — it
     // has to, because that spend is now a cost against profit. Reusing its rate
     // table is what stops this page and the dashboard quoting different money
     // for the same spend.
     const rates = input.rates
 
-    const spend = await accountSpendRows(accounts.map((a) => a.id), scopeIds, from, to)
+    const spend = await accountSpendRows(scopedAccounts.map((a) => a.id), scopeIds, from, to)
 
     // The design's "loudly" half of the unassigned-campaign fallback: money
     // is never silently dropped (it lands on the account's default shop), but
     // that must be visible rather than silent, so the page carries a count.
-    const unassignedCampaigns = await unassignedCampaignCount(accounts.map((a) => a.id))
+    const unassignedCampaigns = await unassignedCampaignCount(scopedAccounts.map((a) => a.id))
 
     const engine = computeMetrics(input)
-    const result = buildMarketing({ accounts, spend, engine, series: dailySeries(input), rates, to })
+    const result = buildMarketing({
+      accounts: scopedAccounts,
+      spend,
+      engine,
+      series: dailySeries(input),
+      rates,
+      to,
+      platform,
+    })
 
     // accountIdsForShops filters `active: true` in both its sub-queries
     // (attribution.ts), so `accounts` above can only ever hold active ones —
@@ -76,7 +100,11 @@ export async function GET(req: Request) {
     // these shops that still hold spend in the viewed range, so a human
     // sees them. `spend` and the totals above are left untouched.
     const inactiveAccounts = await db.adAccount.findMany({
-      where: { active: false, shopId: { in: scopeIds } },
+      where: {
+        active: false,
+        shopId: { in: scopeIds },
+        ...(platform ? { provider: platform } : {}),
+      },
       select: {
         id: true, shopId: true, provider: true, currency: true, dailyBudget: true,
         name: true, active: true, lastSyncAt: true, lastError: true,
@@ -104,7 +132,7 @@ export async function GET(req: Request) {
     // describe different money.
     const now = new Date()
     const spendCheck = buildSpendCheck({
-      accounts: [...accounts, ...inactiveWithSpend],
+      accounts: [...scopedAccounts, ...inactiveWithSpend],
       spend: [...spend, ...inactiveSpend],
       rates,
       from,

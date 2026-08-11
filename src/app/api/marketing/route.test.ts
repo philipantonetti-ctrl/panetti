@@ -301,4 +301,41 @@ describe('GET /api/marketing', () => {
     const body = await res.json()
     expect(body.partialAccounts).toBe(false)
   })
+
+  it('narrows every surface to one platform', async () => {
+    // A second, google-provider account with its own in-range spend, so the
+    // filter has something to actually exclude — without it, byPlatform
+    // would read ['meta'] whether or not the filter worked at all.
+    const google = await db.adAccount.create({
+      data: {
+        shopId,
+        provider: 'google',
+        externalId: `mkt-google-${Date.now()}`,
+        name: `Google Account ${MARK}`,
+        currency: 'NOK',
+        dailyBudget: 500000,
+      },
+    })
+    await db.adSpend.create({
+      data: { accountId: google.id, date: new Date('2026-03-10T00:00:00Z'), spend: 15000, impressions: 1000, clicks: 20 },
+    })
+
+    const res = await get('from=2026-03-01&to=2026-03-31&platform=meta')
+    const body = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(body.byPlatform.map((p: { provider: string }) => p.provider)).toEqual(['meta'])
+    // The spend check panel describes the same accounts the totals do, or the
+    // panel would "prove" a total that is not on screen.
+    expect(
+      body.spendCheck.accounts.every((a: { provider: string }) => a.provider === 'meta'),
+    ).toBe(true)
+  })
+
+  it('refuses an unknown platform rather than answering with a plausible zero', async () => {
+    const res = await get('from=2026-03-01&to=2026-03-31&platform=tiktok')
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Unknown ad platform')
+  })
 })
