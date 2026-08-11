@@ -10,8 +10,8 @@ import { MarketingChart } from './MarketingChart'
 // need a measured container and would fail.
 
 const series = [
-  { date: '2026-07-01', spend: 150_00, grossRevenue: 500_00, netProfit: 0, metaSpend: 100_00, googleSpend: 50_00 },
-  { date: '2026-07-02', spend: 200_00, grossRevenue: 700_00, netProfit: 0, metaSpend: 120_00, googleSpend: 80_00 },
+  { date: '2026-07-01', spend: 150_00, grossRevenue: 500_00, netProfit: 90_00, metaSpend: 100_00, googleSpend: 50_00 },
+  { date: '2026-07-02', spend: 200_00, grossRevenue: 700_00, netProfit: 120_00, metaSpend: 120_00, googleSpend: 80_00 },
 ]
 
 describe('MarketingChart', () => {
@@ -28,5 +28,28 @@ describe('MarketingChart', () => {
     expect(screen.getByText('Meta')).toBeInTheDocument()
     expect(screen.getByText('Google')).toBeInTheDocument()
     expect(screen.queryByText('Gross revenue')).not.toBeInTheDocument()
+  })
+
+  it('draws ROAS and POAS alongside the money', () => {
+    render(<MarketingChart series={series} currency="NOK" />)
+
+    expect(screen.getByText('ROAS')).toBeInTheDocument()
+    expect(screen.getByText('POAS')).toBeInTheDocument()
+  })
+
+  it('drops ROAS and POAS when one platform is selected, and says why', () => {
+    render(<MarketingChart series={series} currency="NOK" platformFiltered />)
+
+    expect(screen.queryByText('ROAS')).not.toBeInTheDocument()
+    expect(screen.queryByText('POAS')).not.toBeInTheDocument()
+    expect(screen.getByText(/whole-store/i)).toBeInTheDocument()
+  })
+
+  it('offers day, week and month, starting on day', () => {
+    render(<MarketingChart series={series} currency="NOK" />)
+
+    expect(screen.getByRole('tab', { name: 'Day' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByRole('tab', { name: 'Week' }))
+    expect(screen.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true')
   })
 })

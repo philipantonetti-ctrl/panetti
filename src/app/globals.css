@@ -39,6 +39,8 @@
   /* Chart series — validated for colour-blindness (see DESIGN.md) */
   --color-series-revenue: #2563a8;
   --color-series-profit: #1f7a55;
+  --color-series-roas: #7c3aed;
+  --color-series-poas: #1f2937;
 
   --radius-card: 12px;
   --radius-control: 8px;
