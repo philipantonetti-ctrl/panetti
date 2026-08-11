@@ -87,6 +87,9 @@ export function Chat() {
     <section className="rounded-[12px] border border-line bg-surface">
       <h2 className="border-b border-line px-4 py-3 text-[13px] font-semibold text-ink">Ask</h2>
 
+      {/* Rendered only when it has something in it: an empty transcript still
+          painted its own padding, leaving a dead grey strip under the heading. */}
+      {(bubbles.length > 0 || busy) && (
       <div className="flex flex-col gap-3 px-4 py-3">
         {bubbles.map((bubble, i) => (
           <p
@@ -102,6 +105,7 @@ export function Chat() {
         ))}
         {busy && <p className="text-[13px] text-faint">Looking it up…</p>}
       </div>
+      )}
 
       <div className="flex gap-2 border-t border-line p-3">
         <input
