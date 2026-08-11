@@ -81,14 +81,14 @@ function tickMoney(minor: number, currency: string): string {
   return compact.format(toMajor(minor))
 }
 
-function ChartTooltip({
+export function ChartTooltip({
   active,
   payload,
   label,
   currency,
 }: {
   active?: boolean
-  payload?: { name: string; value: number; color: string }[]
+  payload?: { name: string; value: number; color: string; dataKey: string }[]
   label?: string
   currency: string
 }) {
@@ -103,7 +103,9 @@ function ChartTooltip({
           <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: row.color }} />
           <span className="text-muted">{row.name}</span>
           <span className="num ml-auto font-semibold text-ink">
-            {row.name === 'ROAS' || row.name === 'POAS'
+            {/* dataKey binds to the actual data field (roas/poas) and cannot
+                drift from a legend label the way `name` could. */}
+            {row.dataKey === 'roas' || row.dataKey === 'poas'
               ? `${row.value.toFixed(2)}×`
               : formatMoney(row.value, currency)}
           </span>

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { MarketingChart } from './MarketingChart'
+import { MarketingChart, ChartTooltip } from './MarketingChart'
 
 // No container-size mocking needed: the heading, legend and toggle live
 // OUTSIDE the ResponsiveContainer, so they render under jsdom at zero size.
@@ -51,5 +51,24 @@ describe('MarketingChart', () => {
     expect(screen.getByRole('tab', { name: 'Day' })).toHaveAttribute('aria-selected', 'true')
     fireEvent.click(screen.getByRole('tab', { name: 'Week' }))
     expect(screen.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  // The tooltip used to decide money-vs-ratio off `row.name`, matched against
+  // two independent string literals set on the <Line> elements (name="ROAS").
+  // Renaming the legend label in one place, without touching the other,
+  // would silently make a ratio render as currency with no type error and no
+  // other failing test. `dataKey` is the binding to the actual data field
+  // (roas/poas), so it cannot drift from a display label the way `name` can.
+  it('formats a ratio line as a multiple by its dataKey, even if its display name changes', () => {
+    render(
+      <ChartTooltip
+        active
+        label="2026-07-01"
+        currency="NOK"
+        payload={[{ name: 'Some Renamed Legend Entry', dataKey: 'roas', value: 2.084, color: '#000' }]}
+      />,
+    )
+
+    expect(screen.getByText('2.08×')).toBeInTheDocument()
   })
 })
