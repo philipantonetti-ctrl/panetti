@@ -95,7 +95,12 @@ export function anthropicModel(): BriefingModel | null {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return null
 
-  const client = new Anthropic({ apiKey })
+  // The SDK's default timeout for this model/token combination is 600s, with
+  // 2 retries on top — nearly 30 minutes against a 300s platform ceiling.
+  // Bounded well under that ceiling, and one retry rather than the default
+  // two, so an overloaded model fails inside the window write.ts still has
+  // left to record the error, rather than the platform killing it first.
+  const client = new Anthropic({ apiKey, timeout: 240_000, maxRetries: 1 })
 
   return async (collected) => {
     const res = await client.messages.create({

@@ -105,6 +105,24 @@ describe('writeBriefing', () => {
     expect(JSON.parse(row!.facts)).toBeInstanceOf(Array)
   })
 
+  it('persists the facts BEFORE calling the model, not after', async () => {
+    // A platform kill mid-model-call skips generateBrief's own catch entirely
+    // -- nothing written after the kill happens. The only way the facts
+    // survive that is if they were already committed by the time the model
+    // is invoked, which this proves by reading the row from inside the mock.
+    let factsSeenDuringTheCall: unknown = undefined
+    const model = vi.fn().mockImplementation(async () => {
+      const row = await db.briefing.findUnique({ where: { day: DAY } })
+      factsSeenDuringTheCall = row ? JSON.parse(row.facts) : null
+      throw new Error('killed mid-call')
+    })
+
+    await writeBriefing(NOW, model)
+
+    expect(Array.isArray(factsSeenDuringTheCall)).toBe(true)
+    expect((factsSeenDuringTheCall as unknown[]).length).toBeGreaterThan(0)
+  })
+
   it('replaces rather than duplicates when run twice on one day', async () => {
     const model = vi.fn().mockResolvedValue({ items: [item], model: 'claude-opus-5' })
     await writeBriefing(NOW, model)

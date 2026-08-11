@@ -9,6 +9,14 @@ import { anthropicModel, generateBrief, type BriefingModel } from './brief'
  *
  * Upsert on `day`, so a re-run replaces rather than duplicates — which is what
  * makes both the cron and the page's Refresh button safe to press twice.
+ *
+ * The facts are written BEFORE the model is ever called, then the same row is
+ * updated with the result. A platform kill mid-model-call skips straight past
+ * generateBrief's own catch — nothing after the kill runs — so if the facts
+ * waited for the model too, a hard kill would persist nothing at all and
+ * GET /api/advisor would keep serving yesterday's row with no sign today's
+ * run ever happened. Writing the facts first means the worst a kill can do is
+ * leave items/error/model unset, and the facts still render.
  */
 export async function writeBriefing(
   now: Date = new Date(),
@@ -20,18 +28,25 @@ export async function writeBriefing(
   const day = new Date(`${zonedDayStr(now, timezone)}T00:00:00.000Z`)
 
   const collected = await collectFacts(now)
-  const brief = await generateBrief(collected, model)
-
-  const data = {
+  const factsData = {
     from: collected.from,
     to: collected.to,
     facts: JSON.stringify(collected.facts),
-    items: brief.items ? JSON.stringify(brief.items) : null,
-    error: brief.error,
-    model: brief.model,
+    items: null,
+    error: null,
+    model: null,
   }
+  await db.briefing.upsert({ where: { day }, create: { day, ...factsData }, update: factsData })
 
-  await db.briefing.upsert({ where: { day }, create: { day, ...data }, update: data })
+  const brief = await generateBrief(collected, model)
+  await db.briefing.update({
+    where: { day },
+    data: {
+      items: brief.items ? JSON.stringify(brief.items) : null,
+      error: brief.error,
+      model: brief.model,
+    },
+  })
 
   return { day, items: brief.items?.length ?? 0, error: brief.error }
 }

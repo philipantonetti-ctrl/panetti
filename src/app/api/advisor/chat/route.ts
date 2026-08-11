@@ -46,7 +46,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Ask a question first.' }, { status: 400, headers: NO_STORE })
     }
 
-    const client = new Anthropic({ apiKey })
+    // Up to 8 tool rounds share one 300s platform ceiling below, so a
+    // per-call timeout anywhere near the SDK's 600s default is meaningless —
+    // one slow round would already exceed the whole budget. 60s bounds a
+    // single stuck call without pretending to guarantee the total; the
+    // platform's own kill at maxDuration is what actually enforces that.
+    const client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 })
     const turns = [...messages] as Anthropic.MessageParam[]
 
     // A bounded loop, not a while(true): a model that keeps calling tools must
