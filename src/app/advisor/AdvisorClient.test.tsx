@@ -19,8 +19,22 @@ const fact = {
   currency: 'USD',
 }
 
+const quality = (kind: Fact['kind'], subject: string | null = null): Fact => ({
+  id: `${kind}:shop_no`,
+  kind,
+  shopId: 'shop_no',
+  shopName: 'Panetti Norway',
+  subject,
+  current: 1,
+  previous: null,
+  deltaPct: null,
+  unit: 'count',
+  severity: 1,
+})
+
 const briefing = (over: Partial<Briefing> = {}): Briefing => ({
   day: '2026-08-10',
+  writtenAt: '2026-08-10T05:00:00.000Z',
   from: '2026-08-03',
   to: '2026-08-09',
   facts: [fact],
@@ -151,6 +165,50 @@ describe('AdvisorClient', () => {
       render(<AdvisorClient initial={briefing()} />)
       fireEvent.click(screen.getByRole('button', { name: /refresh/i }))
       await waitFor(() => expect(screen.getByText(/Refresh failed/i)).toBeInTheDocument())
+    })
+  })
+
+  describe('when the briefing was written', () => {
+    it('says how old it is, so a stalled cron cannot pass for this morning', () => {
+      const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString()
+      render(<AdvisorClient initial={briefing({ writtenAt: threeDaysAgo })} />)
+      expect(screen.getByText(/3 days ago/i)).toBeInTheDocument()
+    })
+
+    it('says today when it was written today', () => {
+      render(<AdvisorClient initial={briefing({ writtenAt: new Date().toISOString() })} />)
+      expect(screen.getByText(/written today/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('acting on a trust warning', () => {
+    it('links an uncosted-product warning to the page that fixes it', () => {
+      render(
+        <AdvisorClient initial={briefing({ items: [], facts: [quality('UNCOSTED_PRODUCTS')] })} />,
+      )
+      expect(screen.getByRole('link', { name: /enter the cost/i })).toHaveAttribute(
+        'href',
+        '/settings/costs',
+      )
+    })
+
+    it('links a failing sync to the shops page', () => {
+      render(
+        <AdvisorClient
+          initial={briefing({ items: [], facts: [quality('SHOP_SYNC_FAILING', '403')] })}
+        />,
+      )
+      expect(screen.getByRole('link', { name: /check the connection/i })).toHaveAttribute(
+        'href',
+        '/settings/shops',
+      )
+    })
+
+    it('offers no link for a missing rate, which no page of ours can fix', () => {
+      // Rates arrive on their own from the provider. A link to somewhere that
+      // cannot help is worse than no link.
+      render(<AdvisorClient initial={briefing({ items: [], facts: [quality('MISSING_FX', 'SEK')] })} />)
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
     })
   })
 })

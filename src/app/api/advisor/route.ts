@@ -9,6 +9,7 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
 function shape(row: {
   day: Date
+  createdAt: Date
   from: Date
   to: Date
   facts: string
@@ -18,6 +19,7 @@ function shape(row: {
 }) {
   return {
     day: row.day.toISOString().slice(0, 10),
+    writtenAt: row.createdAt.toISOString(),
     from: row.from.toISOString().slice(0, 10),
     to: row.to.toISOString().slice(0, 10),
     facts: JSON.parse(row.facts),

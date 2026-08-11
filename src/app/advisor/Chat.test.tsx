@@ -68,4 +68,29 @@ describe('Chat', () => {
     expect(screen.getByText('Question one')).toBeInTheDocument()
     expect(screen.getByText('Answer one.')).toBeInTheDocument()
   })
+
+  it('offers example questions on an empty chat, and asking one sends it', async () => {
+    // An empty box with a placeholder shows the control but not the capability:
+    // nothing tells the reader this can compare two weeks or name a product.
+    const fetchMock = stubFetch({ reply: 'Because ad efficiency fell.', messages: [] })
+    render(<Chat />)
+
+    const example = screen.getAllByRole('button', { name: /why/i })[0]
+    fireEvent.click(example)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.messages[0].content).toBe(example.textContent)
+  })
+
+  it('hides the examples once the conversation has started', async () => {
+    stubFetch({ reply: 'Answered.', messages: [] })
+    render(<Chat />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'My own question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /^Why did/i })).not.toBeInTheDocument()
+  })
 })

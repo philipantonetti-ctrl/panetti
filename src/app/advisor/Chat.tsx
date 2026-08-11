@@ -12,6 +12,17 @@ import { useEffect, useRef, useState } from 'react'
 
 const STORAGE_KEY = 'advisor-chat'
 
+/**
+ * Three questions that each demonstrate a different reach: back across two
+ * periods, down to one shop, and across every product. Chosen to teach what
+ * this box can do rather than to be asked verbatim.
+ */
+const EXAMPLES = [
+  'Why did revenue change last week?',
+  'Which shop made the most profit?',
+  'Which products are selling worst?',
+]
+
 type Bubble = { role: 'user' | 'assistant'; text: string }
 
 export function Chat() {
@@ -50,8 +61,8 @@ export function Chat() {
     )
   }
 
-  async function send() {
-    const question = draft.trim()
+  async function send(preset?: string) {
+    const question = (preset ?? draft).trim()
     if (!question || busy) return
 
     const asked: Bubble[] = [...bubbles, { role: 'user', text: question }]
@@ -87,6 +98,24 @@ export function Chat() {
     <section className="rounded-[12px] border border-line bg-surface">
       <h2 className="border-b border-line px-4 py-3 text-[13px] font-semibold text-ink">Ask</h2>
 
+      {/* An empty box with a placeholder shows the control but not the
+          capability: nothing in it says this can compare two weeks, name a
+          product or reach a single shop. Three real questions do, and they
+          stand down once the conversation has its own content. */}
+      {bubbles.length === 0 && !busy && (
+        <div className="flex flex-wrap gap-2 px-4 py-3">
+          {EXAMPLES.map((q) => (
+            <button
+              key={q}
+              onClick={() => send(q)}
+              className="rounded-full border border-line px-3 py-1 text-[12px] text-muted transition-colors duration-150 hover:border-accent hover:text-accent motion-reduce:transition-none"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Rendered only when it has something in it: an empty transcript still
           painted its own padding, leaving a dead grey strip under the heading. */}
       {(bubbles.length > 0 || busy) && (
@@ -118,7 +147,7 @@ export function Chat() {
           className="flex-1 rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px]"
         />
         <button
-          onClick={send}
+          onClick={() => send()}
           disabled={busy}
           className="rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[13px] text-white disabled:opacity-50"
         >

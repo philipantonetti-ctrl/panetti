@@ -17,6 +17,7 @@ export default async function AdvisorPage() {
   const initial: Briefing | null = row
     ? {
         day: row.day.toISOString().slice(0, 10),
+        writtenAt: row.createdAt.toISOString(),
         from: row.from.toISOString().slice(0, 10),
         to: row.to.toISOString().slice(0, 10),
         facts: JSON.parse(row.facts),

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { PageBody, PageHeader } from '@/components/shell/AppShell'
 import { isQuality, type Fact, type FactKind } from '@/lib/advisor/types'
 import type { BriefItem } from '@/lib/advisor/brief'
@@ -8,6 +9,8 @@ import { Chat } from './Chat'
 
 export type Briefing = {
   day: string
+  /** When this row was written. A briefing is only as current as its cron run. */
+  writtenAt: string | null
   from: string
   to: string
   facts: Fact[]
@@ -72,6 +75,38 @@ function windowSentence(from: string, to: string): string {
   const day = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', timeZone: 'UTC' })
 
   return `${day(start)} to ${day(end)}, against the ${days} days before`
+}
+
+/**
+ * How old this briefing is, in words.
+ *
+ * One is written every morning, so an old one means the cron stopped rather
+ * than that nothing happened. Without this the page reads exactly the same on
+ * the morning it was written and three days later, and the figures beneath it
+ * would be quietly describing a week that has since moved on.
+ */
+function writtenAgo(writtenAt: string | null): string | null {
+  if (!writtenAt) return null
+  const then = new Date(writtenAt)
+  if (Number.isNaN(then.getTime())) return null
+
+  const days = Math.floor((Date.now() - then.getTime()) / 86_400_000)
+  if (days <= 0) return 'Written today'
+  if (days === 1) return 'Written yesterday'
+  return `Written ${days} days ago`
+}
+
+/**
+ * Where a trust warning gets fixed.
+ *
+ * A warning that names a problem and not its remedy leaves the reader to go
+ * hunting. Missing rates are the honest exception: they arrive from the rate
+ * provider on their own, and no page of ours can hurry them, so pointing
+ * somewhere would be worse than pointing nowhere.
+ */
+const FIX: Partial<Record<FactKind, { href: string; label: string }>> = {
+  UNCOSTED_PRODUCTS: { href: '/settings/costs', label: 'Enter the cost' },
+  SHOP_SYNC_FAILING: { href: '/settings/shops', label: 'Check the connection' },
 }
 
 const SEVERITY_LABEL: Record<BriefItem['severity'], string> = {
@@ -284,11 +319,22 @@ function Report({ facts }: { facts: Fact[] }) {
             Check {quality.length === 1 ? 'this' : 'these'} before trusting the figures
           </h2>
           <ul className="mt-1.5 flex flex-col gap-1">
-            {quality.map((fact) => (
-              <li key={fact.id} className="text-[13px] text-ink">
-                {trustSentence(fact)}
-              </li>
-            ))}
+            {quality.map((fact) => {
+              const fix = FIX[fact.kind]
+              return (
+                <li key={fact.id} className="text-[13px] text-ink">
+                  {trustSentence(fact)}{' '}
+                  {fix && (
+                    <Link
+                      href={fix.href}
+                      className="font-medium text-accent underline-offset-2 hover:underline"
+                    >
+                      {fix.label}
+                    </Link>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}
@@ -416,7 +462,11 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
     }
   }
 
-  const subtitle = briefing ? windowSentence(briefing.from, briefing.to) : undefined
+  const subtitle = briefing
+    ? [windowSentence(briefing.from, briefing.to), writtenAgo(briefing.writtenAt)]
+        .filter(Boolean)
+        .join(' · ')
+    : undefined
 
   return (
     <>
