@@ -397,6 +397,53 @@ describe('MarketingClient', () => {
     expect(breakdownProps().shopId).toBe('a') // same store — only the platform moved
   })
 
+  // FINDING 2: `provider` (the drill-down's own Meta/Google switcher) never
+  // reacted to the page's `platform` filter, so filtering the page to Google
+  // still left the drill-down open on Meta campaigns underneath a header
+  // claiming a Google-only scope — two scopes on one screen. Locking the
+  // drill-down to the active filter, and hiding the switcher rather than
+  // leaving a control that offers a contradictory choice, is chosen over
+  // merely seeding it: a visible Meta/Google tablist would still let the
+  // client click the "wrong" one while the header says otherwise.
+  it('locks the drill-down to the page platform filter and hides its own switcher', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ...payload,
+              platform: String(url).includes('platform=google') ? 'google' : null,
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    )
+
+    renderPage(
+      <MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} platforms={twoPlatforms} />,
+    )
+    await act(async () => {})
+    selectOnly('Panetti Norway')
+    await act(async () => {})
+
+    // No page filter yet: the switcher is a real choice, defaulted to Meta.
+    expect(screen.getByRole('tab', { name: 'Meta' })).toBeTruthy()
+    expect(breakdownProps().provider).toBe('meta')
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ad platform/i }), {
+      target: { value: 'google' },
+    })
+    await act(async () => {})
+
+    // Filtered to Google: the switcher would only ever offer a contradiction,
+    // so it is gone, and the drill-down follows the page's own scope.
+    expect(screen.queryByRole('tab', { name: 'Meta' })).toBeNull()
+    expect(screen.queryByRole('tab', { name: 'Google' })).toBeNull()
+    expect(breakdownProps().provider).toBe('google')
+  })
+
   it('starts on Meta', async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
@@ -443,6 +490,78 @@ describe('MarketingClient', () => {
 
     const calls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0]))
     expect(calls.some((u) => u.includes('platform=meta'))).toBe(true)
+  })
+
+  // FINDING 1: `platform` is pending client state — it flips the instant the
+  // user picks a new option, before the refetch it triggers has resolved.
+  // `data` only changes on fetch SUCCESS. So gating the chart on `platform`
+  // (rather than on the platform that produced `data`) makes the ROAS/POAS
+  // lines reappear the moment "All platforms" is picked, even though `data`
+  // still holds a Meta-only fetch's numbers — worse, permanently, if the
+  // refetch then fails, since nothing ever clears `loading` back onto fresh
+  // data. This test drives exactly that sequence and must still find the
+  // ratio lines absent once the "All platforms" refetch has failed.
+  it('keeps ROAS and POAS hidden after switching to All platforms while the refetch is still Meta-only or has failed', async () => {
+    const seriesWithSpend = [
+      {
+        date: '2026-07-01',
+        spend: 50_00,
+        grossRevenue: 100_00,
+        netProfit: 20_00,
+        metaSpend: 50_00,
+        googleSpend: 0,
+      },
+    ]
+    const metaPayload = { ...payload, platform: 'meta', series: seriesWithSpend }
+    const allPayload = { ...payload, platform: null, series: seriesWithSpend }
+
+    // The route echoes back whichever platform it actually applied
+    // (src/app/api/marketing/route.ts) — the mock mirrors that contract so
+    // this test exercises the same shape production sends.
+    let sawMeta = false
+    const fetchMock = vi.fn((url: string) => {
+      const u = String(url)
+      if (u.includes('platform=meta')) {
+        sawMeta = true
+        return Promise.resolve(new Response(JSON.stringify(metaPayload), { status: 200 }))
+      }
+      if (sawMeta) {
+        // The refetch triggered by picking "All platforms" back off Meta —
+        // simulated as failing outright, so `data` never updates.
+        return Promise.reject(new Error('network down'))
+      }
+      return Promise.resolve(new Response(JSON.stringify(allPayload), { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={[{ id: 'a', name: 'Panetti Norway', currency: 'NOK' }]}
+        hasAccounts={true}
+        platforms={twoPlatforms}
+      />,
+    )
+    await act(async () => {})
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ad platform/i }), {
+      target: { value: 'meta' },
+    })
+    await act(async () => {})
+
+    expect(screen.queryByText('ROAS')).not.toBeInTheDocument()
+    expect(screen.queryByText('POAS')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('combobox', { name: /ad platform/i }), {
+      target: { value: '' },
+    })
+    await act(async () => {})
+
+    // The refetch failed: `data` is still the Meta-only fetch's payload, so
+    // the chart must still treat this as filtered — the pending selection
+    // (now "All platforms") must not leak into what is actually on screen.
+    expect(screen.queryByText('ROAS')).not.toBeInTheDocument()
+    expect(screen.queryByText('POAS')).not.toBeInTheDocument()
   })
 
   it('syncs, then reloads the numbers the sync just wrote', async () => {

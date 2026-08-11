@@ -44,12 +44,28 @@ type Payload = {
   // re-derived: re-resolving 'this_month' client-side would risk disagreeing
   // with the server's own timezone-aware resolution near a day boundary.
   range: { from: string; to: string }
+  // Echoed straight from the query the route actually served (route.ts) —
+  // NOT re-derived from the client's own `platform` state, which is pending
+  // the instant a filter changes and can outrun the fetch it triggered. The
+  // chart and table divide whole-store figures by spend; they must gate that
+  // display on the platform that produced the numbers on screen, not the one
+  // the user just clicked, or a failed refetch leaves them showing inflated
+  // ratios forever (see the `platformFiltered` prop below).
+  platform: string | null
 }
 
 const PLATFORMS: { id: 'meta' | 'google'; label: string }[] = [
   { id: 'meta', label: 'Meta' },
   { id: 'google', label: 'Google' },
 ]
+
+/** Narrows the page's free-text platform filter to the two the drill-down
+ *  actually knows how to show. Anything else (workspace has some third
+ *  provider connected) leaves the switcher in charge rather than locking to
+ *  a platform BreakdownTable cannot render. */
+function asBreakdownProvider(platform: string | null): 'meta' | 'google' | null {
+  return platform === 'meta' || platform === 'google' ? platform : null
+}
 
 /** Two options, so a segmented control — a dropdown would hide half of them. */
 function PlatformSwitcher({
@@ -186,6 +202,10 @@ export function MarketingClient({
           ...a,
           lastSyncAt: a.lastSyncAt ? new Date(a.lastSyncAt) : null,
         }))
+        // Normalised, not trusted blindly: an older route response (or a test
+        // fixture predating this field) has no `platform` key at all, and
+        // `undefined !== null` would wrongly read as "filtered".
+        json.platform = json.platform ?? null
         setData(json)
         setError('')
       })
@@ -200,6 +220,14 @@ export function MarketingClient({
   // A real shop id only when exactly one is chosen — ShopFilter's own "all"
   // (empty array) and its explicit "none" sentinel both fail this on purpose.
   const singleShopId = selected.length === 1 && selected[0] !== NO_SHOPS ? selected[0] : null
+  // A page filter narrowed to Meta and a drill-down open on Google would put
+  // two scopes on one screen under one header. Read off the pending
+  // `platform` selection (not `data.platform`): BreakdownTable makes its own
+  // independent fetch and shows its own loading/error state, so — unlike the
+  // whole-store ratios in Finding 1 — there is no stale-data risk in
+  // following the filter immediately.
+  const lockedProvider = asBreakdownProvider(platform)
+  const breakdownProvider = lockedProvider ?? provider
 
   async function refresh() {
     setSyncing(true)
@@ -306,20 +334,30 @@ export function MarketingClient({
                   <MarketingChart
                     series={data.series}
                     currency={currency}
-                    platformFiltered={platform !== null}
+                    // Gated on the platform that produced `data`, not the
+                    // pending `platform` selection — see the `Payload.platform`
+                    // comment above for why that distinction is load-bearing.
+                    platformFiltered={data.platform !== null}
                   />
                 </div>
 
                 <PlatformTable rows={data.byPlatform} currency={currency} />
 
-                <MarketingTable rows={data.byShop} total={data.total} currency={currency} />
+                <MarketingTable
+                  rows={data.byShop}
+                  total={data.total}
+                  currency={currency}
+                  platformFiltered={data.platform !== null}
+                />
 
                 {singleShopId ? (
                   <div className="space-y-3">
-                    <PlatformSwitcher provider={provider} onChange={setProvider} />
+                    {/* A page platform filter is already a scope decision; a
+                        visible switcher would just offer to contradict it. */}
+                    {!lockedProvider && <PlatformSwitcher provider={provider} onChange={setProvider} />}
                     <BreakdownTable
                       shopId={singleShopId}
-                      provider={provider}
+                      provider={breakdownProvider}
                       from={data.range.from}
                       to={data.range.to}
                     />

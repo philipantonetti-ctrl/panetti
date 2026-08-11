@@ -71,4 +71,51 @@ describe('MarketingChart', () => {
 
     expect(screen.getByText('2.08×')).toBeInTheDocument()
   })
+
+  // series-buckets.ts's SeriesBucket.endDate is "for the tooltip" per its own
+  // docstring, but nothing read it — a week bucket labelled only "29 Jun" is
+  // genuinely ambiguous about what it covers. Recharts passes the whole
+  // bucket back as payload[0].payload, so it's available here with no change
+  // to series-buckets.ts itself.
+  it('shows the full span in the tooltip when a bucket covers more than one day', () => {
+    render(
+      <ChartTooltip
+        active
+        label="2026-06-29"
+        currency="NOK"
+        payload={[
+          {
+            name: 'Gross revenue',
+            dataKey: 'grossRevenue',
+            value: 130000,
+            color: '#000',
+            payload: { date: '2026-06-29', endDate: '2026-07-05' },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText(/29 Jun.+5 Jul/)).toBeInTheDocument()
+  })
+
+  it('shows just the one date when a bucket is a single day', () => {
+    render(
+      <ChartTooltip
+        active
+        label="2026-07-01"
+        currency="NOK"
+        payload={[
+          {
+            name: 'Gross revenue',
+            dataKey: 'grossRevenue',
+            value: 100,
+            color: '#000',
+            payload: { date: '2026-07-01', endDate: '2026-07-01' },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('1 Jul')).toBeInTheDocument()
+  })
 })

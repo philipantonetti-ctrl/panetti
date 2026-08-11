@@ -88,15 +88,37 @@ export function ChartTooltip({
   currency,
 }: {
   active?: boolean
-  payload?: { name: string; value: number; color: string; dataKey: string }[]
+  payload?: {
+    name: string
+    value: number
+    color: string
+    dataKey: string
+    // Recharts hands back the whole bucket behind each series point. Reading
+    // `endDate` off it (rather than adding it as its own <Line>) is how a
+    // week or month bucket's real span reaches the tooltip without inventing
+    // a server figure — see series-buckets.ts's SeriesBucket.
+    payload?: { date: string; endDate: string }
+  }[]
   label?: string
   currency: string
 }) {
   if (!active || !payload?.length) return null
 
+  const bucket = payload[0]?.payload
+  // A single day's own bucket has endDate === date; only a multi-day bucket
+  // (week/month) needs the span spelled out, or "29 Jun" reads as one day
+  // when it might be a whole week's worth of spend.
+  const spansMultipleDays = bucket && bucket.endDate !== bucket.date
+
   return (
     <div className="rounded-[var(--radius-control)] bg-surface px-3 py-2 shadow-lg">
-      <p className="text-[11px] font-semibold text-faint">{label ? tickDate(label) : ''}</p>
+      <p className="text-[11px] font-semibold text-faint">
+        {label
+          ? spansMultipleDays
+            ? `${tickDate(label)} – ${tickDate(bucket.endDate)}`
+            : tickDate(label)
+          : ''}
+      </p>
 
       {payload.map((row) => (
         <p key={row.name} className="mt-1 flex items-center gap-2 text-[12px]">

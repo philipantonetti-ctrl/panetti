@@ -155,6 +155,12 @@ export async function GET(req: Request) {
         unassignedCampaigns,
         partialAccounts,
         range: { from: from.toISOString(), to: to.toISOString() },
+        // Echoed back rather than left for the client to infer from its own
+        // query state: the client's filter selection is pending the instant
+        // it changes, ahead of the fetch it triggers, and the chart/table
+        // must gate whole-store ratio display on what this response actually
+        // scoped to, not on what the user has since clicked.
+        platform,
       },
       { headers: NO_STORE },
     )
