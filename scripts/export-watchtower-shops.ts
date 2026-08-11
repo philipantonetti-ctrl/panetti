@@ -31,13 +31,26 @@ async function main() {
       // Watchtower's `name` is the shop's domain, not panetti's `Shop.name`
       // display value — derived from wooUrl's hostname, "www." stripped.
       const name = new URL(url).hostname.replace(/^www\./, '')
-      return {
-        name,
-        url,
-        ...(shop.wooKey && shop.wooSecret
-          ? { wooKey: decryptSecret(shop.wooKey), wooSecret: decryptSecret(shop.wooSecret) }
-          : {}),
+
+      let credentials: { wooKey?: string; wooSecret?: string } = {}
+      if (shop.wooKey && shop.wooSecret) {
+        try {
+          credentials = { wooKey: decryptSecret(shop.wooKey), wooSecret: decryptSecret(shop.wooSecret) }
+        } catch (err) {
+          // One shop's key failing to decrypt (a rotated AUTH_SECRET, a
+          // truncated value, ...) must not blank out the whole export. Export
+          // this shop without credentials instead — it keeps being monitored
+          // for uptime, it just loses customer notes until it's reconnected.
+          const message = err instanceof Error ? err.message : String(err)
+          console.error(
+            `Could not decrypt WooCommerce credentials for ${name} (panetti shop "${shop.name}"): ` +
+              `${message} — exporting it WITHOUT credentials. It will report no customer notes until ` +
+              `its key is fixed.`,
+          )
+        }
       }
+
+      return { name, url, ...credentials }
     })
 
   const withKeys = exported.filter((shop) => 'wooKey' in shop).length
