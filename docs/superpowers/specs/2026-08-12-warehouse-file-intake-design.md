@@ -140,8 +140,16 @@ For each consignment with a recipient email, find orders where:
 
 - `customerEmail` equals it, case-insensitively
 - the shop has `deliveryTrackingFrom` set
-- `placedAt` is at or before the file's dispatch timestamp, and within 30 days of it
+- `placedAt` is at or before the moment the file reached us, and within 30 days of it
 - `voidedAt` is null
+
+The upper bound is `TrackingImport.receivedAt`, **not** the file's `Datum` column.
+Reading `Datum` would mean parsing their table again, which is the dependency this
+design exists to remove. The report arrives the evening of dispatch, so receipt is a
+few hours later than dispatch and strictly safer: the bound exists to stop a parcel
+attaching to an order the same customer placed *after* it shipped, and a later bound
+only widens the candidate set, which the exact-email match and the refusal rule below
+already handle. On the sample this changes nothing — all 27 stay unique.
 
 Exactly one match links. Zero or more than one is refused and recorded with its reason
 in `TrackingImport.unmatched`, which the `/delivery` page already renders.
