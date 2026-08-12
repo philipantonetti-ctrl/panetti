@@ -1504,13 +1504,30 @@ In Postmark, create an inbound stream and set its webhook to:
 https://panetti.vercel.app/api/delivery/inbound?token=<DELIVERY_INBOUND_SECRET>
 ```
 
-Postmark then gives an inbound address ending `@inbound.postmarkapp.com`. That is the address the warehouse sends the daily report to. Optionally forward a friendlier address onto it later; nothing in the code cares which address delivered the mail.
+Postmark then gives an inbound address ending `@inbound.postmarkapp.com`. That is the address the warehouse sends the daily report to.
 
-- [ ] **Step 6: Switch the two Norway shops on**
+You may forward a friendlier address onto it later; nothing in the code cares which address delivered the mail. **If you do, do not publish that address without a sender allowlist in front of it.** The route authenticates the URL, not the sender: it never looks at `From`, so anyone who learns the inbound address can post attachments into our import queue. A Postmark inbound domain rule, or a forwarding filter that only passes the warehouse's address, is what makes it safe to hand out.
 
-On `https://panetti.vercel.app/settings/delivery`, set a tracking-from date for **Panetti Norway** and **Mazzetti Norway**. Leave Sweden, Denmark, Germany and Finland empty until we know whether the warehouse reports on them. This is data, not code.
+- [ ] **Step 6: Confirm Postmark is actually getting a 200**
 
-- [ ] **Step 7: Prove it with the real file**
+Send one message to the inbound address and open Postmark's **Activity** view for that inbound stream. The webhook response must be **200**.
+
+Check this before anything else, because both ways it can fail are silent on our side:
+
+- **401** — the `token` in the webhook URL does not match `DELIVERY_INBOUND_SECRET` in Vercel. The route refuses before it does anything at all.
+- **308** — the middleware exemption for `/api/delivery/inbound` (`src/middleware.ts`, `MACHINE_PATHS`) is missing or the path changed, so the canonical-host redirect caught the delivery.
+
+In both cases **nothing is written**: no `TrackingImport` row, no `Shipment`, no error anywhere in our logs. The delivery page then looks like a quiet day, permanently, and the only place the truth exists is Postmark's Activity view. That is why this is a step and not a footnote.
+
+- [ ] **Step 7: Switch the two Norway shops on**
+
+On `https://panetti.vercel.app/settings/delivery`, set the tracking-from date for **Panetti Norway** and **Mazzetti Norway** to **today** — the day you switch on, not a backdated one. Leave Sweden, Denmark, Germany and Finland empty until we know whether the warehouse reports on them. This is data, not code.
+
+**Today, and not earlier, on purpose.** There is no historical backfill in this design: the only parcels we will ever hold are the ones the warehouse reports from now on. But `src/lib/delivery/alerts.ts` treats an order in a delivery-tracked shop with no shipment as a late-alert candidate across a 90-day window (`ALERT_WINDOW_DAYS = 90`). Backdate the date and the first cron run after switch-on posts a Slack message about hundreds of orders that shipped perfectly normally, months ago, and simply predate the feed.
+
+**Expected corollary: for roughly the first week the delivery page will look sparse.** Parcels dispatched now belong to orders placed days earlier — before the switch-on date — so those orders are outside tracking and their parcels have no order to attach to. This is correct behaviour, not a fault, and it resolves on its own as orders placed after switch-on start shipping. Do not respond to it by backdating the date.
+
+- [ ] **Step 8: Prove it with the real file**
 
 Upload `LTAS_Eod_Report_20260811.xlsx` on `https://panetti.vercel.app/delivery`, or send it to the Postmark address.
 
