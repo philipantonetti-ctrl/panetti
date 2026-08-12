@@ -18,7 +18,40 @@ const SECRET = 'inbound-secret-for-tests'
 // row this file doesn't clean up.
 const FILES = [
   'eod.xlsx', 'eod.xls', 'notes.txt', 'signature.png', '(none)', '(unnamed attachment)',
+  // These two must never produce a row. Listed so that if the inline-image
+  // skip ever regresses, the rows it starts writing are still cleaned up here
+  // rather than left behind for every other suite to trip over.
+  'image001.png', 'image002.png',
 ]
+
+/** Rows this suite is responsible for. Used to prove a request wrote none. */
+const rowCount = () => db.trackingImport.count({ where: { filename: { in: FILES } } })
+
+/**
+ * A logo in an email signature, as Postmark actually delivers it: in the same
+ * Attachments array as a real file, told apart only by ContentID.
+ */
+const inlineImage = (name: string) => ({
+  Name: name,
+  Content: Buffer.from('PNG').toString('base64'),
+  ContentType: 'image/png',
+  ContentID: `${name}@01DA0000.00000001`,
+})
+
+const enclosure = (name: string, contentType = 'application/octet-stream') => ({
+  Name: name,
+  Content: Buffer.from('x').toString('base64'),
+  ContentType: contentType,
+  // Postmark sends this key on every attachment; empty is what marks a genuine
+  // enclosure apart from something the message body references.
+  ContentID: '',
+})
+
+const email = (attachments: unknown[]) => ({
+  Subject: 'EOD report',
+  From: 'warehouse@example.test',
+  Attachments: attachments,
+})
 
 beforeAll(() => {
   process.env.DELIVERY_INBOUND_SECRET = SECRET
@@ -181,6 +214,86 @@ describe('POST /api/delivery/inbound', () => {
     })
     expect(row).not.toBeNull()
     expect(row?.error).toMatch(/not a file type/i)
+  })
+
+  /**
+   * The cost of recording every refusal, if the gate keys only on the filename.
+   *
+   * Postmark delivers an email signature's logo INSIDE the Attachments array,
+   * so an ordinary good morning would write "image001.png is not a file type
+   * this route can read" next to its successful import, every single day. The
+   * delivery page shows the ten most recent imports: it would be permanently
+   * red on good mornings and would hold about three days of history instead of
+   * ten — alarm fatigue on the exact surface this design's promise rests on.
+   */
+  it('records nothing at all for a signature image riding along with a good report', async () => {
+    importWarehouseFile.mockReset()
+    importWarehouseFile.mockResolvedValue({
+      importId: 'x', parsed: 27, linked: 27, unmatched: [], unaccounted: 0,
+    })
+    const before = await rowCount()
+
+    const res = await post(email([enclosure('eod.xlsx'), inlineImage('image001.png')]))
+    expect(res.status).toBe(200)
+
+    // The report is imported; the logo is not even mentioned.
+    const body = await res.json()
+    expect(body.results).toEqual([{ filename: 'eod.xlsx', linked: 27 }])
+    expect(importWarehouseFile).toHaveBeenCalledOnce()
+
+    // And nothing was written. Not a refusal for the logo, and not the
+    // "nothing readable arrived" row either — the report did arrive.
+    expect(await rowCount()).toBe(before)
+  })
+
+  // The interaction that pulls against the test above: skipping inline images
+  // must not also swallow a REAL attachment we could not read. Item 2's whole
+  // point — the report renamed eod.xls — still has to leave a durable row, and
+  // a signature image in the same email must not change that.
+  it('still records a genuinely unreadable attachment when a signature image rides along', async () => {
+    importWarehouseFile.mockReset()
+    const before = await db.trackingImport.count({ where: { filename: 'eod.xls' } })
+
+    const res = await post(email([inlineImage('image001.png'), enclosure('eod.xls')]))
+    expect(res.status).toBe(200)
+    expect(importWarehouseFile).not.toHaveBeenCalled()
+
+    const body = await res.json()
+    expect(body.results).toEqual([{ filename: 'eod.xls', error: expect.any(String) }])
+
+    expect(await db.trackingImport.count({ where: { filename: 'eod.xls' } })).toBe(before + 1)
+    const row = await db.trackingImport.findFirst({
+      where: { source: 'EMAIL', filename: 'eod.xls' },
+      orderBy: { receivedAt: 'desc' },
+    })
+    expect(row?.error).toMatch(/not a file type/i)
+
+    // The logo still leaves nothing behind, even beside a failure.
+    expect(await db.trackingImport.findFirst({ where: { filename: 'image001.png' } })).toBeNull()
+  })
+
+  // The other half of the same interaction. An email carrying only a signature
+  // is a morning where the report did not come, and it must not be allowed to
+  // look like a quiet day just because the images were skipped silently.
+  it('records that nothing arrived when the only attachments are inline images', async () => {
+    importWarehouseFile.mockReset()
+    const before = await db.trackingImport.count({ where: { filename: '(none)' } })
+
+    const res = await post(email([inlineImage('image001.png'), inlineImage('image002.png')]))
+    expect(res.status).toBe(200)
+    expect(importWarehouseFile).not.toHaveBeenCalled()
+
+    const body = await res.json()
+    expect(body.results).toEqual([])
+
+    // Exactly one row, not one per skipped image and not none at all.
+    expect(await db.trackingImport.count({ where: { filename: '(none)' } })).toBe(before + 1)
+    const row = await db.trackingImport.findFirst({
+      where: { source: 'EMAIL', filename: '(none)' },
+      orderBy: { receivedAt: 'desc' },
+    })
+    expect(row?.error).toMatch(/no readable attachment/i)
+    await db.trackingImport.deleteMany({ where: { id: row!.id } })
   })
 
   // Two readable attachments used to claim 50 seconds EACH against a 60-second

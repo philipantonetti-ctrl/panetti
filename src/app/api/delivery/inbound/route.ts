@@ -54,7 +54,31 @@ function authorised(req: Request): boolean {
   return timingSafeEqual(a, b)
 }
 
-type Attachment = { Name?: unknown; Content?: unknown }
+type Attachment = { Name?: unknown; Content?: unknown; ContentID?: unknown }
+
+/**
+ * Is this part of the message BODY rather than something enclosed with it?
+ *
+ * Postmark puts inline images in the same `Attachments` array as real files —
+ * the company logo and the disclaimer graphic in an email signature arrive
+ * exactly like an attached spreadsheet does. Only `ContentID` tells them apart:
+ * it holds the `cid:` value the HTML body references, and it is empty on a
+ * genuine enclosure.
+ *
+ * Without this test, every ordinary warehouse email would write a refusal row
+ * for `image001.png` beside its successful import, every single day. The
+ * delivery page shows the ten most recent imports, so the one screen whose
+ * whole job is making a bad morning visible would be permanently red on good
+ * mornings and would hold about three days of history instead of ten. Alarm
+ * fatigue on exactly the surface this design's central promise rests on.
+ *
+ * `ContentType` is deliberately NOT used as a second signal. Skipping every
+ * `image/*` would also swallow a screenshot someone genuinely attached INSTEAD
+ * of the report, and that is a real refusal an operator needs to see.
+ */
+function isInline(a: Attachment): boolean {
+  return typeof a?.ContentID === 'string' && a.ContentID.trim() !== ''
+}
 
 /**
  * The durable trace of one delivery we refused to read.
@@ -115,6 +139,20 @@ export async function POST(req: Request) {
   const deadline = Date.now() + IMPORT_DEADLINE_MS
 
   for (const a of attachments) {
+    // Checked FIRST, and skipped completely: no `results` entry, no
+    // TrackingImport row, and — the part that matters — not counted in
+    // `recorded`. A signature logo is not a delivery. So an email whose ONLY
+    // attachments are inline images still falls through to the "nothing
+    // readable arrived" row at the bottom, which is right: a signature with no
+    // report is still a morning where nothing came, and it must not be allowed
+    // to look like a quiet day.
+    //
+    // The one thing this can get wrong is a mailer that stamps a ContentID on a
+    // real enclosure too, which would drop the report. That fails visibly, not
+    // silently: nothing is recorded, so `recorded` stays 0 and the bottom row
+    // says the email carried nothing readable.
+    if (isInline(a)) continue
+
     const filename = typeof a?.Name === 'string' ? a.Name : ''
     const content = typeof a?.Content === 'string' ? a.Content : ''
 
@@ -167,10 +205,15 @@ export async function POST(req: Request) {
   }
 
   if (recorded === 0) {
-    // Nothing in this email left a trace anywhere: it carried no attachments at
-    // all. An email that arrived and said nothing is still the event nobody
-    // would otherwise notice, so it gets its own row and the delivery page can
-    // tell it apart from a morning the warehouse never wrote.
+    // Nothing in this email left a trace anywhere: no attachments at all, or
+    // none that were more than part of the message body. An email that arrived
+    // and said nothing is still the event nobody would otherwise notice, so it
+    // gets its own row and the delivery page can tell it apart from a morning
+    // the warehouse never wrote.
+    //
+    // Filed as '(none)' even when a signature image did ride along, because the
+    // claim this row makes is about ENCLOSURES: nothing came that we could have
+    // read. A logo in a footer is not a delivery.
     //
     // Deliberately NOT written when an attachment was already recorded above,
     // whether it was refused (recordRefusal) or reached importWarehouseFile and
