@@ -464,7 +464,9 @@ model Shipment {
   trackingNumber String  @unique
   carrier        String  @default("BRING")
   orderId        String?
-  /// Which strategy produced the link: FILE | NYCE | WOO | MANUAL.
+  /// Which strategy produced the link: FILE | BRING_EMAIL | NYCE | WOO | MANUAL.
+  /// BRING_EMAIL is the warehouse-file path: the file gives only parcel numbers,
+  /// Bring gives the recipient email, and that matches Order.customerEmail.
   linkSource     String?
 
   /// Milestones, derived from ShipmentEvent and rewritten on every ingest.

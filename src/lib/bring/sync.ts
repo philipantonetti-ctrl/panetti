@@ -16,8 +16,19 @@ export type ShipmentSyncResult = {
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 
-/** How many parcels go into one request. Bring accepts repeated `q` values. */
-const BATCH = 10
+/**
+ * How many parcels go out in one request.
+ *
+ * One. Bring's tracking endpoint answers about a SINGLE `q` however many are
+ * sent — measured 2026-08-12: ten in returned one consignment, two in returned
+ * none, one in returned the right parcel 27 times out of 27. A larger number
+ * looks like it works, because the batch succeeds and most of its parcels are
+ * then marked "Bring does not know this number yet" and quietly retried.
+ *
+ * The loop below is kept as a loop rather than flattened, because the deadline
+ * check between iterations is what bounds a run.
+ */
+const BATCH = 1
 
 /**
  * A parcel sitting at a pickup point this long is not going to be collected.

@@ -25,12 +25,14 @@ const MARKETING_PAGES = ['/ambassadors', '/account']
  * Neither cares which host it reached us on, and neither builds a URL from it.
  * Both carry their own credential — the cron its CRON_SECRET bearer token, the
  * webhook its per-shop HMAC — so the host check was never what protected them.
+ * Postmark's inbound webhook is the same shape again: it POSTs the URL on
+ * file and carries its own `?token=` secret, never a session.
  *
- * Deliberately two paths, not all of /api: the OAuth start route builds its
- * redirect_uri from the host it was called on, which is the very reason the
- * host check exists. It must keep being walked.
+ * Deliberately a short, named list, not all of /api: the OAuth start route
+ * builds its redirect_uri from the host it was called on, which is the very
+ * reason the host check exists. It must keep being walked.
  */
-const MACHINE_PATHS = ['/api/cron/', '/api/webhooks/']
+const MACHINE_PATHS = ['/api/cron/', '/api/webhooks/', '/api/delivery/inbound']
 
 /**
  * Two duties, in order.

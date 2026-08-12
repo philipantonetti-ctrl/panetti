@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { extractPairs, looksLikeTracking, parseTrackingFile } from './parse'
+import { extractPairs, looksLikeTracking, parseTrackingFile, extractLongNumbers, parseTrackingNumbers } from './parse'
+import { zipSync, strToU8 } from 'fflate'
 
 const known = new Set(['1001', '1002', '1003', 'PAN-2201'])
 
@@ -143,5 +144,78 @@ describe('parseTrackingFile', () => {
     const { rows, seen } = await parseTrackingFile(csv, 'today.csv', known)
     expect(rows).toHaveLength(2)
     expect(seen).toBe(2)
+  })
+})
+
+describe('extractLongNumbers', () => {
+  it('takes an 18-digit package number and a 17-digit shipment reference', () => {
+    expect(extractLongNumbers('373325386490923366 73325383667032998')).toEqual([
+      '373325386490923366',
+      '73325383667032998',
+    ])
+  })
+
+  it('rejects the COD columns, which are six digits', () => {
+    expect(extractLongNumbers('516668 517360')).toEqual([])
+  })
+
+  // The accept side of the same fence the timestamp test below guards. Every
+  // other accepted case in this file is 17 or 18 digits, so nothing pinned the
+  // floor itself: MIN_DIGITS could drift upward and the whole suite would still
+  // pass while numbers at the boundary were silently dropped from every file.
+  it('accepts exactly fifteen digits, which is the floor itself', () => {
+    expect(extractLongNumbers('123456789012345')).toEqual(['123456789012345'])
+  })
+
+  it('rejects a timestamp even when it arrives as one unsplit token', () => {
+    // 20260811081924 is 14 digits. This is the near miss the threshold exists for.
+    expect(extractLongNumbers('2026-08-11 08:19:24')).toEqual([])
+    expect(extractLongNumbers('2026-08-11T08:19:24')).toEqual([])
+  })
+
+  it('rejects a weight written with a decimal comma', () => {
+    expect(extractLongNumbers('16,500000')).toEqual([])
+  })
+
+  it('strips punctuation inside an otherwise long number', () => {
+    expect(extractLongNumbers('373-325-386-490-923-366')).toEqual(['373325386490923366'])
+  })
+
+  it('returns each number once, in the order first seen', () => {
+    expect(
+      extractLongNumbers('373325386490923366 373325386490923366 73325383667032998'),
+    ).toEqual(['373325386490923366', '73325383667032998'])
+  })
+
+  it('ignores a long word that is not digits', () => {
+    expect(extractLongNumbers('Sendingsnummerreferanse')).toEqual([])
+  })
+})
+
+describe('parseTrackingNumbers', () => {
+  it('reads an xlsx', async () => {
+    const buf = Buffer.from(
+      zipSync({
+        'xl/worksheets/sheet1.xml': strToU8(
+          '<c><v>373325386490923366</v></c><c><v>516668</v></c>',
+        ),
+      }),
+    )
+    await expect(parseTrackingNumbers(buf, 'LTAS_Eod_Report.xlsx')).resolves.toEqual([
+      '373325386490923366',
+    ])
+  })
+
+  it('reads a csv', async () => {
+    const csv = 'Datum;Order;KolliID\n2026-08-11 08:19:24;027286;373325386490923366\n'
+    await expect(parseTrackingNumbers(Buffer.from(csv), 'r.csv')).resolves.toEqual([
+      '373325386490923366',
+    ])
+  })
+
+  it('refuses a file type it cannot read, naming the extension', async () => {
+    await expect(parseTrackingNumbers(Buffer.from('x'), 'notes.docx')).rejects.toThrow(
+      /\.docx/,
+    )
   })
 })

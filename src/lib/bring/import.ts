@@ -1,17 +1,37 @@
 import { db } from '../db'
-import { parseTrackingFile } from './parse'
+import { parseTrackingFile, parseTrackingNumbers } from './parse'
 import { knownOrderNumbers, linkRows, type UnmatchedRow } from './link'
+import { resolveConsignments, type ResolvedConsignment } from './consignments'
+import { matchByEmail } from './match'
+// Note the directory: config.ts lives under delivery/, not bring/.
+import { getDeliveryConfig } from '../delivery/config'
 
 export type ImportResult = {
   importId: string
-  /** Distinct parcel numbers the document appeared to contain. */
+  /**
+   * How many things the file offered to import, in whichever unit that path
+   * counts in. `importTrackingFile` counts distinct parcel-shaped numbers in
+   * the document. `importWarehouseFile` counts resolved CONSIGNMENTS plus the
+   * numbers Bring could not resolve — not raw long numbers, which come in two
+   * per parcel (a shipment reference and a package number) and would show a
+   * flawless run as parcels vanishing. Always `linked + unaccounted`.
+   */
   parsed: number
+  /**
+   * How many of those were linked to an order. For `importWarehouseFile` this
+   * counts CONSIGNMENTS, not packages: a two-package consignment that matches
+   * still writes two Shipment rows but counts once here, so `linked` stays in
+   * the same unit as `parsed`.
+   */
   linked: number
-  /** Rows refused for a reason we can state — an order number two shops share. */
+  /**
+   * Entries refused for a reason we can state — an order number two shops
+   * share, or an email that matched zero or two orders instead of one.
+   */
   unmatched: UnmatchedRow[]
   /**
-   * Parcel numbers the file offered that did not end up linked, INCLUDING the
-   * ones we cannot explain. Always >= unmatched.length. This is the number that
+   * Everything the file offered that did not end up linked, INCLUDING the
+   * ones we cannot explain. Always `parsed - linked`. This is the number that
    * tells an operator the file was only half understood; `unmatched` alone
    * cannot, because a row we failed to read leaves nothing to describe.
    */
@@ -122,4 +142,125 @@ export async function importTrackingFile(
   })
 
   return { importId: record.id, parsed: seen, linked, unmatched, unaccounted }
+}
+
+/**
+ * Read one warehouse file the format-independent way.
+ *
+ * The warehouse's own order number is not ours and lands on the wrong order
+ * every time, so this path never looks at it. It takes the long numbers out of
+ * the file, asks Bring who each parcel belongs to, and matches on the recipient
+ * email. That means a change to their column order, their headings, or their
+ * file format is not an outage here.
+ *
+ * `importTrackingFile` above is the older order-number path and is left alone.
+ */
+export async function importWarehouseFile(
+  buf: Buffer,
+  filename: string,
+  source: 'UPLOAD' | 'EMAIL',
+  opts: { deadline?: number } = {},
+): Promise<ImportResult> {
+  const receivedAt = new Date()
+
+  let numbers: string[]
+  try {
+    numbers = await parseTrackingNumbers(buf, filename)
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'Could not read this file'
+    await recordFailedAttempt(filename, source, {
+      rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error,
+    })
+    throw new ImportParseError(error)
+  }
+
+  // Everything from here on can fail mid-way — Bring timing out, a dropped
+  // database connection, even the bookkeeping write itself — and a throw that
+  // escapes unrecorded is exactly the silent morning this feature exists to
+  // prevent: no TrackingImport row, Postmark redelivers nothing because the
+  // route answers 200 regardless, and the delivery page reads like a quiet
+  // day while some Shipments may already sit half-linked. So the whole of it
+  // is one guarded block, and whatever is known when it fails is recorded
+  // before rethrowing — same shape as the linkRows guard above.
+  let consignments: ResolvedConsignment[] = []
+  let unresolved: string[] = []
+  let linked = 0
+  const unmatched: UnmatchedRow[] = []
+
+  try {
+    // getDeliveryConfig's own docstring promises it never throws, but it does
+    // a findUnique, so it is guarded here like everything else in this block
+    // rather than trusted on faith.
+    const { creds } = await getDeliveryConfig()
+    if (!creds)
+      throw new ImportParseError('Bring is not connected, so parcels cannot be identified')
+
+    ;({ consignments, unresolved } = await resolveConsignments(creds, numbers, opts))
+
+    for (const c of consignments) {
+      const outcome = await matchByEmail(c.recipientEmail, receivedAt)
+      if (outcome.orderId === null) {
+        unmatched.push({
+          orderNumber: c.recipientName ?? c.consignmentId,
+          trackingNumber: c.packageNumbers[0],
+          reason: outcome.reason,
+        })
+        continue
+      }
+      for (const trackingNumber of c.packageNumbers) {
+        await db.shipment.upsert({
+          where: { trackingNumber },
+          // Due immediately, so the next cron run picks it up.
+          create: {
+            trackingNumber,
+            orderId: outcome.orderId,
+            linkSource: 'BRING_EMAIL',
+            nextPollAt: new Date(),
+          },
+          // Only the link. Milestones, events and poll state are the sync's
+          // to own, and a re-import must not undo a week of tracking.
+          update: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL' },
+        })
+      }
+      // Once per CONSIGNMENT, not per package: a two-package consignment
+      // that matches still counts once here, so `linked` stays in the same
+      // unit as `parsed` below and the two totals actually add up.
+      linked++
+    }
+
+    // Consignments and the numbers Bring never resolved — not raw long
+    // numbers, which run two per parcel (a shipment reference and a package
+    // number) and would show a flawless import as parcels vanishing.
+    const parsed = consignments.length + unresolved.length
+    const unaccounted = unresolved.length + unmatched.length
+
+    const record = await db.trackingImport.create({
+      data: {
+        filename,
+        source,
+        rowsParsed: parsed,
+        rowsLinked: linked,
+        rowsUnmatched: unaccounted,
+        unmatched: unmatched.length ? JSON.stringify(unmatched) : null,
+      },
+    })
+
+    return { importId: record.id, parsed, linked, unmatched, unaccounted }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'Could not import this file'
+    // Derived from what was parsed, NOT as `unresolved.length + unmatched.length`.
+    // A throw partway through the consignment loop leaves the consignments it
+    // never reached counted in rowsParsed and in neither of the other two, so
+    // the row would claim 27 parsed, 4 linked, 0 unmatched and quietly lose 23
+    // parcels — against the promise ImportResult makes, that parsed is always
+    // linked + unaccounted. Same shape as importTrackingFile's `unaccounted`.
+    const parsed = consignments.length + unresolved.length
+    await recordFailedAttempt(filename, source, {
+      rowsParsed: parsed,
+      rowsLinked: linked,
+      rowsUnmatched: Math.max(0, parsed - linked),
+      error,
+    })
+    throw e
+  }
 }

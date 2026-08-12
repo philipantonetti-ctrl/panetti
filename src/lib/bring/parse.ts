@@ -1,4 +1,5 @@
 import { pdfToText } from './pdf'
+import { xlsxToText } from './xlsx'
 
 export type ParsedRow = { orderNumber: string; trackingNumber: string }
 
@@ -157,4 +158,58 @@ export async function parseTrackingFile(
   }
 
   throw new Error('Only PDF and CSV files can be read. This one is a .' + ext)
+}
+
+/**
+ * The fewest digits a parcel or shipment number can have.
+ *
+ * KolliID is 18 and Sändningsref is 17, so both clear it. The floor is set here
+ * rather than lower because of one specific near miss: `Datum` reads
+ * "2026-08-11 08:19:24", which is 14 digits once punctuation goes. Fourteen is
+ * one below fifteen on purpose.
+ *
+ * `looksLikeTracking` above is deliberately NOT reused. It accepts 8-plus
+ * digits, which is right for a PDF full of prose and wrong here, where it would
+ * take that timestamp on every row of every file.
+ */
+const MIN_DIGITS = 15
+
+/**
+ * Every distinct long number in a document, in the order first seen.
+ *
+ * This is the whole of what we read from the warehouse's report. Not the order
+ * number, which is theirs and not ours; not the columns, which they may
+ * reorder; not the headings, which they may rename. Bring will tell us
+ * everything else, and it cannot be talked into telling us the wrong thing.
+ *
+ * Both a package number and a shipment reference are valid lookups, so there is
+ * no need to know which column a number came from.
+ */
+export function extractLongNumbers(text: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const token of text.split(/\s+/)) {
+    if (!token) continue
+    const digits = token.replace(/\D/g, '')
+    if (digits.length < MIN_DIGITS) continue
+    if (seen.has(digits)) continue
+    seen.add(digits)
+    out.push(digits)
+  }
+  return out
+}
+
+/**
+ * Read whatever the warehouse sent and return the numbers in it.
+ *
+ * xlsx is what they send today. The others cost nothing to keep and mean a
+ * change of format on their side is not an outage on ours.
+ */
+export async function parseTrackingNumbers(buf: Buffer, filename: string): Promise<string[]> {
+  const ext = filename.toLowerCase().split('.').pop() ?? ''
+  if (ext === 'xlsx') return extractLongNumbers(xlsxToText(buf))
+  if (ext === 'pdf') return extractLongNumbers(await pdfToText(buf))
+  if (ext === 'csv' || ext === 'txt')
+    return extractLongNumbers(buf.toString('utf8').replace(/[;,]/g, ' '))
+  throw new Error('Only Excel, PDF and CSV files can be read. This one is a .' + ext)
 }

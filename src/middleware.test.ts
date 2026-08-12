@@ -71,8 +71,23 @@ describe('machines are not walked anywhere', () => {
   })
 
   /**
-   * The reason the exemption is two paths and not all of /api: the OAuth start
-   * route builds its redirect_uri from the host it was called on
+   * The warehouse's daily report arrives here, POSTed by Postmark to the URL it
+   * has on file and carrying its own `?token=` secret. Lose this exemption and
+   * every delivery gets a 308 that Postmark counts as a failure: nothing is
+   * recorded on our side at all, so the delivery page shows a quiet morning
+   * that never happened. It is the worst failure this design has, because it is
+   * the one that looks exactly like nothing being wrong.
+   */
+  it('lets Postmark deliver the warehouse report on the URL it has on file', async () => {
+    production()
+    const res = await middleware(new NextRequest(`${deployment}/api/delivery/inbound?token=s3cret`))
+    expect(res.headers.get('location')).toBeNull()
+    expect(res.status).toBe(200)
+  })
+
+  /**
+   * The reason the exemption is three named paths and not all of /api: the
+   * OAuth start route builds its redirect_uri from the host it was called on
    * (api/ads/oauth/[provider]/start/route.ts), which is the whole reason the
    * host check exists. Widening the exemption puts a hashed host back in front
    * of Facebook.

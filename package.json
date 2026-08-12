@@ -22,6 +22,7 @@
     "@anthropic-ai/sdk": "^0.116.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
+    "fflate": "^0.8.3",
     "jose": "^6.2.3",
     "next": "16.2.10",
     "react": "19.2.4",
