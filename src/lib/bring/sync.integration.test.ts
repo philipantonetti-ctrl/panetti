@@ -34,6 +34,7 @@ const HOUR = 60 * 60 * 1000
 const TRACK = 'TSYNC' // every tracking number this suite creates starts with it
 const T1 = `${TRACK}1`
 const T2 = `${TRACK}2`
+const T3 = `${TRACK}3`
 
 const BRING_FIELDS = {
   bringApiUid: 'ops@example.com',
@@ -299,14 +300,20 @@ describe('syncShipments', () => {
 
   // This file mocks the global fetch, not a fetchTracking function, so the
   // request shape is read off the URL's own `q` params rather than a mock's
-  // call args. Two due parcels: with a batch size above 1 they would be sent
-  // as two `q` params on one request, and Bring answers about only one of
-  // them (see file banner on client.ts / sync.ts) — leaving the other
-  // falsely marked "does not know this number yet". Assert on the shape of
-  // every request, not on how many requests happen: that count depends on
-  // how many parcels the surrounding fixtures leave due, not on this test.
+  // call args. Three due parcels, not two: two due parcels makes the count
+  // and shape assertions redundant — any batch size >= 2 collapses both into
+  // one call and trips a count-floor check, while a batch size of 1 makes
+  // "length 1" true by construction either way, so the count assertion would
+  // always decide the test's fate first and the shape assertion would never
+  // independently fail. Three is the smallest number that can produce a
+  // PARTIAL batch (e.g. size 2 then size 1), which is what makes checking the
+  // shape of every call — not just whether more than one call happened —
+  // actually load-bearing. With a batch size above 1, at least one request
+  // would carry more than one `q` param, and Bring answers about only one of
+  // them (see file banner on client.ts / sync.ts), leaving the rest falsely
+  // marked "does not know this number yet".
   it('asks Bring about one parcel per request — it answers about only one', async () => {
-    for (const n of [T1, T2]) {
+    for (const n of [T1, T2, T3]) {
       await db.shipment.create({ data: { trackingNumber: n, nextPollAt: new Date('2026-01-01') } })
     }
     const calls: string[][] = []
@@ -320,7 +327,10 @@ describe('syncShipments', () => {
 
     await syncShipments({ now })
 
-    expect(calls.length).toBeGreaterThanOrEqual(2)
+    // Shape first: this is the assertion that actually catches a batch size
+    // above 1. It must run and fail on its own, not be pre-empted by the
+    // count check below.
     for (const numbers of calls) expect(numbers).toHaveLength(1)
+    expect(calls.length).toBeGreaterThanOrEqual(3)
   })
 })
