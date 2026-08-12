@@ -248,10 +248,17 @@ export async function importWarehouseFile(
     return { importId: record.id, parsed, linked, unmatched, unaccounted }
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Could not import this file'
+    // Derived from what was parsed, NOT as `unresolved.length + unmatched.length`.
+    // A throw partway through the consignment loop leaves the consignments it
+    // never reached counted in rowsParsed and in neither of the other two, so
+    // the row would claim 27 parsed, 4 linked, 0 unmatched and quietly lose 23
+    // parcels — against the promise ImportResult makes, that parsed is always
+    // linked + unaccounted. Same shape as importTrackingFile's `unaccounted`.
+    const parsed = consignments.length + unresolved.length
     await recordFailedAttempt(filename, source, {
-      rowsParsed: consignments.length + unresolved.length,
+      rowsParsed: parsed,
       rowsLinked: linked,
-      rowsUnmatched: unresolved.length + unmatched.length,
+      rowsUnmatched: Math.max(0, parsed - linked),
       error,
     })
     throw e

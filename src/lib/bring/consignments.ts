@@ -29,8 +29,10 @@ const str = (v: unknown): string | null =>
  * A file lists both the package number and the shipment reference for the same
  * parcel, and a two-parcel order lists three numbers for one consignment. Since
  * a response names its consignment AND all of its packages, everything it
- * accounted for can be struck off before the next request. That is what takes
- * the sample file's 34 numbers down to 27 lookups.
+ * accounted for can be struck off before the next request. Measured by running
+ * the committed parser over the real 2026-08-11 file, that is what takes its 61
+ * distinct long numbers — 27 seventeen-digit shipment references plus 34
+ * eighteen-digit package numbers — down to 27 lookups.
  */
 export async function resolveConsignments(
   creds: BringCredentials,

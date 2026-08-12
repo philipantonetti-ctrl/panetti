@@ -159,6 +159,14 @@ describe('extractLongNumbers', () => {
     expect(extractLongNumbers('516668 517360')).toEqual([])
   })
 
+  // The accept side of the same fence the timestamp test below guards. Every
+  // other accepted case in this file is 17 or 18 digits, so nothing pinned the
+  // floor itself: MIN_DIGITS could drift upward and the whole suite would still
+  // pass while numbers at the boundary were silently dropped from every file.
+  it('accepts exactly fifteen digits, which is the floor itself', () => {
+    expect(extractLongNumbers('123456789012345')).toEqual(['123456789012345'])
+  })
+
   it('rejects a timestamp even when it arrives as one unsplit token', () => {
     // 20260811081924 is 14 digits. This is the near miss the threshold exists for.
     expect(extractLongNumbers('2026-08-11 08:19:24')).toEqual([])
