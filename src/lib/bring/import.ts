@@ -1,6 +1,10 @@
 import { db } from '../db'
-import { parseTrackingFile } from './parse'
+import { parseTrackingFile, parseTrackingNumbers } from './parse'
 import { knownOrderNumbers, linkRows, type UnmatchedRow } from './link'
+import { resolveConsignments } from './consignments'
+import { matchByEmail } from './match'
+// Note the directory: config.ts lives under delivery/, not bring/.
+import { getDeliveryConfig } from '../delivery/config'
 
 export type ImportResult = {
   importId: string
@@ -109,6 +113,98 @@ export async function importTrackingFile(
   // and it is counted rather than described because there is nothing honest to
   // say about a row we could not read.
   const unaccounted = Math.max(0, seen - linked)
+
+  const record = await db.trackingImport.create({
+    data: {
+      filename,
+      source,
+      rowsParsed: seen,
+      rowsLinked: linked,
+      rowsUnmatched: unaccounted,
+      unmatched: unmatched.length ? JSON.stringify(unmatched) : null,
+    },
+  })
+
+  return { importId: record.id, parsed: seen, linked, unmatched, unaccounted }
+}
+
+/**
+ * Read one warehouse file the format-independent way.
+ *
+ * The warehouse's own order number is not ours and lands on the wrong order
+ * every time, so this path never looks at it. It takes the long numbers out of
+ * the file, asks Bring who each parcel belongs to, and matches on the recipient
+ * email. That means a change to their column order, their headings, or their
+ * file format is not an outage here.
+ *
+ * `importTrackingFile` above is the older order-number path and is left alone.
+ */
+export async function importWarehouseFile(
+  buf: Buffer,
+  filename: string,
+  source: 'UPLOAD' | 'EMAIL',
+  opts: { deadline?: number } = {},
+): Promise<ImportResult> {
+  const receivedAt = new Date()
+
+  let numbers: string[]
+  try {
+    numbers = await parseTrackingNumbers(buf, filename)
+  } catch (e) {
+    const error = e instanceof Error ? e.message : 'Could not read this file'
+    await recordFailedAttempt(filename, source, {
+      rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error,
+    })
+    throw new ImportParseError(error)
+  }
+
+  // getDeliveryConfig never throws and never returns null: an unreadable key
+  // comes back as creds: null, which is the "reconnect Bring" case.
+  const { creds } = await getDeliveryConfig()
+  if (!creds) {
+    const error = 'Bring is not connected, so parcels cannot be identified'
+    await recordFailedAttempt(filename, source, {
+      rowsParsed: numbers.length, rowsLinked: 0, rowsUnmatched: numbers.length, error,
+    })
+    throw new ImportParseError(error)
+  }
+
+  const { consignments, unresolved } = await resolveConsignments(creds, numbers, opts)
+
+  const unmatched: UnmatchedRow[] = []
+  let linked = 0
+
+  for (const c of consignments) {
+    const outcome = await matchByEmail(c.recipientEmail, receivedAt)
+    if (outcome.orderId === null) {
+      unmatched.push({
+        orderNumber: c.recipientName ?? c.consignmentId,
+        trackingNumber: c.packageNumbers[0],
+        reason: outcome.reason,
+      })
+      continue
+    }
+    for (const trackingNumber of c.packageNumbers) {
+      await db.shipment.upsert({
+        where: { trackingNumber },
+        // Due immediately, so the next cron run picks it up.
+        create: {
+          trackingNumber,
+          orderId: outcome.orderId,
+          linkSource: 'BRING_EMAIL',
+          nextPollAt: new Date(),
+        },
+        // Only the link. Milestones, events and poll state are the sync's to
+        // own, and a re-import must not undo a week of tracking.
+        update: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL' },
+      })
+      linked++
+    }
+  }
+
+  // Everything the file offered that did not end up linked, named or not.
+  const seen = numbers.length
+  const unaccounted = unresolved.length + unmatched.length
 
   const record = await db.trackingImport.create({
     data: {
