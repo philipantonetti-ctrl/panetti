@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
@@ -32,6 +32,10 @@ type ImportRow = {
   rowsLinked: number
   rowsUnmatched: number
   error: string | null
+  /** 'UPLOAD' or 'EMAIL' today; typed loosely because it is a plain column. */
+  source: string
+  /** JSON text, written by the import. Never trusted — see refusalsOf below. */
+  unmatched: string | null
 }
 
 type Payload = {
@@ -460,6 +464,54 @@ function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: num
   )
 }
 
+const SOURCE_LABEL: Record<string, string> = { UPLOAD: 'Upload', EMAIL: 'Email' }
+
+/** How many refusals are spelled out before the rest are only counted. */
+const REFUSALS_SHOWN = 5
+
+type Refusal = { trackingNumber: string | null; reason: string }
+
+/**
+ * The stated reasons an import refused to link something.
+ *
+ * `TrackingImport.unmatched` is JSON TEXT, written by an import that may be
+ * older than this code, and the column is nullable. So every step is defensive
+ * and every failure returns an empty list: a malformed value must leave the row
+ * rendering exactly as it did before, never throw and take the whole delivery
+ * page down with it. Showing nothing is a small loss; showing nothing at all,
+ * because the page crashed, is the outage this section exists to make visible.
+ */
+function refusalsOf(raw: string | null): Refusal[] {
+  if (!raw) return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+  const out: Refusal[] = []
+  for (const entry of parsed) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const { reason, trackingNumber } = entry as { reason?: unknown; trackingNumber?: unknown }
+    if (typeof reason !== 'string' || reason === '') continue
+    out.push({
+      trackingNumber: typeof trackingNumber === 'string' && trackingNumber ? trackingNumber : null,
+      reason,
+    })
+  }
+  return out
+}
+
+/**
+ * What arrived and what it did with itself.
+ *
+ * The counts alone are not enough now that a refusal is a deliberate outcome
+ * rather than a failure: "27 parsed, 25 linked, 2 unmatched" tells an operator
+ * that something is wrong and nothing about what. Every refusal names itself —
+ * "no order for this email", "matched 2 orders" — and those reasons were being
+ * stored and never shown. They are the row underneath.
+ */
 function ImportsList({ items }: { items: ImportRow[] }) {
   return (
     <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
@@ -474,6 +526,7 @@ function ImportsList({ items }: { items: ImportRow[] }) {
             <thead>
               <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
                 <th className="px-5 py-2 text-left">File</th>
+                <th className="px-4 py-2 text-left">From</th>
                 <th className="px-4 py-2 text-left">Received</th>
                 <th className="px-4 py-2 text-right">Parsed</th>
                 <th className="px-4 py-2 text-right">Linked</th>
@@ -482,20 +535,60 @@ function ImportsList({ items }: { items: ImportRow[] }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((i) => (
-                <tr key={i.id} className="border-b border-line last:border-b-0 hover:bg-panel">
-                  <td className="px-5 py-2.5 text-ink">{i.filename}</td>
-                  <td className="px-4 py-2.5 text-muted">{new Date(i.receivedAt).toLocaleString()}</td>
-                  <td className="num px-4 py-2.5 text-right text-ink">{i.rowsParsed}</td>
-                  <td className="num px-4 py-2.5 text-right text-ink">{i.rowsLinked}</td>
-                  <td className={`num px-4 py-2.5 text-right ${i.rowsUnmatched > 0 ? 'text-warn' : 'text-ink'}`}>
-                    {i.rowsUnmatched}
-                  </td>
-                  <td className="max-w-[220px] truncate px-5 py-2.5 text-loss" title={i.error ?? undefined}>
-                    {i.error ?? ''}
-                  </td>
-                </tr>
-              ))}
+              {items.map((i) => {
+                const refusals = refusalsOf(i.unmatched)
+                const hidden = refusals.length - REFUSALS_SHOWN
+                return (
+                  <Fragment key={i.id}>
+                    <tr
+                      className={`hover:bg-panel ${refusals.length > 0 ? '' : 'border-b border-line last:border-b-0'}`}
+                    >
+                      <td className="px-5 py-2.5 text-ink">{i.filename}</td>
+                      <td className="px-4 py-2.5 text-muted">{SOURCE_LABEL[i.source] ?? i.source}</td>
+                      <td className="px-4 py-2.5 text-muted">{new Date(i.receivedAt).toLocaleString()}</td>
+                      <td className="num px-4 py-2.5 text-right text-ink">{i.rowsParsed}</td>
+                      <td className="num px-4 py-2.5 text-right text-ink">{i.rowsLinked}</td>
+                      <td className={`num px-4 py-2.5 text-right ${i.rowsUnmatched > 0 ? 'text-warn' : 'text-ink'}`}>
+                        {i.rowsUnmatched}
+                      </td>
+                      <td className="max-w-[220px] truncate px-5 py-2.5 text-loss" title={i.error ?? undefined}>
+                        {i.error ?? ''}
+                      </td>
+                    </tr>
+                    {refusals.length > 0 && (
+                      <tr className="border-b border-line last:border-b-0">
+                        <td colSpan={7} className="px-5 pb-3 pt-0">
+                          <ul className="space-y-0.5 text-[12px] text-warn">
+                            {refusals.slice(0, REFUSALS_SHOWN).map((r, n) => (
+                              <li key={`${r.trackingNumber ?? ''}-${n}`}>
+                                {r.trackingNumber && (
+                                  <>
+                                    <a
+                                      href={trackingUrl(r.trackingNumber)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="num text-accent hover:underline"
+                                    >
+                                      {r.trackingNumber}
+                                    </a>
+                                    {' — '}
+                                  </>
+                                )}
+                                {r.reason}
+                              </li>
+                            ))}
+                            {hidden > 0 && (
+                              <li className="num text-muted">
+                                and {hidden.toLocaleString('en-US')} more
+                              </li>
+                            )}
+                          </ul>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
