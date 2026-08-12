@@ -97,7 +97,12 @@ describe('importWarehouseFile', () => {
     const result = await importWarehouseFile(
       book(['373325386490923366']), 'eod.xlsx', 'EMAIL',
     )
-    expect(result.linked).toBe(2)
+    // linked counts CONSIGNMENTS, not packages: one matched consignment with
+    // two packages counts once, even though it writes two Shipment rows below.
+    expect(result.linked).toBe(1)
+    expect(result.parsed).toBe(1) // 1 consignment + 0 unresolved
+    expect(result.unaccounted).toBe(0)
+    expect(result.parsed).toBe(result.linked + result.unaccounted)
 
     const rows = await db.shipment.findMany({
       where: { trackingNumber: { startsWith: PREFIX } },
@@ -115,7 +120,8 @@ describe('importWarehouseFile', () => {
       orderBy: { receivedAt: 'desc' },
     })
     expect(row?.source).toBe('EMAIL')
-    expect(row?.rowsLinked).toBe(2)
+    // One consignment linked, not two packages — see the `linked` assertion above.
+    expect(row?.rowsLinked).toBe(1)
   })
 
   it('is safe to run twice — the second import adopts, never rebuilds', async () => {
@@ -161,6 +167,7 @@ describe('importWarehouseFile', () => {
     expect(result.linked).toBe(0)
     expect(result.unmatched.some((u) => /stranger@example.test/.test(u.reason))).toBe(true)
     expect(result.unaccounted).toBeGreaterThan(0)
+    expect(result.parsed).toBe(result.linked + result.unaccounted)
   })
 
   it('records a file it cannot read at all, then throws for the uploader', async () => {
@@ -169,5 +176,25 @@ describe('importWarehouseFile', () => {
     ).rejects.toThrow(/\.docx/)
     const row = await db.trackingImport.findFirst({ where: { filename: 'broken.docx' } })
     expect(row?.error).toMatch(/\.docx/)
+  })
+
+  // A file can be taken this far — parsed, past the Bring-connected check —
+  // and still fail: Bring timing out, a dropped database connection. Nothing
+  // after the parse step was guarded before this test, so the throw escaped
+  // unrecorded: no TrackingImport row, and because the route answers 200
+  // regardless of what importWarehouseFile does, Postmark never redelivers
+  // either. A silent morning is exactly what this feature exists to prevent.
+  it('records the run before rethrowing, even when the failure happens after parsing', async () => {
+    resolveConsignments.mockRejectedValue(new Error('Bring timed out'))
+    await expect(
+      importWarehouseFile(book(['373325386490923366']), 'eod.xlsx', 'EMAIL'),
+    ).rejects.toThrow(/Bring timed out/)
+
+    const row = await db.trackingImport.findFirst({
+      where: { filename: 'eod.xlsx', error: { contains: 'Bring timed out' } },
+      orderBy: { receivedAt: 'desc' },
+    })
+    expect(row).not.toBeNull()
+    expect(row?.source).toBe('EMAIL')
   })
 })
