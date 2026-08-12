@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { db } from '@/lib/db'
-import { matchByEmail } from './match'
+import { matchByEmail, MATCH_WINDOW_DAYS } from './match'
 
 // Unique to THIS file — see "Test data convention" in the Global Constraints.
 const TAG = '[intake-match-test]'
@@ -113,5 +113,24 @@ describe('matchByEmail', () => {
     await expect(matchByEmail('repeat@example.test', RECEIVED)).resolves.toEqual({
       orderId: live.id,
     })
+  })
+
+  it('matches an order placed at exactly the upper bound (received time)', async () => {
+    const upperBoundDate = new Date(RECEIVED.getTime())
+    const o = await order(trackedShopId, 'B1', 'boundary-upper@example.test', upperBoundDate.toISOString())
+    await expect(matchByEmail('boundary-upper@example.test', RECEIVED)).resolves.toEqual({ orderId: o.id })
+  })
+
+  it('matches an order placed at exactly the lower bound (30 days before received)', async () => {
+    const lowerBoundDate = new Date(RECEIVED.getTime() - MATCH_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+    const o = await order(trackedShopId, 'B2', 'boundary-lower@example.test', lowerBoundDate.toISOString())
+    await expect(matchByEmail('boundary-lower@example.test', RECEIVED)).resolves.toEqual({ orderId: o.id })
+  })
+
+  it('does not match an order placed 1ms before the lower bound', async () => {
+    const tooEarlyDate = new Date(RECEIVED.getTime() - MATCH_WINDOW_DAYS * 24 * 60 * 60 * 1000 - 1)
+    await order(trackedShopId, 'B3', 'boundary-too-early@example.test', tooEarlyDate.toISOString())
+    const out = await matchByEmail('boundary-too-early@example.test', RECEIVED)
+    expect(out.orderId).toBeNull()
   })
 })
