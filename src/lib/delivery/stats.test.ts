@@ -30,6 +30,34 @@ describe('deliveryStats', () => {
     expect(s.medianDays).toBe(3)
   })
 
+  it('counts what is still on the way, so a page with no deliveries can still say what is happening', () => {
+    // The case this exists for: a workspace switched on last week. Every
+    // finished-delivery figure below is legitimately null, and without these
+    // two counts the page cannot tell "nothing is set up" from "four parcels
+    // are moving perfectly normally".
+    const s = deliveryStats(
+      [
+        v({ state: 'BOOKED', totalDays: null }),
+        v({ state: 'BOOKED', totalDays: null }),
+        v({ state: 'IN_TRANSIT', totalDays: null }),
+        v({ state: 'NO_TRACKING', totalDays: null }),
+      ],
+      ['NO', 'NO', 'NO', 'NO'],
+    )
+    expect(s.booked).toBe(2)
+    expect(s.inTransit).toBe(1)
+    expect(s.noTracking).toBe(1)
+    expect(s.delivered).toBe(0)
+    expect(s.medianDays).toBeNull()
+  })
+
+  it('does not count a delivered order as still moving', () => {
+    const s = deliveryStats([v({ state: 'AVAILABLE', totalDays: 3 })], ['NO'])
+    expect(s.booked).toBe(0)
+    expect(s.inTransit).toBe(0)
+    expect(s.delivered).toBe(1)
+  })
+
   it('splits the median wait into warehouse and transit', () => {
     const s = deliveryStats(
       [v({ warehouseDays: 1, transitDays: 2 }), v({ warehouseDays: 3, transitDays: 2 })],

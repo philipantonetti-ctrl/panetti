@@ -46,6 +46,28 @@ type Payload = {
   unlinkedTotal: number
   imports: ImportRow[]
   trackedShops: number
+  /** ISO, or null if the carrier has never been asked. */
+  lastCheckedAt: string | null
+}
+
+/** Orders that are on their way: booked, or already moving. */
+const moving = (s: DeliveryStats) => s.booked + s.inTransit
+
+/**
+ * Why a figure is blank, in words, or null when it is not blank.
+ *
+ * Every headline on this page describes deliveries that FINISHED. On a
+ * workspace switched on last week nothing has finished, so every one of them is
+ * honestly null and the page fills with dashes. A dash is true but it is not an
+ * answer: it reads identically whether nothing was set up, nothing was
+ * imported, or thirty parcels are moving perfectly normally. The state is
+ * knowable, so it gets said.
+ */
+function whyBlank(s: DeliveryStats): string | null {
+  if (s.delivered > 0) return null
+  if (moving(s) > 0) return `nothing delivered yet, ${moving(s)} still on the way`
+  if (s.noTracking > 0) return 'no parcels tracked yet'
+  return 'no orders in this range'
 }
 
 /**
@@ -172,6 +194,7 @@ function Tiles({ stats }: { stats: DeliveryStats }) {
           label="MEDIAN DAYS TO DELIVERY"
           value={stats.medianDays === null ? DASH : `${formatDays(stats.medianDays)} days`}
           hint="Placed to available for pickup or delivered — the middle order, not the average."
+          note={stats.medianDays === null ? whyBlank(stats) : `across ${stats.delivered} delivered`}
         />
       </div>
       <div className="border-b border-line lg:border-b-0 lg:border-r">
@@ -180,9 +203,11 @@ function Tiles({ stats }: { stats: DeliveryStats }) {
           value={formatPct(stats.onTimeRate)}
           hint="Share of judged, delivered orders that arrived within their promise."
           note={
-            stats.unjudged > 0
-              ? `${stats.unjudged} delivered orders had no promise in force and are not rated`
-              : undefined
+            stats.onTimeRate === null
+              ? whyBlank(stats)
+              : stats.unjudged > 0
+                ? `${stats.unjudged} delivered orders had no promise in force and are not rated`
+                : undefined
           }
         />
       </div>
@@ -199,7 +224,91 @@ function Tiles({ stats }: { stats: DeliveryStats }) {
         value={stats.noTracking.toLocaleString('en-US')}
         tone={stats.noTracking > 0 ? 'text-warn' : undefined}
         hint="Expected a parcel for this order; the warehouse has not booked one."
+        // The largest, loudest figure on the page on any young workspace, and
+        // the one most easily read as a fault. It is not: it counts orders no
+        // warehouse file has covered yet, and it falls with every file read.
+        note={stats.noTracking > 0 ? 'falls as each warehouse file is read' : undefined}
       />
+    </section>
+  )
+}
+
+/** "4 minutes ago", "2 hours ago". Null input means the carrier was never asked. */
+function since(iso: string | null): string {
+  if (!iso) return 'never'
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`
+  const days = Math.floor(hours / 24)
+  return `${days} ${days === 1 ? 'day' : 'days'} ago`
+}
+
+/**
+ * Where the orders in this range are right now.
+ *
+ * Everything in the tile strip above measures deliveries that FINISHED, so on a
+ * workspace switched on last week all four are honestly blank and the page says
+ * nothing whatsoever about the parcels that ARE moving. That is the gap this
+ * fills: it is the one section that can be truthful and non-empty on day one,
+ * and it is the answer to "is this thing actually working".
+ *
+ * Deliberately NOT a second tile strip. These are four positions along one
+ * journey, not four independent measures, so they read left to right along a
+ * single bar. Colour never carries the meaning alone: every segment is also
+ * named and counted underneath.
+ */
+function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastCheckedAt: string | null }) {
+  const stages = [
+    { label: 'Not shipped', count: stats.noTracking, color: 'var(--warn)' },
+    { label: 'At the warehouse', count: stats.booked, color: 'var(--ink-muted)' },
+    { label: 'In transit', count: stats.inTransit, color: 'var(--accent)' },
+    { label: 'Delivered', count: stats.delivered, color: 'var(--ink)' },
+  ]
+  const total = stages.reduce((n, s) => n + s.count, 0)
+  // Nothing to place. The tile strip's own emptiness already says it, and an
+  // empty bar would be decoration.
+  if (total === 0) return null
+
+  return (
+    <section className="rounded-[var(--radius-card)] border border-line bg-surface px-5 py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="text-[15px] font-semibold text-ink">Where everything is now</h2>
+        <p className="text-[12px] text-muted">
+          Carrier checked {since(lastCheckedAt)}
+          {lastCheckedAt === null && ', so nothing has moved off "at the warehouse" yet'}
+        </p>
+      </div>
+
+      <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-line" role="presentation">
+        {stages.map((s) =>
+          s.count === 0 ? null : (
+            // A single parcel among four hundred still has to be visible, so a
+            // non-zero stage never falls below a hairline of width.
+            <div
+              key={s.label}
+              style={{ width: `${Math.max(1.5, (s.count / total) * 100)}%`, background: s.color }}
+            />
+          ),
+        )}
+      </div>
+
+      <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-3">
+        {stages.map((s) => (
+          <div key={s.label} className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ background: s.color, opacity: s.count === 0 ? 0.35 : 1 }}
+            />
+            <dt className="text-[12px] text-muted">{s.label}</dt>
+            <dd className={`num text-[13px] font-semibold ${s.count === 0 ? 'text-faint' : 'text-ink'}`}>
+              {s.count.toLocaleString('en-US')}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
   )
 }
@@ -239,14 +348,24 @@ function Split({ stats }: { stats: DeliveryStats }) {
 }
 
 /** Every day count that occurred — the tail a median alone hides. */
-function Distribution({ data }: { data: DeliveryStats['distribution'] }) {
+function Distribution({
+  data,
+  waiting,
+}: {
+  data: DeliveryStats['distribution']
+  /** Why there is nothing to draw, when there is nothing to draw. */
+  waiting: string | null
+}) {
   const max = Math.max(1, ...data.map((d) => d.count))
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
       <h2 className="text-[13px] font-semibold text-ink">How long delivered orders took</h2>
       <p className="mt-0.5 text-[12px] text-muted">One bar per day count, so the tail is visible.</p>
       {data.length === 0 ? (
-        <p className="mt-4 text-[13px] text-muted">No delivered orders in this range yet.</p>
+        <p className="mt-4 text-[13px] text-muted">
+          Nothing has arrived yet, so there is no spread to draw
+          {waiting ? `: ${waiting}.` : '.'}
+        </p>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <div className="flex h-[110px] min-w-max items-end gap-1.5">
@@ -268,14 +387,17 @@ function Distribution({ data }: { data: DeliveryStats['distribution'] }) {
 }
 
 /** stats.byCountry is already sorted busiest first. */
-function CountryTable({ rows }: { rows: CountryStat[] }) {
+function CountryTable({ rows, waiting }: { rows: CountryStat[]; waiting: string | null }) {
   return (
     <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <div className="px-5 py-3.5">
         <h2 className="text-[13px] font-semibold text-ink">By country</h2>
       </div>
       {rows.length === 0 ? (
-        <p className="px-5 pb-5 text-[13px] text-muted">No delivered orders in this range yet.</p>
+        <p className="px-5 pb-5 text-[13px] text-muted">
+          A country appears once one of its orders has arrived
+          {waiting ? `: ${waiting}.` : '.'}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px]">
@@ -308,7 +430,16 @@ function CountryTable({ rows }: { rows: CountryStat[] }) {
 }
 
 /** The only part anyone acts on, so it is the part with the most room. */
-function LateList({ rows, total }: { rows: LateOrder[]; total: number }) {
+function LateList({
+  rows,
+  total,
+  judged,
+}: {
+  rows: LateOrder[]
+  total: number
+  /** How many orders were actually assessed. Zero makes "nothing is late" a lie. */
+  judged: number
+}) {
   // `total` can exceed `rows.length`: the route caps the list it sends. A
   // silent cap here would read as "that's all of them" on the one screen
   // whose job is to say how much is actually wrong.
@@ -328,7 +459,13 @@ function LateList({ rows, total }: { rows: LateOrder[]; total: number }) {
         )}
       </div>
       {rows.length === 0 ? (
-        <p className="px-5 pb-5 text-[13px] text-muted">Nothing is late in this range.</p>
+        // "Nothing is late" and "nothing was looked at" are opposite pieces of
+        // news that a single zero reports identically. Say which one it is.
+        <p className="px-5 pb-5 text-[13px] text-muted">
+          {judged === 0
+            ? 'No order has passed its promised date yet, so there is nothing to chase.'
+            : 'Nothing is late in this range.'}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px]">
@@ -708,10 +845,11 @@ export function DeliveryClient({
                   className={`space-y-4 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}
                 >
                   <Tiles stats={data.stats} />
+                  <Pipeline stats={data.stats} lastCheckedAt={data.lastCheckedAt} />
                   <Split stats={data.stats} />
-                  <Distribution data={data.stats.distribution} />
-                  <CountryTable rows={data.stats.byCountry} />
-                  <LateList rows={data.late} total={data.lateTotal} />
+                  <Distribution data={data.stats.distribution} waiting={whyBlank(data.stats)} />
+                  <CountryTable rows={data.stats.byCountry} waiting={whyBlank(data.stats)} />
+                  <LateList rows={data.late} total={data.lateTotal} judged={data.stats.judged} />
                   <UnlinkedParcels items={data.unlinked} total={data.unlinkedTotal} />
                   <div className="space-y-3">
                     <UploadBox onImported={reload} />
