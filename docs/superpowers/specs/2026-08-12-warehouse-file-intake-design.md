@@ -131,8 +131,14 @@ So `Shipment.trackingNumber` must hold the **`KolliID`** (18 digits), never the
 its own record and stamp "Bring does not know this number yet" forever.
 
 A consignment carries all of its packages, so a lookup by either number returns
-everything needed. Numbers already accounted for by an earlier response are skipped,
-which takes the sample from 34 lookups down to 27.
+everything needed. Numbers already accounted for by an earlier response are skipped.
+
+Measured by running the committed parser over the sample file, that is **61 distinct
+long numbers** — the 27 seventeen-digit `Sändningsref` values plus the 34 eighteen-digit
+`KolliID` values — reducing to **27 Bring lookups** and **34 `Shipment` rows**, one per
+package. The 61 is the figure to reason about when judging how long an import takes,
+because it is what the parser hands to `resolveConsignments`; the 27 is what actually
+leaves the building.
 
 ### Matching rule
 

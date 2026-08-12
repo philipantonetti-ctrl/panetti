@@ -380,7 +380,7 @@ git commit -m "feat(delivery): pull tracking numbers out of a file without readi
   - `type ResolvedConsignment = { consignmentId: string; packageNumbers: string[]; recipientEmail: string | null; recipientName: string | null }`
   - `resolveConsignments(creds: BringCredentials, numbers: string[], opts?: { deadline?: number }): Promise<{ consignments: ResolvedConsignment[]; unresolved: string[] }>`
 
-One request per number, because Bring answers about only one. After each response we record every number that response accounted for — its `consignmentId` and all of its `packageNumber`s — and skip those later. That is what turns 34 numbers in the sample file into 27 requests: a two-parcel order is one consignment carrying both packages.
+One request per number, because Bring answers about only one. After each response we record every number that response accounted for — its `consignmentId` and all of its `packageNumber`s — and skip those later. Measured by running the committed parser over the sample file, that is what turns its **61 distinct long numbers** — 27 seventeen-digit shipment references plus 34 eighteen-digit package numbers — into **27 requests**, which then write **34 `Shipment` rows**: a two-parcel order is one consignment carrying both packages.
 
 `unresolved` is every input number Bring returned nothing for. It is reported, never guessed at.
 
@@ -539,8 +539,10 @@ const str = (v: unknown): string | null =>
  * A file lists both the package number and the shipment reference for the same
  * parcel, and a two-parcel order lists three numbers for one consignment. Since
  * a response names its consignment AND all of its packages, everything it
- * accounted for can be struck off before the next request. That is what takes
- * the sample file's 34 numbers down to 27 lookups.
+ * accounted for can be struck off before the next request. Measured by running
+ * the committed parser over the real 2026-08-11 file, that is what takes its 61
+ * distinct long numbers — 27 seventeen-digit shipment references plus 34
+ * eighteen-digit package numbers — down to 27 lookups.
  */
 export async function resolveConsignments(
   creds: BringCredentials,
@@ -1531,7 +1533,11 @@ On `https://panetti.vercel.app/settings/delivery`, set the tracking-from date fo
 
 Upload `LTAS_Eod_Report_20260811.xlsx` on `https://panetti.vercel.app/delivery`, or send it to the Postmark address.
 
-Expected: 34 parcels parsed, 27 consignments resolved, 34 shipments written, 0 unmatched. If the unmatched count is not zero, read the reasons on the page before changing any code — a refusal names itself, and the most likely honest cause is a shop that has not been switched on.
+Expected, on the sample file: 61 distinct long numbers read out of it, **27 consignments resolved**, **34 shipments written** (one per package), and **0 unmatched**.
+
+The delivery page will say **"Parsed 27, Linked 27, Unmatched 0"**, and 27 is the right number to see there — `rowsParsed` counts consignments plus the numbers Bring could not resolve, not raw long numbers. A file lists two long numbers per parcel, so counting numbers would report a flawless import as half of them vanishing. Do not read the 27 as 7 parcels having gone missing.
+
+If the unmatched count is not zero, read the reasons on the page before changing any code — every refusal names itself, and the most likely honest cause is a shop that has not been switched on.
 
 ---
 
