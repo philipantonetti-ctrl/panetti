@@ -7,22 +7,23 @@ let mockUser: SessionUser | null = null
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }) }))
 vi.mock('@/lib/auth/current-user', () => ({ currentUser: async () => mockUser }))
 
-// linkRows is the exact seam Finding 1's fix guards (src/lib/bring/import.ts).
-// Forcing it to throw here proves the route's catch-all (Finding 2) hides an
-// unexpected failure from the client — including anything that looks like a
-// connection string — instead of forwarding the caught error's own message.
-// knownOrderNumbers is left real: nothing here depends on its answer, since
-// the file below matches no known order and the mocked linkRows throws
-// regardless of what rows (even zero) it is given.
-vi.mock('@/lib/bring/link', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/bring/link')>()
-  return {
-    ...actual,
-    linkRows: async () => {
-      throw new Error('Can’t reach database server at `10.0.0.5:5432`')
-    },
-  }
-})
+// getDeliveryConfig is a seam inside importWarehouseFile's one guarded block
+// (src/lib/bring/import.ts). Its own docstring promises it never throws, but it
+// runs a findUnique, and import.ts guards it rather than trusting that on
+// faith — so a dropped connection there is exactly the "unexpected failure"
+// shape this file exists to pin. Forcing it to throw proves the route's
+// catch-all hides such a failure from the client, including anything that looks
+// like a connection string, instead of forwarding the caught error's message.
+//
+// Mocked rather than driven through the real DeliveryConfig singleton on
+// purpose: this file runs in the parallel `app` project, and that singleton is
+// a fixed-id row the `delivery` project's tests rewrite. Reading it for real
+// would make these assertions depend on who ran last.
+vi.mock('@/lib/delivery/config', () => ({
+  getDeliveryConfig: async () => {
+    throw new Error('Can’t reach database server at `10.0.0.5:5432`')
+  },
+}))
 
 const { POST } = await import('./route')
 const { db } = await import('@/lib/db')
@@ -30,7 +31,7 @@ const { db } = await import('@/lib/db')
 // Unique to THIS file's TrackingImport rows — see the Test data convention
 // note in src/lib/bring/import.integration.test.ts. TrackingImport has no
 // shop to tag, so scope by the filenames only this suite uses.
-const FILENAMES = ['route-unexpected.csv', 'route-parse-error.docx']
+const FILENAMES = ['route-unexpected.csv', 'route-parse-error.docx', 'route-excel.xlsx']
 
 async function cleanup() {
   await db.trackingImport.deleteMany({ where: { filename: { in: FILENAMES } } })
@@ -69,7 +70,26 @@ describe('POST /api/delivery/import', () => {
     const res = await postFile('route-parse-error.docx', 'whatever')
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toMatch(/Only PDF and CSV/)
+    expect(body.error).toMatch(/Only Excel, PDF and CSV/)
+  })
+
+  // The manual button takes the SAME path as the emailed report. Before it was
+  // rewired it called importTrackingFile, which reads the warehouse's own order
+  // number — a column that matched the right order 0 times out of 27 — and
+  // refused .xlsx outright, so the manual fallback could not even open the file
+  // the warehouse sends. Both paths upsert on the one Shipment.trackingNumber
+  // unique key, so the wrong path here could overwrite a correct BRING_EMAIL
+  // link with a wrong FILE one and have the cron stamp real milestones onto the
+  // wrong order.
+  //
+  // These bytes are not a real workbook, so the answer is still an error — but
+  // it is the xlsx reader's error, which is only reachable on the new path.
+  it('opens the Excel the warehouse actually sends, on the same path the email takes', async () => {
+    const res = await postFile('route-excel.xlsx', 'not really a workbook')
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(/could not be read as an Excel file/i)
+    expect(body.error).not.toMatch(/Only Excel, PDF and CSV/)
   })
 
   it('never lets an import response be cached: private, no-store on every outcome', async () => {

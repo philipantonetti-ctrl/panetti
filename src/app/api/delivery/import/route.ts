@@ -1,14 +1,24 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
-import { importTrackingFile, ImportParseError } from '@/lib/bring/import'
+import { importWarehouseFile, ImportParseError } from '@/lib/bring/import'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
-/** Reading a PDF is not instant, and a big one must not be cut off half-parsed. */
+/** Reading the file and asking Bring about every parcel in it is not instant. */
 export const maxDuration = 60
 
-/** One warehouse file's worth of tracking numbers. Admin only. */
+/**
+ * One warehouse file's worth of tracking numbers. Admin only.
+ *
+ * The SAME path the emailed report takes — `importWarehouseFile`, not the older
+ * `importTrackingFile`. Both upsert on the one `Shipment.trackingNumber` unique
+ * key, so leaving the manual button on the order-number path meant a hand
+ * upload could overwrite a correct `BRING_EMAIL` link with a wrong `FILE` one,
+ * after which the cron stamped real Bring milestones onto the wrong order. The
+ * warehouse's `Order` column matched the right order 0 times out of 27; the
+ * recipient email Bring returns matched 27 out of 27.
+ */
 export async function POST(req: Request) {
   try {
     assertAdmin(await currentUser())
@@ -19,7 +29,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Choose a file first.' }, { status: 400, headers: NO_STORE })
     }
 
-    const result = await importTrackingFile(
+    const result = await importWarehouseFile(
       Buffer.from(await file.arrayBuffer()),
       file.name,
       'UPLOAD',
