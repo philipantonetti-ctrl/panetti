@@ -75,6 +75,12 @@ export async function POST(req: Request) {
 
   const attachments = Array.isArray(body.Attachments) ? (body.Attachments as Attachment[]) : []
   const results: { filename: string; linked?: number; error?: string }[] = []
+  // How many attachments got far enough to call importWarehouseFile — past
+  // both the readable-type gate and the size gate. NOT the same as
+  // results.length: a skipped attachment now pushes its own entry into
+  // results too, so results.length alone can no longer distinguish "nothing
+  // was ever read" from "one attachment was skipped and recorded below".
+  let attempted = 0
 
   for (const a of attachments) {
     const filename = typeof a?.Name === 'string' ? a.Name : ''
@@ -106,6 +112,7 @@ export async function POST(req: Request) {
     }
 
     const buf = Buffer.from(content, 'base64')
+    attempted++
 
     try {
       const r = await importWarehouseFile(buf, filename, 'EMAIL', {
@@ -124,12 +131,20 @@ export async function POST(req: Request) {
     }
   }
 
-  if (results.length === 0) {
-    // An email whose Attachments carried nothing at all — not even a wrong
-    // extension to skip and record above — is the one case left with no
-    // per-attachment entry to point at, so it still gets its own row: the
-    // event nobody would otherwise notice, linking simply stops and the page
-    // looks like a quiet day.
+  if (attempted === 0) {
+    // Nothing in this email ever reached importWarehouseFile — no
+    // attachments at all, every one an unreadable type, or every one
+    // oversized. Gated on THAT, not on results.length: a skipped attachment
+    // now leaves its own entry in `results`, but `results` is the JSON body
+    // handed back to Postmark, which no human ever reads — the delivery page
+    // reads TrackingImport. Without this row, an email whose ONLY attachment
+    // is a renamed report (eod.xls instead of eod.xlsx) would look, to
+    // anyone checking later, exactly like a quiet morning.
+    //
+    // Deliberately NOT written when an attachment DID reach importWarehouseFile
+    // and then threw — that path already records its own row via
+    // recordFailedAttempt in lib/bring/import.ts, and a second one here
+    // would be a confusing duplicate for the same failure.
     await db.trackingImport
       .create({
         data: {

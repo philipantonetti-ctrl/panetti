@@ -121,6 +121,26 @@ describe('POST /api/delivery/inbound', () => {
     ])
   })
 
+  // Pins a regression: recording the skip in `results` (above) is not enough
+  // on its own — `results` is the JSON body handed back to Postmark, and no
+  // human ever reads it. An email whose ONLY attachment is unreadable must
+  // still leave a TrackingImport row, or it is exactly as invisible as
+  // before — the warehouse renames the report `eod.xls`, sends it alone, and
+  // the delivery page shows a quiet morning that never happened.
+  it('leaves a TrackingImport row when the only attachment is unreadable, not just a response entry', async () => {
+    importWarehouseFile.mockReset()
+    const res = await post(message('signature.png'))
+    expect(res.status).toBe(200)
+    expect(importWarehouseFile).not.toHaveBeenCalled()
+
+    const row = await db.trackingImport.findFirst({
+      where: { source: 'EMAIL', filename: 'signature.png' },
+      orderBy: { receivedAt: 'desc' },
+    })
+    expect(row).not.toBeNull()
+    expect(row?.error).toMatch(/no readable attachment/i)
+  })
+
   // The scenario the review actually found: a report renamed to the wrong
   // extension riding along with an attachment that DOES succeed. The skip
   // must not disappear behind the sibling's success.
