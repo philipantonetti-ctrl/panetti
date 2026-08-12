@@ -16,7 +16,9 @@ const SECRET = 'inbound-secret-for-tests'
 // (filename '(none)') and any filename we invent below need covering here —
 // listed anyway, defensively, so a future change to the route cannot leak a
 // row this file doesn't clean up.
-const FILES = ['eod.xlsx', 'eod.xls', 'notes.txt', 'signature.png', '(none)']
+const FILES = [
+  'eod.xlsx', 'eod.xls', 'notes.txt', 'signature.png', '(none)', '(unnamed attachment)',
+]
 
 beforeAll(() => {
   process.env.DELIVERY_INBOUND_SECRET = SECRET
@@ -138,7 +140,11 @@ describe('POST /api/delivery/inbound', () => {
       orderBy: { receivedAt: 'desc' },
     })
     expect(row).not.toBeNull()
-    expect(row?.error).toMatch(/no readable attachment/i)
+    // The row names the file AND why it was refused. An operator reading the
+    // delivery page has to be able to act on it — "a .png arrived instead of
+    // the report" is actionable, "something went wrong" is not.
+    expect(row?.error).toMatch(/signature\.png/)
+    expect(row?.error).toMatch(/not a file type/i)
   })
 
   // The scenario the review actually found: a report renamed to the wrong
@@ -164,6 +170,41 @@ describe('POST /api/delivery/inbound', () => {
       { filename: 'eod.xls', error: expect.any(String) },
       { filename: 'notes.txt', linked: 1 },
     ])
+
+    // The load-bearing half. `results` goes back to Postmark and nobody reads
+    // it; the delivery page reads TrackingImport. Asserting only on the body
+    // above pinned the partial fix — the renamed report still vanished from the
+    // only place a human would ever look for it.
+    const row = await db.trackingImport.findFirst({
+      where: { source: 'EMAIL', filename: 'eod.xls' },
+      orderBy: { receivedAt: 'desc' },
+    })
+    expect(row).not.toBeNull()
+    expect(row?.error).toMatch(/not a file type/i)
+  })
+
+  // Two readable attachments used to claim 50 seconds EACH against a 60-second
+  // maxDuration for the whole request. A platform timeout is not a JS throw, so
+  // importWarehouseFile's guard never runs: no row written, no 200 returned,
+  // and Postmark redelivers the identical payload forever.
+  it('spends one deadline across the whole request, not one per attachment', async () => {
+    importWarehouseFile.mockReset()
+    importWarehouseFile.mockResolvedValue({
+      importId: 'x', parsed: 1, linked: 1, unmatched: [], unaccounted: 0,
+    })
+    const content = Buffer.from('x').toString('base64')
+    await post({
+      Subject: 'EOD report',
+      From: 'warehouse@example.test',
+      Attachments: [
+        { Name: 'eod.xlsx', Content: content, ContentType: 'application/octet-stream' },
+        { Name: 'notes.txt', Content: content, ContentType: 'text/plain' },
+      ],
+    })
+    expect(importWarehouseFile).toHaveBeenCalledTimes(2)
+    const first = importWarehouseFile.mock.calls[0][3] as { deadline: number }
+    const second = importWarehouseFile.mock.calls[1][3] as { deadline: number }
+    expect(second.deadline).toBe(first.deadline)
   })
 
   it('answers 200 even when the import throws, so Postmark does not redeliver', async () => {

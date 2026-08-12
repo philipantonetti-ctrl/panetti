@@ -15,6 +15,9 @@ export const maxDuration = 60
  * genuinely run long — so a slow Bring day stops the import cleanly instead
  * of the platform killing the function mid-write. Same shape as
  * SHOPS_DEADLINE_MS in api/cron/sync/route.ts.
+ *
+ * It is a budget for the WHOLE REQUEST, spent once and shared by every
+ * attachment — see the single `deadline` computed before the loop below.
  */
 const IMPORT_DEADLINE_MS = 50_000
 
@@ -54,6 +57,26 @@ function authorised(req: Request): boolean {
 type Attachment = { Name?: unknown; Content?: unknown }
 
 /**
+ * The durable trace of one delivery we refused to read.
+ *
+ * Best-effort, exactly like recordFailedAttempt in lib/bring/import.ts: if the
+ * database is what failed, this bookkeeping write fails too and must not turn a
+ * refused attachment into a 500 that makes Postmark redeliver forever.
+ */
+function recordRefusal(filename: string, error: string) {
+  return db.trackingImport
+    .create({
+      data: {
+        filename,
+        source: 'EMAIL',
+        rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0,
+        error,
+      },
+    })
+    .catch(() => {})
+}
+
+/**
  * One inbound email from the warehouse.
  *
  * Answers 200 to almost everything on purpose. Postmark redelivers on a
@@ -75,49 +98,61 @@ export async function POST(req: Request) {
 
   const attachments = Array.isArray(body.Attachments) ? (body.Attachments as Attachment[]) : []
   const results: { filename: string; linked?: number; error?: string }[] = []
-  // How many attachments got far enough to call importWarehouseFile — past
-  // both the readable-type gate and the size gate. NOT the same as
-  // results.length: a skipped attachment now pushes its own entry into
-  // results too, so results.length alone can no longer distinguish "nothing
-  // was ever read" from "one attachment was skipped and recorded below".
-  let attempted = 0
+  // How many attachments left a TrackingImport row behind, by any route: one
+  // importWarehouseFile wrote (success or its own recordFailedAttempt), or one
+  // recordRefusal wrote for an attachment we would not even open. NOT
+  // results.length — `results` is the JSON body handed to Postmark and no human
+  // ever reads it. This counts the durable traces, which is what decides
+  // whether the catch-all row at the bottom is a needed record or a duplicate.
+  let recorded = 0
+
+  // ONE budget for the whole request, spent before the loop rather than inside
+  // it. Computed per attachment, two readable attachments each claimed a fresh
+  // 50s against a 60s maxDuration for the request as a whole — and a platform
+  // timeout is not a JS throw, so nothing in importWarehouseFile's guard runs:
+  // no row is written, no 200 is returned, and Postmark redelivers the same
+  // payload forever.
+  const deadline = Date.now() + IMPORT_DEADLINE_MS
 
   for (const a of attachments) {
     const filename = typeof a?.Name === 'string' ? a.Name : ''
     const content = typeof a?.Content === 'string' ? a.Content : ''
 
     if (!filename || !READABLE.test(filename) || !content) {
-      // A bare `continue` here used to mean a skipped attachment left no
-      // trace whenever a SIBLING attachment in the same email succeeded: the
-      // loop still produced a non-empty `results`, so the "nothing readable
-      // at all" record below never ran either, and a renamed report
-      // (eod.xls instead of eod.xlsx) vanished behind a notes.txt that
-      // happened to ride along. Recorded per-attachment instead.
-      results.push({
-        filename: filename || '(unnamed attachment)',
-        error: !filename
-          ? 'No filename'
-          : !content
-            ? 'No content'
-            : 'Not a file type this route can read',
-      })
+      // Recorded in TrackingImport, not merely in `results`. A bare `continue`
+      // here used to mean a skipped attachment left no trace whenever a SIBLING
+      // attachment in the same email succeeded — the report renamed `eod.xls`
+      // vanished behind the `notes.txt` that happened to ride along — and
+      // pushing it into `results` alone did not fix that, because `results` is
+      // handed back to Postmark and read by nobody. The delivery page reads
+      // TrackingImport, so that is where a refusal has to land.
+      const error = !filename
+        ? 'This email carried an attachment with no filename'
+        : !content
+          ? `This email carried no content for ${filename}`
+          : `${filename} is not a file type this route can read`
+      const named = filename || '(unnamed attachment)'
+      results.push({ filename: named, error })
+      await recordRefusal(named, error)
+      recorded++
       continue
     }
 
     // Gate on the still-encoded length before decoding: a hostile attachment
     // is refused without ever materialising the decoded copy.
     if (content.length > MAX_ATTACHMENT_B64_CHARS) {
-      results.push({ filename, error: 'Attachment too large' })
+      const error = `${filename} is too large to read`
+      results.push({ filename, error })
+      await recordRefusal(filename, error)
+      recorded++
       continue
     }
 
     const buf = Buffer.from(content, 'base64')
-    attempted++
+    recorded++
 
     try {
-      const r = await importWarehouseFile(buf, filename, 'EMAIL', {
-        deadline: Date.now() + IMPORT_DEADLINE_MS,
-      })
+      const r = await importWarehouseFile(buf, filename, 'EMAIL', { deadline })
       results.push({ filename, linked: r.linked })
     } catch (e) {
       // importWarehouseFile guards every step that can fail — parsing,
@@ -131,30 +166,18 @@ export async function POST(req: Request) {
     }
   }
 
-  if (attempted === 0) {
-    // Nothing in this email ever reached importWarehouseFile — no
-    // attachments at all, every one an unreadable type, or every one
-    // oversized. Gated on THAT, not on results.length: a skipped attachment
-    // now leaves its own entry in `results`, but `results` is the JSON body
-    // handed back to Postmark, which no human ever reads — the delivery page
-    // reads TrackingImport. Without this row, an email whose ONLY attachment
-    // is a renamed report (eod.xls instead of eod.xlsx) would look, to
-    // anyone checking later, exactly like a quiet morning.
+  if (recorded === 0) {
+    // Nothing in this email left a trace anywhere: it carried no attachments at
+    // all. An email that arrived and said nothing is still the event nobody
+    // would otherwise notice, so it gets its own row and the delivery page can
+    // tell it apart from a morning the warehouse never wrote.
     //
-    // Deliberately NOT written when an attachment DID reach importWarehouseFile
-    // and then threw — that path already records its own row via
-    // recordFailedAttempt in lib/bring/import.ts, and a second one here
-    // would be a confusing duplicate for the same failure.
-    await db.trackingImport
-      .create({
-        data: {
-          filename: attachments.map((a) => String(a?.Name ?? '?')).join(', ') || '(none)',
-          source: 'EMAIL',
-          rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0,
-          error: 'This email carried no readable attachment',
-        },
-      })
-      .catch(() => {})
+    // Deliberately NOT written when an attachment was already recorded above,
+    // whether it was refused (recordRefusal) or reached importWarehouseFile and
+    // threw (recordFailedAttempt in lib/bring/import.ts). Those rows name the
+    // file and the reason; a second, vaguer row for the same delivery would
+    // only be a confusing duplicate.
+    await recordRefusal('(none)', 'This email carried no readable attachment')
   }
 
   return NextResponse.json({ ok: true, results }, { headers: NO_STORE })
