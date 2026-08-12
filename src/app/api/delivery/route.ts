@@ -72,7 +72,7 @@ export async function GET(req: Request) {
         trackingNumbers: r.view.trackingNumbers,
       }))
 
-    const [unlinked, unlinkedTotal, imports] = await Promise.all([
+    const [unlinked, unlinkedTotal, imports, config] = await Promise.all([
       db.shipment.findMany({
         where: { orderId: null },
         orderBy: { createdAt: 'desc' },
@@ -95,6 +95,13 @@ export async function GET(req: Request) {
           unmatched: true, source: true,
         },
       }),
+      // Only the timestamp. getDeliveryConfig would decrypt the Bring key and
+      // the Slack URL to answer a question about freshness, and a page load has
+      // no business touching either.
+      db.deliveryConfig.findUnique({
+        where: { id: 'singleton' },
+        select: { lastSyncAt: true },
+      }),
     ])
 
     return NextResponse.json(
@@ -106,6 +113,10 @@ export async function GET(req: Request) {
         unlinkedTotal,
         imports: imports.map((i) => ({ ...i, receivedAt: i.receivedAt.toISOString() })),
         trackedShops: shops.filter((s) => s.deliveryTrackingFrom !== null).length,
+        // When the carrier was last asked about the moving parcels. Null means
+        // never. Without it, a page whose figures are all still blank looks
+        // exactly like one whose sync died three days ago.
+        lastCheckedAt: config?.lastSyncAt?.toISOString() ?? null,
       },
       { headers: NO_STORE },
     )

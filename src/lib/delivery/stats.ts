@@ -20,6 +20,17 @@ export type DeliveryStats = {
   unjudged: number
   lateNow: number
   noTracking: number
+  /**
+   * Where the orders that have NOT arrived are sitting right now.
+   *
+   * Every other figure above describes deliveries that finished. On a workspace
+   * that has just been switched on, all of them are legitimately null, and a
+   * page built only from them cannot tell "nothing is set up" apart from
+   * "everything is set up and thirty parcels are moving". These two counts are
+   * what make that difference sayable.
+   */
+  booked: number
+  inTransit: number
   distribution: { days: number; count: number }[]
   byCountry: CountryStat[]
 }
@@ -100,6 +111,11 @@ export function deliveryStats(
     // list. A returned parcel has no availableAt, so it correctly stays here.
     lateNow: views.filter((v) => v.late && v.availableAt === null).length,
     noTracking: views.filter((v) => v.state === 'NO_TRACKING').length,
+    // Booked is the warehouse still holding it; in transit is the carrier
+    // moving it. Counted from the same `state` the Late list and the Orders
+    // column already badge, so the strip can never disagree with the rows.
+    booked: views.filter((v) => v.state === 'BOOKED').length,
+    inTransit: views.filter((v) => v.state === 'IN_TRANSIT').length,
     distribution: [...counts.entries()]
       .map(([days, count]) => ({ days, count }))
       .sort((a, b) => a.days - b.days),
