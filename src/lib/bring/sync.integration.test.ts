@@ -296,4 +296,31 @@ describe('syncShipments', () => {
     expect(cfg.lastError).toBeNull()
     expect(cfg.lastSyncAt).not.toBeNull()
   })
+
+  // This file mocks the global fetch, not a fetchTracking function, so the
+  // request shape is read off the URL's own `q` params rather than a mock's
+  // call args. Two due parcels: with a batch size above 1 they would be sent
+  // as two `q` params on one request, and Bring answers about only one of
+  // them (see file banner on client.ts / sync.ts) — leaving the other
+  // falsely marked "does not know this number yet". Assert on the shape of
+  // every request, not on how many requests happen: that count depends on
+  // how many parcels the surrounding fixtures leave due, not on this test.
+  it('asks Bring about one parcel per request — it answers about only one', async () => {
+    for (const n of [T1, T2]) {
+      await db.shipment.create({ data: { trackingNumber: n, nextPollAt: new Date('2026-01-01') } })
+    }
+    const calls: string[][] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<(url: string) => Promise<Response>>(async (url) => {
+        calls.push(new URL(url).searchParams.getAll('q'))
+        return new Response(JSON.stringify({ consignmentSet: [] }), { status: 200 })
+      }),
+    )
+
+    await syncShipments({ now })
+
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    for (const numbers of calls) expect(numbers).toHaveLength(1)
+  })
 })
