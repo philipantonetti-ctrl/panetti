@@ -9,6 +9,25 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 export const maxDuration = 60
 
 /**
+ * The budget for the WHOLE upload, spent once and handed to importWarehouseFile,
+ * exactly as api/delivery/inbound/route.ts does for an emailed report.
+ *
+ * Derived from this route's own maxDuration rather than copied as a literal, so
+ * raising the ceiling above cannot leave the budget silently stale. The 10s it
+ * holds back covers the parse, the database writes and the response itself; the
+ * rest is for the Bring lookups inside resolveConsignments, which are one HTTP
+ * call per parcel and the only part of the chain that can genuinely run long.
+ *
+ * This is not belt-and-braces. A platform timeout is not a JS throw, so nothing
+ * in importWarehouseFile's guard runs when the function is killed: no
+ * TrackingImport row is written and no answer reaches the operator. That is the
+ * silent morning this whole feature exists to prevent, reachable through the
+ * button someone presses precisely because the automatic feed already failed.
+ * The deadline turns it into a short import that says how short it was.
+ */
+const UPLOAD_DEADLINE_MS = (maxDuration - 10) * 1_000
+
+/**
  * One warehouse file's worth of tracking numbers. Admin only.
  *
  * The SAME path the emailed report takes — `importWarehouseFile`, not the older
@@ -33,6 +52,7 @@ export async function POST(req: Request) {
       Buffer.from(await file.arrayBuffer()),
       file.name,
       'UPLOAD',
+      { deadline: Date.now() + UPLOAD_DEADLINE_MS },
     )
     return NextResponse.json(result, { headers: NO_STORE })
   } catch (e) {
