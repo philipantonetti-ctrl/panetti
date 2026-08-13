@@ -161,7 +161,11 @@ export function Chat({ day = null }: { day?: string | null }) {
               </p>
             ))}
             {busy && <p className="text-[13px] text-faint">Looking it up…</p>}
-            <div ref={endRef} />
+            {/* scroll-mb clears the pinned composer: scrollIntoView({ block: 'end' })
+                aligns this anchor with the viewport bottom, which the composer
+                itself occupies (taller still with the example chips showing),
+                so without this the newest message lands partly underneath it. */}
+            <div ref={endRef} className="scroll-mb-28" />
           </div>
         </section>
       )}

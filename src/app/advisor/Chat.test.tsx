@@ -5,7 +5,8 @@ import '@testing-library/jest-dom/vitest'
 import { Chat } from './Chat'
 
 // jsdom has no layout, so this method does not exist there.
-Element.prototype.scrollIntoView = vi.fn()
+const scrollIntoViewMock = vi.fn()
+Element.prototype.scrollIntoView = scrollIntoViewMock
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -13,6 +14,9 @@ afterEach(() => {
   // localStorage now outlives a test the way it outlives a tab, so a leak
   // here would let one test's conversation appear in the next one.
   window.localStorage.clear()
+  // The mock is assigned once at module scope, so call counts would
+  // otherwise accumulate across every test in this file.
+  scrollIntoViewMock.mockClear()
 })
 
 function stubFetch(body: unknown, ok = true) {
@@ -185,5 +189,30 @@ describe('Chat', () => {
 
     await waitFor(() => expect(screen.getByText(/Looking it up/)).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /clear/i })).toBeDisabled()
+  })
+
+  it('scrolls without animation when the visitor prefers reduced motion', async () => {
+    stubFetch({ reply: 'Answered.', messages: [] })
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }))
+    render(<Chat />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'auto', block: 'end' })
+  })
+
+  it('scrolls smoothly when reduced motion is not requested', async () => {
+    // jsdom has no matchMedia at all, which the guard treats the same as a
+    // browser reporting no preference: the default, animated path.
+    stubFetch({ reply: 'Answered.', messages: [] })
+    render(<Chat />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'end' })
   })
 })
