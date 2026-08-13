@@ -7,6 +7,7 @@ import { currentUser } from '@/lib/auth/current-user'
 import { db } from '@/lib/db'
 import { PUT as putItem } from './items/route'
 import { POST as postSupplier } from './suppliers/route'
+import { POST as postOrder, PUT as putOrder } from './purchase-orders/route'
 
 const TAG = `TEST-WRITE-${Date.now()}`
 const admin = () =>
@@ -64,6 +65,60 @@ describe('inventory write routes', () => {
         method: 'PUT',
         body: JSON.stringify({ sku: `${TAG}-B`, productionDays: -5 }),
       }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('accepts a purchase order with no ETA, because unknown is not the same as wrong', async () => {
+    admin()
+    const item = await db.supplyItem.create({ data: { sku: `${TAG}-PO1`, name: 'Test' } })
+    const res = await postOrder(
+      post({ supplyItemId: item.id, quantity: 600, orderedAt: '2026-08-13T00:00:00.000Z' }),
+    )
+    expect(res.status).toBe(200)
+    const order = await db.purchaseOrder.findFirstOrThrow({ where: { supplyItemId: item.id } })
+    // Stored as null, not defaulted to a date. The forecast refuses to let an
+    // order with no ETA move a run-out date, and that rule starts here.
+    expect(order.eta).toBeNull()
+  })
+
+  it('refuses a purchase order for nothing', async () => {
+    admin()
+    const item = await db.supplyItem.create({ data: { sku: `${TAG}-PO2`, name: 'Test' } })
+    const res = await postOrder(
+      post({ supplyItemId: item.id, quantity: 0, orderedAt: '2026-08-13T00:00:00.000Z' }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('refuses a non-admin on purchase orders too', async () => {
+    vi.mocked(currentUser).mockResolvedValue(null)
+    expect((await postOrder(post({ quantity: 1 }))).status).toBe(403)
+  })
+
+  it('marks an order received, so it stops counting as incoming stock', async () => {
+    admin()
+    const item = await db.supplyItem.create({ data: { sku: `${TAG}-PO3`, name: 'Test' } })
+    const order = await db.purchaseOrder.create({
+      data: { supplyItemId: item.id, quantity: 600, orderedAt: new Date('2026-08-13T00:00:00.000Z') },
+    })
+    const res = await putOrder(
+      new Request('http://test', {
+        method: 'PUT',
+        body: JSON.stringify({ id: order.id, receivedAt: '2026-08-20T00:00:00.000Z' }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const after = await db.purchaseOrder.findUniqueOrThrow({ where: { id: order.id } })
+    expect(after.receivedAt).not.toBeNull()
+  })
+
+  it('refuses a quantity that is not a number, rather than coercing it', async () => {
+    // Number(true) is 1. Without the type check this would quietly order one unit.
+    admin()
+    const item = await db.supplyItem.create({ data: { sku: `${TAG}-PO4`, name: 'Test' } })
+    const res = await postOrder(
+      post({ supplyItemId: item.id, quantity: true, orderedAt: '2026-08-13T00:00:00.000Z' }),
     )
     expect(res.status).toBe(400)
   })

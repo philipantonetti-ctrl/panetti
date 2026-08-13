@@ -25,6 +25,16 @@ const date = (v: unknown): Date | null => {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+/**
+ * A quantity, or null if it is not one. Strict about type on purpose: `Number(true)`
+ * is 1, so a bare cast would silently turn a malformed request into an order for a
+ * single unit. Matches the strictness of `whole()` in the items route.
+ */
+function positiveWhole(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) return null
+  return value
+}
+
 export async function GET() {
   return guard(async () =>
     NextResponse.json(
@@ -40,8 +50,8 @@ export async function GET() {
 export async function POST(req: Request) {
   return guard(async () => {
     const b = (await req.json()) as Record<string, unknown>
-    const quantity = Number(b.quantity)
-    if (!Number.isInteger(quantity) || quantity <= 0) return fail('How many units?', 400)
+    const quantity = positiveWhole(b.quantity)
+    if (quantity === null) return fail('How many units?', 400)
     const orderedAt = date(b.orderedAt)
     if (!orderedAt) return fail('When was it ordered?', 400)
     if (!b.supplyItemId) return fail('Which product?', 400)
@@ -71,8 +81,8 @@ export async function PUT(req: Request) {
     if ('receivedAt' in b) data.receivedAt = date(b.receivedAt)
     if ('notes' in b) data.notes = (b.notes as string | null) ?? null
     if ('quantity' in b) {
-      const quantity = Number(b.quantity)
-      if (!Number.isInteger(quantity) || quantity <= 0) return fail('How many units?', 400)
+      const quantity = positiveWhole(b.quantity)
+      if (quantity === null) return fail('How many units?', 400)
       data.quantity = quantity
     }
 
