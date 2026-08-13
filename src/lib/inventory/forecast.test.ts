@@ -21,6 +21,9 @@ describe('forecast', () => {
   it('orders back from the run-out date by production plus delivery', () => {
     const f = forecast(input({ stock: 1000 }), TODAY) // 100 days of cover
     expect(day(f.orderBy!)).toBe(day(new Date(f.runsOutOn!.getTime() - 70 * 86400000)))
+    // Still ahead of us, so this must be null rather than a negative number the
+    // page would have to interpret. Without this line the guard is deletable.
+    expect(f.daysLate).toBeNull()
   })
 
   it('says how late an order already is rather than showing a past date', () => {
@@ -30,9 +33,10 @@ describe('forecast', () => {
   })
 
   it('a container landing before the run-out pushes the date out', () => {
-    const without = forecast(input(), TODAY)
+    // 100 units at 10 a day, plus 500 landing on day 5: stock is 50 when the
+    // container arrives, so 550 then drains at 10 a day and hits zero on day 59.
     const with_ = forecast(input({ arrivals: [{ eta: inDays(5), quantity: 500 }] }), TODAY)
-    expect(with_.runsOutOn!.getTime()).toBeGreaterThan(without.runsOutOn!.getTime())
+    expect(day(with_.runsOutOn!)).toBe(day(inDays(59)))
   })
 
   it('a container landing after the run-out does not', () => {
@@ -54,6 +58,13 @@ describe('forecast', () => {
     expect(forecast(input({ stock: 1000 }), TODAY).quantity).toBe(1600)
   })
 
+  it('honours a custom cover period instead of the 90-day default', () => {
+    // 10 a day over 30 production + 40 delivery + 30 cover = 1000 units,
+    // against 1600 at the default cover. So this pins the override itself.
+    const f = forecast(input({ stock: 1000, coverDays: 30 }), TODAY)
+    expect(f.quantity).toBe(1000)
+  })
+
   it('never orders below the supplier minimum', () => {
     // Runs out on day 299, inside the 365-day horizon, so a quantity is
     // genuinely computed: 1/day over 30 + 40 + 90 days = 160 units. The
@@ -70,9 +81,9 @@ describe('forecast', () => {
   it('a container rounding can never drop below the minimum', () => {
     // 160 needed, raised to the 500 minimum, then rounded up to two 400-unit
     // containers = 800. Applying the container first would give 400, then the
-    // minimum would lift it to 500 — which is not a whole number of containers,
-    // so the second assertion below is what pins the ordering.
+    // minimum would lift it to 500 — not a whole number of containers.
     const f = forecast(input({ stock: 300, burn: 1, moq: 500, unitsPerContainer: 400 }), TODAY)
+    expect(f.quantity).toBe(800)
     expect(f.quantity).toBeGreaterThanOrEqual(500)
     expect(f.quantity! % 400).toBe(0)
   })
