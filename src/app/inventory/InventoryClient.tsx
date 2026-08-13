@@ -60,7 +60,7 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
                   <td className="px-4 py-2.5">
                     {r.stock.quantity ?? '—'}
                     {r.stock.disagrees && (
-                      <span className="ml-2 text-[11px]" style={{ color: 'var(--warn)' }}>
+                      <span className="ml-2 text-[11px] text-warn">
                         shops disagree
                       </span>
                     )}
@@ -73,11 +73,20 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
                   </td>
                   <td className="px-4 py-2.5">
                     {r.forecast.daysLate !== null ? (
-                      <span style={{ color: 'var(--loss)' }}>
+                      <span className="text-loss">
                         order now, {r.forecast.daysLate} days late
                       </span>
+                    ) : r.forecast.orderBy ? (
+                      when(r.forecast.orderBy)
+                    ) : r.forecast.runsOutOn ? (
+                      // A run-out date but no order-by date means the lead times
+                      // are missing. Saying so here is the point: this is the
+                      // state every row is in before anyone fills them in.
+                      <span className="text-muted">{r.forecast.note ?? '—'}</span>
                     ) : (
-                      (when(r.forecast.orderBy) ?? <span className="text-muted">—</span>)
+                      // The reason already appears in the "Runs out" cell one
+                      // column left; repeating it here would just be noise.
+                      <span className="text-muted">—</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 tabular-nums">

@@ -261,7 +261,7 @@ function since(iso: string | null): string {
  */
 function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastCheckedAt: string | null }) {
   const stages = [
-    { label: 'Not shipped', count: stats.noTracking, color: 'var(--warn)' },
+    { label: 'Not shipped', count: stats.noTracking, color: 'var(--color-warn)' },
     { label: 'At the warehouse', count: stats.booked, color: 'var(--ink-muted)' },
     { label: 'In transit', count: stats.inTransit, color: 'var(--accent)' },
     { label: 'Delivered', count: stats.delivered, color: 'var(--ink)' },

@@ -36,7 +36,7 @@ export function StockClient({ rows }: { rows: StockRow[] }) {
             <p className="text-[13px] tabular-nums text-ink">
               {r.quantity ?? 'no stock data'}
               {r.disagrees && (
-                <span className="ml-2 text-[11px]" style={{ color: 'var(--warn)' }}>
+                <span className="ml-2 text-[11px] text-warn">
                   shops disagree
                 </span>
               )}

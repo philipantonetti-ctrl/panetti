@@ -60,6 +60,21 @@ describe('InventoryClient', () => {
     )
   })
 
+  it('says the lead times are missing, rather than showing an unexplained dash', () => {
+    // The state EVERY row is in before anyone enters production and delivery
+    // days. A run-out date beside a blank order-by column with no reason is
+    // precisely the "nothing to worry about" blank this page must never show.
+    shows(
+      <InventoryClient rows={[row({
+        forecast: {
+          runsOutOn: '2026-11-17T00:00:00.000Z', orderBy: null, daysLate: null,
+          quantity: null, onOrderWithoutEta: 0, note: 'set lead times',
+        },
+      })]} unusable={[]} />,
+      /set lead times/,
+    )
+  })
+
   it('names products it had to leave out rather than showing a shorter list', () => {
     const { container } = render(
       <InventoryClient rows={[]} unusable={[
