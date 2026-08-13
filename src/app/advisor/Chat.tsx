@@ -5,9 +5,10 @@ import { useEffect, useRef, useState } from 'react'
 /**
  * Asking follow-up questions.
  *
- * The conversation lives in the browser: sessionStorage so a refresh does not
- * lose it, and no server table, because a stored history is a schema, a list
- * screen and a retention question this feature does not need yet.
+ * The conversation lives in the browser: localStorage so closing the tab does
+ * not lose it, stamped with the briefing's day so each morning starts fresh.
+ * No server table, because a stored history is a schema, a list screen and a
+ * retention question this feature does not need yet.
  */
 
 const STORAGE_KEY = 'advisor-chat'
@@ -25,7 +26,7 @@ const EXAMPLES = [
 
 type Bubble = { role: 'user' | 'assistant'; text: string }
 
-export function Chat() {
+export function Chat({ day = null }: { day?: string | null }) {
   const [bubbles, setBubbles] = useState<Bubble[]>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -33,31 +34,46 @@ export function Chat() {
   // bubbles, which are only what a person should read.
   const transcript = useRef<unknown[]>([])
 
+  // Keyed on `day`, not [], because the briefing is fetched after this mounts:
+  // on the first pass `day` is null, and a mount-only check would never see the
+  // real one arrive. Storage is rewritten on every change below, so re-running
+  // this restores identical content rather than clobbering anything.
   useEffect(() => {
-    const saved = window.sessionStorage.getItem(STORAGE_KEY)
+    const saved = window.localStorage.getItem(STORAGE_KEY)
     if (!saved) return
     try {
-      const parsed = JSON.parse(saved) as { bubbles: Bubble[]; transcript: unknown[] }
-      // sessionStorage is synchronous and the deps array is empty, so this
-      // effect runs exactly once, on mount, to hydrate from it — not the
-      // render-loop resync the cascading-render warning below guards against.
+      const parsed = JSON.parse(saved) as {
+        day?: string | null
+        bubbles?: Bubble[]
+        transcript?: unknown[]
+      }
+
+      // Only when both days are known and differ. An unstamped entry, or a
+      // briefing that has not loaded, is never grounds for throwing work away.
+      if (parsed.day && day && parsed.day !== day) {
+        window.localStorage.removeItem(STORAGE_KEY)
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setBubbles([])
+        transcript.current = []
+        return
+      }
+
       // A cast is compile-time only -- a truthy but wrong-shaped value would
       // otherwise reach setBubbles and throw inside bubbles.map() during
       // render, outside this try/catch, taking the whole Advisor page down
       // with it rather than just failing to restore the chat.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBubbles(Array.isArray(parsed.bubbles) ? parsed.bubbles : [])
       transcript.current = Array.isArray(parsed.transcript) ? parsed.transcript : []
     } catch {
       // A corrupt entry is not worth a broken page.
     }
-  }, [])
+  }, [day])
 
   function remember(next: Bubble[]) {
     setBubbles(next)
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ bubbles: next, transcript: transcript.current }),
+      JSON.stringify({ day, bubbles: next, transcript: transcript.current }),
     )
   }
 
@@ -95,7 +111,7 @@ export function Chat() {
   }
 
   return (
-    <section className="rounded-[12px] border border-line bg-surface">
+    <section className="mt-4 rounded-[12px] border border-line bg-surface">
       <h2 className="border-b border-line px-4 py-3 text-[13px] font-semibold text-ink">Ask</h2>
 
       {/* An empty box with a placeholder shows the control but not the

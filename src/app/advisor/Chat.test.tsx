@@ -7,6 +7,9 @@ import { Chat } from './Chat'
 afterEach(() => {
   vi.unstubAllGlobals()
   window.sessionStorage.clear()
+  // localStorage now outlives a test the way it outlives a tab, so a leak
+  // here would let one test's conversation appear in the next one.
+  window.localStorage.clear()
 })
 
 function stubFetch(body: unknown, ok = true) {
@@ -92,5 +95,51 @@ describe('Chat', () => {
 
     await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /^Why did/i })).not.toBeInTheDocument()
+  })
+
+  function seed(day: string | null, text: string) {
+    window.localStorage.setItem(
+      'advisor-chat',
+      JSON.stringify({ day, bubbles: [{ role: 'user', text }], transcript: [] }),
+    )
+  }
+
+  it('restores a conversation stored under the same day', () => {
+    seed('2026-08-13', 'question from this morning')
+    render(<Chat day="2026-08-13" />)
+    expect(screen.getByText('question from this morning')).toBeInTheDocument()
+  })
+
+  it('starts empty when the stored conversation belongs to another day', () => {
+    seed('2026-08-12', 'question from yesterday')
+    render(<Chat day="2026-08-13" />)
+    expect(screen.queryByText('question from yesterday')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('advisor-chat')).toBeNull()
+  })
+
+  // A briefing that failed to load must not destroy the conversation.
+  it('keeps the conversation when no day is known yet', () => {
+    seed('2026-08-12', 'question from yesterday')
+    render(<Chat />)
+    expect(screen.getByText('question from yesterday')).toBeInTheDocument()
+  })
+
+  it('keeps an unstamped conversation once a day arrives', () => {
+    seed(null, 'asked before the briefing loaded')
+    render(<Chat day="2026-08-13" />)
+    expect(screen.getByText('asked before the briefing loaded')).toBeInTheDocument()
+  })
+
+  it('stamps what it saves with the current day', async () => {
+    stubFetch({ reply: 'Answered.', messages: [] })
+    render(<Chat day="2026-08-13" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+    const stored = JSON.parse(window.localStorage.getItem('advisor-chat') as string)
+    expect(stored.day).toBe('2026-08-13')
+    expect(stored.bubbles).toHaveLength(2)
   })
 })
