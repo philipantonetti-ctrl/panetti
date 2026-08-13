@@ -50,14 +50,26 @@ describe('seasonalIndex', () => {
   it('clamps, so one freak week cannot order a container', () => {
     const sales = steady(730, 1)
     sales.push({ day: daysBefore(365), units: 1_000_000 })
-    expect(seasonalIndex(sales, TODAY, TODAY)).toBeLessThanOrEqual(4)
+    expect(seasonalIndex(sales, TODAY, TODAY)).toBe(4)
   })
 
-  it('clamps at the bottom too', () => {
-    // Two years of sales, all of them far from this date last year.
+  it('clamps at the bottom, and actually reaches the clamp to prove it', () => {
+    // Over 400 days of history so seasonality is genuinely computed, with the
+    // target window (a year ago, +/- 14 days) deliberately EMPTY and every sale
+    // sitting in the baseline outside it. Ratio is 0/280, so only the clamp can
+    // produce the answer.
     const sales: Sale[] = []
-    for (let i = 0; i < 60; i++) sales.push({ day: daysBefore(i), units: 50 })
-    for (let i = 180; i < 240; i++) sales.push({ day: daysBefore(i), units: 50 })
-    expect(seasonalIndex(sales, TODAY, TODAY)).toBeGreaterThanOrEqual(0.25)
+    for (let i = 380; i <= 716; i++) sales.push({ day: daysBefore(i), units: 10 })
+    expect(seasonalIndex(sales, TODAY, TODAY)).toBe(0.25)
+  })
+
+  it('reports a genuinely twice-as-busy period as exactly 2, not merely "more than 1"', () => {
+    // 20 a day through the window a year ago, 10 a day across the rest of the
+    // baseline. The honest answer is exactly 2. The previous formula counted the
+    // window inside its own baseline and would report 1.857 here.
+    const sales: Sale[] = []
+    for (let i = 352; i <= 379; i++) sales.push({ day: daysBefore(i), units: 20 })
+    for (let i = 380; i <= 716; i++) sales.push({ day: daysBefore(i), units: 10 })
+    expect(seasonalIndex(sales, TODAY, TODAY)).toBe(2)
   })
 })

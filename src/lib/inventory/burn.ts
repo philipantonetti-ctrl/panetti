@@ -18,6 +18,9 @@ export const SEASON_WINDOW_DAYS = 28
 const INDEX_MIN = 0.25
 const INDEX_MAX = 4
 
+/** Named because it appears in both the lookback and the baseline width. */
+const DAYS_PER_YEAR = 365
+
 const unitsBetween = (sales: Sale[], from: number, to: number): number =>
   sales.reduce((n, s) => (s.day.getTime() >= from && s.day.getTime() < to ? n + s.units : n), 0)
 
@@ -49,16 +52,22 @@ export function hasSeasonalHistory(sales: Sale[], today: Date): boolean {
 export function seasonalIndex(sales: Sale[], day: Date, today: Date): number {
   if (!hasSeasonalHistory(sales, today)) return 1
 
-  const centre = day.getTime() - 365 * DAY
+  const centre = day.getTime() - DAYS_PER_YEAR * DAY
   const half = (SEASON_WINDOW_DAYS / 2) * DAY
   const inWindow = unitsBetween(sales, centre - half, centre + half)
 
   const yearTo = centre + half
-  const overYear = unitsBetween(sales, yearTo - 365 * DAY, yearTo)
+  const overYear = unitsBetween(sales, yearTo - DAYS_PER_YEAR * DAY, yearTo)
   if (overYear === 0) return 1
 
-  const expected = (overYear / 365) * SEASON_WINDOW_DAYS
-  if (expected === 0) return 1
+  // The baseline must not include the window it is judging. `inWindow` is the
+  // most recent 28 days of `overYear`, so leaving it in measures the period
+  // against itself: a busy month lifts its own baseline and reports calmer than
+  // it was. Taking it out makes a truly 4x period read as 4x rather than 3.25x.
+  const baselineUnits = overYear - inWindow
+  if (baselineUnits <= 0) return 1 // nothing outside the window to compare against
+
+  const expected = (baselineUnits / (DAYS_PER_YEAR - SEASON_WINDOW_DAYS)) * SEASON_WINDOW_DAYS
 
   return Math.min(INDEX_MAX, Math.max(INDEX_MIN, inWindow / expected))
 }
