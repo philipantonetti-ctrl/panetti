@@ -93,9 +93,12 @@ describe('loadInventory', () => {
     })
 
     const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
-    // 100 on hand + 500 incoming at 10/day = far short of the 9999 row's effect.
-    expect(row.forecast.runsOutOn).not.toBeNull()
-    expect(row.forecast.runsOutOn!.getTime()).toBeLessThan(TODAY.getTime() + 100 * 86400000)
+    // 100 on hand at 10 a day, plus 500 landing on day 3, empties on day 59.
+    // Pinned exactly, because all three ways this can break land elsewhere:
+    // dropping arrivals gives day 9, counting the received order gives no
+    // run-out at all, and a mishandled ETA moves the date.
+    const asDay = (d: Date) => d.toISOString().slice(0, 10)
+    expect(asDay(row.forecast.runsOutOn!)).toBe(asDay(new Date(TODAY.getTime() + 59 * 86400000)))
   })
 
   it('sorts the soonest run-out first', async () => {
@@ -106,5 +109,27 @@ describe('loadInventory', () => {
 
     const rows = (await loadInventory(TODAY)).rows.filter((r) => r.sku.startsWith(TAG))
     expect(rows[0].sku).toBe(SKU)
+  })
+
+  it('keeps a product with no run-out date, and sorts it after those that have one', async () => {
+    await sell(`${TAG}-no`, SKU, 10, 600, 5, 'NO') // sells fast, runs out in days
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Urgent' } })
+
+    // Stocked but never sold, so burn is zero and it never runs out. It must
+    // still appear — a product that stopped selling is worth seeing — and it
+    // must sort behind everything that does have a date.
+    const shop = await db.shop.findFirstOrThrow({ where: { name: `${TAG}-no` } })
+    await db.product.create({
+      data: {
+        shopId: shop.id, externalId: `${TAG}-quiet`, sku: `${TAG}-QUIET`,
+        name: 'Quiet', stockQuantity: 500, stockUpdatedAt: new Date(),
+      },
+    })
+    await db.supplyItem.create({ data: { sku: `${TAG}-QUIET`, name: 'Quiet' } })
+
+    const rows = (await loadInventory(TODAY)).rows.filter((r) => r.sku.startsWith(TAG))
+    expect(rows.map((r) => r.sku)).toEqual([SKU, `${TAG}-QUIET`])
+    expect(rows[1].forecast.runsOutOn).toBeNull()
+    expect(rows[1].forecast.note).toBe('not selling')
   })
 })

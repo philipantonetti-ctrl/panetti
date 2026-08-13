@@ -76,7 +76,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
       },
       select: {
         sku: true, quantity: true,
-        order: { select: { placedAt: true, shippingCountry: true } },
+        order: { select: { placedAt: true, shippingCountry: true, status: true } },
       },
     }),
   ])
@@ -85,6 +85,11 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   const sales = new Map<string, Sale[]>()
   const countries = new Map<string, Map<string, number>>()
   for (const l of lines) {
+    // The SQL filter above is case-sensitive and Woo statuses are stored exactly
+    // as the store sent them, custom plugin statuses included. This repeats the
+    // check the way metrics/engine.ts and woo/sync.ts both do: a cancelled order
+    // counted as demand would inflate every reorder quantity.
+    if (VOIDED_STATUSES.includes(l.order.status.toLowerCase() as never)) continue
     if (!isUsableSku(l.sku)) continue
     const sku = normaliseSku(l.sku)
     if (!sales.has(sku)) sales.set(sku, [])
