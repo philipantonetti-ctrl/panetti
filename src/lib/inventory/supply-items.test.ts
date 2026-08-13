@@ -51,7 +51,15 @@ describe('ensureSupplyItems', () => {
 
   it('reports how many it created, so a caller can stay silent when nothing changed', async () => {
     await shopWith('no', [{ sku: SKU, name: 'Pasta Maker', externalId: '1' }])
-    expect(await ensureSupplyItems()).toBe(1)
-    expect(await ensureSupplyItems()).toBe(0)
+
+    await ensureSupplyItems()
+    expect(await db.supplyItem.count({ where: { sku: SKU } })).toBe(1)
+
+    // A second run must create nothing NEW. Counted as a delta rather than an
+    // absolute, because this function deliberately scans every product in the
+    // database and a suite running beside this one may legitimately add its own.
+    const before = await db.supplyItem.count()
+    await ensureSupplyItems()
+    expect(await db.supplyItem.count()).toBe(before)
   })
 })
