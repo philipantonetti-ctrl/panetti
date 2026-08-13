@@ -122,4 +122,49 @@ describe('inventory write routes', () => {
     )
     expect(res.status).toBe(400)
   })
+
+  it('clears a setting when sent null, rather than ignoring it', async () => {
+    admin()
+    await db.supplyItem.create({ data: { sku: `${TAG}-C`, name: 'Test', productionDays: 30 } })
+    const res = await putItem(
+      new Request('http://test', {
+        method: 'PUT',
+        body: JSON.stringify({ sku: `${TAG}-C`, productionDays: null }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const item = await db.supplyItem.findUniqueOrThrow({ where: { sku: `${TAG}-C` } })
+    expect(item.productionDays).toBeNull()
+  })
+
+  it('leaves a setting alone when its field is absent', async () => {
+    // Absent and null mean different things: absent is "do not touch this",
+    // null is "clear it". Collapsing the two would wipe a lead time someone
+    // entered every time an unrelated field was saved.
+    admin()
+    await db.supplyItem.create({ data: { sku: `${TAG}-D`, name: 'Test', productionDays: 30 } })
+    await putItem(
+      new Request('http://test', {
+        method: 'PUT',
+        body: JSON.stringify({ sku: `${TAG}-D`, deliveryDays: 40 }),
+      }),
+    )
+    const item = await db.supplyItem.findUniqueOrThrow({ where: { sku: `${TAG}-D` } })
+    expect(item.productionDays).toBe(30)
+    expect(item.deliveryDays).toBe(40)
+  })
+
+  it('refuses a fractional lead time', async () => {
+    // These numbers become purchase quantities. Half a day of production is a
+    // typo, and silently flooring it would be worse than refusing it.
+    admin()
+    await db.supplyItem.create({ data: { sku: `${TAG}-E`, name: 'Test' } })
+    const res = await putItem(
+      new Request('http://test', {
+        method: 'PUT',
+        body: JSON.stringify({ sku: `${TAG}-E`, productionDays: 2.5 }),
+      }),
+    )
+    expect(res.status).toBe(400)
+  })
 })
