@@ -64,6 +64,16 @@ model Product {
   lastPrice    Int      @default(0) // last seen selling price from order lines, minor units, ex VAT
   catalogPrice Int?     // the store's own listed price, minor units, incl VAT
 
+  /// Units on hand as this shop reports them. Null = the store does not manage
+  /// stock for this item, which is NOT zero — zero is sold out.
+  ///
+  /// Per shop, deliberately, even though the shops mirror ONE warehouse. Storing
+  /// only an agreed figure would throw away the disagreement, and the
+  /// disagreement is what reveals a drifting mirror: on 2026-08-13 four shops
+  /// said 906 and Germany said 939.
+  stockQuantity  Int?
+  stockUpdatedAt DateTime?
+
   shop  Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   costs ProductCost[]
   items OrderItem[]

@@ -6,6 +6,7 @@ import {
   fetchOrderStatuses,
   fetchOrders,
   fetchOrdersByIds,
+  type CatalogEntry,
   type WooCredentials,
 } from './client'
 import { mapOrder, type WooOrder } from './map'
@@ -425,6 +426,46 @@ async function recordRun(
 }
 
 /**
+ * Write a shop's catalogue readings onto its products.
+ *
+ * Exported so it can be tested without running a whole sync. Only products the
+ * catalogue actually mentioned are touched — a truncated page or a product the
+ * store no longer lists must never blank a figure we already hold.
+ */
+export async function storeCatalog(
+  shopId: string,
+  catalog: Map<string, CatalogEntry>,
+): Promise<void> {
+  if (catalog.size === 0) return
+
+  const known = await db.product.findMany({
+    where: { shopId },
+    select: { id: true, externalId: true, catalogPrice: true, stockQuantity: true },
+  })
+
+  const now = new Date()
+  for (const p of known) {
+    const entry = catalog.get(p.externalId)
+    if (entry === undefined) continue // not mentioned: leave it exactly as it is
+
+    // A fractional quantity cannot go into an Int column, and the caller swallows
+    // the throw — one bad value would silently freeze this shop's stock for good.
+    // Unknown is honest and the page says so out loud.
+    const stock = entry.stock !== null && Number.isInteger(entry.stock) ? entry.stock : null
+
+    const data: { catalogPrice?: number; stockQuantity: number | null; stockUpdatedAt: Date } = {
+      // Always written, even when unchanged: the stamp is how the page says when
+      // we last looked, and "unchanged" is itself a reading.
+      stockQuantity: stock,
+      stockUpdatedAt: now,
+    }
+    if (entry.price !== null && entry.price !== p.catalogPrice) data.catalogPrice = entry.price
+
+    await db.product.update({ where: { id: p.id }, data })
+  }
+}
+
+/**
  * Pull a shop's orders and store them.
  *
  * Two phases, decided by `lastSyncAt`:
@@ -639,22 +680,10 @@ export async function syncShop(
       }
 
       // Best-effort on a COMPLETED sync only: refresh each known product's own
-      // listed price (incl. VAT). A failure here never fails the sync — order
+      // listed price and its stock. A failure here never fails the sync — order
       // data is the priority, and the next completed sync simply retries.
       try {
-        const catalog = await fetchCatalog(creds)
-        if (catalog.size) {
-          const known = await db.product.findMany({
-            where: { shopId: shop.id },
-            select: { id: true, externalId: true, catalogPrice: true },
-          })
-          for (const p of known) {
-            const price = catalog.get(p.externalId)?.price
-            if (price != null && price !== p.catalogPrice) {
-              await db.product.update({ where: { id: p.id }, data: { catalogPrice: price } })
-            }
-          }
-        }
+        await storeCatalog(shop.id, await fetchCatalog(creds))
       } catch {
         // Retried on the next completed sync.
       }
