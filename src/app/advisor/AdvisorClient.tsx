@@ -534,9 +534,7 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
           </div>
         )}
 
-        <div className="mt-4">
-          <Chat />
-        </div>
+        <Chat day={briefing?.day ?? null} />
       </PageBody>
     </>
   )
