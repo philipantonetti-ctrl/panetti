@@ -4,6 +4,7 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { ADVISOR_MODEL } from '@/lib/advisor/brief'
 import { runTool, TOOL_DEFINITIONS } from '@/lib/advisor/tools'
+import { trimTranscript, type Turn } from '@/lib/advisor/trim'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -25,8 +26,6 @@ and compare them.
 
 If a tool returns nothing, or a figure is missing, say so. A confident wrong number
 is worse than an admitted gap. Write plainly and briefly.`
-
-type Turn = { role: 'user' | 'assistant'; content: unknown }
 
 export async function POST(req: Request) {
   try {
@@ -52,7 +51,10 @@ export async function POST(req: Request) {
     // single stuck call without pretending to guarantee the total; the
     // platform's own kill at maxDuration is what actually enforces that.
     const client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 })
-    const turns = [...messages] as Anthropic.MessageParam[]
+    // Bounded here rather than in the browser: the route already returns the
+    // array the client stores, so trimming once on the way in caps the cost of
+    // this request AND the size of what the browser keeps.
+    const turns = trimTranscript(messages) as Anthropic.MessageParam[]
 
     // A bounded loop, not a while(true): a model that keeps calling tools must
     // stop somewhere, and stopping visibly beats a request the platform kills.
