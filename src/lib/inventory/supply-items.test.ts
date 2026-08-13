@@ -55,11 +55,12 @@ describe('ensureSupplyItems', () => {
     await ensureSupplyItems()
     expect(await db.supplyItem.count({ where: { sku: SKU } })).toBe(1)
 
-    // A second run must create nothing NEW. Counted as a delta rather than an
-    // absolute, because this function deliberately scans every product in the
-    // database and a suite running beside this one may legitimately add its own.
-    const before = await db.supplyItem.count()
+    // Scoped to this test's own tag, not a global count. `ensureSupplyItems`
+    // deliberately scans every product in the database, and a suite running
+    // beside this one both creates AND deletes its own rows — so an unscoped
+    // count can move in either direction between these two reads.
+    const before = await db.supplyItem.count({ where: { sku: { startsWith: TAG } } })
     await ensureSupplyItems()
-    expect(await db.supplyItem.count()).toBe(before)
+    expect(await db.supplyItem.count({ where: { sku: { startsWith: TAG } } })).toBe(before)
   })
 })
