@@ -345,3 +345,46 @@ describe('fetchOrderStatuses', () => {
     expect(await fetchOrderStatuses(CREDS)).toEqual([])
   })
 })
+
+// append to src/lib/woo/client.test.ts
+import { fetchCatalog } from './client'
+
+describe('fetchCatalog', () => {
+  const creds = { url: 'https://shop.test', key: 'k', secret: 's' }
+
+  it('carries price and stock back from one sweep', async () => {
+    // Both facts live on the same /products response. Fetching them separately
+    // would double the requests for no new information.
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([
+        { id: 1, price: '649.00', manage_stock: true, stock_quantity: 95 },
+      ]), { status: 200 }),
+    )
+    const catalog = await fetchCatalog(creds)
+    expect(catalog.get('1')).toEqual({ price: 64900, stock: 95 })
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
+  })
+
+  it('reports stock as null when the store does not manage it', async () => {
+    // Not zero. Zero means sold out; "not managed" means we do not know, and
+    // the difference decides whether a product screams at the top of the page.
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([
+        { id: 2, price: '10.00', manage_stock: false, stock_quantity: null },
+      ]), { status: 200 }),
+    )
+    expect((await fetchCatalog(creds)).get('2')).toEqual({ price: 1000, stock: null })
+    spy.mockRestore()
+  })
+
+  it('keeps stock when a product carries no price', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([
+        { id: 3, price: '', manage_stock: true, stock_quantity: 7 },
+      ]), { status: 200 }),
+    )
+    expect((await fetchCatalog(creds)).get('3')).toEqual({ price: null, stock: 7 })
+    spy.mockRestore()
+  })
+})

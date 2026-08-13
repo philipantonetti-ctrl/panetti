@@ -2,7 +2,7 @@ import { db } from '../db'
 import { VOIDED_STATUSES } from '../metrics/types'
 import { decryptSecret } from '../secrets'
 import {
-  fetchCatalogPrices,
+  fetchCatalog,
   fetchOrderStatuses,
   fetchOrders,
   fetchOrdersByIds,
@@ -642,15 +642,15 @@ export async function syncShop(
       // listed price (incl. VAT). A failure here never fails the sync — order
       // data is the priority, and the next completed sync simply retries.
       try {
-        const catalog = await fetchCatalogPrices(creds)
+        const catalog = await fetchCatalog(creds)
         if (catalog.size) {
           const known = await db.product.findMany({
             where: { shopId: shop.id },
             select: { id: true, externalId: true, catalogPrice: true },
           })
           for (const p of known) {
-            const price = catalog.get(p.externalId)
-            if (price !== undefined && price !== p.catalogPrice) {
+            const price = catalog.get(p.externalId)?.price
+            if (price != null && price !== p.catalogPrice) {
               await db.product.update({ where: { id: p.id }, data: { catalogPrice: price } })
             }
           }

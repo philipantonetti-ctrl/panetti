@@ -328,12 +328,26 @@ export async function fetchCoupons(creds: WooCredentials): Promise<string[]> {
   return [...codes]
 }
 
+export type CatalogEntry = {
+  /** The store's own listed price, minor units, incl VAT. Null if unpriced. */
+  price: number | null
+  /**
+   * Units on hand, or null when the store does not manage stock for this item.
+   * Null is not zero: zero is sold out and belongs at the top of the forecast,
+   * "we do not know" does not.
+   */
+  stock: number | null
+}
+
 /**
- * The store's own listed price per product (incl. VAT in our stores), keyed by
- * the WooCommerce product id. Products without a price are skipped.
+ * Each product's listed price AND its stock, keyed by WooCommerce product id.
+ *
+ * One sweep, two facts. Both already live on the same `/products` response, so
+ * asking twice would double the request count of every completed sync to learn
+ * nothing new.
  */
-export async function fetchCatalogPrices(creds: WooCredentials): Promise<Map<string, number>> {
-  const prices = new Map<string, number>()
+export async function fetchCatalog(creds: WooCredentials): Promise<Map<string, CatalogEntry>> {
+  const catalog = new Map<string, CatalogEntry>()
   const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
 
   for (let page = 1; page <= 20; page++) {
@@ -344,13 +358,21 @@ export async function fetchCatalogPrices(creds: WooCredentials): Promise<Map<str
     })
     if (!res.ok) throw await wooError(res)
 
-    const batch = (await res.json()) as { id: number; price?: string }[]
+    const batch = (await res.json()) as {
+      id: number
+      price?: string
+      manage_stock?: boolean
+      stock_quantity?: number | null
+    }[]
     for (const p of batch) {
       const value = p.price ? parseFloat(p.price) : NaN
-      if (!Number.isNaN(value)) prices.set(String(p.id), toMinor(value))
+      catalog.set(String(p.id), {
+        price: Number.isNaN(value) ? null : toMinor(value),
+        stock: p.manage_stock === true && typeof p.stock_quantity === 'number' ? p.stock_quantity : null,
+      })
     }
     if (batch.length < 100) break
   }
 
-  return prices
+  return catalog
 }
