@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { Chat } from './Chat'
 
+// jsdom has no layout, so this method does not exist there.
+Element.prototype.scrollIntoView = vi.fn()
+
 afterEach(() => {
   vi.unstubAllGlobals()
   window.sessionStorage.clear()
@@ -141,5 +144,46 @@ describe('Chat', () => {
     const stored = JSON.parse(window.localStorage.getItem('advisor-chat') as string)
     expect(stored.day).toBe('2026-08-13')
     expect(stored.bubbles).toHaveLength(2)
+  })
+
+  it('shows no conversation card until something has been asked', () => {
+    render(<Chat />)
+    expect(screen.queryByRole('heading', { name: 'Ask' })).not.toBeInTheDocument()
+    // The composer is always there, though.
+    expect(screen.getByPlaceholderText(/Ask/i)).toBeInTheDocument()
+  })
+
+  it('offers no way to clear an empty conversation', () => {
+    render(<Chat />)
+    expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument()
+  })
+
+  it('clears the conversation and the stored copy', async () => {
+    stubFetch({ reply: 'Answered.', messages: [{ role: 'user', content: 'A question' }] })
+    render(<Chat day="2026-08-13" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /clear/i }))
+
+    expect(screen.queryByText('A question')).not.toBeInTheDocument()
+    expect(screen.queryByText('Answered.')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('advisor-chat')).toBeNull()
+    // And the examples come back, because the box is empty again.
+    expect(screen.getAllByRole('button', { name: /why/i })[0]).toBeInTheDocument()
+  })
+
+  it('cannot be cleared while an answer is in flight', async () => {
+    // A fetch that never settles leaves the component busy.
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
+    render(<Chat day="2026-08-13" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText(/Looking it up/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /clear/i })).toBeDisabled()
   })
 })

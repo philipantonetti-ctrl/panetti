@@ -33,6 +33,7 @@ export function Chat({ day = null }: { day?: string | null }) {
   // The model's own transcript, tool calls and all. Kept apart from the
   // bubbles, which are only what a person should read.
   const transcript = useRef<unknown[]>([])
+  const endRef = useRef<HTMLDivElement>(null)
 
   // Keyed on `day`, not [], because the briefing is fetched after this mounts:
   // on the first pass `day` is null, and a mount-only check would never see the
@@ -69,12 +70,28 @@ export function Chat({ day = null }: { day?: string | null }) {
     }
   }, [day])
 
+  // matchMedia is absent in jsdom, so guard rather than assume a browser.
+  useEffect(() => {
+    if (bubbles.length === 0) return
+    const reduce =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    endRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'end' })
+  }, [bubbles])
+
   function remember(next: Bubble[]) {
     setBubbles(next)
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ day, bubbles: next, transcript: transcript.current }),
     )
+  }
+
+  function clear() {
+    if (busy) return
+    transcript.current = []
+    setBubbles([])
+    window.localStorage.removeItem(STORAGE_KEY)
   }
 
   async function send(preset?: string) {
@@ -111,65 +128,87 @@ export function Chat({ day = null }: { day?: string | null }) {
   }
 
   return (
-    <section className="mt-4 rounded-[12px] border border-line bg-surface">
-      <h2 className="border-b border-line px-4 py-3 text-[13px] font-semibold text-ink">Ask</h2>
-
-      {/* An empty box with a placeholder shows the control but not the
-          capability: nothing in it says this can compare two weeks, name a
-          product or reach a single shop. Three real questions do, and they
-          stand down once the conversation has its own content. */}
-      {bubbles.length === 0 && !busy && (
-        <div className="flex flex-wrap gap-2 px-4 py-3">
-          {EXAMPLES.map((q) => (
-            <button
-              key={q}
-              onClick={() => send(q)}
-              className="rounded-full border border-line px-3 py-1 text-[12px] text-muted transition-colors duration-150 hover:border-accent hover:text-accent motion-reduce:transition-none"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Rendered only when it has something in it: an empty transcript still
-          painted its own padding, leaving a dead grey strip under the heading. */}
+    <>
+      {/* The conversation, in normal flow. Rendered only when it has something
+          in it: an "Ask" heading over an empty box every morning is furniture,
+          not information. */}
       {(bubbles.length > 0 || busy) && (
-      <div className="flex flex-col gap-3 px-4 py-3">
-        {bubbles.map((bubble, i) => (
-          <p
-            key={i}
-            className={
-              bubble.role === 'user'
-                ? 'text-[13px] font-medium text-ink'
-                : 'whitespace-pre-wrap text-[13px] text-muted'
-            }
-          >
-            {bubble.text}
-          </p>
-        ))}
-        {busy && <p className="text-[13px] text-faint">Looking it up…</p>}
-      </div>
+        <section className="mt-4 rounded-[12px] border border-line bg-surface">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <h2 className="text-[13px] font-semibold text-ink">Ask</h2>
+            {bubbles.length > 0 && (
+              <button
+                onClick={clear}
+                disabled={busy}
+                className="text-[12px] text-muted transition-colors duration-150 hover:text-ink disabled:opacity-50 motion-reduce:transition-none"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3 px-4 py-3">
+            {bubbles.map((bubble, i) => (
+              <p
+                key={i}
+                className={
+                  bubble.role === 'user'
+                    ? 'text-[13px] font-medium text-ink'
+                    : 'whitespace-pre-wrap text-[13px] text-muted'
+                }
+              >
+                {bubble.text}
+              </p>
+            ))}
+            {busy && <p className="text-[13px] text-faint">Looking it up…</p>}
+            <div ref={endRef} />
+          </div>
+        </section>
       )}
 
-      <div className="flex gap-2 border-t border-line p-3">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') send()
-          }}
-          placeholder="Ask about any shop, product or week"
-          className="flex-1 rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px]"
-        />
-        <button
-          onClick={() => send()}
-          disabled={busy}
-          className="rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[13px] text-white disabled:opacity-50"
-        >
-          Send
-        </button>
+      {/* The composer, pinned. Sticky rather than fixed so it inherits the
+          content column and cannot cover the sidebar, and so it takes up its
+          own space instead of needing a spacer under the last card. This must
+          stay a direct child of <main>: sticky is confined to its parent's
+          box, and a wrapper div would leave it nowhere to travel. */}
+      <div className="sticky bottom-0 mt-4 rounded-[12px] border border-line bg-surface pb-[env(safe-area-inset-bottom)]">
+        {/* An empty box with a placeholder shows the control but not the
+            capability: nothing in it says this can compare two weeks, name a
+            product or reach a single shop. Three real questions do, and they
+            stand down once the conversation has its own content. */}
+        {bubbles.length === 0 && !busy && (
+          <div className="flex flex-wrap gap-2 px-4 pt-3">
+            {EXAMPLES.map((q) => (
+              <button
+                key={q}
+                onClick={() => send(q)}
+                className="rounded-full border border-line px-3 py-1 text-[12px] text-muted transition-colors duration-150 hover:border-accent hover:text-accent motion-reduce:transition-none"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2 p-3">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') send()
+            }}
+            placeholder="Ask about any shop, product or week"
+            className="flex-1 rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px]"
+          />
+          <button
+            onClick={() => send()}
+            disabled={busy}
+            className="rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[13px] text-white disabled:opacity-50"
+          >
+            Send
+          </button>
+        </div>
       </div>
-    </section>
+    </>
   )
 }
