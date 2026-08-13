@@ -262,9 +262,12 @@ function since(iso: string | null): string {
 function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastCheckedAt: string | null }) {
   const stages = [
     { label: 'Not shipped', count: stats.noTracking, color: 'var(--color-warn)' },
-    { label: 'At the warehouse', count: stats.booked, color: 'var(--ink-muted)' },
-    { label: 'In transit', count: stats.inTransit, color: 'var(--accent)' },
-    { label: 'Delivered', count: stats.delivered, color: 'var(--ink)' },
+    // Was var(--ink-muted), which is not a token this theme publishes under any
+    // name. `muted` is the intended weight: the warehouse holding a parcel is a
+    // quieter state than the carrier moving it.
+    { label: 'At the warehouse', count: stats.booked, color: 'var(--color-muted)' },
+    { label: 'In transit', count: stats.inTransit, color: 'var(--color-accent)' },
+    { label: 'Delivered', count: stats.delivered, color: 'var(--color-ink)' },
   ]
   const total = stages.reduce((n, s) => n + s.count, 0)
   // Nothing to place. The tile strip's own emptiness already says it, and an
