@@ -24,8 +24,13 @@ export default async function StockPage() {
           rows={rows.map((r) => ({
             sku: r.sku,
             name: r.name,
+            imageUrl: r.imageUrl,
             quantity: r.stock.quantity,
             disagrees: r.stock.disagrees,
+            // Straight from the forecast, so "36 days left" here and the
+            // run-out date on the Forecast tab are the same fact.
+            runsOutOn: r.forecast.runsOutOn?.toISOString() ?? null,
+            note: r.forecast.note,
             byShop: r.stock.byShop.map((s) => ({
               shopName: s.shopName,
               quantity: s.quantity,

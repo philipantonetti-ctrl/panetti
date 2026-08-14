@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { InventoryClient, type Row } from './InventoryClient'
 
 const row = (over: Partial<Row> & { sku: string }): Row => ({
-  name: over.sku, supplierName: null,
+  name: over.sku, imageUrl: null, supplierName: null,
   stock: { quantity: 0, disagrees: false, byShop: [] },
   burn: 0, seasonal: true,
   forecast: {
@@ -18,13 +18,15 @@ const row = (over: Partial<Row> & { sku: string }): Row => ({
 /**
  * The product names in the order the table actually renders them.
  *
- * The first span of the Product cell, not the cell's textContent: the name and
+ * Read by test id, not by cell text and not by "the first span": the name and
  * the SKU sit in adjacent spans with no whitespace between them, so the cell
- * reads "MIDMID" and splitting on a space finds nothing to split.
+ * reads "MIDMID" and splitting on a space finds nothing to split. Position is
+ * no better — the product cell now leads with a thumbnail, whose placeholder is
+ * itself a span, so "first span" silently returned an empty string.
  */
 function order(container: HTMLElement): string[] {
-  return [...container.querySelectorAll('tbody tr')].map(
-    (tr) => tr.querySelector('td span')!.textContent!.trim(),
+  return [...container.querySelectorAll('[data-testid="forecast-name"]')].map(
+    (e) => e.textContent!.trim(),
   )
 }
 

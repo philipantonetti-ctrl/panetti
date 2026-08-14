@@ -1,10 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { Thumb } from '@/components/Thumb'
 
 export type Row = {
   sku: string
   name: string
+  imageUrl: string | null
   supplierName: string | null
   stock: { quantity: number | null; disagrees: boolean; byShop: unknown[] }
   burn: number
@@ -86,7 +89,31 @@ function sortRows(rows: Row[], by: Column, ascending: boolean): Row[] {
   })
 }
 
-export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { shopName: string; name: string; sku: string }[] }) {
+export function InventoryClient({
+  rows,
+  unusable,
+  now,
+}: {
+  rows: Row[]
+  unusable: { shopName: string; name: string; sku: string }[]
+  /** Injected by tests so "already run out" is a fact, not today's date. */
+  now?: string
+}) {
+  const today = now ? new Date(now) : new Date()
+
+  /**
+   * Nobody has filled in a single lead time yet.
+   *
+   * This is the state the page ships in, and it used to repeat "set lead times"
+   * on every row — nineteen copies of one instruction, in the column that is
+   * supposed to answer when to order. One banner says it once and links to the
+   * place it gets done; the rows go quiet. As soon as any product has lead
+   * times the banner disappears and only the stragglers speak up.
+   */
+  const missingLeadTimes = rows.some((r) => r.forecast.note === 'set lead times')
+  const anySet = rows.some((r) => r.forecast.orderBy !== null || r.forecast.daysLate !== null)
+  const noLeadTimesAnywhere = missingLeadTimes && !anySet
+
   // Null = untouched, so the server's own order stands: soonest run-out first,
   // which is the question the page exists to answer. Only a click overrides it.
   const [sort, setSort] = useState<{ by: Column; ascending: boolean } | null>(null)
@@ -114,6 +141,24 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
 
   return (
     <div className="space-y-5">
+      {noLeadTimesAnywhere && (
+        <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
+          <p className="text-[13px] font-semibold text-ink">
+            Run-out dates are ready. Order dates are not.
+          </p>
+          <p className="mt-1 text-[12px] text-muted">
+            Set production and shipping days for each product and this page can also tell you the
+            date to order by, and how many units to order.
+          </p>
+          <Link
+            href="/inventory/suppliers"
+            className="mt-3 inline-block rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[13px] font-semibold text-white"
+          >
+            Set lead times
+          </Link>
+        </div>
+      )}
+
       {rows.length > 0 && (
         <div className="overflow-x-auto rounded-[var(--radius-card)] border border-line bg-surface">
           <table className="w-full text-[13px]">
@@ -150,14 +195,29 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
               {shown.map((r) => (
                 <tr key={r.sku} className="border-b border-line last:border-0">
                   <td className="px-4 py-2.5">
-                    <span className="font-medium text-ink">{r.name}</span>
-                    <span className="ml-2 text-[12px] text-faint">{r.sku}</span>
-                    {!r.seasonal && (
-                      <span className="ml-2 text-[11px] text-muted">no seasonal history yet</span>
-                    )}
+                    <div className="flex items-center gap-2.5">
+                      <Thumb src={r.imageUrl} alt={r.name} />
+                      <div className="min-w-0">
+                        <span className="font-medium text-ink" data-testid="forecast-name">
+                          {r.name}
+                        </span>
+                        <span className="ml-2 text-[12px] text-faint">{r.sku}</span>
+                        {!r.seasonal && (
+                          <span className="ml-2 text-[11px] text-muted">
+                            no seasonal history yet
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-2.5">
-                    {r.stock.quantity ?? '—'}
+                    {r.stock.quantity === 0 ? (
+                      // Zero is the one figure on this page worth interrupting
+                      // someone for, and it used to look like any other number.
+                      <span className="font-semibold text-loss">Out of stock</span>
+                    ) : (
+                      (r.stock.quantity ?? '—')
+                    )}
                     {r.stock.disagrees && (
                       <span className="ml-2 text-[11px] text-warn">
                         shops disagree
@@ -166,7 +226,15 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
                   </td>
                   <td className="px-4 py-2.5 tabular-nums">{r.burn.toFixed(1)}</td>
                   <td className="px-4 py-2.5">
-                    {when(r.forecast.runsOutOn) ?? (
+                    {r.forecast.runsOutOn ? (
+                      <span
+                        className={
+                          Date.parse(r.forecast.runsOutOn) <= today.getTime() ? 'text-loss' : ''
+                        }
+                      >
+                        {when(r.forecast.runsOutOn)}
+                      </span>
+                    ) : (
                       <span className="text-muted">{r.forecast.note}</span>
                     )}
                   </td>
@@ -179,9 +247,22 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
                       when(r.forecast.orderBy)
                     ) : r.forecast.runsOutOn ? (
                       // A run-out date but no order-by date means the lead times
-                      // are missing. Saying so here is the point: this is the
-                      // state every row is in before anyone fills them in.
-                      <span className="text-muted">{r.forecast.note ?? '—'}</span>
+                      // are missing. When EVERY row is in that state the banner
+                      // above has already said so, and repeating it here once per
+                      // product is nineteen copies of one instruction. When only
+                      // some rows lack them, this is the only place that says
+                      // which — so it speaks up, and as a link rather than as
+                      // dead text you cannot act on.
+                      noLeadTimesAnywhere ? (
+                        <span className="text-muted">—</span>
+                      ) : (
+                        <Link
+                          href="/inventory/suppliers"
+                          className="text-warn underline-offset-2 hover:underline"
+                        >
+                          {r.forecast.note ?? 'set lead times'}
+                        </Link>
+                      )
                     ) : (
                       // The reason already appears in the "Runs out" cell one
                       // column left; repeating it here would just be noise.
