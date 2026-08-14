@@ -46,7 +46,7 @@ export async function PUT(req: Request) {
     if (!sku) return fail('Which product?', 400)
 
     const fields = ['productionDays', 'deliveryDays', 'moq', 'unitsPerContainer', 'coverDays'] as const
-    const data: Record<string, number | null | string> = {}
+    const data: Record<string, number | null | string | boolean> = {}
     for (const f of fields) {
       if (!(f in body)) continue
       const parsed = whole(body[f], f)
@@ -54,6 +54,21 @@ export async function PUT(req: Request) {
       data[f] = parsed.value
     }
     if ('supplierId' in body) data.supplierId = (body.supplierId as string | null) ?? null
+
+    // Hiding a product we do not buy — spare parts and the like — so the
+    // forecast, the suppliers list and purchase orders all stop offering it.
+    // Never a delete: ensureSupplyItems recreates a row per product SKU on
+    // every page load, so a deleted row is back the moment anyone opens the
+    // page, while the lead times and purchase history it held are gone.
+    //
+    // Checked for a real boolean rather than coerced. Boolean('') is false and
+    // Boolean('no') is true, so coercion here would let a stray string hide a
+    // product nobody meant to hide — and a hidden product is invisible by
+    // definition, so that mistake would never announce itself.
+    if ('active' in body) {
+      if (typeof body.active !== 'boolean') return fail('active must be true or false', 400)
+      data.active = body.active
+    }
 
     const item = await db.supplyItem.update({ where: { sku }, data })
     return NextResponse.json(item, { headers: NO_STORE })

@@ -10,9 +10,12 @@ vi.mock('next/navigation', () => ({
 const item = (over: Partial<Item> = {}): Item => ({
   id: 'i1', sku: 'PANPIZPRO', name: 'Pizzetta Pro', supplierId: null,
   productionDays: null, deliveryDays: null, moq: null,
-  unitsPerContainer: null, coverDays: null,
+  unitsPerContainer: null, coverDays: null, active: true,
   ...over,
 })
+
+const spare = (over: Partial<Item> = {}): Item =>
+  item({ id: 'i2', sku: 'SPARE-BOLT', name: 'Spare bolt', active: false, ...over })
 
 describe('SuppliersClient', () => {
   // Same reason as InventoryClient's tests: a product name sits in a <p> inside
@@ -92,6 +95,90 @@ describe('SuppliersClient', () => {
 
     expect(await screen.findByText(/whole number, digits only/i)).toBeTruthy()
     expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+
+  /**
+   * Hiding the products we do not buy.
+   *
+   * The client keeps spare parts in WooCommerce that he never reorders, and the
+   * forecast nagged about every one of them. Deleting is not an option: the Woo
+   * sync upserts products back, and ensureSupplyItems recreates a row per SKU on
+   * every page load. `active` is the only thing that can make the system forget.
+   */
+  it('leaves a hidden product out of the main list', () => {
+    const { container } = render(<SuppliersClient items={[item(), spare()]} suppliers={[]} />)
+    expect(container.textContent).toMatch(/Pizzetta Pro/)
+    expect(container.textContent).not.toMatch(/Spare bolt/)
+  })
+
+  it('offers to show the hidden products, and reveals them on request', () => {
+    const { container } = render(<SuppliersClient items={[item(), spare()]} suppliers={[]} />)
+
+    const toggle = screen.getByRole('button', { name: /show hidden \(1\)/i })
+    fireEvent.click(toggle)
+
+    expect(container.textContent).toMatch(/Spare bolt/)
+  })
+
+  it('says nothing about hidden products when none are hidden', () => {
+    render(<SuppliersClient items={[item()]} suppliers={[]} />)
+    expect(screen.queryByRole('button', { name: /show hidden/i })).toBeNull()
+  })
+
+  it('hides a product, sending active false for that SKU', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 }),
+    )
+    render(<SuppliersClient items={[item()]} suppliers={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+
+    const [url, init] = fetchSpy.mock.calls[0]
+    expect(url).toBe('/api/inventory/items')
+    expect(init?.method).toBe('PUT')
+    // A real boolean. The API refuses a string rather than coercing it, because
+    // a wrongly hidden product is invisible and would never announce itself.
+    expect(JSON.parse(String(init?.body))).toEqual({ sku: 'PANPIZPRO', active: false })
+
+    fetchSpy.mockRestore()
+  })
+
+  it('brings a hidden product back', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 }),
+    )
+    render(<SuppliersClient items={[spare()]} suppliers={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /show hidden \(1\)/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Unhide' }))
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toEqual({
+      sku: 'SPARE-BOLT', active: true,
+    })
+
+    fetchSpy.mockRestore()
+  })
+
+  it('does not nag a hidden product for lead times it will never need', () => {
+    // The whole point of hiding is to stop being asked. A hidden row still
+    // demanding lead times would defeat it.
+    const { container } = render(<SuppliersClient items={[spare()]} suppliers={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /show hidden \(1\)/i }))
+    expect(container.textContent).not.toMatch(/needs lead times/i)
+  })
+
+  it('surfaces a failed hide rather than looking like it worked', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'nope' }), { status: 400 }),
+    )
+    render(<SuppliersClient items={[item()]} suppliers={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+
+    expect(await screen.findByText(/could not hide/i)).toBeTruthy()
     fetchSpy.mockRestore()
   })
 
