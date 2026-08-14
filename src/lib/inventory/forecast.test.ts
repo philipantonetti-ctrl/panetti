@@ -1,4 +1,3 @@
-// src/lib/inventory/forecast.test.ts
 import { describe, expect, it } from 'vitest'
 import { forecast, type ForecastInput } from './forecast'
 

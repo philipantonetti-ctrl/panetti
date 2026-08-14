@@ -1,4 +1,3 @@
-// src/app/api/inventory/write.test.ts
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
 vi.mock('@/lib/auth/current-user', () => ({ currentUser: vi.fn() }))

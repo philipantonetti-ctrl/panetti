@@ -19,7 +19,16 @@ export type Row = {
 }
 
 const when = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
+  iso
+    ? new Date(iso).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        // The forecast works in UTC days on purpose. Without this the same
+        // run-out date reads a day earlier to anyone west of UTC.
+        timeZone: 'UTC',
+      })
+    : null
 
 export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { shopName: string; name: string; sku: string }[] }) {
   if (rows.length === 0 && unusable.length === 0) {

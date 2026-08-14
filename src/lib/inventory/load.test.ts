@@ -1,4 +1,3 @@
-// src/lib/inventory/load.test.ts
 import { describe, expect, it, afterEach } from 'vitest'
 import { db } from '../db'
 import { loadInventory } from './load'

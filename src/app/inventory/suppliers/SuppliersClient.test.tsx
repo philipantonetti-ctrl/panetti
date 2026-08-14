@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { SuppliersClient, type Item } from './SuppliersClient'
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}))
+
 const item = (over: Partial<Item> = {}): Item => ({
   id: 'i1', sku: 'PANPIZPRO', name: 'Pizzetta Pro', supplierId: null,
   productionDays: null, deliveryDays: null, moq: null,

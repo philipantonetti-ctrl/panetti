@@ -1,4 +1,3 @@
-// src/app/api/inventory/route.test.ts
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/auth/current-user', () => ({ currentUser: vi.fn() }))

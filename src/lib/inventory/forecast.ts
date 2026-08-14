@@ -1,5 +1,3 @@
-// src/lib/inventory/forecast.ts
-
 const DAY = 86_400_000
 
 /** How long one order should last once it lands, when nobody has said. */

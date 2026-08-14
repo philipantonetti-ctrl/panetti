@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export type Item = {
   id: string
@@ -32,28 +33,58 @@ const FIELDS = [
  * rows were empty would produce a forecast full of dashes and no explanation.
  */
 export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers: Supplier[] }) {
+  const router = useRouter()
   const [draft, setDraft] = useState<Record<string, Record<string, string>>>({})
   const [saving, setSaving] = useState<string | null>(null)
+  const [error, setError] = useState<Record<string, string>>({})
 
   const value = (item: Item, key: string) =>
     draft[item.sku]?.[key] ?? (item[key as keyof Item] === null ? '' : String(item[key as keyof Item]))
 
   async function save(item: Item) {
-    setSaving(item.sku)
     const edits = draft[item.sku] ?? {}
     const body: Record<string, unknown> = { sku: item.sku }
+
     for (const f of FIELDS) {
       if (!(f.key in edits)) continue
-      body[f.key] = edits[f.key] === '' ? null : Number(edits[f.key])
+      const raw = edits[f.key].trim()
+      if (raw === '') {
+        body[f.key] = null // deliberately clearing it
+        continue
+      }
+      const value = Number(raw)
+      // Number('1 000') and Number('1,5') are NaN, and JSON.stringify turns NaN
+      // into null — which this API reads as "clear this field". Without this
+      // guard, typing a thousand the way a Norwegian writes it would silently
+      // delete a saved lead time down the same path as an intentional clear.
+      if (!Number.isInteger(value) || value < 0) {
+        setError((e) => ({ ...e, [item.sku]: `${f.label} must be a whole number, digits only.` }))
+        return
+      }
+      body[f.key] = value
     }
     if ('supplierId' in edits) body.supplierId = edits.supplierId || null
 
-    await fetch('/api/inventory/items', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    setSaving(null)
+    setError((e) => ({ ...e, [item.sku]: '' }))
+    setSaving(item.sku)
+    try {
+      const res = await fetch('/api/inventory/items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        setError((e) => ({ ...e, [item.sku]: 'Could not save. Nothing was changed.' }))
+        return
+      }
+      // The row's "needs lead times" warning is server-rendered, so without this
+      // a successful save leaves the page still saying the work is undone.
+      router.refresh()
+    } catch {
+      setError((e) => ({ ...e, [item.sku]: 'Could not reach the server. Nothing was changed.' }))
+    } finally {
+      setSaving(null)
+    }
   }
 
   return (
@@ -113,6 +144,10 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
                 {saving === item.sku ? 'Saving…' : 'Save'}
               </button>
             </div>
+
+            {error[item.sku] && (
+              <p className="mt-2 text-[12px] text-loss">{error[item.sku]}</p>
+            )}
           </div>
         )
       })}

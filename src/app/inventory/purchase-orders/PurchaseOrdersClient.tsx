@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export type Order = {
   id: string
@@ -12,7 +13,16 @@ export type Order = {
 }
 
 const when = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
+  iso
+    ? new Date(iso).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        // The forecast works in UTC days on purpose. Without this the same
+        // run-out date reads a day earlier to anyone west of UTC.
+        timeZone: 'UTC',
+      })
+    : null
 
 /**
  * What is on order and when it lands.
@@ -28,16 +38,23 @@ export function PurchaseOrdersClient({
   orders: Order[]
   items: { id: string; sku: string; name: string }[]
 }) {
+  const router = useRouter()
   const [busy, setBusy] = useState(false)
 
   async function markReceived(id: string) {
     setBusy(true)
-    await fetch('/api/inventory/purchase-orders', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, receivedAt: new Date().toISOString() }),
-    })
-    setBusy(false)
+    try {
+      const res = await fetch('/api/inventory/purchase-orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, receivedAt: new Date().toISOString() }),
+      })
+      // Server-rendered rows, so without this the order still offers
+      // "Mark received" after it has been received.
+      if (res.ok) router.refresh()
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (orders.length === 0) {

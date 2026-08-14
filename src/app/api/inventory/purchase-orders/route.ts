@@ -1,4 +1,3 @@
-// src/app/api/inventory/purchase-orders/route.ts
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { fetchCoupons, fetchOrderStatuses, fetchOrders, requestBudgetMs } from './client'
+import { fetchCatalog, fetchCoupons, fetchOrderStatuses, fetchOrders, requestBudgetMs } from './client'
 
 const CREDS = { url: 'https://shop.example', key: 'ck', secret: 'cs' }
 
@@ -345,9 +345,6 @@ describe('fetchOrderStatuses', () => {
     expect(await fetchOrderStatuses(CREDS)).toEqual([])
   })
 })
-
-// append to src/lib/woo/client.test.ts
-import { fetchCatalog } from './client'
 
 describe('fetchCatalog', () => {
   const creds = { url: 'https://shop.test', key: 'k', secret: 's' }

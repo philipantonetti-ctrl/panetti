@@ -1,4 +1,3 @@
-// src/lib/inventory/load.ts
 import { db } from '../db'
 import { VOIDED_STATUSES } from '../metrics/types'
 import { dailyBurn, hasSeasonalHistory, seasonalIndex, type Sale } from './burn'
@@ -61,7 +60,11 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
         },
       },
     }),
+    // A deactivated shop is never synced again, so its stockQuantity reading can
+    // never refresh. Without this filter an unfiltered vote lets that frozen
+    // figure outvote a live shop's in agreeStock.
     db.product.findMany({
+      where: { shop: { active: true } },
       select: {
         sku: true, name: true, stockQuantity: true, stockUpdatedAt: true,
         shop: { select: { name: true } },
@@ -72,6 +75,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
         order: {
           placedAt: { gte: since },
           status: { notIn: [...VOIDED_STATUSES] },
+          shop: { active: true },
         },
       },
       select: {
