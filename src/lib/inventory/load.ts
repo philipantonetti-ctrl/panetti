@@ -8,6 +8,8 @@ import { agreeStock, type AgreedStock, type ShopStock } from './stock'
 export type InventoryRow = {
   sku: string
   name: string
+  /** Product photo, from the shops that report stock. Null when none carries one. */
+  imageUrl: string | null
   supplierName: string | null
   stock: AgreedStock
   burn: number
@@ -101,7 +103,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     db.product.findMany({
       where: { shop: { active: true, ...(scoped ? { stockSource: true } : {}) } },
       select: {
-        sku: true, name: true, stockQuantity: true, stockUpdatedAt: true,
+        sku: true, name: true, imageUrl: true, stockQuantity: true, stockUpdatedAt: true,
         shop: { select: { name: true } },
       },
     }),
@@ -148,6 +150,11 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   // existing row without a migration, and keeps following the source shop if
   // the listing is renamed.
   const names = new Map<string, string>()
+  // And what it LOOKS like, from the same shops and for the same reason. A
+  // photo is how someone recognises "Rei'itetty Pizzalapio" without translating
+  // it first. First one wins, so a shop that carries no image cannot blank out
+  // a picture another shop does have.
+  const images = new Map<string, string>()
   const unusable: InventoryView['unusable'] = []
   for (const p of products) {
     if (!isUsableSku(p.sku)) {
@@ -162,6 +169,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
       updatedAt: p.stockUpdatedAt,
     })
     if (!names.has(sku) && p.name.trim() !== '') names.set(sku, p.name)
+    if (!images.has(sku) && p.imageUrl) images.set(sku, p.imageUrl)
   }
 
   // Scoped, the source shops' catalogue IS the product list: an item they do
@@ -180,6 +188,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     return {
       sku,
       name: names.get(sku) ?? item.name,
+      imageUrl: images.get(sku) ?? null,
       supplierName: item.supplier?.name ?? null,
       stock,
       burn,
