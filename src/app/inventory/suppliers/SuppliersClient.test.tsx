@@ -47,4 +47,35 @@ describe('SuppliersClient', () => {
 
     fetchSpy.mockRestore()
   })
+
+  it('adds a supplier, posting the trimmed name', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ id: 's1', name: 'Acme' }), { status: 200 }),
+    )
+    render(<SuppliersClient items={[]} suppliers={[]} />)
+
+    fireEvent.change(screen.getByLabelText('Supplier name'), { target: { value: '  Acme  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add supplier' }))
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+
+    const [url, init] = fetchSpy.mock.calls[0]
+    expect(url).toBe('/api/inventory/suppliers')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ name: 'Acme' })
+
+    fetchSpy.mockRestore()
+  })
+
+  it('refuses a blank supplier name and sends no request', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    render(<SuppliersClient items={[]} suppliers={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add supplier' }))
+
+    expect(screen.getByText('A supplier needs a name.')).toBeTruthy()
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
+  })
 })

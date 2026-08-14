@@ -38,6 +38,39 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
   const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState<Record<string, string>>({})
 
+  const [name, setName] = useState('')
+  const [addBusy, setAddBusy] = useState(false)
+  const [addError, setAddError] = useState('')
+
+  async function addSupplier() {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setAddError('A supplier needs a name.')
+      return
+    }
+    setAddError('')
+    setAddBusy(true)
+    try {
+      const res = await fetch('/api/inventory/suppliers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      if (!res.ok) {
+        setAddError('Could not add that supplier.')
+        return
+      }
+      setName('')
+      // The supplier dropdown above is server-rendered, so without this a
+      // freshly added supplier would not be assignable until a manual reload.
+      router.refresh()
+    } catch {
+      setAddError('Could not reach the server.')
+    } finally {
+      setAddBusy(false)
+    }
+  }
+
   const value = (item: Item, key: string) =>
     draft[item.sku]?.[key] ?? (item[key as keyof Item] === null ? '' : String(item[key as keyof Item]))
 
@@ -89,6 +122,41 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
 
   return (
     <div className="space-y-3">
+      <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
+        <p className="text-[13px] font-semibold text-ink">Suppliers</p>
+        <p className="mt-1 text-[12px] text-muted">
+          A supplier has to exist here before any product below can be assigned to one.
+        </p>
+
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-[12px] text-muted">
+            <span className="block pb-1">Name</span>
+            <input
+              aria-label="Supplier name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
+            />
+          </label>
+
+          <button
+            onClick={addSupplier}
+            disabled={addBusy}
+            className="rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[13px] font-semibold text-white disabled:opacity-50"
+          >
+            {addBusy ? 'Adding…' : 'Add supplier'}
+          </button>
+        </div>
+
+        {addError && <p className="mt-2 text-[12px] text-loss">{addError}</p>}
+
+        {suppliers.length > 0 && (
+          <p className="mt-3 text-[12px] text-muted">
+            Current suppliers: {suppliers.map((s) => s.name).join(', ')}
+          </p>
+        )}
+      </div>
+
       {items.map((item) => {
         const ready = item.productionDays !== null && item.deliveryDays !== null
         return (
