@@ -655,17 +655,29 @@ model SupplyItem {
 model PurchaseOrder {
   id           String    @id @default(cuid())
   supplyItemId String
+  /// What was ORDERED, always. Never the outstanding amount: a column that meant
+  /// "still coming" would read as zero on a finished order, and the page could
+  /// never show what actually arrived.
   quantity     Int
+  /// What has landed so far, from Visma's `qtyOnReceipts`. Null on every
+  /// hand-entered row, which tracks no receipts — so a null falls back to
+  /// counting the whole quantity as incoming, exactly as before this existed.
+  receivedQuantity Int?
   orderedAt    DateTime
   /// When it is expected to land. Null is honest and has a consequence: an
   /// order with no ETA never moves a run-out date, because counting stock whose
   /// arrival nobody knows would push out that date on a guess.
   eta          DateTime?
   /// Null = still on the water, so it still counts as incoming.
+  ///
+  /// For a Visma row this is set from `line.completed`, NOT from comparing
+  /// quantities: Visma closes orders without booking receipts against them, and
+  /// a quantity test leaves those counting as incoming stock forever.
   receivedAt   DateTime?
-  /// Visma's own purchase order id. Null on every hand-entered row. This is the
-  /// single seam the Visma import plugs into.
-  externalId   String?
+  /// Visma's own `orderNbr-lineNbr`. Null on every hand-entered row. This is the
+  /// single seam the Visma import plugs into, and it is unique so a re-import
+  /// updates rather than duplicates.
+  externalId   String?   @unique
   notes        String?
   createdAt    DateTime  @default(now())
 

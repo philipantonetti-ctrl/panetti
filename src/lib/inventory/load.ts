@@ -56,7 +56,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
         supplier: { select: { name: true } },
         purchaseOrders: {
           where: { receivedAt: null },
-          select: { quantity: true, eta: true },
+          select: { quantity: true, receivedQuantity: true, eta: true },
         },
       },
     }),
@@ -140,7 +140,18 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
           stock: stock.quantity,
           burn,
           index: (d) => seasonalIndex(mine, d, today),
-          arrivals: item.purchaseOrders.map((o) => ({ eta: o.eta, quantity: o.quantity })),
+          // Units already received are already in the stock figure above.
+          // Counting the whole order as incoming would count them twice, and the
+          // forecast would then advise ordering too little — the exact failure
+          // this feature exists to prevent, reached by another road.
+          //
+          // A hand-entered row has no receivedQuantity and so still contributes
+          // its whole quantity, exactly as before the column existed. Math.max
+          // because an over-receipt must never subtract from another order.
+          arrivals: item.purchaseOrders.map((o) => ({
+            eta: o.eta,
+            quantity: Math.max(0, o.quantity - (o.receivedQuantity ?? 0)),
+          })),
           productionDays: item.productionDays,
           deliveryDays: item.deliveryDays,
           moq: item.moq,
