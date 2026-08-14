@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach } from 'vitest'
 import { db } from '../db'
-import { loadInventory } from './load'
+import { loadInventory, outstanding } from './load'
 
 const TAG = `TEST-LOAD-${Date.now()}`
 const SKU = `${TAG}-A`
@@ -146,78 +146,77 @@ describe('loadInventory', () => {
     expect(rows[1].forecast.note).toBe('not selling')
   })
 
-  // What an order contributes as incoming stock. These assert EQUIVALENCES
-  // rather than hand-computed dates: "800 ordered with 300 landed behaves
-  // exactly like 500 on the water" is the actual claim, and it stays true
-  // however the burn window or the cover default is later tuned.
-  const orderShape = (itemId: string) => ({
-    supplyItemId: itemId,
-    orderedAt: new Date('2026-07-01T00:00:00Z'),
-    eta: new Date('2026-08-20T00:00:00Z'),
-  })
-  const runsOut = async () =>
-    (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!.forecast.runsOutOn
-
+  // One integration test for the wiring: that load.ts really selects
+  // receivedQuantity and really passes the outstanding amount to the forecast.
+  //
+  // Deliberately ONE. loadInventory reads every Product, Shop and OrderItem in
+  // the database, so every call is a chance to collide with another test file
+  // deleting a row mid-query — "Inconsistent query result: Field shop is
+  // required" is what that collision looks like. The arithmetic itself is pure
+  // and is tested exhaustively below, without touching Postgres at all.
+  //
+  // The assertion is an EQUIVALENCE rather than a hand-computed date: "800
+  // ordered with 300 landed behaves exactly like 500 on the water" is the actual
+  // claim, and it stays true however the burn window is later tuned.
   it('counts only what has not landed yet, so received units are not counted twice', async () => {
-    // 600 units over the 60-day window is 10 a day. Deliberately brisk: at a
-    // slower rate 100 on the shelf plus either order outlasts the 365-day
-    // horizon, both dates come back null, and the test cannot tell 500 from 800.
-    await sell(`${TAG}-no`, SKU, 100, 600, 5, 'NO')
-    const item = await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
-    const po = orderShape(item.id)
+    const five = `${TAG}-FIVE`, split = `${TAG}-SPLIT`, eight = `${TAG}-EIGHT`
 
-    await db.purchaseOrder.create({ data: { ...po, quantity: 500 } })
-    const asFiveHundred = await runsOut()
+    // Identical demand for each: 600 units over the 60-day window, so 10 a day.
+    // Deliberately brisk — at a slower rate 100 on the shelf plus any of these
+    // orders outlasts the 365-day horizon, every date comes back null, and the
+    // comparison below cannot tell 500 from 800.
+    for (const sku of [five, split, eight]) await sell(`${TAG}-no`, sku, 100, 600, 5, 'NO')
 
-    await db.purchaseOrder.deleteMany({ where: { supplyItemId: item.id } })
-    await db.purchaseOrder.create({ data: { ...po, quantity: 800, receivedQuantity: 300 } })
-    const asEightMinusThree = await runsOut()
+    for (const [sku, data] of [
+      [five, { quantity: 500 }],
+      [split, { quantity: 800, receivedQuantity: 300 }],
+      [eight, { quantity: 800 }],
+    ] as const) {
+      const item = await db.supplyItem.create({ data: { sku, name: 'Pasta Maker' } })
+      await db.purchaseOrder.create({
+        data: {
+          supplyItemId: item.id,
+          orderedAt: new Date('2026-07-01T00:00:00Z'),
+          eta: new Date('2026-08-20T00:00:00Z'),
+          ...data,
+        },
+      })
+    }
 
-    await db.purchaseOrder.deleteMany({ where: { supplyItemId: item.id } })
-    await db.purchaseOrder.create({ data: { ...po, quantity: 800 } })
-    const asEightHundred = await runsOut()
+    const rows = (await loadInventory(TODAY)).rows
+    const runsOut = (sku: string) => rows.find((r) => r.sku === sku)!.forecast.runsOutOn
 
-    // Null on either side would make the comparison meaningless.
-    expect(asFiveHundred).not.toBeNull()
-    expect(asEightHundred).not.toBeNull()
+    expect(runsOut(five)).not.toBeNull()
+    expect(runsOut(eight)).not.toBeNull()
 
     // 500 still coming, not 800.
-    expect(asEightMinusThree).toEqual(asFiveHundred)
+    expect(runsOut(split)).toEqual(runsOut(five))
     // And the two really are distinguishable, or the assertion above proves nothing.
-    expect(asEightHundred).not.toEqual(asFiveHundred)
+    expect(runsOut(eight)).not.toEqual(runsOut(five))
+  })
+})
+
+// Pure, so no database and no chance of colliding with anything.
+describe('outstanding', () => {
+  it('subtracts what has landed from what was ordered', () => {
+    expect(outstanding({ quantity: 800, receivedQuantity: 300 })).toBe(500)
   })
 
-  it('never lets an over-receipt subtract from incoming stock', async () => {
-    await sell(`${TAG}-no`, SKU, 100, 600, 5, 'NO')
-    const item = await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
-
-    const withNoOrderAtAll = await runsOut()
-
-    // 900 landed against 800 ordered contributes zero, never minus one hundred,
-    // so the row must forecast exactly as it does with no order at all.
-    await db.purchaseOrder.create({
-      data: { ...orderShape(item.id), quantity: 800, receivedQuantity: 900 },
-    })
-    expect(await runsOut()).toEqual(withNoOrderAtAll)
+  it('is zero once everything has arrived', () => {
+    expect(outstanding({ quantity: 800, receivedQuantity: 800 })).toBe(0)
   })
 
-  it('leaves a hand-entered order counting its whole quantity', async () => {
-    // The regression guard for the new column. Every row that exists today has
-    // no receivedQuantity, and must forecast exactly as it did before the column
-    // was added — which is to say, identically to one that has received nothing.
-    await sell(`${TAG}-no`, SKU, 100, 600, 5, 'NO')
-    const item = await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
-    const po = orderShape(item.id)
+  it('never goes negative, because an over-receipt must not cancel another order', () => {
+    expect(outstanding({ quantity: 800, receivedQuantity: 900 })).toBe(0)
+  })
 
-    await db.purchaseOrder.create({ data: { ...po, quantity: 500, receivedQuantity: 0 } })
-    const explicitZero = await runsOut()
-    // A null on both sides would make the comparison vacuous.
-    expect(explicitZero).not.toBeNull()
+  it('counts the whole quantity for a hand-entered row, which tracks no receipts', () => {
+    expect(outstanding({ quantity: 500, receivedQuantity: null })).toBe(500)
+  })
 
-    await db.purchaseOrder.deleteMany({ where: { supplyItemId: item.id } })
-    const created = await db.purchaseOrder.create({ data: { ...po, quantity: 500 } })
-    expect(created.receivedQuantity).toBeNull()
-
-    expect(await runsOut()).toEqual(explicitZero)
+  it('treats an explicit zero exactly as it treats a null', () => {
+    expect(outstanding({ quantity: 500, receivedQuantity: 0 })).toBe(
+      outstanding({ quantity: 500, receivedQuantity: null }),
+    )
   })
 })
