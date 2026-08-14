@@ -18,7 +18,7 @@
 - **Never point tests at production.** Tests use the local Postgres from `.env`. Never Neon.
 - **Never commit the Visma client secret.** It lives in `.env` locally and in Vercel env vars. No secret in any committed file, fixture, log line, or error message.
 - **Visma access is READ-ONLY.** The token holds `vismanet_erp_service_api:read`. Never issue a POST/PUT/PATCH/DELETE against Visma. It is the client's live ERP.
-- Schema changes go through `npm run db:push` — this repo has no migrations directory.
+- **Do NOT run `npm run db:push` anywhere in this plan.** The shared local Postgres carries another branch's column that this branch's `schema.prisma` does not declare, and `db push` would drop it. Task 4 Step 2 adds the two new columns with additive SQL instead. This repo has no migrations directory, so the normal `db push` resumes once both branches are on main.
 - Tests: `npx vitest run <path>`. Under a full-suite load a few DB tests can exceed the 5s default; re-run with `--testTimeout=20000` before treating a timeout as a failure.
 - Do NOT add patterns to `vitest.config.ts`. Its three projects partition the suite exactly. Files named `src/lib/visma/*.test.ts` land in the `app` project automatically.
 - Any test that calls `render()` needs `// @vitest-environment jsdom` as **line 1**.
@@ -51,9 +51,21 @@ grep -n "stockSource" prisma/schema.prisma src/lib/inventory/load.ts
   The two changes are independent: one decides *which shops* report stock, the
   other decides *how much of an order* is still coming.
 
-Never run `npm run db:push` while an unrelated branch's uncommitted schema edits
-are sitting in the working tree — it pushes those too. Confirm `git status` is
-clean of other people's files before Task 4 Step 2.
+**Confirmed on 2026-08-14:** `Shop.stockSource` is ALREADY present in the shared
+local Postgres, pushed from that branch. This branch's `schema.prisma` does not
+declare it, so `npm run db:push` from here would drop it and break their tests.
+Task 4 Step 2 therefore adds columns with additive SQL and never calls `db push`.
+Check with:
+
+```sh
+node --env-file=.env -e "
+const { PrismaClient } = require('@prisma/client');
+const db = new PrismaClient();
+db.\$queryRawUnsafe(\`select column_name from information_schema.columns where table_name='Shop' and column_name='stockSource'\`)
+  .then(r => console.log(r.length ? 'stockSource IS live - do not db:push' : 'gone - their work landed, db:push is safe again'))
+  .finally(() => db.\$disconnect())
+"
+```
 
 ---
 
@@ -834,10 +846,48 @@ and add `@unique` to `externalId`:
   externalId   String?   @unique
 ```
 
-- [ ] **Step 2: Push it to the local database**
+- [ ] **Step 2: Add the columns to the local database — with SQL, NOT `db:push`**
 
-Run: `npm run db:push`
-Expected: succeeds. If it reports the unique index cannot be created, some row already holds a duplicate non-null `externalId` — stop and report; nothing writes that column yet, so a duplicate means something unexpected.
+**Do not run `npm run db:push`.** Verified on 2026-08-14: the shared local
+Postgres already carries `Shop.stockSource` from the in-flight branch described
+at the top of this plan, and that column is not in this branch's
+`schema.prisma`. `prisma db push` makes the database match the schema file, so it
+would DROP their column and break their tests — the failure mode recorded in the
+`shared-local-postgres-drops-columns` note, arrived at from the other direction.
+
+Two additive statements do exactly what this task needs and touch nothing else:
+
+```sh
+node --env-file=.env -e "
+const { PrismaClient } = require('@prisma/client');
+const db = new PrismaClient();
+(async () => {
+  await db.\$executeRawUnsafe('ALTER TABLE \"PurchaseOrder\" ADD COLUMN IF NOT EXISTS \"receivedQuantity\" INTEGER');
+  await db.\$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS \"PurchaseOrder_externalId_key\" ON \"PurchaseOrder\"(\"externalId\")');
+  console.log('ok');
+  await db.\$disconnect();
+})().catch(e => { console.log('ERR ' + e.message.slice(0, 300)); process.exit(1) })
+"
+```
+
+Then regenerate the client so TypeScript knows about the column:
+
+```sh
+npx prisma generate
+```
+
+Expected: `ok`, then a successful generate. Postgres allows many nulls in a
+unique index, so the index applies cleanly to existing hand-entered rows. If it
+reports a duplicate key, some row already holds a repeated non-null `externalId`
+— stop and report, because nothing writes that column yet.
+
+Prisma names an index on a single column `<Table>_<column>_key`, which is what a
+later `db push` will look for — so using that exact name means the eventual push
+finds the index already present and does not recreate it.
+
+Extra columns the client does not declare are harmless: Prisma selects columns
+by name, so the other session's `stockSource` stays invisible to this branch and
+intact in the database.
 
 - [ ] **Step 3: Write the failing tests**
 
