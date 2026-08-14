@@ -78,4 +78,35 @@ describe('SuppliersClient', () => {
 
     fetchSpy.mockRestore()
   })
+
+  it('refuses a number typed the way a Norwegian writes it, instead of deleting the value', async () => {
+    // Number('1 000') is NaN, JSON.stringify serialises NaN as null, and the API
+    // reads null as "clear this field" — so before the guard this erased a saved
+    // lead time down the same path as an intentional clear. Nothing may leave
+    // the browser.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    render(<SuppliersClient items={[item({ productionDays: 30 })]} suppliers={[]} />)
+
+    fireEvent.change(screen.getByLabelText('Production days'), { target: { value: '1 000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText(/whole number, digits only/i)).toBeTruthy()
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+
+  it('surfaces a failed save rather than looking like it worked', async () => {
+    // The button used to return to "Save" on a rejected request, so a 400 was
+    // indistinguishable from success.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'nope' }), { status: 400 }),
+    )
+    render(<SuppliersClient items={[item()]} suppliers={[]} />)
+
+    fireEvent.change(screen.getByLabelText('Production days'), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText(/could not save/i)).toBeTruthy()
+    fetchSpy.mockRestore()
+  })
 })

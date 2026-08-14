@@ -110,6 +110,20 @@ describe('loadInventory', () => {
     expect(rows[0].sku).toBe(SKU)
   })
 
+  it('ignores a deactivated shop, whose stock can never refresh again', async () => {
+    // The sync only visits active shops, so a deactivated one's stockQuantity
+    // freezes at its last reading. Unfiltered, that frozen figure keeps voting
+    // in agreeStock and its old orders keep adding demand that is not happening.
+    await sell(`${TAG}-no`, SKU, 100, 60, 5, 'NO')
+    await sell(`${TAG}-dead`, SKU, 999, 6000, 5, 'NO')
+    await db.shop.updateMany({ where: { name: `${TAG}-dead` }, data: { active: false } })
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.stock.quantity).toBe(100)   // not 999
+    expect(row.burn).toBeCloseTo(1)        // 60 units over 60 days, not 6060
+  })
+
   it('keeps a product with no run-out date, and sorts it after those that have one', async () => {
     await sell(`${TAG}-no`, SKU, 10, 600, 5, 'NO') // sells fast, runs out in days
     await db.supplyItem.create({ data: { sku: SKU, name: 'Urgent' } })

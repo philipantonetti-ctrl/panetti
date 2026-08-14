@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PurchaseOrdersClient, type Order } from './PurchaseOrdersClient'
 
+const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => router,
 }))
+
+beforeEach(() => {
+  router.refresh.mockClear()
+})
 
 const item = { id: 'i1', sku: 'PANPIZPRO', name: 'Pizzetta Pro' }
 
@@ -68,5 +73,18 @@ describe('PurchaseOrdersClient', () => {
       <PurchaseOrdersClient orders={[order({ eta: null })]} items={[item]} />,
     )
     expect(container.textContent).toMatch(/no ETA, so it moves no date/i)
+  })
+
+  it('does not refresh as though it worked when marking received fails', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{}', { status: 500 }),
+    )
+    render(<PurchaseOrdersClient orders={[order()]} items={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /mark received/i }))
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    expect(router.refresh).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
   })
 })
