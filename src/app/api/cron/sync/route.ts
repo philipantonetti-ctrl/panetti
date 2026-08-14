@@ -4,6 +4,7 @@ import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/bring/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
+import { importVismaPurchaseOrders, type VismaImportResult } from '@/lib/visma/import'
 import { db } from '@/lib/db'
 
 /**
@@ -88,6 +89,23 @@ export async function GET(req: Request) {
   const results = await syncAllShops({ deadline: runStartedAt + SHOPS_DEADLINE_MS })
   const failed = results.filter((r) => !r.ok).map((r) => r.shopName)
 
+  // Purchase orders from Visma. Two bounded calls against a company holding a
+  // couple of hundred orders in total, so it costs the run almost nothing, and
+  // it goes here rather than behind the greedy parcel poll for that reason.
+  //
+  // Best-effort like everything after the shops: the ERP being unreachable must
+  // never fail the store sync, and the result carries its own error for the
+  // response below.
+  let visma: VismaImportResult = {
+    configured: false, read: 0, imported: 0, skipped: [], truncated: false, error: null,
+  }
+  try {
+    visma = await importVismaPurchaseOrders()
+  } catch {
+    // importVismaPurchaseOrders does not throw, but a caller that assumes so is
+    // one refactor away from a failed sync.
+  }
+
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
   // skips accounts synced in the last six hours, so most runs cost nothing.
   // Best-effort like the rates: a broken token must never fail the shop sync.
@@ -158,5 +176,12 @@ export async function GET(req: Request) {
     shipmentsFailed: shipments.failed,
     alertsSent: alerts.sent,
     alertsSkipped: alerts.skipped,
+    // Reported per reason, not as a bare total: a line dropped because its SKU
+    // did not match looks exactly like a line that never existed.
+    vismaConfigured: visma.configured,
+    vismaImported: visma.imported,
+    vismaSkipped: visma.skipped,
+    vismaTruncated: visma.truncated,
+    vismaError: visma.error,
   })
 }

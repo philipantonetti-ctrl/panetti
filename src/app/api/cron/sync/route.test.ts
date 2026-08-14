@@ -8,6 +8,18 @@ vi.mock('@/lib/woo/sync', () => ({ syncAllShops: (...args: unknown[]) => syncAll
 // sync, and a unit test must not depend on a third-party service being up.
 vi.mock('@/lib/fx/rates', () => ({ ensureRates: vi.fn() }))
 
+// Nor is Visma. This one is not merely slow, it is the CLIENT'S LIVE ERP — and
+// without this mock the test really does reach it, because the route sees the
+// VISMA_* credentials from .env even though a plain unit test does not. Left
+// unmocked it read 719 real order lines and wrote 62 rows into the local
+// database, taking 39 seconds to do it.
+const importVismaPurchaseOrders = vi.fn(async () => ({
+  configured: false, read: 0, imported: 0, skipped: [], truncated: false, error: null,
+}))
+vi.mock('@/lib/visma/import', () => ({
+  importVismaPurchaseOrders: () => importVismaPurchaseOrders(),
+}))
+
 const { GET } = await import('./route')
 
 const call = (auth?: string) =>

@@ -1561,10 +1561,37 @@ Add to the response body, before the closing brace:
 Run: `npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 3: Run the sync route's existing tests**
+- [ ] **Step 3: Mock Visma in the sync route's test, BEFORE running it**
+
+Not optional, and not merely for speed. The route sees the `VISMA_*` values from
+`.env` even though a plain unit test does not, so without this the test reaches
+**the client's live ERP**. Measured: 719 real order lines read, 62 rows written
+to the local database, 39 seconds per test. Read-only against Visma, so nothing
+there was harmed, but a test must not do it at all.
+
+`src/app/api/cron/sync/route.test.ts` already mocks `@/lib/woo/sync` and
+`@/lib/fx/rates` for the same reason. Add a third, next to them:
+
+```ts
+// Nor is Visma. This one is not merely slow, it is the CLIENT'S LIVE ERP — and
+// without this mock the test really does reach it, because the route sees the
+// VISMA_* credentials from .env even though a plain unit test does not. Left
+// unmocked it read 719 real order lines and wrote 62 rows into the local
+// database, taking 39 seconds to do it.
+const importVismaPurchaseOrders = vi.fn(async () => ({
+  configured: false, read: 0, imported: 0, skipped: [], truncated: false, error: null,
+}))
+vi.mock('@/lib/visma/import', () => ({
+  importVismaPurchaseOrders: () => importVismaPurchaseOrders(),
+}))
+```
+
+- [ ] **Step 4: Run the sync route's existing tests**
 
 Run: `npx vitest run src/app/api/cron --testTimeout=20000`
-Expected: PASS. Unconfigured credentials mean the import is skipped, so nothing existing changes.
+Expected: PASS, in normal time. A 20-second timeout here means the mock above is
+missing or misnamed, and the test is talking to Visma — stop and fix it rather
+than raising the timeout.
 
 - [ ] **Step 4: Commit**
 
