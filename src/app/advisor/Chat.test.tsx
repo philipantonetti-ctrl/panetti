@@ -4,9 +4,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { Chat } from './Chat'
 
+// jsdom has no layout, so this method does not exist there.
+const scrollIntoViewMock = vi.fn()
+Element.prototype.scrollIntoView = scrollIntoViewMock
+
 afterEach(() => {
   vi.unstubAllGlobals()
   window.sessionStorage.clear()
+  // localStorage now outlives a test the way it outlives a tab, so a leak
+  // here would let one test's conversation appear in the next one.
+  window.localStorage.clear()
+  // The mock is assigned once at module scope, so call counts would
+  // otherwise accumulate across every test in this file.
+  scrollIntoViewMock.mockClear()
 })
 
 function stubFetch(body: unknown, ok = true) {
@@ -92,5 +102,117 @@ describe('Chat', () => {
 
     await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /^Why did/i })).not.toBeInTheDocument()
+  })
+
+  function seed(day: string | null, text: string) {
+    window.localStorage.setItem(
+      'advisor-chat',
+      JSON.stringify({ day, bubbles: [{ role: 'user', text }], transcript: [] }),
+    )
+  }
+
+  it('restores a conversation stored under the same day', () => {
+    seed('2026-08-13', 'question from this morning')
+    render(<Chat day="2026-08-13" />)
+    expect(screen.getByText('question from this morning')).toBeInTheDocument()
+  })
+
+  it('starts empty when the stored conversation belongs to another day', () => {
+    seed('2026-08-12', 'question from yesterday')
+    render(<Chat day="2026-08-13" />)
+    expect(screen.queryByText('question from yesterday')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('advisor-chat')).toBeNull()
+  })
+
+  // A briefing that failed to load must not destroy the conversation.
+  it('keeps the conversation when no day is known yet', () => {
+    seed('2026-08-12', 'question from yesterday')
+    render(<Chat />)
+    expect(screen.getByText('question from yesterday')).toBeInTheDocument()
+  })
+
+  it('keeps an unstamped conversation once a day arrives', () => {
+    seed(null, 'asked before the briefing loaded')
+    render(<Chat day="2026-08-13" />)
+    expect(screen.getByText('asked before the briefing loaded')).toBeInTheDocument()
+  })
+
+  it('stamps what it saves with the current day', async () => {
+    stubFetch({ reply: 'Answered.', messages: [] })
+    render(<Chat day="2026-08-13" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+    const stored = JSON.parse(window.localStorage.getItem('advisor-chat') as string)
+    expect(stored.day).toBe('2026-08-13')
+    expect(stored.bubbles).toHaveLength(2)
+  })
+
+  it('shows no conversation card until something has been asked', () => {
+    render(<Chat />)
+    expect(screen.queryByRole('heading', { name: 'Ask' })).not.toBeInTheDocument()
+    // The composer is always there, though.
+    expect(screen.getByPlaceholderText(/Ask/i)).toBeInTheDocument()
+  })
+
+  it('offers no way to clear an empty conversation', () => {
+    render(<Chat />)
+    expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument()
+  })
+
+  it('clears the conversation and the stored copy', async () => {
+    stubFetch({ reply: 'Answered.', messages: [{ role: 'user', content: 'A question' }] })
+    render(<Chat day="2026-08-13" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /clear/i }))
+
+    expect(screen.queryByText('A question')).not.toBeInTheDocument()
+    expect(screen.queryByText('Answered.')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('advisor-chat')).toBeNull()
+    // And the examples come back, because the box is empty again.
+    expect(screen.getAllByRole('button', { name: /why/i })[0]).toBeInTheDocument()
+  })
+
+  it('cannot be cleared while an answer is in flight', async () => {
+    // A fetch that never settles leaves the component busy.
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
+    render(<Chat day="2026-08-13" />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText(/Looking it up/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /clear/i })).toBeDisabled()
+  })
+
+  it('scrolls without animation when the visitor prefers reduced motion', async () => {
+    stubFetch({ reply: 'Answered.', messages: [] })
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }))
+    render(<Chat />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'auto', block: 'end' })
+  })
+
+  it('scrolls smoothly when reduced motion is not requested', async () => {
+    // jsdom has no matchMedia at all, which the guard treats the same as a
+    // browser reporting no preference: the default, animated path.
+    stubFetch({ reply: 'Answered.', messages: [] })
+    render(<Chat />)
+
+    fireEvent.change(screen.getByPlaceholderText(/Ask/i), { target: { value: 'A question' } })
+    fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => expect(screen.getByText('Answered.')).toBeInTheDocument())
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'end' })
   })
 })
