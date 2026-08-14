@@ -146,3 +146,109 @@ describe('loadInventory', () => {
     expect(rows[1].forecast.note).toBe('not selling')
   })
 })
+
+/**
+ * These live in this file rather than their own on purpose.
+ *
+ * `stockSource` is workspace-wide state: the moment ANY shop carries it, every
+ * caller of loadInventory is scoped. Vitest runs the tests inside one file
+ * sequentially, and this is the only file that calls loadInventory against the
+ * database — the inventory route's test mocks it — so keeping them here is what
+ * stops a flagged shop in one file emptying the rows another file is asserting
+ * on. The afterEach above deletes these shops, which returns the workspace to
+ * "nothing flagged" between tests.
+ */
+describe('loadInventory, when some shops are named as the stock source', () => {
+  /** A shop with one product, optionally the source of truth for stock. */
+  async function stock(
+    shopName: string,
+    sku: string,
+    quantity: number | null,
+    productName: string,
+    stockSource = false,
+  ) {
+    const shop =
+      (await db.shop.findFirst({ where: { name: shopName } })) ??
+      (await db.shop.create({ data: { name: shopName, currency: 'NOK', stockSource } }))
+    await db.product.create({
+      data: {
+        shopId: shop.id, externalId: `${shopName}-${sku}`, sku, name: productName,
+        stockQuantity: quantity, stockUpdatedAt: new Date(),
+      },
+    })
+    return shop
+  }
+
+  it('lists only the products the source shops carry', async () => {
+    await stock(`${TAG}-src`, SKU, 100, 'Pizza Oven', true)
+    await stock(`${TAG}-other`, `${TAG}-ONLYTHERE`, 50, 'Something Else')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pizza Oven' } })
+    await db.supplyItem.create({ data: { sku: `${TAG}-ONLYTHERE`, name: 'Something Else' } })
+
+    const skus = (await loadInventory(TODAY)).rows.filter((r) => r.sku.startsWith(TAG)).map((r) => r.sku)
+    expect(skus).toContain(SKU)
+    expect(skus).not.toContain(`${TAG}-ONLYTHERE`)
+  })
+
+  it('believes only the source shop when the shops disagree', async () => {
+    // The exact shape of the real complaint: five mirrors of one warehouse, one
+    // of which has drifted. Naming the source ends the vote.
+    await stock(`${TAG}-src`, SKU, 906, 'Pizza Oven', true)
+    await stock(`${TAG}-drifted`, SKU, 939, 'Pizza Oven')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pizza Oven' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.stock.quantity).toBe(906)
+    expect(row.stock.disagrees).toBe(false)
+  })
+
+  it('takes the product name from the source shop, not from whichever shop was first', async () => {
+    // Why the Forecast listed Norwegian products as "Hierontatuoli" and
+    // "Pizzaugnsskydd": the name was whatever the database happened to return
+    // first, frozen into SupplyItem and never updated.
+    await stock(`${TAG}-fi`, SKU, 100, 'Hierontatuoli')
+    await stock(`${TAG}-src`, SKU, 100, 'Massasjestol', true)
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Hierontatuoli' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.name).toBe('Massasjestol')
+  })
+
+  it('still counts sales from EVERY shop, which is the whole point', async () => {
+    await stock(`${TAG}-src`, SKU, 100, 'Pizza Oven', true)
+    // 60 units in Norway and 60 in Sweden, over 60 days, is 2 a day. Scoping
+    // demand to the source shop would halve it and order half the container.
+    await sell(`${TAG}-src`, SKU, 100, 60, 5, 'NO')
+    await sell(`${TAG}-se`, SKU, 100, 60, 5, 'SE')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pizza Oven' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.burn).toBeCloseTo(2)
+    expect(row.byCountry.map((c) => c.country).sort()).toEqual(['NO', 'SE'])
+  })
+
+  it('falls back to every active shop when no shop is named', async () => {
+    // The state on the day this ships. Nothing is flagged yet, so the tabs must
+    // look exactly as they did before — an empty page would read as data loss.
+    await stock(`${TAG}-a`, SKU, 100, 'Pizza Oven')
+    await stock(`${TAG}-b`, `${TAG}-B`, 50, 'Other')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pizza Oven' } })
+    await db.supplyItem.create({ data: { sku: `${TAG}-B`, name: 'Other' } })
+
+    const skus = (await loadInventory(TODAY)).rows.filter((r) => r.sku.startsWith(TAG)).map((r) => r.sku)
+    expect(skus).toContain(SKU)
+    expect(skus).toContain(`${TAG}-B`)
+  })
+
+  it('ignores a source shop that has been deactivated', async () => {
+    // Same reason the unscoped path ignores one: a deactivated shop is never
+    // synced again, so its reading is frozen and must not be the source of truth.
+    await stock(`${TAG}-src`, SKU, 100, 'Pizza Oven', true)
+    await stock(`${TAG}-dead`, SKU, 999, 'Pizza Oven', true)
+    await db.shop.updateMany({ where: { name: `${TAG}-dead` }, data: { active: false } })
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pizza Oven' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.stock.quantity).toBe(100)
+  })
+})

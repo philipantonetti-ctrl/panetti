@@ -47,6 +47,18 @@ const HISTORY_DAYS = 730
 export async function loadInventory(today: Date = new Date()): Promise<InventoryView> {
   const since = new Date(today.getTime() - HISTORY_DAYS * 86_400_000)
 
+  // Which shops' catalogues decide what is listed and what "in stock" means.
+  // Empty = nobody has chosen, so every active shop counts and this behaves
+  // exactly as it did before the setting existed. Deliberately its own query
+  // and awaited first: it decides the shape of the product query below, and
+  // guessing wrong would mean fetching every shop's catalogue to throw most of
+  // it away.
+  const sources = await db.shop.findMany({
+    where: { active: true, stockSource: true },
+    select: { id: true },
+  })
+  const scoped = sources.length > 0
+
   const [items, products, lines] = await Promise.all([
     db.supplyItem.findMany({
       where: { active: true },
@@ -62,9 +74,11 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     }),
     // A deactivated shop is never synced again, so its stockQuantity reading can
     // never refresh. Without this filter an unfiltered vote lets that frozen
-    // figure outvote a live shop's in agreeStock.
+    // figure outvote a live shop's in agreeStock. `stockSource` narrows it
+    // further when shops have been named — a drifted mirror should not get a
+    // vote at all, rather than be outvoted.
     db.product.findMany({
-      where: { shop: { active: true } },
+      where: { shop: { active: true, ...(scoped ? { stockSource: true } : {}) } },
       select: {
         sku: true, name: true, stockQuantity: true, stockUpdatedAt: true,
         shop: { select: { name: true } },
@@ -106,6 +120,13 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   }
 
   const stocks = new Map<string, ShopStock[]>()
+  // What each product is CALLED, according to the shops that count. SupplyItem
+  // snapshots its name once, from whichever shop the database returned first
+  // and never updates it, which is why Norwegian products were listed under
+  // their Finnish and Swedish names. Reading the name here instead fixes every
+  // existing row without a migration, and keeps following the source shop if
+  // the listing is renamed.
+  const names = new Map<string, string>()
   const unusable: InventoryView['unusable'] = []
   for (const p of products) {
     if (!isUsableSku(p.sku)) {
@@ -119,9 +140,16 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
       quantity: p.stockQuantity,
       updatedAt: p.stockUpdatedAt,
     })
+    if (!names.has(sku) && p.name.trim() !== '') names.set(sku, p.name)
   }
 
-  const rows: InventoryRow[] = items.map((item) => {
+  // Scoped, the source shops' catalogue IS the product list: an item they do
+  // not carry is not a thing to forecast here. Unscoped, every SupplyItem is
+  // kept exactly as before — a product whose shops stopped listing it keeps its
+  // lead times and its open orders, which is the promise ensureSupplyItems makes.
+  const listed = scoped ? items.filter((i) => stocks.has(normaliseSku(i.sku))) : items
+
+  const rows: InventoryRow[] = listed.map((item) => {
     const sku = normaliseSku(item.sku)
     const mine = sales.get(sku) ?? []
     const burn = dailyBurn(mine, today)
@@ -130,7 +158,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
 
     return {
       sku,
-      name: item.name,
+      name: names.get(sku) ?? item.name,
       supplierName: item.supplier?.name ?? null,
       stock,
       burn,

@@ -26,6 +26,7 @@ export default async function ShopsPage() {
         lastRunAt: s.lastRunAt?.toISOString() ?? null,
         lastError: s.lastError,
         hasOrders: s._count.orders > 0,
+        stockSource: s.stockSource,
       }))}
     />
   )

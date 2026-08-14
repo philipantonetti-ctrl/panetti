@@ -34,6 +34,26 @@ model Shop {
   /// this date read "Before tracking started". Backdate it after importing
   /// historical warehouse files to get real history on day one.
   deliveryTrackingFrom DateTime?
+
+  /// True = this shop's catalogue decides what the Forecast and Stock tabs show,
+  /// and what "in stock" says.
+  ///
+  /// The shops mirror ONE warehouse, so nine catalogues describe the same
+  /// shelves. Left to vote, they disagree — four said 906 and Germany said 939
+  /// on 2026-08-13 — and the row's product name came from whichever shop the
+  /// database happened to return first, which is why Norwegian products were
+  /// listed as "Hierontatuoli" and "Pizzaugnsskydd". Naming the shops that count
+  /// answers both at once.
+  ///
+  /// SALES are never scoped by this. Velocity, seasonality and the country
+  /// split still pool every shop's orders by SKU, because demand is demand
+  /// wherever it was bought. This decides which products are LISTED and whose
+  /// stock reading is BELIEVED, nothing else.
+  ///
+  /// No shop set = every active shop counts, exactly as before this existed.
+  /// That keeps the tabs populated on the day this ships and makes turning it on
+  /// a deliberate act rather than a silent emptying of the page.
+  stockSource Boolean @default(false)
   createdAt  DateTime @default(now())
 
   // Per-shop standards and formats; null falls back to the workspace Setting.

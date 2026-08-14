@@ -20,7 +20,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 const SHOP = {
   id: 's1', name: 'Panetti Norway', currency: 'NOK', wooUrl: '', connected: false, lastSyncAt: null,
-  hasOrders: false, lastRunAt: null, lastError: null,
+  hasOrders: false, lastRunAt: null, lastError: null, stockSource: false,
 }
 
 function renderShops(shops: Row[] = [SHOP]) {
