@@ -28,6 +28,35 @@
 
 ---
 
+## Before starting: a collision to check for
+
+As of 2026-08-14 another branch, `feat/stock-source-shops-and-sorting`, was in
+progress against **the same two files Task 4 modifies**. It adds a `stockSource`
+flag to `Shop`, scopes `loadInventory`'s product query to the shops that carry
+it, and reads product names from those shops instead of `SupplyItem`. It also
+restructures the `items.map(...)` block that Task 4 edits at `load.ts:143`.
+
+Before Task 4, check whether that work has landed:
+
+```bash
+git log --oneline main | head -20
+grep -n "stockSource" prisma/schema.prisma src/lib/inventory/load.ts
+```
+
+- **Landed:** line 143 has moved. Find the `arrivals:` mapping wherever it now
+  lives — it is the only place a purchase order becomes an arrival — and apply
+  Task 4's subtraction there. The arithmetic is unchanged.
+- **Still in flight:** do not rebase onto it and do not merge it. Apply Task 4 as
+  written and resolve the overlap when whichever branch lands second is merged.
+  The two changes are independent: one decides *which shops* report stock, the
+  other decides *how much of an order* is still coming.
+
+Never run `npm run db:push` while an unrelated branch's uncommitted schema edits
+are sitting in the working tree — it pushes those too. Confirm `git status` is
+clean of other people's files before Task 4 Step 2.
+
+---
+
 ## File Structure
 
 **Create:**
