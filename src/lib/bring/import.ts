@@ -5,6 +5,8 @@ import { resolveConsignments, type ResolvedConsignment } from './consignments'
 import { matchByEmail } from './match'
 // Note the directory: config.ts lives under delivery/, not bring/.
 import { getDeliveryConfig } from '../delivery/config'
+import { parseDhlExport } from '../dhl/parse'
+import { linkDhlShipments } from '../dhl/link'
 
 export type ImportResult = {
   importId: string
@@ -162,6 +164,59 @@ export async function importWarehouseFile(
   opts: { deadline?: number } = {},
 ): Promise<ImportResult> {
   const receivedAt = new Date()
+
+  /**
+   * DHL is tried first, and returns null the moment the bytes are not one of
+   * its exports — so the Bring reader below gets the same file untouched and
+   * ONE inbound address takes both. Neither sender has to know or care which
+   * reader will pick their message up.
+   *
+   * It is first rather than second because it is the cheaper, surer test: it
+   * keys on four named columns, while the Bring path accepts almost anything
+   * with long digit runs in it and would happily swallow a DHL export whole,
+   * pulling 10-digit shipment numbers out of it and asking Bring about every
+   * one.
+   */
+  const dhl = parseDhlExport(buf)
+  if (dhl) {
+    try {
+      const { linked, unmatched } = await linkDhlShipments(dhl.shipments, receivedAt)
+
+      // Freight and inbound stock ride along in the same export. They are not
+      // customer deliveries and are correctly passed over, but they are listed
+      // here so a short import is visible rather than merely smaller.
+      const rows: UnmatchedRow[] = [
+        ...unmatched,
+        ...dhl.skipped.map((s) => ({
+          orderNumber: s.product || '(no product)',
+          trackingNumber: s.trackingNumber,
+          reason: `No order reference on this row: ${s.reference}`,
+        })),
+      ]
+      const parsed = dhl.shipments.length + dhl.skipped.length
+
+      const record = await db.trackingImport.create({
+        data: {
+          filename,
+          source,
+          rowsParsed: parsed,
+          rowsLinked: linked,
+          rowsUnmatched: rows.length,
+          unmatched: rows.length ? JSON.stringify(rows) : null,
+        },
+      })
+      return { importId: record.id, parsed, linked, unmatched: rows, unaccounted: rows.length }
+    } catch (e) {
+      // Same rule as the Bring block below: a throw that escapes unrecorded is
+      // the silent morning this feature exists to prevent.
+      const error = e instanceof Error ? e.message : 'Could not import this file'
+      const parsed = dhl.shipments.length + dhl.skipped.length
+      await recordFailedAttempt(filename, source, {
+        rowsParsed: parsed, rowsLinked: 0, rowsUnmatched: parsed, error,
+      })
+      throw e
+    }
+  }
 
   let numbers: string[]
   try {

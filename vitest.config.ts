@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
             // deployment, so it is tested like anything else that can.
             include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'],
             exclude: [
-              'src/lib/{delivery,bring}/**/*.integration.test.ts',
+              'src/lib/{delivery,bring,dhl}/**/*.integration.test.ts',
               'src/app/api/delivery/**/*.integration.test.ts',
               'src/app/api/orders/route.test.ts',
               'src/lib/advisor/**/*.integration.test.ts',
@@ -73,7 +73,7 @@ export default defineConfig(({ mode }) => {
             // the lib half: those tests write DeliveryPromise and the
             // DeliveryConfig singleton, which no tag can isolate.
             include: [
-              'src/lib/{delivery,bring}/**/*.integration.test.ts',
+              'src/lib/{delivery,bring,dhl}/**/*.integration.test.ts',
               'src/app/api/delivery/**/*.integration.test.ts',
               // Not an integration-test filename, and deliberately listed anyway:
               // the Orders route test now creates a DeliveryPromise row for its
