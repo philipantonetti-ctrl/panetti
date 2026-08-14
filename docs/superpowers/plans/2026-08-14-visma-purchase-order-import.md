@@ -92,116 +92,70 @@ db.\$queryRawUnsafe(\`select column_name from information_schema.columns where t
 
 ---
 
-## Task 1: Confirm the receipt date, and record a fixture
+## Task 1: Confirm the receipt date, and record fixtures — DONE 2026-08-14
 
-**This task is run by the session lead, not a subagent.** It needs the Visma client secret, which must not be handed to a subagent, and it reads the client's live ERP.
+**Already completed by the session lead against the live company. Do not re-run
+it.** The findings below are the input to Tasks 3 and 5, and six fixtures are
+committed under `src/lib/visma/__fixtures__/`.
 
-**Files:**
-- Create: `<scratchpad>/visma-po-shape.mjs` (throwaway, NOT committed)
-- Create: `src/lib/visma/__fixtures__/purchase-order.json` (committed)
+The full evidence is in the spec under "When an order counts as received —
+measured, not assumed". The four results that change the code:
 
-**Interfaces:**
-- Produces: the answer to "which field dates a completed purchase order", and a recorded fixture every later test runs against.
+**1. The company is small enough to read in one page.** 227 purchase orders, 719
+lines, 208 receipts. No paging and no date filter; Task 5 still reports a full
+page rather than trusting one.
 
-The spec deliberately refuses to guess this. `receivedAt` must not be stamped from the clock — that would record a 2023 delivery as arriving today.
+**2. Quantity is NOT the completion test.** 59 `Closed` lines have
+`qtyOnReceipts < orderQty`. Order 500148 is the worst case: `Closed`,
+`openQuantity: 0`, every line `completed: true`, `qtyOnReceipts: 0`, and no
+receipt in the company references it. A quantity test reads that as 47 units
+still arriving, forever, against an ETA in 2024. Confirmed on the detail
+endpoint, so it is the data rather than a lossy list response.
 
-- [ ] **Step 1: Confirm the secret is in `.env`, not in chat**
+**3. `line.completed` IS the test.** Across all 719 lines:
 
-`.env` needs these three. The secret must come from the Visma Developer Portal directly — if it has ever been pasted into a chat, rotate it first and use the new one.
+| status | `completed` | lines |
+|---|---|---|
+| Closed | `true` | 672 |
+| Cancelled | `true` | 7 |
+| Open | `false` | 37 |
+| Hold | `false` | 3 |
 
-```
-VISMA_CLIENT_ID=isv_panetti_inventory_forecast
-VISMA_TENANT_ID=83949a19-af32-11ec-b60b-0638767d04b5
-VISMA_CLIENT_SECRET=<from the portal>
-```
+No exceptions. Cancellation is checked first, because cancelled lines also carry
+`completed: true`.
 
-Confirm `.env` is gitignored: `git check-ignore .env` must print `.env`.
+**4. The receipt date joins perfectly, and the planned fallback was wrong.**
+Order `purchaseReceipts[].receiptNumber` → `controller/api/v1/purchasereceipt`
+`receiptNbr` → `date`: **195 of 195 resolved, 0 missing.** Meanwhile orders
+500023-500025 carry a receipt date of `2023-11-14` and a
+`lastModifiedDateTime` of `2026-07-29` — out by nearly three years. So the
+receipt date is used where it exists; `lastModifiedDateTime` remains the
+fallback for the 7 Closed orders with no receipt, and the page labels that
+column "recorded" rather than "received".
 
-- [ ] **Step 2: Write the probe**
+**5. There is real stock to gain.** Open orders include `PANPIZPRO` × 3055 and
+`PANPIZOVEBRU` × 1000. 653 of 719 lines belong to the other brands sharing the
+ERP and are skipped as "not our product" — expect that count to be large and do
+not treat it as a fault.
 
-Write to the scratchpad, not the repo. Every request is a GET.
+### The fixtures
 
-```js
-// Which field dates a COMPLETED purchase order? Read-only.
-const BASE = 'https://integration.visma.net/API'
+`src/lib/visma/__fixtures__/purchase-orders.json` — six real orders, costs and
+supplier contacts stripped, one per shape the mapper must handle:
 
-const res = await fetch('https://connect.visma.com/connect/token', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  body: new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: process.env.VISMA_CLIENT_ID,
-    client_secret: process.env.VISMA_CLIENT_SECRET,
-    scope: 'vismanet_erp_service_api:read',
-    tenant_id: process.env.VISMA_TENANT_ID,
-  }),
-})
-if (!res.ok) { console.log('token failed ' + res.status); process.exit(1) }
-const { access_token } = await res.json()
+| order | status | why it is there |
+|---|---|---|
+| 500254 | Open | our products, nothing received yet |
+| 500259 | Open | one large Panetti line (3055 units) |
+| 500017 | Closed | has a receipt, so a real received date exists |
+| **500148** | **Closed** | **no receipt, `qtyOnReceipts: 0` — the trap** |
+| 500000 | Cancelled | must be skipped |
+| 500235 | Hold | never released, must be skipped |
 
-const get = async (p) => {
-  const r = await fetch(BASE + '/' + p, {
-    headers: { Authorization: 'Bearer ' + access_token, Accept: 'application/json' },
-    signal: AbortSignal.timeout(60000),
-  })
-  return r.ok ? r.json() : (console.log(p + ' -> ' + r.status), null)
-}
+`src/lib/visma/__fixtures__/purchase-receipts.json` — the receipts those orders
+reference, so the date join is testable with no network.
 
-const orders = await get('controller/api/v1/purchaseorder?pageSize=500')
-if (!orders) process.exit(1)
-console.log('orders: ' + orders.length + (orders.length >= 500 ? '  <-- FULL PAGE, the import needs paging' : ''))
-console.log('statuses: ' + [...new Set(orders.map((o) => o.status?.value ?? o.status))].join(', '))
-
-// Top-level date-ish fields, and whether a COMPLETED order fills them in.
-const done = orders.find((o) => {
-  const lines = o.lines ?? []
-  return lines.length && lines.every((l) => (l.qtyOnReceipts ?? 0) >= (l.orderQty ?? 0))
-})
-console.log('\na fully received order: ' + (done ? (done.orderNbr?.value ?? done.orderNbr) : 'NONE FOUND'))
-if (done) {
-  for (const [k, v] of Object.entries(done)) {
-    if (!/date|time|promis|receipt|complet|close/i.test(k)) continue
-    console.log('  ' + k.padEnd(28) + JSON.stringify(v?.value ?? v))
-  }
-  console.log('  --- its first line ---')
-  for (const [k, v] of Object.entries(done.lines?.[0] ?? {})) {
-    if (!/date|time|promis|receipt|qty|complet/i.test(k)) continue
-    console.log('    ' + k.padEnd(26) + JSON.stringify(v?.value ?? v))
-  }
-}
-```
-
-- [ ] **Step 3: Run it**
-
-Run: `node --env-file=.env <scratchpad>/visma-po-shape.mjs`
-Expected: an order count, the set of statuses in use, and a list of date-bearing fields on a fully received order.
-
-Note the ORDER COUNT. It answers the spec's open question about how far back to read: under 500 and the import fetches the lot in one request, which is what Task 5 assumes. If the probe prints `FULL PAGE`, stop and report — Task 5 needs paging or a date filter, and shipping it without one would silently drop orders.
-
-- [ ] **Step 4: Decide, and write the decision down**
-
-Apply the spec's rule, in order:
-1. A real receipt or completion date on the order → use it.
-2. Otherwise `lastModifiedDateTime` → use it, and the UI column reads **"recorded"**, not "received".
-3. Never the clock.
-
-Record the choice as a comment at the top of `src/lib/visma/purchase-orders.ts` in Task 3. If no fully received order exists in the company at all, use `lastModifiedDateTime` and say so.
-
-- [ ] **Step 5: Record the fixture**
-
-Save ONE real purchase order to `src/lib/visma/__fixtures__/purchase-order.json`, preferring one with at least two lines and a partial receipt. Before saving, strip: unit costs, extended costs, supplier contact details, and any `taxes` block. Keep `orderNbr`, `status`, `date`, `promisedOn`, `lastModifiedDateTime`, `supplierName`, and per line `lineNbr`, `inventory.number`, `orderQty`, `qtyOnReceipts`, `promised`, `canceled`, `warehouse`.
-
-Read the file back and confirm no secret, price, or personal contact detail survived.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git branch --show-current   # must be feat/visma-purchase-orders
-git add src/lib/visma/__fixtures__/purchase-order.json
-git commit -m "test(visma): record one real purchase order to map against"
-```
-
----
+- [x] **Done.** Fixtures recorded and committed; findings above are authoritative.
 
 ## Task 2: The Visma client
 
@@ -464,29 +418,39 @@ git commit -m "feat(visma): read-only client, and the host the portal does not n
 **Files:**
 - Create: `src/lib/visma/types.ts`, `src/lib/visma/purchase-orders.ts`
 - Test: `src/lib/visma/purchase-orders.test.ts`
-- Read: `src/lib/visma/__fixtures__/purchase-order.json` (Task 1)
+- Read: `src/lib/visma/__fixtures__/purchase-orders.json`, `src/lib/visma/__fixtures__/purchase-receipts.json` (recorded in Task 1)
 
 **Interfaces:**
-- Consumes: nothing. Pure — no network, no database.
+- Consumes: the Task 1 findings. Nothing else — pure, no network, no database.
 - Produces:
   ```ts
+  // types.ts — what Visma sends. Scalars arrive EITHER bare or wrapped as
+  // { value: x }, so every field goes through unwrap().
+  export type Wrapped<T> = T | { value: T } | null | undefined
   export type VismaOrderLine = {
-    lineNbr?: number | { value: number }
-    inventory?: { number?: string | { value: string } }
-    orderQty?: number | { value: number }
-    qtyOnReceipts?: number | { value: number }
-    promised?: string | { value: string } | null
-    canceled?: boolean | { value: boolean }
+    lineNbr?: Wrapped<number>
+    inventory?: { number?: Wrapped<string> }
+    orderQty?: Wrapped<number>
+    qtyOnReceipts?: Wrapped<number>
+    promised?: Wrapped<string>
+    completed?: Wrapped<boolean>
+    canceled?: Wrapped<boolean>
     warehouse?: unknown
   }
+  export type VismaReceiptRef = { receiptNumber?: Wrapped<string>; receiptNbr?: Wrapped<string> }
   export type VismaOrder = {
-    orderNbr?: string | number | { value: string | number }
-    status?: string | { value: string }
-    date?: string | { value: string } | null
-    promisedOn?: string | { value: string } | null
-    lastModifiedDateTime?: string | { value: string } | null
+    orderNbr?: Wrapped<string | number>
+    status?: Wrapped<string>
+    hold?: Wrapped<boolean>
+    date?: Wrapped<string>
+    promisedOn?: Wrapped<string>
+    lastModifiedDateTime?: Wrapped<string>
+    purchaseReceipts?: Wrapped<VismaReceiptRef[]>
     lines?: VismaOrderLine[]
   }
+  export type VismaReceipt = { receiptNbr?: Wrapped<string>; status?: Wrapped<string>; date?: Wrapped<string> }
+
+  // purchase-orders.ts — ours.
   export type MappedOrder = {
     externalId: string
     sku: string
@@ -496,28 +460,47 @@ git commit -m "feat(visma): read-only client, and the host the portal does not n
     eta: Date | null
     receivedAt: Date | null
   }
-  export type SkipReason = 'cancelled order' | 'cancelled line' | 'not our product' | 'unusable line'
+  export type SkipReason =
+    | 'cancelled order' | 'order on hold' | 'cancelled line'
+    | 'not our product' | 'unusable line'
   export type MapResult = {
     orders: MappedOrder[]
     read: number
     skipped: { reason: SkipReason; count: number }[]
   }
   export function unwrap<T>(v: unknown): T | null
-  export function mapVismaOrders(orders: VismaOrder[], ourSkus: Set<string>): MapResult
+  export function receiptDatesByNumber(receipts: VismaReceipt[]): Map<string, Date>
+  export function mapVismaOrders(
+    orders: VismaOrder[],
+    ourSkus: Set<string>,
+    receiptDates?: Map<string, Date>,
+  ): MapResult
   ```
-
-Visma wraps most scalars as `{ value: x }` but not all of them, which is why `unwrap` exists and why every field goes through it.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/lib/visma/purchase-orders.test.ts`:
+Create `src/lib/visma/purchase-orders.test.ts`. The fixtures hold BARE scalars
+(they were recorded unwrapped) and the synthetic builders below use the WRAPPED
+form, so both branches of `unwrap` are exercised.
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import fixture from './__fixtures__/purchase-order.json'
-import { mapVismaOrders, unwrap, type VismaOrder } from './purchase-orders'
+import orderFixtures from './__fixtures__/purchase-orders.json'
+import receiptFixtures from './__fixtures__/purchase-receipts.json'
+import {
+  mapVismaOrders,
+  receiptDatesByNumber,
+  unwrap,
+  type VismaOrder,
+  type VismaReceipt,
+} from './purchase-orders'
 
-const OURS = new Set(['PANPIZPRO', 'PANPRIMIXPRO'])
+const FIXTURES = orderFixtures as unknown as VismaOrder[]
+const RECEIPTS = receiptFixtures as unknown as VismaReceipt[]
+const byNbr = (n: string) => FIXTURES.find((o) => String(unwrap(o.orderNbr)) === n)!
+
+const OURS = new Set(['PANPIZPRO', 'PANPRIMIXPRO', 'MACBL661', 'MACBE661', 'MLCBL510', 'MLCBE51'])
+const DATES = receiptDatesByNumber(RECEIPTS)
 
 const order = (over: Partial<VismaOrder> = {}): VismaOrder => ({
   orderNbr: '500001',
@@ -525,6 +508,7 @@ const order = (over: Partial<VismaOrder> = {}): VismaOrder => ({
   date: { value: '2026-06-01' },
   promisedOn: { value: '2026-09-01' },
   lastModifiedDateTime: { value: '2026-07-15T09:00:00Z' },
+  purchaseReceipts: [],
   lines: [
     {
       lineNbr: 1,
@@ -532,6 +516,7 @@ const order = (over: Partial<VismaOrder> = {}): VismaOrder => ({
       orderQty: { value: 800 },
       qtyOnReceipts: { value: 300 },
       promised: { value: '2026-08-20' },
+      completed: { value: false },
       canceled: false,
     },
   ],
@@ -544,12 +529,23 @@ describe('unwrap', () => {
     expect(unwrap<number>(7)).toBe(7)
     expect(unwrap<string>(null)).toBeNull()
     expect(unwrap<string>(undefined)).toBeNull()
+    expect(unwrap<string>({ value: null })).toBeNull()
+  })
+})
+
+describe('receiptDatesByNumber', () => {
+  it('indexes the recorded receipts by their number', () => {
+    expect(DATES.size).toBe(RECEIPTS.length)
+    for (const [nbr, d] of DATES) {
+      expect(typeof nbr).toBe('string')
+      expect(d).toBeInstanceOf(Date)
+    }
   })
 })
 
 describe('mapVismaOrders', () => {
   it('keeps ordered and received as two separate numbers', () => {
-    const { orders } = mapVismaOrders([order()], OURS)
+    const { orders } = mapVismaOrders([order()], OURS, DATES)
     expect(orders).toHaveLength(1)
     expect(orders[0]).toMatchObject({
       externalId: '500001-1',
@@ -560,43 +556,51 @@ describe('mapVismaOrders', () => {
   })
 
   it('prefers the line promise over the order promise', () => {
-    const { orders } = mapVismaOrders([order()], OURS)
-    expect(orders[0].eta).toEqual(new Date('2026-08-20T00:00:00Z'))
+    expect(mapVismaOrders([order()], OURS, DATES).orders[0].eta).toEqual(
+      new Date('2026-08-20T00:00:00Z'),
+    )
   })
 
   it('falls back to the order promise when the line has none', () => {
     const o = order()
     o.lines![0].promised = null
-    expect(mapVismaOrders([o], OURS).orders[0].eta).toEqual(new Date('2026-09-01T00:00:00Z'))
+    expect(mapVismaOrders([o], OURS, DATES).orders[0].eta).toEqual(
+      new Date('2026-09-01T00:00:00Z'),
+    )
   })
 
   it('leaves eta null when nobody promised anything, so it moves no date', () => {
     const o = order({ promisedOn: null })
     o.lines![0].promised = null
-    expect(mapVismaOrders([o], OURS).orders[0].eta).toBeNull()
+    expect(mapVismaOrders([o], OURS, DATES).orders[0].eta).toBeNull()
   })
 
-  it('does not mark an order received while units are outstanding', () => {
-    expect(mapVismaOrders([order()], OURS).orders[0].receivedAt).toBeNull()
+  it('does not mark an incomplete line received, whatever the quantities say', () => {
+    expect(mapVismaOrders([order()], OURS, DATES).orders[0].receivedAt).toBeNull()
   })
 
-  it('marks it received once nothing is outstanding, using Visma"s own date', () => {
+  it('marks a completed line received even though quantities disagree', () => {
+    // This is the whole point. Visma closes orders without receipts.
     const o = order()
-    o.lines![0].qtyOnReceipts = { value: 800 }
-    const row = mapVismaOrders([o], OURS).orders[0]
-    expect(row.receivedAt).toEqual(new Date('2026-07-15T09:00:00Z'))
+    o.lines![0].completed = { value: true }
+    expect(mapVismaOrders([o], OURS, DATES).orders[0].receivedAt).not.toBeNull()
   })
 
-  it('marks an over-receipt received too', () => {
-    const o = order()
-    o.lines![0].qtyOnReceipts = { value: 900 }
-    expect(mapVismaOrders([o], OURS).orders[0].receivedAt).not.toBeNull()
-  })
-
-  it('skips a cancelled order and counts it', () => {
-    const { orders, skipped } = mapVismaOrders([order({ status: { value: 'Cancelled' } })], OURS)
+  it('skips a cancelled order and counts every one of its lines', () => {
+    const { orders, skipped } = mapVismaOrders([order({ status: { value: 'Cancelled' } })], OURS, DATES)
     expect(orders).toHaveLength(0)
     expect(skipped).toContainEqual({ reason: 'cancelled order', count: 1 })
+  })
+
+  it('skips an order on hold, because nobody has actually placed it', () => {
+    const { orders, skipped } = mapVismaOrders([order({ status: { value: 'Hold' } })], OURS, DATES)
+    expect(orders).toHaveLength(0)
+    expect(skipped).toContainEqual({ reason: 'order on hold', count: 1 })
+  })
+
+  it('skips an order flagged hold even when its status does not say so', () => {
+    const { orders } = mapVismaOrders([order({ hold: { value: true } })], OURS, DATES)
+    expect(orders).toHaveLength(0)
   })
 
   it('skips a cancelled line but keeps its siblings', () => {
@@ -606,9 +610,10 @@ describe('mapVismaOrders', () => {
       inventory: { number: { value: 'PANPRIMIXPRO' } },
       orderQty: { value: 100 },
       qtyOnReceipts: { value: 0 },
+      completed: { value: true },
       canceled: { value: true },
     })
-    const { orders, skipped } = mapVismaOrders([o], OURS)
+    const { orders, skipped } = mapVismaOrders([o], OURS, DATES)
     expect(orders.map((r) => r.sku)).toEqual(['PANPIZPRO'])
     expect(skipped).toContainEqual({ reason: 'cancelled line', count: 1 })
   })
@@ -616,7 +621,7 @@ describe('mapVismaOrders', () => {
   it('skips a product that is not ours, and says so rather than going quiet', () => {
     const o = order()
     o.lines![0].inventory = { number: { value: 'COSORI-AF-500' } }
-    const { orders, skipped, read } = mapVismaOrders([o], OURS)
+    const { orders, skipped, read } = mapVismaOrders([o], OURS, DATES)
     expect(orders).toHaveLength(0)
     expect(read).toBe(1)
     expect(skipped).toContainEqual({ reason: 'not our product', count: 1 })
@@ -625,26 +630,70 @@ describe('mapVismaOrders', () => {
   it('matches a SKU case-insensitively and ignores surrounding space', () => {
     const o = order()
     o.lines![0].inventory = { number: '  panpizpro ' }
-    expect(mapVismaOrders([o], OURS).orders[0].sku).toBe('PANPIZPRO')
+    expect(mapVismaOrders([o], OURS, DATES).orders[0].sku).toBe('PANPIZPRO')
   })
 
-  it('skips a line with no quantity or no product rather than storing a zero-unit order', () => {
+  it('skips a line with no product or no quantity rather than storing a zero-unit order', () => {
     const o = order()
     o.lines = [{ lineNbr: 1, inventory: { number: { value: 'PANPIZPRO' } }, orderQty: { value: 0 } }]
-    const { orders, skipped } = mapVismaOrders([o], OURS)
+    const { orders, skipped } = mapVismaOrders([o], OURS, DATES)
     expect(orders).toHaveLength(0)
     expect(skipped).toContainEqual({ reason: 'unusable line', count: 1 })
   })
 
   it('skips an order with no usable date rather than inventing one', () => {
-    const { orders } = mapVismaOrders([order({ date: null })], OURS)
-    expect(orders).toHaveLength(0)
+    expect(mapVismaOrders([order({ date: null })], OURS, DATES).orders).toHaveLength(0)
+  })
+})
+
+// The recorded company data. These are the cases that decided the design.
+describe('mapVismaOrders, against the recorded orders', () => {
+  it('order 500148 is NOT incoming, though it has zero receipts', () => {
+    // Closed, completed:true, qtyOnReceipts:0, no receipt anywhere. A
+    // quantity-based test reads this as 47 units arriving in 2024, forever.
+    const rows = mapVismaOrders([byNbr('500148')], OURS, DATES).orders
+    expect(rows.length).toBeGreaterThan(0)
+    for (const r of rows) {
+      expect(r.receivedAt).not.toBeNull()
+      expect(r.receivedQuantity).toBe(0)
+    }
   })
 
-  it('reads the recorded order without throwing', () => {
-    const result = mapVismaOrders([fixture as VismaOrder], new Set())
+  it('order 500017 takes its date from the joined receipt, not from lastModified', () => {
+    const rows = mapVismaOrders([byNbr('500017')], new Set(['1298']), DATES).orders
+    const receipt = DATES.get('000009')
+    if (rows.length && receipt) expect(rows[0].receivedAt).toEqual(receipt)
+  })
+
+  it('order 500259 is a real open order for a Panetti product', () => {
+    const rows = mapVismaOrders([byNbr('500259')], OURS, DATES).orders
+    const pizza = rows.find((r) => r.sku === 'PANPIZPRO')
+    expect(pizza).toBeDefined()
+    expect(pizza!.quantity).toBe(3055)
+    expect(pizza!.receivedQuantity).toBe(0)
+    expect(pizza!.receivedAt).toBeNull() // still coming
+  })
+
+  it('order 500254 contributes its open lines and nothing else', () => {
+    const rows = mapVismaOrders([byNbr('500254')], OURS, DATES).orders
+    expect(rows.length).toBeGreaterThan(0)
+    for (const r of rows) expect(r.receivedAt).toBeNull()
+  })
+
+  it('the cancelled and held orders contribute nothing', () => {
+    const { orders, skipped } = mapVismaOrders([byNbr('500000'), byNbr('500235')], OURS, DATES)
+    expect(orders).toHaveLength(0)
+    const reasons = skipped.map((s) => s.reason)
+    expect(reasons).toContain('cancelled order')
+    expect(reasons).toContain('order on hold')
+  })
+
+  it('reads all six recorded orders without throwing', () => {
+    const result = mapVismaOrders(FIXTURES, OURS, DATES)
     expect(result.read).toBeGreaterThan(0)
-    expect(result.orders).toHaveLength(0) // no SKUs supplied, so nothing is ours
+    const counted = result.orders.length + result.skipped.reduce((n, s) => n + s.count, 0)
+    // Every line read is either mapped or skipped with a reason. Nothing vanishes.
+    expect(counted).toBe(result.read)
   })
 })
 ```
@@ -656,27 +705,36 @@ Expected: FAIL — `Failed to resolve import "./purchase-orders"`.
 
 - [ ] **Step 3: Write the implementation**
 
-Create `src/lib/visma/types.ts` holding exactly the two wire types from the Interfaces block above — `VismaOrderLine` and `VismaOrder`, copied verbatim. They describe what Visma sends, so they live apart from the mapper that interprets it. The remaining types (`MappedOrder`, `SkipReason`, `MapResult`) are ours and belong in `purchase-orders.ts`:
+Create `src/lib/visma/types.ts` holding exactly the wire types from the
+Interfaces block above, copied verbatim. They describe what Visma sends, so they
+live apart from the mapper that interprets it. Then
+`src/lib/visma/purchase-orders.ts`:
 
 ```ts
 import { normaliseSku } from '../inventory/sku'
-import type { VismaOrder, VismaOrderLine } from './types'
+import type { VismaOrder, VismaOrderLine, VismaReceipt, VismaReceiptRef } from './types'
 
-export type { VismaOrder, VismaOrderLine } from './types'
+export type { VismaOrder, VismaOrderLine, VismaReceipt, VismaReceiptRef } from './types'
 
 export type MappedOrder = {
   externalId: string
   sku: string
   /** What was ordered. Never the outstanding amount — see the design doc. */
   quantity: number
-  /** What has landed. Subtracted from `quantity` at the one place that counts arrivals. */
+  /** What Visma says has landed. Subtracted at the one place that counts arrivals. */
   receivedQuantity: number
   orderedAt: Date
   eta: Date | null
+  /** Non-null means finished, which is what takes it out of the incoming set. */
   receivedAt: Date | null
 }
 
-export type SkipReason = 'cancelled order' | 'cancelled line' | 'not our product' | 'unusable line'
+export type SkipReason =
+  | 'cancelled order'
+  | 'order on hold'
+  | 'cancelled line'
+  | 'not our product'
+  | 'unusable line'
 
 export type MapResult = {
   orders: MappedOrder[]
@@ -696,8 +754,7 @@ export function unwrap<T>(v: unknown): T | null {
 
 const num = (v: unknown): number | null => {
   const raw = unwrap<unknown>(v)
-  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
-  return raw
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : null
 }
 
 const date = (v: unknown): Date | null => {
@@ -709,34 +766,92 @@ const date = (v: unknown): Date | null => {
 
 const truthy = (v: unknown): boolean => unwrap<boolean>(v) === true
 
+/** Receipt number to the date the goods were booked in. */
+export function receiptDatesByNumber(receipts: VismaReceipt[]): Map<string, Date> {
+  const map = new Map<string, Date>()
+  for (const r of receipts ?? []) {
+    const nbr = String(unwrap<string>(r?.receiptNbr) ?? '').trim()
+    const d = date(r?.date)
+    if (nbr && d) map.set(nbr, d)
+  }
+  return map
+}
+
+/**
+ * The date an order actually finished.
+ *
+ * The latest of its receipts, because an order delivered in two shipments is
+ * done when the last one lands. Falls back to `lastModifiedDateTime` for the
+ * seven closed orders that carry no receipt at all, and to the order date if
+ * even that is missing — all three are real dates Visma recorded, which is why
+ * the page labels the column "recorded" rather than "received".
+ *
+ * Never the clock. `lastModifiedDateTime` alone would have been badly wrong:
+ * orders 500023-500025 were received in November 2023 and last modified in July
+ * 2026.
+ */
+function finishedOn(
+  order: VismaOrder,
+  receiptDates: Map<string, Date>,
+  orderedAt: Date,
+): Date {
+  const refs = unwrap<VismaReceiptRef[]>(order.purchaseReceipts)
+  let latest: Date | null = null
+  if (Array.isArray(refs)) {
+    for (const ref of refs) {
+      const nbr = String(unwrap<string>(ref?.receiptNumber) ?? unwrap<string>(ref?.receiptNbr) ?? '').trim()
+      const d = nbr ? receiptDates.get(nbr) : undefined
+      if (d && (latest === null || d > latest)) latest = d
+    }
+  }
+  return latest ?? date(order.lastModifiedDateTime) ?? orderedAt
+}
+
 /**
  * Visma purchase orders, as rows we can store.
  *
  * One line becomes one row. `quantity` is always what was ordered and
- * `receivedQuantity` always what has landed, because a single column holding
- * "outstanding" would read as zero on a finished order and the page could never
- * show what arrived. The subtraction happens once, in load.ts, where arrivals
- * are counted.
+ * `receivedQuantity` always what Visma says has landed, because a single column
+ * holding "outstanding" would read as zero on a finished order and the page
+ * could never show what arrived. The subtraction happens once, in load.ts.
+ *
+ * Completion is `line.completed`, NOT a quantity comparison. Visma closes orders
+ * without booking receipts against them — 59 closed lines in the live company
+ * have fewer receipts than they ordered, and order 500148 has none at all. A
+ * quantity test leaves those counting as incoming stock forever.
  *
  * Every skip is counted with its reason. A line dropped silently because its SKU
  * did not match is indistinguishable from a line that never existed, and that is
  * exactly how a missing purchase order goes unnoticed.
  */
-export function mapVismaOrders(orders: VismaOrder[], ourSkus: Set<string>): MapResult {
+export function mapVismaOrders(
+  orders: VismaOrder[],
+  ourSkus: Set<string>,
+  receiptDates: Map<string, Date> = new Map(),
+): MapResult {
   const wanted = new Set([...ourSkus].map((s) => normaliseSku(s)))
   const out: MappedOrder[] = []
   const counts = new Map<SkipReason, number>()
   let read = 0
 
-  const skip = (reason: SkipReason) => counts.set(reason, (counts.get(reason) ?? 0) + 1)
+  const skip = (reason: SkipReason, n = 1) => counts.set(reason, (counts.get(reason) ?? 0) + n)
 
-  for (const order of orders) {
+  for (const order of orders ?? []) {
     const lines = order.lines ?? []
     read += lines.length
 
     const status = String(unwrap<string>(order.status) ?? '').toLowerCase()
+
     if (status === 'cancelled' || status === 'canceled') {
-      for (const _ of lines) skip('cancelled order')
+      skip('cancelled order', lines.length)
+      continue
+    }
+
+    // An order on hold has not been placed with the supplier. Counting it would
+    // push a run-out date out on stock that may never be ordered — the same
+    // reason an order with no ETA moves no date.
+    if (status === 'hold' || truthy(order.hold)) {
+      skip('order on hold', lines.length)
       continue
     }
 
@@ -744,14 +859,16 @@ export function mapVismaOrders(orders: VismaOrder[], ourSkus: Set<string>): MapR
     const orderNbr = unwrap<string | number>(order.orderNbr)
     // No order date means no honest orderedAt, and orderedAt is not nullable.
     if (!orderedAt || orderNbr === null) {
-      for (const _ of lines) skip('unusable line')
+      skip('unusable line', lines.length)
       continue
     }
 
     const orderEta = date(order.promisedOn)
-    const modified = date(order.lastModifiedDateTime)
+    const finished = finishedOn(order, receiptDates, orderedAt)
 
-    for (const line of lines as VismaOrderLine[]) {
+    for (const line of lines) {
+      // Checked before `completed`, because a cancelled line carries
+      // completed: true as well.
       if (truthy(line.canceled)) {
         skip('cancelled line')
         continue
@@ -771,21 +888,16 @@ export function mapVismaOrders(orders: VismaOrder[], ourSkus: Set<string>): MapR
         continue
       }
 
-      const received = Math.max(0, num(line.qtyOnReceipts) ?? 0)
-      const complete = received >= ordered
-
       out.push({
         externalId: `${orderNbr}-${lineNbr}`,
         sku,
         quantity: ordered,
-        receivedQuantity: received,
+        receivedQuantity: Math.max(0, num(line.qtyOnReceipts) ?? 0),
         orderedAt,
         // The line's own promise beats the order's: a container of two products
         // can land on two different days.
         eta: date(line.promised) ?? orderEta,
-        // Visma's date or nothing. Stamping the clock would record a delivery
-        // from years ago as having arrived today.
-        receivedAt: complete ? modified : null,
+        receivedAt: truthy(line.completed) ? finished : null,
       })
     }
   }
@@ -798,22 +910,22 @@ export function mapVismaOrders(orders: VismaOrder[], ourSkus: Set<string>): MapR
 }
 ```
 
-**If Task 1 found a real receipt/completion date**, replace `date(order.lastModifiedDateTime)` with that field and update the comment. Everything else stands.
-
 - [ ] **Step 4: Run the tests**
 
 Run: `npx vitest run src/lib/visma/purchase-orders.test.ts`
-Expected: PASS. If the fixture case fails, the fixture is shaped differently than assumed — fix the mapper to match the real data, never the fixture to match the mapper.
+Expected: PASS, every case.
+
+If a fixture case fails, the recorded data is shaped differently than the mapper
+assumes. **Fix the mapper to match the real data — never edit the fixture to
+match the mapper.** The fixtures are the evidence.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git branch --show-current   # must be feat/visma-purchase-orders
 git add src/lib/visma/types.ts src/lib/visma/purchase-orders.ts src/lib/visma/purchase-orders.test.ts
-git commit -m "feat(visma): map an order to rows, and count every skip out loud"
+git commit -m "feat(visma): map an order to rows, completed not counted"
 ```
-
----
 
 ## Task 4: Store both numbers, and subtract once
 
@@ -1016,14 +1128,16 @@ git commit -m "feat(inventory): count what has not landed, not what was ordered"
 - Test: `src/lib/visma/import.test.ts`
 
 **Interfaces:**
-- Consumes: `vismaCredentials`, `vismaGet` (Task 2); `mapVismaOrders` (Task 3); `receivedQuantity`, unique `externalId` (Task 4).
+- Consumes: `vismaCredentials`, `vismaGet` (Task 2); `mapVismaOrders`, `receiptDatesByNumber` (Task 3); `receivedQuantity`, unique `externalId` (Task 4).
 - Produces:
   ```ts
+  export const PAGE_SIZE = 500
   export type VismaImportResult = {
     configured: boolean
     read: number
     imported: number
     skipped: { reason: string; count: number }[]
+    truncated: boolean
     error: string | null
   }
   export async function importVismaPurchaseOrders(): Promise<VismaImportResult>
@@ -1045,32 +1159,59 @@ const SKU = `${TAG}-A`
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
-const vismaOrder = (qtyOnReceipts: number) => ({
+/** An order the mapper will accept: open, not held, one line for our SKU. */
+const vismaOrder = (over: Record<string, unknown> = {}) => ({
   orderNbr: TAG,
   status: { value: 'Open' },
+  hold: { value: false },
   date: { value: '2026-06-01' },
   promisedOn: { value: '2026-09-01' },
   lastModifiedDateTime: { value: '2026-07-15T09:00:00Z' },
+  purchaseReceipts: [],
   lines: [
     {
       lineNbr: 1,
       inventory: { number: { value: SKU } },
       orderQty: { value: 800 },
-      qtyOnReceipts: { value: qtyOnReceipts },
+      qtyOnReceipts: { value: 300 },
       promised: { value: '2026-08-20' },
+      completed: { value: false },
       canceled: false,
     },
   ],
+  ...over,
 })
 
-const stubVisma = (orders: unknown[]) =>
+/** Finished, with a receipt that dates it. */
+const closedOrder = () =>
+  vismaOrder({
+    status: { value: 'Closed' },
+    purchaseReceipts: [{ receiptNumber: { value: 'R-1' } }],
+    lines: [
+      {
+        lineNbr: 1,
+        inventory: { number: { value: SKU } },
+        orderQty: { value: 800 },
+        qtyOnReceipts: { value: 800 },
+        promised: { value: '2026-08-20' },
+        completed: { value: true },
+        canceled: false,
+      },
+    ],
+  })
+
+const RECEIPTS = [{ receiptNbr: { value: 'R-1' }, status: { value: 'Released' }, date: { value: '2026-08-18' } }]
+
+/** Routes the token call, the orders call and the receipts call. */
+const stubVisma = (orders: unknown[], receipts: unknown[] = RECEIPTS) =>
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) =>
-      String(url).includes('connect/token')
-        ? json({ access_token: 'tok', expires_in: 3600 })
-        : json(orders),
-    ),
+    vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('connect/token')) return json({ access_token: 'tok', expires_in: 3600 })
+      if (u.includes('purchasereceipt')) return json(receipts)
+      return json(orders)
+    }),
   )
 
 beforeEach(async () => {
@@ -1090,7 +1231,7 @@ afterEach(async () => {
 
 describe('importVismaPurchaseOrders', () => {
   it('stores ordered and received as two numbers', async () => {
-    stubVisma([vismaOrder(300)])
+    stubVisma([vismaOrder()])
 
     const result = await importVismaPurchaseOrders()
     expect(result.imported).toBe(1)
@@ -1106,8 +1247,17 @@ describe('importVismaPurchaseOrders', () => {
     expect(row!.eta).toEqual(new Date('2026-08-20T00:00:00Z'))
   })
 
+  it('dates a finished order from its receipt, not from lastModified', async () => {
+    stubVisma([closedOrder()])
+    await importVismaPurchaseOrders()
+
+    const row = await db.purchaseOrder.findFirst({ where: { item: { sku: SKU } } })
+    // The receipt says 18 Aug; lastModifiedDateTime says 15 Jul. The receipt wins.
+    expect(row!.receivedAt).toEqual(new Date('2026-08-18T00:00:00Z'))
+  })
+
   it('re-running changes nothing, because the import is keyed on Visma"s own id', async () => {
-    stubVisma([vismaOrder(300)])
+    stubVisma([vismaOrder()])
     await importVismaPurchaseOrders()
     await importVismaPurchaseOrders()
 
@@ -1115,17 +1265,17 @@ describe('importVismaPurchaseOrders', () => {
   })
 
   it('moves the received figure when more units land', async () => {
-    stubVisma([vismaOrder(300)])
+    stubVisma([vismaOrder()])
     await importVismaPurchaseOrders()
 
     vi.unstubAllGlobals()
     resetVismaTokenCache()
-    stubVisma([vismaOrder(800)])
+    stubVisma([closedOrder()])
     await importVismaPurchaseOrders()
 
     const row = await db.purchaseOrder.findFirst({ where: { item: { sku: SKU } } })
     expect(row!.receivedQuantity).toBe(800)
-    expect(row!.receivedAt).toEqual(new Date('2026-07-15T09:00:00Z'))
+    expect(row!.receivedAt).not.toBeNull()
   })
 
   it('never touches a hand-entered row', async () => {
@@ -1133,7 +1283,7 @@ describe('importVismaPurchaseOrders', () => {
     const mine = await db.purchaseOrder.create({
       data: { supplyItemId: item.id, quantity: 42, orderedAt: new Date('2026-01-01T00:00:00Z') },
     })
-    stubVisma([vismaOrder(300)])
+    stubVisma([vismaOrder()])
 
     await importVismaPurchaseOrders()
 
@@ -1170,8 +1320,26 @@ describe('importVismaPurchaseOrders', () => {
     expect(result.error).toMatch(/503/)
   })
 
+  it('still imports when the receipts call fails, because dates are not the point', async () => {
+    // A finished order without a resolvable receipt falls back to
+    // lastModifiedDateTime. Losing the dates must not lose the orders.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = String(url)
+        if (u.includes('connect/token')) return json({ access_token: 'tok', expires_in: 3600 })
+        if (u.includes('purchasereceipt')) return json({ error: 'down' }, 503)
+        return json([vismaOrder()])
+      }),
+    )
+
+    const result = await importVismaPurchaseOrders()
+    expect(result.imported).toBe(1)
+    expect(result.error).toBeNull()
+  })
+
   it('counts a line for a product we do not sell', async () => {
-    const foreign = vismaOrder(0)
+    const foreign = vismaOrder()
     foreign.lines[0].inventory = { number: { value: 'COSORI-NOT-OURS' } }
     stubVisma([foreign])
 
@@ -1182,11 +1350,10 @@ describe('importVismaPurchaseOrders', () => {
 
   it('says so when the page came back full, rather than reporting a clean run', async () => {
     // A full page means orders past it were dropped, which otherwise looks
-    // exactly like a company that has no more of them. Foreign SKUs so the test
-    // costs 500 map operations rather than 500 writes.
+    // exactly like a company that has no more. Foreign SKUs so the test costs
+    // 500 map operations rather than 500 writes.
     const full = Array.from({ length: PAGE_SIZE }, (_, i) => {
-      const o = vismaOrder(0)
-      o.orderNbr = `${TAG}-${i}`
+      const o = vismaOrder({ orderNbr: `${TAG}-${i}` })
       o.lines[0].inventory = { number: { value: 'COSORI-NOT-OURS' } }
       return o
     })
@@ -1196,7 +1363,7 @@ describe('importVismaPurchaseOrders', () => {
   })
 
   it('does not claim truncation on a normal page', async () => {
-    stubVisma([vismaOrder(300)])
+    stubVisma([vismaOrder()])
     expect((await importVismaPurchaseOrders()).truncated).toBe(false)
   })
 })
@@ -1215,17 +1382,18 @@ Create `src/lib/visma/import.ts`:
 import { db } from '../db'
 import { normaliseSku } from '../inventory/sku'
 import { vismaCredentials, vismaGet } from './client'
-import { mapVismaOrders } from './purchase-orders'
-import type { VismaOrder } from './types'
+import { mapVismaOrders, receiptDatesByNumber } from './purchase-orders'
+import type { VismaOrder, VismaReceipt } from './types'
 
 /**
- * One page, wide. The company holds a few hundred purchase orders in total, so
- * this fetches all of them and the import stays a single request.
+ * One page, wide. Measured 2026-08-14: the company holds 227 purchase orders and
+ * 208 receipts in its entire history, so this reads everything in one request
+ * each and needs no date filter.
  *
  * If Visma ever returns exactly this many, the page is full and orders beyond it
  * were silently dropped — which would look identical to a company that simply
- * has no more. That case reports itself rather than going quiet; see `truncated`
- * below. The fix when it fires is paging, not a bigger number.
+ * has no more. That case reports itself; see `truncated` below. The fix when it
+ * fires is paging, not a bigger number.
  */
 export const PAGE_SIZE = 500
 
@@ -1269,15 +1437,28 @@ export async function importVismaPurchaseOrders(): Promise<VismaImportResult> {
       creds,
       `controller/api/v1/purchaseorder?pageSize=${PAGE_SIZE}`,
     )
-
     const rows = Array.isArray(orders) ? orders : []
+
+    // Receipts only date the finished orders. Losing them must not lose the
+    // orders themselves, so this failing falls back to lastModifiedDateTime
+    // rather than failing the import.
+    let receiptDates = new Map<string, Date>()
+    try {
+      const receipts = await vismaGet<VismaReceipt[]>(
+        creds,
+        `controller/api/v1/purchasereceipt?pageSize=${PAGE_SIZE}`,
+      )
+      receiptDates = receiptDatesByNumber(Array.isArray(receipts) ? receipts : [])
+    } catch {
+      // Dates degrade; the import continues.
+    }
 
     const items = await db.supplyItem.findMany({ select: { id: true, sku: true } })
     // normaliseSku, not a hand-rolled trim/uppercase: the mapper keys on it too,
     // and two spellings of "the same SKU" would fail to join for no visible reason.
     const idBySku = new Map(items.map((i) => [normaliseSku(i.sku), i.id]))
 
-    const mapped = mapVismaOrders(rows, new Set(idBySku.keys()))
+    const mapped = mapVismaOrders(rows, new Set(idBySku.keys()), receiptDates)
 
     let imported = 0
     for (const row of mapped.orders) {
@@ -1285,27 +1466,21 @@ export async function importVismaPurchaseOrders(): Promise<VismaImportResult> {
       // mapVismaOrders already filtered to our SKUs, so this cannot normally miss.
       if (!supplyItemId) continue
 
+      const fields = {
+        supplyItemId,
+        quantity: row.quantity,
+        receivedQuantity: row.receivedQuantity,
+        orderedAt: row.orderedAt,
+        eta: row.eta,
+        receivedAt: row.receivedAt,
+      }
+
       await db.purchaseOrder.upsert({
         where: { externalId: row.externalId },
-        create: {
-          externalId: row.externalId,
-          supplyItemId,
-          quantity: row.quantity,
-          receivedQuantity: row.receivedQuantity,
-          orderedAt: row.orderedAt,
-          eta: row.eta,
-          receivedAt: row.receivedAt,
-        },
-        // Notes are deliberately absent: someone may have written one here, and
+        create: { externalId: row.externalId, ...fields },
+        // `notes` is deliberately absent: someone may have written one here, and
         // Visma has no opinion about it.
-        update: {
-          supplyItemId,
-          quantity: row.quantity,
-          receivedQuantity: row.receivedQuantity,
-          orderedAt: row.orderedAt,
-          eta: row.eta,
-          receivedAt: row.receivedAt,
-        },
+        update: fields,
       })
       imported += 1
     }
@@ -1326,7 +1501,7 @@ export async function importVismaPurchaseOrders(): Promise<VismaImportResult> {
 - [ ] **Step 4: Run the tests**
 
 Run: `npx vitest run src/lib/visma/import.test.ts --testTimeout=20000`
-Expected: PASS, all seven cases.
+Expected: PASS, all eleven cases.
 
 - [ ] **Step 5: Commit**
 
@@ -1335,8 +1510,6 @@ git branch --show-current   # must be feat/visma-purchase-orders
 git add src/lib/visma/import.ts src/lib/visma/import.test.ts
 git commit -m "feat(visma): import purchase orders, idempotently, without touching typed rows"
 ```
-
----
 
 ## Task 6: Run it on the existing schedule
 
@@ -1481,6 +1654,40 @@ Then append these cases inside the existing `describe('PurchaseOrdersClient', ..
     render(<PurchaseOrdersClient orders={[order()]} items={[]} />)
     expect(screen.getByRole('button', { name: 'Mark received' })).toBeInTheDocument()
   })
+
+  it('says "recorded" on a Visma row, because seven of them have no real receipt', () => {
+    render(
+      <PurchaseOrdersClient
+        orders={[vismaOrder({ receivedQuantity: 800, receivedAt: '2026-08-18T00:00:00.000Z' })]}
+        items={[]}
+      />,
+    )
+    expect(screen.getByText(/recorded/)).toBeInTheDocument()
+    expect(screen.queryByText(/^received/)).not.toBeInTheDocument()
+  })
+
+  it('says "received" on a hand-entered row, where someone really did mark it', () => {
+    render(
+      <PurchaseOrdersClient
+        orders={[order({ receivedAt: '2026-08-18T00:00:00.000Z' })]}
+        items={[]}
+      />,
+    )
+    expect(screen.getByText(/received/)).toBeInTheDocument()
+  })
+
+  it('does not say "none landed yet" about an order Visma has closed', () => {
+    // Order 500148's shape: closed, nothing ever booked against it. Saying we
+    // are still waiting would be the opposite of the truth.
+    render(
+      <PurchaseOrdersClient
+        orders={[vismaOrder({ quantity: 17, receivedQuantity: 0, receivedAt: '2024-11-20T00:00:00.000Z' })]}
+        items={[]}
+      />,
+    )
+    expect(screen.getByText(/closed with no receipt/)).toBeInTheDocument()
+    expect(screen.queryByText(/none landed yet/)).not.toBeInTheDocument()
+  })
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -1524,8 +1731,17 @@ Add a helper above the component:
 function units(o: Order) {
   if (o.receivedQuantity === null) return String(o.quantity)
   const outstanding = Math.max(0, o.quantity - o.receivedQuantity)
+
+  // Finished, per Visma. It closes some orders without ever booking a receipt
+  // against them, so "0 landed" on a closed row is the paperwork rather than the
+  // pallet — and saying "none landed yet" there would imply we are still waiting.
+  if (o.receivedAt) {
+    return o.receivedQuantity === 0
+      ? `${o.quantity} ordered · closed with no receipt`
+      : `${o.quantity} ordered · ${o.receivedQuantity} landed`
+  }
+
   if (o.receivedQuantity === 0) return `${o.quantity} ordered · none landed yet`
-  if (outstanding === 0) return `${o.quantity} ordered · all landed`
   return `${o.quantity} ordered · ${o.receivedQuantity} landed · ${outstanding} still coming`
 }
 ```
@@ -1553,7 +1769,13 @@ Replace the actions cell so a Visma row explains itself rather than offering a b
 ```tsx
                 <td className="px-4 py-2.5 text-right">
                   {o.receivedAt ? (
-                    <span className="text-muted">received {when(o.receivedAt)}</span>
+                    // "recorded", not "received", on a Visma row. Most of these
+                    // dates come from a real goods receipt, but seven closed
+                    // orders have none and fall back to when the record last
+                    // changed. The word has to cover both without overstating.
+                    <span className="text-muted">
+                      {o.externalId ? 'recorded' : 'received'} {when(o.receivedAt)}
+                    </span>
                   ) : o.externalId ? (
                     <span className="text-muted">Visma records receipts</span>
                   ) : (

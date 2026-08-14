@@ -84,10 +84,15 @@ outside world, one caller, mirroring how `src/lib/woo/client.ts` is arranged.
 Caches the token in memory for its lifetime rather than fetching one per request.
 
 `src/lib/visma/purchase-orders.ts` — turn Visma orders into our rows. Pure
-mapping, no database, so the arithmetic that decides what counts as incoming can
-be tested without Postgres.
+mapping, no database and no network, so the arithmetic that decides what counts
+as incoming is tested against recorded fixtures. It takes the receipt dates as a
+plain `Map<string, Date>` argument rather than fetching them, which is what keeps
+it pure.
 
-`src/lib/visma/import.ts` — the database side: fetch, map, upsert, record.
+`src/lib/visma/import.ts` — the database side. Two GETs, not one: purchase orders
+and purchase receipts. The receipts exist only to date the completed orders, and
+both are single bounded requests, so fetching them together costs one extra call
+per sync.
 
 ### Schema changes
 
@@ -113,7 +118,7 @@ One Visma order line becomes one `PurchaseOrder` row.
 | `eta` | line `promised`, falling back to order `promisedOn`, else null |
 | `quantity` | `orderQty` — what was ordered, always |
 | `receivedQuantity` | `qtyOnReceipts` — new nullable column |
-| `receivedAt` | Visma's receipt date, once nothing is outstanding (see below) |
+| `receivedAt` | the joined receipt date, once `line.completed` (see below) |
 
 ### Quantities
 
@@ -151,33 +156,66 @@ not subtract from other orders' incoming stock.
 A hand-entered row has `receivedQuantity: null`, so it falls back to `o.quantity`
 and behaves exactly as it does today. Nothing that exists changes meaning.
 
-### When an order counts as received
+### When an order counts as received — measured, not assumed
 
-`receivedAt` has one job in this schema: null means the units still count as
-incoming. So it must be stamped once `qtyOnReceipts >= orderQty`.
+This section originally said to stamp `receivedAt` once
+`qtyOnReceipts >= orderQty`, and to fall back to `lastModifiedDateTime` for the
+date. **Both were wrong.** Probing the live company on 2026-08-14 settled it, and
+the numbers are worth keeping because each one killed a plausible design.
 
-**With what date, though?** There is no honest answer yet. Stamping "now" would
-record a 2023 delivery as having arrived today, and the ETA is a promise, not an
-arrival. The order carries a receipt or completion date, or it does not, and
-which one is a question about Visma rather than about us.
+**Quantity is not the completion test.** 719 lines across 227 orders:
 
-So the first task of the plan is to look, against the live company:
+| status | `completed` | receipts vs ordered | lines |
+|---|---|---|---|
+| Closed | `true` | received ≥ ordered | 613 |
+| Closed | `true` | **received < ordered** | **59** |
+| Cancelled | `true` | received < ordered | 7 |
+| Open | `false` | received < ordered | 37 |
+| Hold | `false` | received < ordered | 3 |
 
-1. If a completed purchase order carries a real receipt or completion date, use it.
-2. Otherwise use the order's `lastModifiedDateTime`, and label the column
-   "recorded" rather than "received" so the page never overstates what it knows.
-3. Never invent one from the clock.
+Those 59 are the problem. Order 500148 is `Closed`, `openQuantity: 0`, every line
+`completed: true` — and `qtyOnReceipts: 0`, with no receipt anywhere in the
+company referencing it. It was closed without goods passing through the receipt
+mechanism. A quantity test reads that as "17 units still coming", forever, with
+an ETA in 2024. Confirmed against the detail endpoint, so it is the data and not
+a lossy list response.
 
-Either way the arithmetic above is unaffected — a fully received row contributes
-`max(0, 800 − 800) = 0` incoming units whether or not it has a date.
+**`line.completed` is the test.** It is `true` on every Closed and Cancelled
+line and `false` on every Open and Hold line, with no exceptions in 719 rows.
+Cancellation is checked first, since cancelled lines also carry `completed: true`.
+
+**The date comes from the receipt, joined.** Orders carry
+`purchaseReceipts[].receiptNumber`; `controller/api/v1/purchasereceipt` carries
+`receiptNbr` and a real `date`. **195 of 195 references resolved, none missing.**
+
+**`lastModifiedDateTime` would have been badly wrong.** Orders 500023, 500024 and
+500025 have a receipt date of `2023-11-14` and a last-modified of `2026-07-29` —
+out by nearly three years. The original fallback would have reported goods as
+arriving in 2026 that landed in 2023.
+
+So:
+
+1. A completed line takes the date of the order's latest resolved receipt.
+2. Seven Closed orders have no receipt at all. They fall back to
+   `lastModifiedDateTime`, and the page labels that column **"recorded"** rather
+   than "received", because it is when the record last changed and nothing more.
+3. Never the clock.
+
+The arithmetic is unaffected either way: `receivedAt` being non-null takes the
+row out of the incoming set before any subtraction happens.
 
 ### What is skipped, and loudly
 
 - **Cancelled orders** — `status === 'Cancelled'`, or a line with `canceled: true`.
+- **Orders on hold** — `status === 'Hold'`. Two exist, for 1288 and 2644 units,
+  neither released to the supplier. An order nobody has actually placed must not
+  move a run-out date, for the same reason an order with no ETA does not: it
+  would push the date out on something that may never be ordered.
 - **Lines for products we do not sell** — Cosori, Levoit and the rest. Matched by
-  SKU against `SupplyItem`; no match means not ours.
-- **Fully received orders** are imported rather than dropped, so the page can
-  show what landed. They contribute no incoming stock either way.
+  SKU against `SupplyItem`; no match means not ours. This is the large one:
+  653 of 719 lines belong to the other brands sharing the ERP.
+- **Completed orders** are imported rather than dropped, so the page can show
+  what landed. They contribute no incoming stock either way.
 
 Each import records how many lines it read, imported, and skipped **with the
 reason**. A line silently ignored because its SKU did not match is
@@ -196,7 +234,9 @@ to it.
 
 ### Trigger
 
-Extend the existing cron. It is one API call and purchase orders change slowly.
+Extend the existing cron. Two bounded API calls, and purchase orders change
+slowly — 227 orders and 208 receipts in the whole company's history, so both fit
+in a single page each with room to spare.
 
 A failure must not fail the wider sync — same rule the WooCommerce catalogue
 refresh already follows. It records the error and the next run retries.
@@ -240,12 +280,25 @@ error.
 
 ## Testing
 
+Six real orders are recorded as fixtures in `src/lib/visma/__fixtures__/`, one
+per shape the mapper has to get right, with costs and supplier details stripped:
+open with our products (500254), open with a single large Panetti line (500259),
+closed with a receipt (500017), **closed with no receipt and zero
+`qtyOnReceipts`** (500148), cancelled (500000) and on hold (500235). The fourth
+is the one that matters — it is the case that breaks a quantity-based test.
+
 - Mapping is pure, so most of it needs no database:
   - 800 ordered with 300 received stores `quantity: 800`, `receivedQuantity: 300`
-  - a cancelled order and a cancelled line are both skipped
+  - **order 500148 is not incoming.** Closed, `completed: true`, `qtyOnReceipts:
+    0` — it must come back with `receivedAt` set, or 47 units of 2024 stock
+    haunt the forecast forever
+  - a cancelled order, a cancelled line and an order on hold are all skipped,
+    each counted under its own reason
   - a line for a SKU we do not stock is skipped, and counted with its reason
   - line `promised` wins over order `promisedOn`; absent both, `eta` is null,
     which the forecast already treats as "moves no date"
+  - a completed line with a resolvable receipt takes the receipt's date; one
+    without falls back to `lastModifiedDateTime`
 - Arithmetic, at `load.ts`, which is where a mistake would silently move a
   run-out date:
   - that same order contributes **500** incoming units, not 800 and not 300
@@ -260,8 +313,11 @@ error.
 
 ## Open questions
 
-1. **How far back?** Every purchase order, or only open ones and recent history?
-   Starting position: open orders plus anything modified in the last 90 days.
+1. ~~**How far back?**~~ **Settled.** The company holds 227 purchase orders and
+   208 receipts in total, so both fetch in one page each and the import reads
+   everything. No date filter, no paging. The import reports a full page rather
+   than trusting it, so if the company ever outgrows that it says so instead of
+   silently dropping orders.
 2. **Multiple warehouses.** Lines carry a warehouse ("Oslo Lagerhotell"). We treat
    stock as one pool, so warehouse is imported for display and ignored by the
    forecast. Worth confirming with Philip that there is one physical warehouse.
