@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation'
 
 export type Order = {
   id: string
+  /** What was ordered, always. */
   quantity: number
+  /** What has landed. Null on a hand-entered row, which tracks no receipts. */
+  receivedQuantity: number | null
+  /** Visma's own id. Null means someone typed this row here. */
+  externalId: string | null
   orderedAt: string
   eta: string | null
   receivedAt: string | null
@@ -23,6 +28,30 @@ const when = (iso: string | null) =>
         timeZone: 'UTC',
       })
     : null
+
+/**
+ * What a row is actually saying about its units.
+ *
+ * A part-received order shows all three numbers rather than the outstanding one
+ * alone: "500" by itself invites the question of what happened to the other 300,
+ * and the answer is already in the row.
+ */
+function units(o: Order) {
+  if (o.receivedQuantity === null) return String(o.quantity)
+  const outstanding = Math.max(0, o.quantity - o.receivedQuantity)
+
+  // Finished, per Visma. It closes some orders without ever booking a receipt
+  // against them, so "0 landed" on a closed row is the paperwork rather than the
+  // pallet — and "none landed yet" there would imply we are still waiting.
+  if (o.receivedAt) {
+    return o.receivedQuantity === 0
+      ? `${o.quantity} ordered · closed with no receipt`
+      : `${o.quantity} ordered · ${o.receivedQuantity} landed`
+  }
+
+  if (o.receivedQuantity === 0) return `${o.quantity} ordered · none landed yet`
+  return `${o.quantity} ordered · ${o.receivedQuantity} landed · ${outstanding} still coming`
+}
 
 /**
  * What is on order and when it lands.
@@ -212,6 +241,7 @@ export function PurchaseOrdersClient({
               <th className="px-4 py-2.5">Units</th>
               <th className="px-4 py-2.5">Ordered</th>
               <th className="px-4 py-2.5">Expected</th>
+              <th className="px-4 py-2.5">Source</th>
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
@@ -219,16 +249,30 @@ export function PurchaseOrdersClient({
             {orders.map((o) => (
               <tr key={o.id} className="border-b border-line last:border-0">
                 <td className="px-4 py-2.5 text-ink">{o.item.name}</td>
-                <td className="px-4 py-2.5 tabular-nums">{o.quantity}</td>
+                <td className="px-4 py-2.5 tabular-nums">{units(o)}</td>
                 <td className="px-4 py-2.5">{when(o.orderedAt)}</td>
                 <td className="px-4 py-2.5">
                   {when(o.eta) ?? (
                     <span className="text-warn">no ETA, so it moves no date</span>
                   )}
                 </td>
+                <td className="px-4 py-2.5 text-muted">
+                  {o.externalId ? 'Visma' : 'added here'}
+                </td>
                 <td className="px-4 py-2.5 text-right">
                   {o.receivedAt ? (
-                    <span className="text-muted">received {when(o.receivedAt)}</span>
+                    // "recorded", not "received", on a Visma row. Most of those
+                    // dates come from a real goods receipt, but a handful of
+                    // closed orders have none and fall back to when the record
+                    // last changed. The word has to cover both without
+                    // overstating what we know.
+                    <span className="text-muted">
+                      {o.externalId ? 'recorded' : 'received'} {when(o.receivedAt)}
+                    </span>
+                  ) : o.externalId ? (
+                    // No button: receipt is Visma's fact, and letting someone
+                    // overwrite it here would produce two answers to one question.
+                    <span className="text-muted">Visma records receipts</span>
                   ) : (
                     <button
                       onClick={() => markReceived(o.id)}

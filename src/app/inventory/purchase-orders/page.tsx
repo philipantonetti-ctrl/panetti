@@ -27,6 +27,8 @@ export default async function PurchaseOrdersPage() {
         <PurchaseOrdersClient
           orders={orders.map((o) => ({
             id: o.id, quantity: o.quantity,
+            receivedQuantity: o.receivedQuantity,
+            externalId: o.externalId,
             orderedAt: o.orderedAt.toISOString(),
             eta: o.eta?.toISOString() ?? null,
             receivedAt: o.receivedAt?.toISOString() ?? null,
