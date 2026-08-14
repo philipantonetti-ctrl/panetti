@@ -14,7 +14,12 @@ export default async function SuppliersPage() {
 
   await ensureSupplyItems()
   const [items, suppliers] = await Promise.all([
-    db.supplyItem.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
+    // Deliberately UNfiltered, unlike loadInventory and the purchase-orders
+    // page, which both keep their `active: true`. This is the one screen where
+    // hidden products have to remain reachable, or nothing could ever be
+    // brought back. The client splits them; only the working list is shown by
+    // default.
+    db.supplyItem.findMany({ orderBy: { name: 'asc' } }),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
   ])
 
@@ -28,6 +33,7 @@ export default async function SuppliersPage() {
             id: i.id, sku: i.sku, name: i.name, supplierId: i.supplierId,
             productionDays: i.productionDays, deliveryDays: i.deliveryDays,
             moq: i.moq, unitsPerContainer: i.unitsPerContainer, coverDays: i.coverDays,
+            active: i.active,
           }))}
           suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
         />

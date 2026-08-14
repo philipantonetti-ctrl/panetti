@@ -20,6 +20,8 @@ export type Row = {
   lastRunAt: string | null
   /** Why the last attempt failed; null when it succeeded. */
   lastError: string | null
+  /** Does this shop's catalogue decide what the Forecast and Stock tabs show. */
+  stockSource: boolean
 }
 
 /**
@@ -72,6 +74,46 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const toast = useToast()
+
+  /**
+   * Held here rather than read from `shops` on every render so the tick moves
+   * the instant it is clicked. router.refresh() is not immediate, and a
+   * checkbox that waits for a round trip before moving reads as broken.
+   */
+  const [sources, setSources] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(shops.map((s) => [s.id, s.stockSource])),
+  )
+
+  const isSource = (s: Row) => sources[s.id] ?? s.stockSource
+
+  /**
+   * Turn one shop into the stock source, or stop it being one.
+   *
+   * Optimistic, and PUT BACK on failure. A tick that silently did not save is
+   * the worst outcome available here: the forecast would go on believing a shop
+   * the operator is certain they turned off.
+   */
+  async function setSource(shop: Row, next: boolean) {
+    setSources((s) => ({ ...s, [shop.id]: next }))
+    try {
+      const res = await fetch(`/api/shops/${shop.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        // The flag alone. Sending this shop's wooUrl back would rewrite a store
+        // connection as a side effect of ticking a box.
+        body: JSON.stringify({ stockSource: next }),
+      })
+      if (!res.ok) {
+        setSources((s) => ({ ...s, [shop.id]: !next }))
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save')
+        return
+      }
+      router.refresh()
+    } catch {
+      setSources((s) => ({ ...s, [shop.id]: !next }))
+      toast.error('Could not reach the server')
+    }
+  }
 
   /**
    * Delete is for mistakes and empty rows: the server refuses outright for a shop
@@ -193,6 +235,12 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                 <th className="px-3 py-2.5 font-medium">Shop</th>
                 <th className="px-3 py-2.5 font-medium">Currency</th>
                 <th className="px-3 py-2.5 font-medium">Connection</th>
+                <th
+                  className="px-3 py-2.5 font-medium"
+                  title="The shops here mirror one warehouse. Tick the ones whose product list and stock figure the Forecast and Stock tabs should believe. Sales are always counted from every shop."
+                >
+                  Stock source
+                </th>
                 <th className="px-3 py-2.5 font-medium">Last sync</th>
                 <th className="px-3 py-2.5 text-right font-medium">Action</th>
               </tr>
@@ -212,6 +260,15 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                         Not connected
                       </span>
                     )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={isSource(s)}
+                      onChange={(e) => void setSource(s, e.target.checked)}
+                      aria-label={`Use ${s.name} as a stock source`}
+                      className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
+                    />
                   </td>
                   <td className="px-3 py-2.5 text-muted">
                     <SyncState shop={s} />

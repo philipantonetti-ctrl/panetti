@@ -42,9 +42,32 @@ const enclosure = (name: string, contentType = 'application/octet-stream') => ({
   Name: name,
   Content: Buffer.from('x').toString('base64'),
   ContentType: contentType,
-  // Postmark sends this key on every attachment; empty is what marks a genuine
-  // enclosure apart from something the message body references.
+  // Some mailers do leave this empty on a genuine enclosure. Gmail does NOT —
+  // see gmailEnclosure below, which is the shape that broke production.
   ContentID: '',
+})
+
+/**
+ * A real attachment exactly as GMAIL sends one.
+ *
+ * Measured from the raw MIME of a message delivered to the live inbound address
+ * on 2026-08-14. The warehouse report arrived as:
+ *
+ *   Content-Type: application/vnd...spreadsheetml.sheet; name="LTAS_Eod_Report_20260811.xlsx"
+ *   Content-Disposition: attachment; filename="LTAS_Eod_Report_20260811.xlsx"
+ *   X-Attachment-Id: f_mssm65ae0
+ *   Content-ID: <f_mssm65ae0>
+ *
+ * `Content-Disposition: attachment` and a Content-ID, together, on one file.
+ * Every other fixture in this file hand-writes `ContentID: ''` for a real
+ * attachment, which is what let the suite stay green while production dropped
+ * the report on the floor.
+ */
+const gmailEnclosure = (name: string) => ({
+  Name: name,
+  Content: Buffer.from('x').toString('base64'),
+  ContentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ContentID: 'f_mssm65ae0',
 })
 
 const email = (attachments: unknown[]) => ({
@@ -243,6 +266,58 @@ describe('POST /api/delivery/inbound', () => {
 
     // And nothing was written. Not a refusal for the logo, and not the
     // "nothing readable arrived" row either — the report did arrive.
+    expect(await rowCount()).toBe(before)
+  })
+
+  /**
+   * The bug the fixtures above hid, and the reason this file exists in this shape.
+   *
+   * Gmail stamps a Content-ID on EVERY attachment, not only on inline images.
+   * Keying "is this part of the body?" on a non-empty ContentID therefore skipped
+   * the warehouse report itself: `recorded` stayed 0, importWarehouseFile was
+   * never called, and the delivery page showed
+   * "(none) — This email carried no readable attachment" on 2026-08-14 while the
+   * spreadsheet sat in the payload untouched.
+   *
+   * A file this route can read is never part of the message body. No email
+   * signature is an .xlsx, .csv, .txt or .pdf.
+   */
+  it('imports a report Gmail stamped a ContentID on, instead of taking it for a signature image', async () => {
+    importWarehouseFile.mockReset()
+    importWarehouseFile.mockResolvedValue({
+      importId: 'x', parsed: 27, linked: 27, unmatched: [], unaccounted: 0,
+    })
+    const beforeNone = await db.trackingImport.count({ where: { filename: '(none)' } })
+
+    const res = await post(email([gmailEnclosure('eod.xlsx')]))
+    expect(res.status).toBe(200)
+
+    const body = await res.json()
+    expect(body.results).toEqual([{ filename: 'eod.xlsx', linked: 27 }])
+    expect(importWarehouseFile).toHaveBeenCalledOnce()
+
+    // And emphatically NOT the "nothing readable arrived" row: the report did
+    // arrive, and that row claiming otherwise is the production symptom.
+    expect(await db.trackingImport.count({ where: { filename: '(none)' } })).toBe(beforeNone)
+  })
+
+  // A signature logo must STILL be skipped once the filename decides first,
+  // otherwise this fix simply trades one permanently-red delivery page for the
+  // other. Gmail's own Content-ID shape, on a file we could never import.
+  it('still ignores a signature image that carries the same Gmail-style ContentID', async () => {
+    importWarehouseFile.mockReset()
+    importWarehouseFile.mockResolvedValue({
+      importId: 'x', parsed: 27, linked: 27, unmatched: [], unaccounted: 0,
+    })
+    const before = await rowCount()
+
+    const res = await post(
+      email([gmailEnclosure('eod.xlsx'), { ...gmailEnclosure('image001.png'), ContentType: 'image/png' }]),
+    )
+    expect(res.status).toBe(200)
+
+    const body = await res.json()
+    expect(body.results).toEqual([{ filename: 'eod.xlsx', linked: 27 }])
     expect(await rowCount()).toBe(before)
   })
 

@@ -153,6 +153,69 @@ describe('inventory write routes', () => {
     expect(item.deliveryDays).toBe(40)
   })
 
+  // Hiding, not deleting. A deleted row comes straight back: ensureSupplyItems
+  // recreates one per product SKU on every page load, so `active` is the only
+  // thing that can make the system forget a spare part.
+  it('hides an item, so the forecast and purchase orders stop listing it', async () => {
+    admin()
+    await db.supplyItem.create({ data: { sku: `${TAG}-H1`, name: 'Spare part' } })
+    const res = await putItem(
+      new Request('http://test', {
+        method: 'PUT',
+        body: JSON.stringify({ sku: `${TAG}-H1`, active: false }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const item = await db.supplyItem.findUniqueOrThrow({ where: { sku: `${TAG}-H1` } })
+    expect(item.active).toBe(false)
+  })
+
+  it('brings a hidden item back', async () => {
+    admin()
+    await db.supplyItem.create({ data: { sku: `${TAG}-H2`, name: 'Spare part', active: false } })
+    const res = await putItem(
+      new Request('http://test', {
+        method: 'PUT',
+        body: JSON.stringify({ sku: `${TAG}-H2`, active: true }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const item = await db.supplyItem.findUniqueOrThrow({ where: { sku: `${TAG}-H2` } })
+    expect(item.active).toBe(true)
+  })
+
+  it('refuses an `active` that is not a boolean, rather than coercing it', async () => {
+    // Boolean('') is false and Boolean('no') is true. Coercing here would let a
+    // stray string hide a product nobody meant to hide, and a hidden product is
+    // invisible by definition — the mistake would not announce itself.
+    admin()
+    await db.supplyItem.create({ data: { sku: `${TAG}-H3`, name: 'Spare part' } })
+    const res = await putItem(
+      new Request('http://test', {
+        method: 'PUT',
+        body: JSON.stringify({ sku: `${TAG}-H3`, active: 'no' }),
+      }),
+    )
+    expect(res.status).toBe(400)
+    const item = await db.supplyItem.findUniqueOrThrow({ where: { sku: `${TAG}-H3` } })
+    expect(item.active).toBe(true)
+  })
+
+  it('leaves `active` alone when saving an unrelated field', async () => {
+    // Saving a lead time on the hidden list must not silently unhide the row.
+    admin()
+    await db.supplyItem.create({ data: { sku: `${TAG}-H4`, name: 'Spare part', active: false } })
+    await putItem(
+      new Request('http://test', {
+        method: 'PUT',
+        body: JSON.stringify({ sku: `${TAG}-H4`, productionDays: 10 }),
+      }),
+    )
+    const item = await db.supplyItem.findUniqueOrThrow({ where: { sku: `${TAG}-H4` } })
+    expect(item.active).toBe(false)
+    expect(item.productionDays).toBe(10)
+  })
+
   it('refuses a fractional lead time', async () => {
     // These numbers become purchase quantities. Half a day of production is a
     // typo, and silently flooring it would be worse than refusing it.

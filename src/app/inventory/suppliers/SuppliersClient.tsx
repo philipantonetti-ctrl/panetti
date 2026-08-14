@@ -13,6 +13,16 @@ export type Item = {
   moq: number | null
   unitsPerContainer: number | null
   coverDays: number | null
+  /**
+   * False for something we stock but never reorder — spare parts and the like.
+   *
+   * Hiding, never deleting. A deleted row is back on the next page load, because
+   * ensureSupplyItems recreates one per product SKU, and the Woo sync upserts the
+   * product itself on every order it reads. This flag is the only thing that can
+   * make the system forget a product, and it also removes it from the forecast,
+   * from purchase orders and from the product cost list.
+   */
+  active: boolean
 }
 
 export type Supplier = { id: string; name: string }
@@ -68,6 +78,45 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
       setAddError('Could not reach the server.')
     } finally {
       setAddBusy(false)
+    }
+  }
+
+  const [showHidden, setShowHidden] = useState(false)
+
+  const visible = items.filter((i) => i.active)
+  const hidden = items.filter((i) => !i.active)
+
+  /**
+   * Take a product out of the system's sight, or bring it back.
+   *
+   * Sent as a real boolean because the API refuses anything else rather than
+   * coercing it: a product hidden by accident is invisible by definition, so
+   * that mistake would never announce itself.
+   */
+  async function setActive(item: Item, active: boolean) {
+    const failed = active
+      ? 'Could not bring that back. Nothing was changed.'
+      : 'Could not hide that. Nothing was changed.'
+
+    setError((e) => ({ ...e, [item.sku]: '' }))
+    setSaving(item.sku)
+    try {
+      const res = await fetch('/api/inventory/items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku: item.sku, active }),
+      })
+      if (!res.ok) {
+        setError((e) => ({ ...e, [item.sku]: failed }))
+        return
+      }
+      // The lists are server-rendered, so without this the row stays put and the
+      // click looks as though it did nothing.
+      router.refresh()
+    } catch {
+      setError((e) => ({ ...e, [item.sku]: failed }))
+    } finally {
+      setSaving(null)
     }
   }
 
@@ -157,7 +206,7 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
         )}
       </div>
 
-      {items.map((item) => {
+      {visible.map((item) => {
         const ready = item.productionDays !== null && item.deliveryDays !== null
         return (
           <div key={item.sku} className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
@@ -211,6 +260,14 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
               >
                 {saving === item.sku ? 'Saving…' : 'Save'}
               </button>
+
+              <button
+                onClick={() => setActive(item, false)}
+                disabled={saving === item.sku}
+                className="rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px] text-muted disabled:opacity-50"
+              >
+                Hide
+              </button>
             </div>
 
             {error[item.sku] && (
@@ -219,6 +276,54 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
           </div>
         )
       })}
+
+      {/*
+        Collapsed by default, and absent entirely when nothing is hidden. The
+        list above is the working list; this is the drawer you open on the rare
+        day you want something back. Only the name and the SKU are shown —
+        nobody fills in lead times for a product they have told us to forget.
+      */}
+      {hidden.length > 0 && (
+        <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
+          <button
+            onClick={() => setShowHidden((v) => !v)}
+            className="text-[13px] font-semibold text-ink underline-offset-2 hover:underline"
+          >
+            {showHidden ? `Hide again (${hidden.length})` : `Show hidden (${hidden.length})`}
+          </button>
+          <p className="mt-1 text-[12px] text-muted">
+            Hidden products are left out of the forecast, purchase orders and product costs.
+            Nothing about them is deleted, and their order history is untouched.
+          </p>
+
+          {showHidden && (
+            <div className="mt-3 space-y-2">
+              {hidden.map((item) => (
+                <div
+                  key={item.sku}
+                  className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2"
+                >
+                  <p className="text-[13px] text-ink">
+                    {item.name} <span className="ml-1 text-faint">{item.sku}</span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {error[item.sku] && (
+                      <span className="text-[12px] text-loss">{error[item.sku]}</span>
+                    )}
+                    <button
+                      onClick={() => setActive(item, true)}
+                      disabled={saving === item.sku}
+                      className="rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px] text-muted disabled:opacity-50"
+                    >
+                      Unhide
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
