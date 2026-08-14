@@ -1844,12 +1844,25 @@ git commit -m "feat(inventory): say where a purchase order came from, and what l
 - [ ] **Step 1: Run every test**
 
 Run: `npx vitest run --testTimeout=20000`
-Expected: PASS. The baseline before this plan was 1707 passing; expect that plus roughly 30 new. A handful of `sync.test.ts` timeouts under load are contention rather than breakage — re-run just that file before investigating.
+Expected: **183 files, 1767 passed, 1 skipped.**
+
+Run it three times, not once. A single green run does not prove much here: an
+earlier draft of Task 4's tests failed three runs out of three with
+`Inconsistent query result: Field shop is required to return data`, a different
+test each time, because `loadInventory` reads every Product, Shop and OrderItem
+and other files delete rows underneath it. If that message appears, the fix is
+to stop calling `loadInventory` so often — not to retry, and not to raise the
+timeout.
 
 - [ ] **Step 2: Lint**
 
 Run: `npm run lint`
-Expected: clean.
+Expected: **13 problems, 8 errors, 5 warnings** — all pre-existing, none in any
+file this plan touches. They sit in `B2bClient.tsx`, `CustomerClient.tsx` and
+`ExpensesClient.tsx` (`react-hooks/set-state-in-effect` and
+`react-hooks/static-components`). Confirm the count matches by running lint on
+`main` too; fixing them is not this plan's job, but ADDING to the count is a
+regression.
 
 - [ ] **Step 3: Types**
 
@@ -1858,8 +1871,28 @@ Expected: clean.
 
 - [ ] **Step 4: Build**
 
-Run: `npm run build`
-Expected: succeeds. Run this in the PRIMARY checkout — a build inside `C:/panetti-wt` fails on a Turbopack symlink and tells you nothing about the code.
+Run: `npx next build` — **not** `npm run build`.
+
+`npm run build` runs `scripts/db-push.mjs` first, and `decide()` returns `push`
+for any local build (no `VERCEL_ENV`). That would hand `prisma db push` a schema
+without the other branch's `stockSource` column. It fails rather than destroying
+anything — dropping a column is not in that script's retry allowlist — but it is
+still the wrong command to run while two branches share one database.
+
+Expected: `✓ Compiled successfully`, 71 static pages, exit 0.
+
+**A worktree cannot build.** With `node_modules` junctioned, Turbopack dies with
+`Symlink [project]/node_modules is invalid, it points out of the filesystem
+root`. That says nothing about the code. Build in the primary checkout instead,
+and if it has another branch checked out, detach rather than switching:
+
+```bash
+git -C <worktree> rev-parse HEAD          # your tip
+cd <primary-checkout>
+git checkout --detach <sha>               # moves no branch, disturbs no one
+npx next build
+git checkout <whatever-was-there-before>
+```
 
 - [ ] **Step 5: Report**
 
