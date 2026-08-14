@@ -1,5 +1,7 @@
 'use client'
 
+import { useMemo, useState } from 'react'
+
 export type Row = {
   sku: string
   name: string
@@ -30,7 +32,76 @@ const when = (iso: string | null) =>
       })
     : null
 
+/** The columns you can sort by, and the value each one reads off a row. */
+const COLUMNS = {
+  Product: (r: Row) => r.name.toLowerCase(),
+  'In stock': (r: Row) => r.stock.quantity,
+  'Per day': (r: Row) => r.burn,
+  'Runs out': (r: Row) => (r.forecast.runsOutOn ? Date.parse(r.forecast.runsOutOn) : null),
+  'Order by': (r: Row) => (r.forecast.orderBy ? Date.parse(r.forecast.orderBy) : null),
+  'How many': (r: Row) => r.forecast.quantity,
+} satisfies Record<string, (r: Row) => string | number | null>
+
+type Column = keyof typeof COLUMNS
+
+/**
+ * Which way a first click should sort, per column.
+ *
+ * "Which product am I about to run out of" is answered by the SOONEST date, and
+ * "which is moving fastest" by the LARGEST number. So a date opens ascending and
+ * a quantity opens descending, and the first click is the useful one either way
+ * rather than the one you have to click twice to undo. Product is a name, so it
+ * opens A to Z.
+ */
+const OPENS_ASCENDING: Record<Column, boolean> = {
+  Product: true,
+  'In stock': false,
+  'Per day': false,
+  'Runs out': true,
+  'Order by': true,
+  'How many': false,
+}
+
+/**
+ * Order rows by one column, with the unknowns pinned to the bottom.
+ *
+ * A null is not a zero and never sorts as one. A product whose shops report no
+ * stock figure, or that has no run-out date because nothing is selling, would
+ * otherwise land at the top of a highest-first list and read as the most
+ * stocked thing in the warehouse — the same "say when you don't know" rule the
+ * blank cells already follow. So nulls sit last in BOTH directions, which means
+ * they cannot be sorted INTO the top either.
+ */
+function sortRows(rows: Row[], by: Column, ascending: boolean): Row[] {
+  const read = COLUMNS[by]
+  return [...rows].sort((a, b) => {
+    const x = read(a)
+    const y = read(b)
+    if (x === null && y === null) return 0
+    if (x === null) return 1
+    if (y === null) return -1
+    if (x < y) return ascending ? -1 : 1
+    if (x > y) return ascending ? 1 : -1
+    return 0
+  })
+}
+
 export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { shopName: string; name: string; sku: string }[] }) {
+  // Null = untouched, so the server's own order stands: soonest run-out first,
+  // which is the question the page exists to answer. Only a click overrides it.
+  const [sort, setSort] = useState<{ by: Column; ascending: boolean } | null>(null)
+
+  const shown = useMemo(
+    () => (sort === null ? rows : sortRows(rows, sort.by, sort.ascending)),
+    [rows, sort],
+  )
+
+  function toggle(by: Column) {
+    setSort((s) =>
+      s?.by === by ? { by, ascending: !s.ascending } : { by, ascending: OPENS_ASCENDING[by] },
+    )
+  }
+
   if (rows.length === 0 && unusable.length === 0) {
     return (
       <p className="rounded-[var(--radius-card)] border border-line bg-surface p-5 text-[13px] text-muted">
@@ -48,16 +119,35 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-line text-left text-[12px] text-muted">
-                <th className="px-4 py-2.5">Product</th>
-                <th className="px-4 py-2.5">In stock</th>
-                <th className="px-4 py-2.5">Per day</th>
-                <th className="px-4 py-2.5">Runs out</th>
-                <th className="px-4 py-2.5">Order by</th>
-                <th className="px-4 py-2.5">How many</th>
+                {(Object.keys(COLUMNS) as Column[]).map((label) => {
+                  const active = sort?.by === label
+                  return (
+                    <th
+                      key={label}
+                      className="px-4 py-2.5"
+                      // Announced, not merely coloured: the arrow below is
+                      // decoration, this is what a screen reader reads.
+                      aria-sort={
+                        active ? (sort!.ascending ? 'ascending' : 'descending') : 'none'
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggle(label)}
+                        className="inline-flex items-center gap-1 font-medium transition-colors duration-150 hover:text-ink"
+                      >
+                        <span className={active ? 'text-ink' : undefined}>{label}</span>
+                        <span aria-hidden="true" className={active ? 'text-ink' : 'text-faint'}>
+                          {active ? (sort!.ascending ? '↑' : '↓') : '↕'}
+                        </span>
+                      </button>
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {shown.map((r) => (
                 <tr key={r.sku} className="border-b border-line last:border-0">
                   <td className="px-4 py-2.5">
                     <span className="font-medium text-ink">{r.name}</span>
