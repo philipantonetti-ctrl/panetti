@@ -109,6 +109,14 @@ export function SignInForm({ mode }: { mode: 'ambassador' | 'admin' }) {
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+
+          {/* On both doors. The reset route works for every role, so the staff
+              side must not be the one place a forgotten password is a dead end. */}
+          <p className="mt-3.5 text-center text-[12px] text-muted">
+            <Link href="/forgot" className="font-medium text-accent hover:underline">
+              Forgot your password?
+            </Link>
+          </p>
         </div>
 
         <p className="mt-4 text-center text-[12px] text-muted">
