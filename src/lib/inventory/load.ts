@@ -27,6 +27,27 @@ export type InventoryView = {
 const HISTORY_DAYS = 730
 
 /**
+ * Units of a purchase order that are still on the water.
+ *
+ * Whatever has already been received is already in the stock figure, so counting
+ * the whole order as incoming would count those units twice — and the forecast
+ * would then advise ordering too little, which is the exact failure this feature
+ * exists to prevent, reached by another road.
+ *
+ * A hand-entered row has no `receivedQuantity` and so contributes its whole
+ * quantity, exactly as it did before the column existed.
+ *
+ * Never negative: Visma can record more delivered than ordered, and an
+ * over-receipt on one order must not cancel out another order's incoming stock.
+ */
+export function outstanding(order: {
+  quantity: number
+  receivedQuantity: number | null
+}): number {
+  return Math.max(0, order.quantity - (order.receivedQuantity ?? 0))
+}
+
+/**
  * Every purchasable product with its stock, its rate and its forecast.
  *
  * One pass over sales history rather than a query per SKU: 63 products against
@@ -68,7 +89,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
         supplier: { select: { name: true } },
         purchaseOrders: {
           where: { receivedAt: null },
-          select: { quantity: true, eta: true },
+          select: { quantity: true, receivedQuantity: true, eta: true },
         },
       },
     }),
@@ -168,7 +189,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
           stock: stock.quantity,
           burn,
           index: (d) => seasonalIndex(mine, d, today),
-          arrivals: item.purchaseOrders.map((o) => ({ eta: o.eta, quantity: o.quantity })),
+          arrivals: item.purchaseOrders.map((o) => ({ eta: o.eta, quantity: outstanding(o) })),
           productionDays: item.productionDays,
           deliveryDays: item.deliveryDays,
           moq: item.moq,

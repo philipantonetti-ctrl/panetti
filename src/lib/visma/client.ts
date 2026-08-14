@@ -1,0 +1,96 @@
+/**
+ * Visma.net ERP, over HTTP. Read-only, and deliberately the same shape as
+ * src/lib/bring/client.ts: a hard request ceiling and error bodies truncated so
+ * a gateway's HTML page never reaches a log line.
+ *
+ * The host is the trap. The Developer Portal advertises
+ * `https://api.finance.visma.net/erp/service`, which is the token's AUDIENCE —
+ * every path under it 404s. Requests go to `https://integration.visma.net/API`.
+ * Confirmed by probing unauthenticated: 404 means no route, 401 means the route
+ * is there and only auth is missing.
+ */
+
+const TOKEN_URL = 'https://connect.visma.com/connect/token'
+const BASE = 'https://integration.visma.net/API'
+const SCOPE = 'vismanet_erp_service_api:read'
+
+/** No single request gets longer than this. */
+const REQUEST_TIMEOUT_MS = 60_000
+
+/** Mint a new token this far before the old one dies, so a slow run cannot expire mid-flight. */
+const RENEW_MARGIN_MS = 60_000
+
+export type VismaCredentials = { clientId: string; clientSecret: string; tenantId: string }
+
+export class VismaError extends Error {}
+
+/**
+ * The three values from the environment, or null when they are not all there.
+ *
+ * Null is not a failure. An unconfigured integration is skipped quietly, the
+ * same way ensureWebhooks skips with no APP_URL — a deployment without Visma
+ * credentials is a normal deployment.
+ */
+export function vismaCredentials(): VismaCredentials | null {
+  const clientId = process.env.VISMA_CLIENT_ID?.trim()
+  const clientSecret = process.env.VISMA_CLIENT_SECRET?.trim()
+  const tenantId = process.env.VISMA_TENANT_ID?.trim()
+  if (!clientId || !clientSecret || !tenantId) return null
+  return { clientId, clientSecret, tenantId }
+}
+
+let cached: { token: string; expiresAt: number; key: string } | null = null
+
+/** Tests only. Module state would otherwise leak a token between cases. */
+export function resetVismaTokenCache(): void {
+  cached = null
+}
+
+export async function vismaToken(
+  creds: VismaCredentials,
+  now: number = Date.now(),
+): Promise<string> {
+  // Keyed by client and tenant so a credential change is never served a stale token.
+  const key = `${creds.clientId}:${creds.tenantId}`
+  if (cached && cached.key === key && cached.expiresAt - RENEW_MARGIN_MS > now) return cached.token
+
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
+      scope: SCOPE,
+      tenant_id: creds.tenantId,
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+
+  if (!res.ok) {
+    // Status only. The request body carried the secret, and an error that echoes
+    // the request would put it in a log we do not control.
+    throw new VismaError(`Visma refused the credentials (HTTP ${res.status})`)
+  }
+
+  const body = (await res.json()) as { access_token?: string; expires_in?: number }
+  if (!body.access_token) throw new VismaError('Visma returned no access token')
+
+  cached = { token: body.access_token, expiresAt: now + (body.expires_in ?? 3600) * 1000, key }
+  return cached.token
+}
+
+export async function vismaGet<T>(creds: VismaCredentials, path: string): Promise<T> {
+  const token = await vismaToken(creds)
+  const res = await fetch(`${BASE}/${path}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+
+  if (!res.ok) {
+    const text = (await res.text()).replace(/\s+/g, ' ').slice(0, 300)
+    throw new VismaError(`Visma responded ${res.status} for ${path}: ${text}`)
+  }
+
+  return (await res.json()) as T
+}

@@ -1,0 +1,297 @@
+[
+  {
+    "orderNbr": "500254",
+    "status": "Open",
+    "hold": false,
+    "date": "2026-03-17T00:00:00",
+    "promisedOn": "2026-07-01T00:00:00",
+    "lastModifiedDateTime": "2026-03-20T06:35:22.153",
+    "purchaseReceipts": [],
+    "lines": [
+      {
+        "lineNbr": 6,
+        "inventory": {
+          "number": "MACBL661"
+        },
+        "warehouse": {
+          "id": "10",
+          "description": "Jönkøping - Sverige"
+        },
+        "orderQty": 30,
+        "qtyOnReceipts": 0,
+        "promised": "2026-07-01T00:00:00",
+        "completed": false,
+        "canceled": false
+      },
+      {
+        "lineNbr": 7,
+        "inventory": {
+          "number": "MACBE661"
+        },
+        "warehouse": {
+          "id": "10",
+          "description": "Jönkøping - Sverige"
+        },
+        "orderQty": 5,
+        "qtyOnReceipts": 0,
+        "promised": "2026-07-01T00:00:00",
+        "completed": false,
+        "canceled": false
+      },
+      {
+        "lineNbr": 8,
+        "inventory": {
+          "number": "MLCBL510"
+        },
+        "warehouse": {
+          "id": "10",
+          "description": "Jönkøping - Sverige"
+        },
+        "orderQty": 16,
+        "qtyOnReceipts": 0,
+        "promised": "2026-07-01T00:00:00",
+        "completed": false,
+        "canceled": false
+      },
+      {
+        "lineNbr": 9,
+        "inventory": {
+          "number": "MLCBE51"
+        },
+        "warehouse": {
+          "id": "10",
+          "description": "Jönkøping - Sverige"
+        },
+        "orderQty": 5,
+        "qtyOnReceipts": 0,
+        "promised": "2026-07-01T00:00:00",
+        "completed": false,
+        "canceled": false
+      }
+    ]
+  },
+  {
+    "orderNbr": "500259",
+    "status": "Open",
+    "hold": false,
+    "date": "2026-05-08T00:00:00",
+    "promisedOn": "2026-05-08T00:00:00",
+    "lastModifiedDateTime": "2026-05-08T10:59:28.613",
+    "purchaseReceipts": [],
+    "lines": [
+      {
+        "lineNbr": 1,
+        "inventory": {
+          "number": "PANPIZPRO"
+        },
+        "warehouse": {
+          "id": "10",
+          "description": "Jönkøping - Sverige"
+        },
+        "orderQty": 3055,
+        "qtyOnReceipts": 0,
+        "promised": "2026-05-08T00:00:00",
+        "completed": false,
+        "canceled": false
+      }
+    ]
+  },
+  {
+    "orderNbr": "500017",
+    "status": "Closed",
+    "hold": false,
+    "date": "2023-11-03T00:00:00",
+    "promisedOn": "2023-11-03T00:00:00",
+    "lastModifiedDateTime": "2023-11-03T10:41:15.183",
+    "purchaseReceipts": [
+      {
+        "receiptNumber": "000009"
+      }
+    ],
+    "lines": [
+      {
+        "lineNbr": 1,
+        "inventory": {
+          "number": "KAAPAFCSNNR0022Y"
+        },
+        "warehouse": {
+          "id": "1",
+          "description": "Oslo Lagerhotell"
+        },
+        "orderQty": 280,
+        "qtyOnReceipts": 280,
+        "promised": "2023-11-03T00:00:00",
+        "completed": true,
+        "canceled": false
+      },
+      {
+        "lineNbr": 2,
+        "inventory": {
+          "number": "KAAPAFCSNNR0025Y"
+        },
+        "warehouse": {
+          "id": "1",
+          "description": "Oslo Lagerhotell"
+        },
+        "orderQty": 90,
+        "qtyOnReceipts": 90,
+        "promised": "2023-11-03T00:00:00",
+        "completed": true,
+        "canceled": false
+      },
+      {
+        "lineNbr": 3,
+        "inventory": {
+          "number": "KAAPAFCSNNR0021Y"
+        },
+        "warehouse": {
+          "id": "1",
+          "description": "Oslo Lagerhotell"
+        },
+        "orderQty": 168,
+        "qtyOnReceipts": 168,
+        "promised": "2023-11-03T00:00:00",
+        "completed": true,
+        "canceled": false
+      },
+      {
+        "lineNbr": 4,
+        "inventory": {
+          "number": "KAAPAFCSNEU0070Y"
+        },
+        "warehouse": {
+          "id": "1",
+          "description": "Oslo Lagerhotell"
+        },
+        "orderQty": 112,
+        "qtyOnReceipts": 112,
+        "promised": "2023-11-03T00:00:00",
+        "completed": true,
+        "canceled": false
+      },
+      {
+        "lineNbr": 5,
+        "inventory": {
+          "number": "PALL"
+        },
+        "warehouse": {
+          "id": "1",
+          "description": "Oslo Lagerhotell"
+        },
+        "orderQty": 25,
+        "qtyOnReceipts": 25,
+        "promised": "2023-11-03T00:00:00",
+        "completed": true,
+        "canceled": false
+      }
+    ]
+  },
+  {
+    "orderNbr": "500148",
+    "status": "Closed",
+    "hold": false,
+    "date": "2024-08-20T00:00:00",
+    "promisedOn": "2024-11-20T00:00:00",
+    "lastModifiedDateTime": "2024-12-02T14:14:59.74",
+    "purchaseReceipts": [],
+    "lines": [
+      {
+        "lineNbr": 1,
+        "inventory": {
+          "number": "MACBE661"
+        },
+        "warehouse": {
+          "id": "10",
+          "description": "Jönkøping - Sverige"
+        },
+        "orderQty": 17,
+        "qtyOnReceipts": 0,
+        "promised": "2024-11-20T00:00:00",
+        "completed": true,
+        "canceled": false
+      },
+      {
+        "lineNbr": 2,
+        "inventory": {
+          "number": "MLCBL510"
+        },
+        "warehouse": {
+          "id": "10",
+          "description": "Jönkøping - Sverige"
+        },
+        "orderQty": 13,
+        "qtyOnReceipts": 0,
+        "promised": "2024-11-20T00:00:00",
+        "completed": true,
+        "canceled": false
+      },
+      {
+        "lineNbr": 3,
+        "inventory": {
+          "number": "MACBL661"
+        },
+        "warehouse": {
+          "id": "10",
+          "description": "Jönkøping - Sverige"
+        },
+        "orderQty": 18,
+        "qtyOnReceipts": 0,
+        "promised": "2024-11-20T00:00:00",
+        "completed": true,
+        "canceled": false
+      }
+    ]
+  },
+  {
+    "orderNbr": "500000",
+    "status": "Cancelled",
+    "hold": false,
+    "date": "2022-11-15T00:00:00",
+    "promisedOn": "2022-11-15T00:00:00",
+    "lastModifiedDateTime": "2023-10-17T13:07:34.22",
+    "purchaseReceipts": [],
+    "lines": [
+      {
+        "lineNbr": 1,
+        "inventory": {
+          "number": "1298"
+        },
+        "warehouse": {
+          "id": "1",
+          "description": "Oslo Lagerhotell"
+        },
+        "orderQty": 800,
+        "qtyOnReceipts": 0,
+        "promised": "2022-11-15T00:00:00",
+        "completed": true,
+        "canceled": true
+      }
+    ]
+  },
+  {
+    "orderNbr": "500235",
+    "status": "Hold",
+    "hold": true,
+    "date": "2025-11-24T00:00:00",
+    "promisedOn": "2026-01-15T00:00:00",
+    "lastModifiedDateTime": "2025-11-24T17:12:58.107",
+    "purchaseReceipts": [],
+    "lines": [
+      {
+        "lineNbr": 1,
+        "inventory": {
+          "number": "PANPIZPRIELE"
+        },
+        "warehouse": {
+          "id": "13",
+          "description": "Speed Logistics Gøteborg"
+        },
+        "orderQty": 1288,
+        "qtyOnReceipts": 0,
+        "promised": "2026-01-15T00:00:00",
+        "completed": false,
+        "canceled": false
+      }
+    ]
+  }
+]
