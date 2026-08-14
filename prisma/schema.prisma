@@ -64,6 +64,16 @@ model Product {
   lastPrice    Int      @default(0) // last seen selling price from order lines, minor units, ex VAT
   catalogPrice Int?     // the store's own listed price, minor units, incl VAT
 
+  /// Units on hand as this shop reports them. Null = the store does not manage
+  /// stock for this item, which is NOT zero — zero is sold out.
+  ///
+  /// Per shop, deliberately, even though the shops mirror ONE warehouse. Storing
+  /// only an agreed figure would throw away the disagreement, and the
+  /// disagreement is what reveals a drifting mirror: on 2026-08-13 four shops
+  /// said 906 and Germany said 939.
+  stockQuantity  Int?
+  stockUpdatedAt DateTime?
+
   shop  Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   costs ProductCost[]
   items OrderItem[]
@@ -595,4 +605,71 @@ model Briefing {
   createdAt DateTime @default(now())
 
   @@index([day])
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  items SupplyItem[]
+}
+
+/// One physical product we buy, keyed on SKU rather than on a Product id.
+///
+/// `Product` is shop-scoped, so the same item is up to nine rows that cascade
+/// away with their shop. How many units fill a container is a fact about the
+/// object, not about a German listing. `AmbassadorProduct` keys on SKU for the
+/// same reason.
+model SupplyItem {
+  id                String   @id @default(cuid())
+  sku               String   @unique
+  /// Snapshot for display, so a row still reads sensibly when no Product for it
+  /// is loaded — and so a shop renaming its listing cannot rewrite a purchase
+  /// history, exactly as OrderItem.name already guarantees.
+  name              String
+  supplierId        String?
+  /// Estimates. A purchase order's own ETA overrides them, because production
+  /// time varies with the season and how busy the factory is — the person who
+  /// placed the order knows that, a per-product average cannot.
+  productionDays    Int?
+  deliveryDays      Int?
+  unitsPerContainer Int?
+  moq               Int?
+  /// How long one order should last. Null falls back to DEFAULT_COVER_DAYS.
+  coverDays         Int?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  /// SetNull, never Cascade: removing a supplier must unassign its products and
+  /// never delete the purchase history that proves what was ordered. Same rule
+  /// AdCampaign.shop already follows.
+  supplier       Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  purchaseOrders PurchaseOrder[]
+
+  @@index([supplierId])
+}
+
+model PurchaseOrder {
+  id           String    @id @default(cuid())
+  supplyItemId String
+  quantity     Int
+  orderedAt    DateTime
+  /// When it is expected to land. Null is honest and has a consequence: an
+  /// order with no ETA never moves a run-out date, because counting stock whose
+  /// arrival nobody knows would push out that date on a guess.
+  eta          DateTime?
+  /// Null = still on the water, so it still counts as incoming.
+  receivedAt   DateTime?
+  /// Visma's own purchase order id. Null on every hand-entered row. This is the
+  /// single seam the Visma import plugs into.
+  externalId   String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+
+  item SupplyItem @relation(fields: [supplyItemId], references: [id], onDelete: Cascade)
+
+  @@index([supplyItemId, receivedAt])
 }

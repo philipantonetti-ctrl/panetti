@@ -113,6 +113,17 @@ const NAV: { section: string; items: NavItem[] }[] = [
           </>,
         ),
       },
+      {
+        href: '/inventory',
+        label: 'Inventory and forecasting',
+        icon: icon(
+          <>
+            <path d="M3 7h18v5H3z" />
+            <path d="M5 12v8h14v-8" />
+            <path d="M10 16h4" />
+          </>,
+        ),
+      },
       AMBASSADORS_ITEM,
       {
         href: '/b2b',
