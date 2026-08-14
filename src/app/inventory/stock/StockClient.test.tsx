@@ -86,6 +86,34 @@ describe('StockClient', () => {
     expect(screen.getByText('1290')).toBeInTheDocument()
   })
 
+  it('marks which shop is the odd one out, rather than leaving you to find it', () => {
+    // Seen on the real page: eleven shops report the same product and one
+    // differs. Comparing eleven numbers by eye is work the page can do.
+    const { container } = render(
+      <StockClient
+        now={TODAY}
+        rows={[
+          row({
+            quantity: 1085,
+            disagrees: true,
+            byShop: [
+              { shopName: 'Panetti Sweden', quantity: 1085, updatedAt: TODAY },
+              { shopName: 'Panetti Norway', quantity: 1072, updatedAt: TODAY },
+              { shopName: 'Panetti Denmark', quantity: 1085, updatedAt: TODAY },
+            ],
+          }),
+        ]}
+      />,
+    )
+
+    const odd = [...container.querySelectorAll('li')].filter((li) =>
+      li.className.includes('text-warn'),
+    )
+    expect(odd).toHaveLength(1)
+    expect(odd[0].textContent).toMatch(/Panetti Norway/)
+    expect(odd[0].textContent).toMatch(/1072/)
+  })
+
   it('shows a product photo when one exists', () => {
     show([row({ imageUrl: 'https://example.test/pizza.jpg' })])
     expect(screen.getByAltText('Panetti Pizzetta Pro')).toBeInTheDocument()

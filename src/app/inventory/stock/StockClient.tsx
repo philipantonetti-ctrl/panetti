@@ -126,13 +126,22 @@ export function StockClient({ rows, now }: { rows: StockRow[]; now?: string }) {
                 )}
 
                 {r.disagrees && (
-                  <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-muted">
-                    {r.byShop.map((s) => (
-                      <li key={s.shopName}>
-                        <span>{s.shopName}</span>{' '}
-                        <span className="tabular-nums text-ink">{s.quantity ?? '—'}</span>
-                      </li>
-                    ))}
+                  // The odd ones out are marked rather than left to be found.
+                  // Eleven shops report this product and one of them differs;
+                  // reading eleven numbers to spot which is work the page can
+                  // do for you.
+                  <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12px]">
+                    {r.byShop.map((s) => {
+                      const odd = s.quantity !== r.quantity
+                      return (
+                        <li key={s.shopName} className={odd ? 'text-warn' : 'text-muted'}>
+                          <span>{s.shopName}</span>{' '}
+                          <span className={`tabular-nums ${odd ? 'font-semibold' : 'text-ink'}`}>
+                            {s.quantity ?? '—'}
+                          </span>
+                        </li>
+                      )
+                    })}
                   </ul>
                 )}
               </div>
