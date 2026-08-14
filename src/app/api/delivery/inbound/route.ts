@@ -61,22 +61,37 @@ type Attachment = { Name?: unknown; Content?: unknown; ContentID?: unknown }
  *
  * Postmark puts inline images in the same `Attachments` array as real files —
  * the company logo and the disclaimer graphic in an email signature arrive
- * exactly like an attached spreadsheet does. Only `ContentID` tells them apart:
- * it holds the `cid:` value the HTML body references, and it is empty on a
- * genuine enclosure.
+ * exactly like an attached spreadsheet does. Without some test for it, every
+ * ordinary warehouse email would write a refusal row for `image001.png` beside
+ * its successful import, every single day, and the one screen whose whole job
+ * is making a bad morning visible would be permanently red on good mornings.
  *
- * Without this test, every ordinary warehouse email would write a refusal row
- * for `image001.png` beside its successful import, every single day. The
- * delivery page shows the ten most recent imports, so the one screen whose
- * whole job is making a bad morning visible would be permanently red on good
- * mornings and would hold about three days of history instead of ten. Alarm
- * fatigue on exactly the surface this design's central promise rests on.
+ * **`ContentID` cannot be that test on its own, and believing it was cost us a
+ * day.** Gmail stamps a Content-ID on EVERY attachment. Measured from the raw
+ * MIME of a real message on 2026-08-14, the warehouse report arrived carrying
+ * `Content-Disposition: attachment` and `Content-ID: <f_mssm65ae0>` together on
+ * the same part. Trusting ContentID alone skipped the spreadsheet, left
+ * `recorded` at 0, and filed "This email carried no readable attachment" while
+ * the file sat in the payload untouched.
  *
- * `ContentType` is deliberately NOT used as a second signal. Skipping every
- * `image/*` would also swallow a screenshot someone genuinely attached INSTEAD
- * of the report, and that is a real refusal an operator needs to see.
+ * So the FILENAME decides first. A file this route can read is an enclosure
+ * whatever ContentID says, because no email signature is ever an `.xlsx`,
+ * `.csv`, `.txt` or `.pdf`. Only something we could not have imported anyway is
+ * allowed to be written off as part of the body, which is what still keeps the
+ * signature logo from writing a refusal row beside every good morning.
+ *
+ * The body's `cid:` references would be the textbook test, and it is
+ * deliberately not used here: it depends on Postmark's `HtmlBody` field, whose
+ * real contents we have not measured. This fix rests only on what the raw MIME
+ * actually showed.
+ *
+ * `ContentType` is deliberately NOT a signal either. Skipping every `image/*`
+ * would also swallow a screenshot someone genuinely attached INSTEAD of the
+ * report, and that is a real refusal an operator needs to see.
  */
 function isInline(a: Attachment): boolean {
+  const name = typeof a?.Name === 'string' ? a.Name : ''
+  if (READABLE.test(name)) return false
   return typeof a?.ContentID === 'string' && a.ContentID.trim() !== ''
 }
 
