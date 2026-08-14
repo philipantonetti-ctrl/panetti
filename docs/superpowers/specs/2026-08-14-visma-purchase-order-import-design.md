@@ -1,0 +1,270 @@
+# Visma purchase order import — design
+
+Date: 2026-08-14
+Status: approved shape, spec for review
+
+## The ask
+
+Philip, on the forecasting feature:
+
+> We could add in the software ETA (Estimated time of arrival) for each
+> purchasing order.
+
+Visma already stores it. Every purchase order carries `promisedOn`, and every
+line carries its own `promised` date. Nobody needs to type anything — we read
+what the ERP already knows, along with how much of each order has actually
+arrived.
+
+This is phase 3 of `2026-08-13-inventory-and-forecasting-design.md`, which
+deliberately left it unspecified because no Visma access existed at the time.
+Access now exists.
+
+## What was verified, not assumed
+
+Measured against the live company on 2026-08-14.
+
+**The connection.** Read-only, approved by the tenant, working:
+
+- token: `POST https://connect.visma.com/connect/token`, `client_credentials`,
+  `scope=vismanet_erp_service_api:read`, `tenant_id` as a parameter
+- **requests go to `https://integration.visma.net/API`**, path shape
+  `controller/api/v1/<resource>`
+- the Developer Portal's stated "API Base URL" (`api.finance.visma.net/erp/service`)
+  is the token's *audience*, NOT a request host. Every path under it 404s. This
+  cost several rounds of guessing and is recorded so nobody repeats it.
+- no `ipp-company-id` header needed; the company rides in the token
+- tokens last 3600s
+
+**The join works.** All **38 of 38** of our usable SKUs exist in Visma as
+`inventoryNumber`. A purchase order line names the product directly, so no
+mapping table is needed and no fuzzy matching is involved.
+
+Visma holds 480 items across Cosori, Levoit, Mazzetti, Delicious and Panetti;
+412 are stocked. Ours are a clean subset.
+
+**A purchase order carries everything required:**
+
+```
+orderNbr    500000              supplier   Jieyang Qingzhan (China)
+status      Cancelled           currency   USD
+date        2022-11-15          promisedOn 2022-11-15
+lines[]
+  lineNbr         1
+  inventory.number  1298        warehouse  Oslo Lagerhotell
+  orderQty        800           qtyOnReceipts  0
+  promised        2022-11-15    canceled   true
+```
+
+## What already exists
+
+- `PurchaseOrder` with `externalId`, documented as "the single seam the Visma
+  import plugs into". It has no unique constraint — this design adds one.
+- `/inventory/purchase-orders`, currently listing hand-entered orders only.
+- `loadInventory` already treats open purchase orders (`receivedAt: null`) as
+  incoming stock and walks their ETAs forward. The forecast itself needs no
+  change; `load.ts:143`, which turns a purchase order into an arrival, needs a
+  one-line change explained under **Quantities** below.
+
+## Design
+
+### Scope
+
+**Purchase orders only.** Stock stays on WooCommerce.
+
+Visma stock is genuinely better — one authoritative figure rather than nine
+mirrors that drift — and the fields exist (`quantityOnHand`, `available`,
+`availableForShipment` on stocked items). But swapping the source changes what
+`agreeStock` means and carries its own risk. Recorded here so the follow-up is
+short; not built now.
+
+### Units
+
+`src/lib/visma/client.ts` — get a token, make a GET. One dependency on the
+outside world, one caller, mirroring how `src/lib/woo/client.ts` is arranged.
+Caches the token in memory for its lifetime rather than fetching one per request.
+
+`src/lib/visma/purchase-orders.ts` — turn Visma orders into our rows. Pure
+mapping, no database, so the arithmetic that decides what counts as incoming can
+be tested without Postgres.
+
+`src/lib/visma/import.ts` — the database side: fetch, map, upsert, record.
+
+### Schema changes
+
+Two, both additive, neither destructive to existing rows:
+
+```prisma
+externalId        String?  @unique   // was: no constraint
+receivedQuantity  Int?               // new
+```
+
+Every existing row has `externalId: null`, and Postgres permits many nulls in a
+unique index, so the constraint applies cleanly to hand-entered data.
+
+### Mapping
+
+One Visma order line becomes one `PurchaseOrder` row.
+
+| Ours | From Visma |
+|---|---|
+| `externalId` | `` `${orderNbr}-${lineNbr}` `` |
+| `supplyItemId` | looked up by `sku = line.inventory.number` |
+| `orderedAt` | order `date` |
+| `eta` | line `promised`, falling back to order `promisedOn`, else null |
+| `quantity` | `orderQty` — what was ordered, always |
+| `receivedQuantity` | `qtyOnReceipts` — new nullable column |
+| `receivedAt` | Visma's receipt date, once nothing is outstanding (see below) |
+
+### Quantities
+
+This is the decision the whole import turns on.
+
+Units already received are **already in the stock figure** that WooCommerce
+reports. Counting the full `orderQty` as incoming would count them twice: once
+on the shelf, once on the water. The forecast would then believe more stock is
+coming than really is, and tell Philip to order too little — the exact failure
+this feature exists to prevent, arrived at by a different route.
+
+The obvious fix is to import `orderQty − qtyOnReceipts` into the existing
+`quantity` column and change nothing else. **Do not do that.** It makes one
+column mean two things — outstanding on an open row, zero on a fully received one
+— so a completed 800-unit order would be stored as `quantity: 0` and the page
+could never show what actually landed.
+
+Instead, store both numbers as themselves and add one nullable column:
+
+```prisma
+quantity          Int   // ordered
+receivedQuantity  Int?  // null on hand-entered rows, which track no receipts
+```
+
+Outstanding is then derived where it is needed, in the one place that already
+turns a purchase order into an arrival (`src/lib/inventory/load.ts:143`):
+
+```ts
+quantity: Math.max(0, o.quantity - (o.receivedQuantity ?? 0))
+```
+
+`Math.max` because an over-receipt in Visma — more delivered than ordered — must
+not subtract from other orders' incoming stock.
+
+A hand-entered row has `receivedQuantity: null`, so it falls back to `o.quantity`
+and behaves exactly as it does today. Nothing that exists changes meaning.
+
+### When an order counts as received
+
+`receivedAt` has one job in this schema: null means the units still count as
+incoming. So it must be stamped once `qtyOnReceipts >= orderQty`.
+
+**With what date, though?** There is no honest answer yet. Stamping "now" would
+record a 2023 delivery as having arrived today, and the ETA is a promise, not an
+arrival. The order carries a receipt or completion date, or it does not, and
+which one is a question about Visma rather than about us.
+
+So the first task of the plan is to look, against the live company:
+
+1. If a completed purchase order carries a real receipt or completion date, use it.
+2. Otherwise use the order's `lastModifiedDateTime`, and label the column
+   "recorded" rather than "received" so the page never overstates what it knows.
+3. Never invent one from the clock.
+
+Either way the arithmetic above is unaffected — a fully received row contributes
+`max(0, 800 − 800) = 0` incoming units whether or not it has a date.
+
+### What is skipped, and loudly
+
+- **Cancelled orders** — `status === 'Cancelled'`, or a line with `canceled: true`.
+- **Lines for products we do not sell** — Cosori, Levoit and the rest. Matched by
+  SKU against `SupplyItem`; no match means not ours.
+- **Fully received orders** are imported rather than dropped, so the page can
+  show what landed. They contribute no incoming stock either way.
+
+Each import records how many lines it read, imported, and skipped **with the
+reason**. A line silently ignored because its SKU did not match is
+indistinguishable from a line that did not exist, and that is precisely how a
+missing purchase order goes unnoticed.
+
+### Idempotency
+
+`externalId` becomes `@unique`, and the import upserts on it. Re-running changes
+nothing that has not changed in Visma. This matters because the import runs on a
+schedule and a purchase order's quantities move as goods arrive.
+
+**Hand-entered rows are never touched.** Only rows whose `externalId` is non-null
+belong to the import; a row someone typed has `externalId: null` and is invisible
+to it.
+
+### Trigger
+
+Extend the existing cron. It is one API call and purchase orders change slowly.
+
+A failure must not fail the wider sync — same rule the WooCommerce catalogue
+refresh already follows. It records the error and the next run retries.
+
+### The page
+
+`/inventory/purchase-orders` gains a source column: rows with an `externalId`
+read "Visma", the rest "added here". Someone looking at a wrong number needs to
+know whether to fix it in Visma or in this app, and that distinction is invisible
+today.
+
+A partially received order shows all three numbers rather than one — `800
+ordered · 300 landed · 500 still coming` — because "500" alone invites the
+question of what happened to the other 300, and the honest answer is already in
+the row. Rows with `receivedQuantity: null` show only the quantity, as now.
+
+The "Mark received" button is hidden on Visma rows — receipt is Visma's fact, and
+letting someone overwrite it here would produce two answers to one question.
+
+### Configuration
+
+Three values, all from the environment, none in code:
+
+```
+VISMA_CLIENT_ID       isv_panetti_inventory_forecast
+VISMA_TENANT_ID       83949a19-af32-11ec-b60b-0638767d04b5
+VISMA_CLIENT_SECRET   (Vercel env var; never committed, never in chat)
+```
+
+Absent credentials mean the import is skipped quietly, exactly as
+`ensureWebhooks` skips when no `APP_URL` exists. A missing integration is not an
+error.
+
+## Not building
+
+- **Stock from Visma.** Deferred, field names recorded above.
+- **Writing anything to Visma.** The token only holds `read`; there is no path.
+- **Supplier import.** Visma has supplier records, but suppliers here carry
+  lead times someone maintains by hand. Overwriting those with ERP contact data
+  would lose the only part that matters to the forecast.
+
+## Testing
+
+- Mapping is pure, so most of it needs no database:
+  - 800 ordered with 300 received stores `quantity: 800`, `receivedQuantity: 300`
+  - a cancelled order and a cancelled line are both skipped
+  - a line for a SKU we do not stock is skipped, and counted with its reason
+  - line `promised` wins over order `promisedOn`; absent both, `eta` is null,
+    which the forecast already treats as "moves no date"
+- Arithmetic, at `load.ts`, which is where a mistake would silently move a
+  run-out date:
+  - that same order contributes **500** incoming units, not 800 and not 300
+  - a fully received order contributes 0
+  - an over-receipt (900 landed against 800 ordered) contributes 0, never −100
+  - a hand-entered row (`receivedQuantity: null`) contributes its full quantity,
+    exactly as it does today — this is the regression test for the new column
+- Import: re-running twice changes nothing; a hand-entered row (`externalId:
+  null`) survives an import untouched.
+- Client: a failed token request does not throw into the caller's sync.
+- No credentials configured means the import is skipped, not failed.
+
+## Open questions
+
+1. **How far back?** Every purchase order, or only open ones and recent history?
+   Starting position: open orders plus anything modified in the last 90 days.
+2. **Multiple warehouses.** Lines carry a warehouse ("Oslo Lagerhotell"). We treat
+   stock as one pool, so warehouse is imported for display and ignored by the
+   forecast. Worth confirming with Philip that there is one physical warehouse.
+3. **Supplier country data is wrong in Visma** — the Chinese factory on order
+   500000 is recorded as `CH — SWITZERLAND`. Not ours to fix, but it would
+   corrupt any country-based supplier reporting.
