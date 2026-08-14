@@ -111,14 +111,19 @@ export function StockClient({ rows, now }: { rows: StockRow[]; now?: string }) {
                   {c && <p className={`text-[12px] ${c.tone}`}>{c.text}</p>}
                 </div>
 
-                <p className="mt-1.5 text-[11px] text-muted">
-                  {r.disagrees ? (
-                    <span className="text-warn">shops disagree</span>
-                  ) : (
-                    `${r.byShop.length} ${r.byShop.length === 1 ? 'shop' : 'shops'} agree`
-                  )}
-                  {read && <span> · read {readAgo(read, today)}</span>}
-                </p>
+                {/* Nothing to say when no shop carries this product: "0 shops
+                    agree" is not a reassurance, it is a sentence with no
+                    meaning, and the figure above already reads "no stock data". */}
+                {r.byShop.length > 0 && (
+                  <p className="mt-1.5 text-[11px] text-muted">
+                    {r.disagrees ? (
+                      <span className="text-warn">shops disagree</span>
+                    ) : (
+                      `${r.byShop.length} ${r.byShop.length === 1 ? 'shop' : 'shops'} agree`
+                    )}
+                    {read && <span> · read {readAgo(read, today)}</span>}
+                  </p>
+                )}
 
                 {r.disagrees && (
                   <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-muted">

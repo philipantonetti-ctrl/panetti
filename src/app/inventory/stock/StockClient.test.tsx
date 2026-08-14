@@ -63,6 +63,14 @@ describe('StockClient', () => {
     expect(screen.getByText(/2 shops agree/)).toBeInTheDocument()
   })
 
+  it('does not say "0 shops agree" about a product no shop carries', () => {
+    // Caught on the real page. It is not a reassurance, it is a sentence with
+    // no meaning, and the figure already reads "no stock data".
+    show([row({ quantity: null, runsOutOn: null, note: 'no stock data', byShop: [] })])
+    expect(screen.queryByText(/0 shops agree/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/agree/)).not.toBeInTheDocument()
+  })
+
   it('names every shop and its figure when they disagree', () => {
     show([
       row({
