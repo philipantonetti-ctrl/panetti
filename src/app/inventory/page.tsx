@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { currentUser } from '@/lib/auth/current-user'
+import { describeSources } from '@/lib/inventory/describe'
 import { loadInventory } from '@/lib/inventory/load'
 import { InventoryTabs } from './InventoryTabs'
 import { InventoryClient } from './InventoryClient'
@@ -11,11 +12,18 @@ export default async function InventoryPage() {
   const user = await currentUser()
   if (!user || user.role !== 'ADMIN') redirect('/login')
 
-  const { rows, unusable } = await loadInventory()
+  const { rows, unusable, stockFrom, shopCount } = await loadInventory()
 
   return (
     <AppShell email={user.email}>
-      <PageHeader title="Inventory and forecasting" subtitle="When you run out, and when to order" />
+      {/* The subtitle names the two scopes on this page because no figure on it
+          reveals them: the stock column comes from the shops marked as sources,
+          the per-day rate from every shop. Both look equally plausible whichever
+          shops fed them, so being told is the only way to know. */}
+      <PageHeader
+        title="Inventory and forecasting"
+        subtitle={`When you run out, and when to order. ${describeSources(stockFrom, shopCount)} Click any column to sort.`}
+      />
       <PageBody>
         <div className="mb-5">
           <InventoryTabs />
