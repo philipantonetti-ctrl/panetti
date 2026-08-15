@@ -324,4 +324,43 @@ describe('loadInventory, when some shops are named as the stock source', () => {
     const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
     expect(row.stock.quantity).toBe(100)
   })
+
+  /**
+   * The page has to be able to SAY where its figures came from. Two scopes are
+   * mixed on one screen — stock from the named shops, sales from every shop —
+   * and no number on the page reveals which is which.
+   */
+  it('reports which shops the stock came from, named and in order', async () => {
+    await stock(`${TAG}-b-src`, SKU, 100, 'Pizza Oven', true)
+    await stock(`${TAG}-a-src`, SKU, 100, 'Pizza Oven', true)
+    await stock(`${TAG}-other`, SKU, 100, 'Pizza Oven')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pizza Oven' } })
+
+    const view = await loadInventory(TODAY)
+    expect(view.stockFrom).toContain(`${TAG}-a-src`)
+    expect(view.stockFrom).toContain(`${TAG}-b-src`)
+    expect(view.stockFrom).not.toContain(`${TAG}-other`)
+    // Alphabetical, so the sentence it builds does not reshuffle between loads.
+    expect([...view.stockFrom].sort()).toEqual(view.stockFrom)
+  })
+
+  it('reports no named source when nobody has chosen one', async () => {
+    await stock(`${TAG}-a`, SKU, 100, 'Pizza Oven')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pizza Oven' } })
+
+    expect((await loadInventory(TODAY)).stockFrom).toEqual([])
+  })
+
+  it('counts the active shops, so the page can say how many fed the sales', async () => {
+    await stock(`${TAG}-a`, SKU, 100, 'Pizza Oven')
+    await stock(`${TAG}-off`, `${TAG}-B`, 100, 'Other')
+    await db.shop.updateMany({ where: { name: `${TAG}-off` }, data: { active: false } })
+
+    // Scoped to this tag rather than asserted as a total: other test files
+    // create and delete shops in parallel, so any global count is a race.
+    const view = await loadInventory(TODAY)
+    const mine = await db.shop.count({ where: { name: { startsWith: TAG }, active: true } })
+    expect(view.shopCount).toBeGreaterThanOrEqual(mine)
+    expect(view.shopCount).toBe(await db.shop.count({ where: { active: true } }))
+  })
 })

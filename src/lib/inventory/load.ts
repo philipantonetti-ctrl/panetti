@@ -23,6 +23,17 @@ export type InventoryView = {
   rows: InventoryRow[]
   /** Products excluded because their SKU cannot identify a product. */
   unusable: { shopName: string; name: string; sku: string }[]
+  /**
+   * Which shops the stock figures and product names came from. Empty = nobody
+   * has chosen, so every active shop counted.
+   *
+   * Returned rather than left to the page to work out, because the page would
+   * have to repeat this query to learn it, and the two could then disagree
+   * about what the rows on screen are actually made of.
+   */
+  stockFrom: string[]
+  /** How many active shops fed the SALES side, which is never scoped. */
+  shopCount: number
 }
 
 /** Two years, so a seasonal index has a year to compare against. */
@@ -76,10 +87,16 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   // and awaited first: it decides the shape of the product query below, and
   // guessing wrong would mean fetching every shop's catalogue to throw most of
   // it away.
-  const sources = await db.shop.findMany({
-    where: { active: true, stockSource: true },
-    select: { id: true },
-  })
+  const [sources, shopCount] = await Promise.all([
+    db.shop.findMany({
+      where: { active: true, stockSource: true },
+      // Alphabetical, so the sentence the page builds from these does not
+      // reshuffle its shop names between two loads of the same data.
+      orderBy: { name: 'asc' },
+      select: { name: true },
+    }),
+    db.shop.count({ where: { active: true } }),
+  ])
   const scoped = sources.length > 0
 
   const [items, products, lines] = await Promise.all([
@@ -222,5 +239,5 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     return at - bt
   })
 
-  return { rows, unusable }
+  return { rows, unusable, stockFrom: sources.map((s) => s.name), shopCount }
 }
