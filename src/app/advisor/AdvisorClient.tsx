@@ -20,45 +20,6 @@ export type Briefing = {
 }
 
 /**
- * FIGURES ARE PRINTED FROM FACTS, NEVER FROM THE MODEL'S PROSE.
- *
- * This is the second of the two places that guarantee the advisor cannot show
- * a number nobody computed — the first is validateItems() dropping an item that
- * cites an unknown fact. The model supplies the sentence; this supplies the
- * figure beside it.
- */
-function figure(fact: Fact): string {
-  const { current, previous, deltaPct, unit } = fact
-
-  const one = (n: number | null) => {
-    if (n === null) return '—'
-    if (unit === 'money') {
-      // Money is always integer minor units, currency or not — a missing
-      // currency should cost the symbol, never the magnitude.
-      if (!fact.currency) return (n / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })
-      return (n / 100).toLocaleString(undefined, {
-        style: 'currency',
-        currency: fact.currency,
-        maximumFractionDigits: 0,
-      })
-    }
-    if (unit === 'percent') return `${(n * 100).toFixed(1)}%`
-    if (unit === 'ratio') return n.toFixed(1)
-    if (unit === 'days') return `${n} d`
-    return String(n)
-  }
-
-  const move =
-    deltaPct === null
-      ? ''
-      : // A minus sign, not just a colour: red/green colour-blindness must never
-        // hide a fall. U+2212 so the sign aligns in a tabular column.
-        ` (${deltaPct < 0 ? '−' : '+'}${Math.abs(deltaPct * 100).toFixed(1)}%)`
-
-  return previous === null ? one(current) : `${one(previous)} → ${one(current)}${move}`
-}
-
-/**
  * What the window means, in words.
  *
  * "2026-08-04 to 2026-08-10" is the machine's way of putting it, and it says
@@ -240,8 +201,64 @@ function trustSentence(fact: Fact): string {
   return `No exchange rate for ${fact.subject ?? 'a currency'}, so figures in it could not be converted.`
 }
 
+/**
+ * One fact, as three aligned columns: what it is, what it went from and to,
+ * and by how much.
+ *
+ * FIGURES ARE PRINTED FROM FACTS, NEVER FROM THE MODEL'S PROSE. This is the
+ * second of the two places that guarantee the advisor cannot show a number
+ * nobody computed — the first is validateItems() dropping an item that cites an
+ * unknown fact. The model supplies the sentence; this supplies the figure
+ * beside it.
+ *
+ * The percentage gets the last column to itself because it is the signal. Read
+ * as the tail of a sentence — "NOK 199,194 → NOK 137,595 (−30.9%)" — a card's
+ * worth of them start at six different horizontal positions and cannot be
+ * compared without reading every word in between. Right-aligned in a fixed
+ * column they read straight down, which is what "the number is the interface"
+ * asks for.
+ */
+function FactLine({
+  fact,
+  showShop,
+  className = '',
+}: {
+  fact: Fact
+  /** False wherever a heading above has already named the shop. */
+  showShop: boolean
+  className?: string
+}) {
+  const d = delta(fact)
+
+  return (
+    <div
+      className={`grid grid-cols-[1fr_auto] items-baseline gap-x-6 gap-y-0.5 sm:grid-cols-[minmax(0,1fr)_auto_5.5rem] ${className}`}
+    >
+      <span className="text-[13px] text-ink">{showShop ? label(fact) : rowLabel(fact)}</span>
+      <span className="tabular-nums text-[13px] text-muted sm:text-right">{movement(fact)}</span>
+      <span
+        className={`tabular-nums text-right text-[13px] font-semibold ${
+          d === null ? 'text-faint' : d.down ? 'text-loss' : 'text-gain'
+        }`}
+      >
+        {d?.text ?? '—'}
+      </span>
+    </div>
+  )
+}
+
 function Card({ item, facts }: { item: BriefItem; facts: Fact[] }) {
-  const cited = facts.filter((f) => item.factIds.includes(f.id))
+  // Worst first, so the figure that earned the headline is the one read first.
+  // The facts arrive in whatever order the model happened to cite them.
+  const cited = facts
+    .filter((f) => item.factIds.includes(f.id))
+    .sort((a, b) => b.severity - a.severity || a.id.localeCompare(b.id))
+
+  // The shop belongs on a line only when it is what tells one line from the
+  // next. On a card about a single shop the headline has already said it, and
+  // six repetitions of "Mazzetti Norway" are six labels to read past before
+  // reaching the word that differs.
+  const showShop = new Set(cited.map((f) => f.shopId)).size > 1
 
   return (
     <article className="rounded-[12px] border border-line bg-surface p-4">
@@ -253,39 +270,22 @@ function Card({ item, facts }: { item: BriefItem; facts: Fact[] }) {
       </div>
 
       {cited.length > 0 && (
-        <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
+        <div className="mt-2.5 flex flex-col gap-y-1">
           {cited.map((fact) => (
-            <div key={fact.id} className="text-[13px]">
-              <dt className="text-muted">{label(fact)}</dt>
-              <dd className="tabular-nums text-ink">{figure(fact)}</dd>
-            </div>
+            <FactLine key={fact.id} fact={fact} showShop={showShop} />
           ))}
-        </dl>
+        </div>
       )}
 
-      <p className="mt-2 text-[13px] text-muted">{item.why}</p>
+      <p className="mt-3 text-[13px] text-muted">{item.why}</p>
       {item.action && <p className="mt-2 text-[13px] font-medium text-ink">{item.action}</p>}
     </article>
   )
 }
 
-/** One movement. Label left, before/after in the middle, the percentage last. */
+/** One movement in the report, where the shop is already the group heading. */
 function Row({ fact }: { fact: Fact }) {
-  const d = delta(fact)
-
-  return (
-    <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-6 gap-y-0.5 px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto_5.5rem]">
-      <span className="text-[13px] text-ink">{rowLabel(fact)}</span>
-      <span className="tabular-nums text-[13px] text-muted sm:text-right">{movement(fact)}</span>
-      <span
-        className={`tabular-nums text-right text-[13px] font-semibold ${
-          d === null ? 'text-faint' : d.down ? 'text-loss' : 'text-gain'
-        }`}
-      >
-        {d?.text ?? '—'}
-      </span>
-    </div>
-  )
+  return <FactLine fact={fact} showShop={false} className="px-4 py-2.5" />
 }
 
 /**

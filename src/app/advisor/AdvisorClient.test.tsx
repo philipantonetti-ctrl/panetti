@@ -82,6 +82,100 @@ describe('AdvisorClient', () => {
   })
 
   /**
+   * The cards used to lay their facts out with flex-wrap, so six figures of
+   * different label lengths sat beside each other and nothing lined up. The
+   * Report section one scroll further down already solved this: label left,
+   * before/after in the middle, the percentage in its own right-hand column.
+   */
+  describe('the figures on a card', () => {
+    const move = (over: Partial<Fact> & { id: string }): Fact => ({
+      kind: 'REVENUE_MOVE',
+      shopId: 'shop_no',
+      shopName: 'Mazzetti Norway',
+      subject: null,
+      current: 13_759_500,
+      previous: 19_919_400,
+      deltaPct: -0.309,
+      unit: 'money',
+      severity: 0.5,
+      currency: 'NOK',
+      ...over,
+    })
+
+    const card = (cited: Fact[]) =>
+      briefing({
+        facts: cited,
+        items: [
+          {
+            headline: 'Mazzetti Norway fell',
+            why: 'The best-selling chair halved.',
+            factIds: cited.map((f) => f.id),
+            severity: 'high',
+            action: null,
+          },
+        ],
+      })
+
+    it('drops the shop name when the card is about one shop', () => {
+      // The headline already says Mazzetti Norway. Repeating it on every line
+      // makes the reader parse three segments to find the one word that differs.
+      render(
+        <AdvisorClient
+          initial={card([move({ id: 'revenue:shop_no' }), move({ id: 'profit:shop_no', kind: 'PROFIT_MOVE' })])}
+        />,
+      )
+      expect(screen.getByText('Revenue')).toBeInTheDocument()
+      expect(screen.getByText('Profit')).toBeInTheDocument()
+      expect(screen.queryByText(/Revenue · Mazzetti Norway/)).not.toBeInTheDocument()
+    })
+
+    it('keeps the shop name when the card compares several shops', () => {
+      // Here the shop IS the thing that differs, so dropping it would leave two
+      // identical labels against two different numbers.
+      render(
+        <AdvisorClient
+          initial={card([
+            move({ id: 'revenue:shop_no' }),
+            move({ id: 'revenue:shop_se', shopId: 'shop_se', shopName: 'Panetti Sweden' }),
+          ])}
+        />,
+      )
+      expect(screen.getByText('Revenue · Mazzetti Norway')).toBeInTheDocument()
+      expect(screen.getByText('Revenue · Panetti Sweden')).toBeInTheDocument()
+    })
+
+    /**
+     * It used to be the last thing inside a long string, in brackets. It is the
+     * single most important signal on the line.
+     */
+    it('gives the percentage its own place rather than burying it in brackets', () => {
+      render(<AdvisorClient initial={card([move({ id: 'revenue:shop_no' })])} />)
+      expect(screen.getByText('−30.9%')).toBeInTheDocument()
+      expect(screen.queryByText(/\(−30\.9%\)/)).not.toBeInTheDocument()
+    })
+
+    it('signs a fall as well as colouring it', () => {
+      render(<AdvisorClient initial={card([move({ id: 'revenue:shop_no' })])} />)
+      // Red/green colour-blindness must never be the only thing between the
+      // reader and a fall. U+2212, matching every other figure on the page.
+      expect(screen.getByText('−30.9%').textContent).toMatch(/^−/)
+    })
+
+    it('reads the worst line first, however the facts arrived', () => {
+      const { container } = render(
+        <AdvisorClient
+          initial={card([
+            move({ id: 'margin:shop_no', kind: 'MARGIN_MOVE', severity: 0.2, deltaPct: -0.05 }),
+            move({ id: 'profit:shop_no', kind: 'PROFIT_MOVE', severity: 0.9, deltaPct: -0.79 }),
+          ])}
+        />,
+      )
+      const text = container.textContent!
+      expect(text.indexOf('Profit')).toBeLessThan(text.indexOf('Margin'))
+    })
+  })
+
+  /**
    * A failed briefing used to lead with the error text itself, which for an API
    * failure is a line of status codes and an id. That answers "what broke" for
    * a developer and nothing at all for the person the page is written for.
@@ -194,8 +288,12 @@ describe('AdvisorClient', () => {
         })}
       />,
     )
-    expect(screen.getByText(/Revenue · Panetti Sweden/)).toBeInTheDocument()
-    expect(screen.getByText(/ROAS · Panetti Sweden/)).toBeInTheDocument()
+    // By KIND is what this test is about: two figures for one shop must not
+    // read alike. The shop itself is no longer repeated on each line — both
+    // facts are Panetti Sweden's and the headline says so — which is covered by
+    // "keeps the shop name when the card compares several shops" above.
+    expect(screen.getByText('Revenue')).toBeInTheDocument()
+    expect(screen.getByText('ROAS')).toBeInTheDocument()
   })
 
   describe('a failed refresh', () => {
