@@ -81,6 +81,57 @@ describe('AdvisorClient', () => {
     expect(screen.getByText(/Panetti Sweden/)).toBeInTheDocument()
   })
 
+  /**
+   * A failed briefing used to lead with the error text itself, which for an API
+   * failure is a line of status codes and an id. That answers "what broke" for
+   * a developer and nothing at all for the person the page is written for.
+   */
+  it('leads with what to do, not with the failure', () => {
+    render(
+      <AdvisorClient
+        initial={briefing({
+          items: null,
+          error: '400 invalid_request_error (req_011Ce7jTJaTjz33YEBYvR3VY): Invalid request data',
+        })}
+      />,
+    )
+    expect(screen.getByText(/Press Refresh/i)).toBeInTheDocument()
+    expect(screen.getByText(/still computed from your own figures/i)).toBeInTheDocument()
+  })
+
+  /**
+   * Kept, but moved out of the sentence and into its own line: it is the only
+   * thing that lets a failure be quoted to somebody who can trace it.
+   */
+  it('keeps the technical detail in its own place, so it can be reported', () => {
+    render(
+      <AdvisorClient
+        initial={briefing({
+          items: null,
+          error: '400 invalid_request_error (req_011Ce7jTJaTjz33YEBYvR3VY): Invalid request data',
+        })}
+      />,
+    )
+    const detail = screen.getByTestId('briefing-error-detail')
+    expect(detail.textContent).toMatch(/req_011Ce7jTJaTjz33YEBYvR3VY/)
+    expect(screen.getByText(/Press Refresh/i).textContent).not.toMatch(/req_011/)
+  })
+
+  /**
+   * Refreshing cannot conjure an environment variable, so offering it as the
+   * remedy would send someone round a loop that cannot end.
+   */
+  it('does not offer Refresh as the cure for a missing key', () => {
+    render(
+      <AdvisorClient
+        initial={briefing({ items: null, error: 'No ANTHROPIC_API_KEY is configured, so no briefing could be written.' })}
+      />,
+    )
+    expect(screen.getByText(/has not been given its API key/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Press Refresh/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('briefing-error-detail')).not.toBeInTheDocument()
+  })
+
   it('teaches the next action when nothing has been written yet', () => {
     render(<AdvisorClient initial={null} />)
     expect(screen.getByText(/No briefing yet/i)).toBeInTheDocument()

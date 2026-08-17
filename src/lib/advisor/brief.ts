@@ -153,6 +153,44 @@ export function validateItems(items: BriefItem[], facts: Fact[]): BriefItem[] {
   return items.filter((item) => item.factIds.length > 0 && item.factIds.every((id) => known.has(id)))
 }
 
+/**
+ * A failed model call, in one line worth keeping.
+ *
+ * Written after a live 400 that read `{"type":"error","error":{"type":
+ * "invalid_request_error","message":"Invalid request data"},"request_id":...}`
+ * and took an afternoon to chase, because the stored text was the raw body and
+ * nothing was logged. The body says everything except the three things that
+ * actually help: what the status was, what KIND of failure it was, and the
+ * request id — the only handle by which a request can be traced afterwards.
+ *
+ * One line, and no JSON. A blob on the page is an unanswerable question rather
+ * than a thing to fix, which is the same rule `trustSentence` already applies
+ * to a raw WooCommerce error; the advisor's own errors were exempt from it
+ * only by oversight.
+ */
+export function describeFailure(e: unknown): string {
+  const err = e as {
+    status?: number
+    message?: string
+    request_id?: string
+    error?: { error?: { type?: string; message?: string }; request_id?: string }
+  }
+
+  const body = err?.error?.error
+  if (typeof err?.status !== 'number' || !body) {
+    return e instanceof Error ? e.message : String(e)
+  }
+
+  // Omitted rather than printed as "undefined": a field that says nothing is
+  // worse than a field that is not there.
+  const id = err.request_id ?? err.error?.request_id
+  return [
+    `${err.status} ${body.type ?? 'error'}`,
+    id ? ` (${id})` : '',
+    body.message ? `: ${body.message}` : '',
+  ].join('')
+}
+
 export type GeneratedBrief = {
   items: BriefItem[] | null
   model: string | null
@@ -178,8 +216,12 @@ export async function generateBrief(
     const result = await model(collected)
     return { items: validateItems(result.items, collected.facts), model: result.model, error: null }
   } catch (e) {
+    // The whole error, where the platform keeps it. What gets STORED is one
+    // short line, so this is the only place the detail survives — and without
+    // it a failure is a mystery rather than a five-minute job.
+    console.error('advisor briefing failed', e)
     // Stored, never thrown: the facts are still worth showing, and a silent
     // failure would look exactly like a quiet week.
-    return { items: null, model: null, error: e instanceof Error ? e.message : String(e) }
+    return { items: null, model: null, error: describeFailure(e) }
   }
 }

@@ -97,6 +97,28 @@ function writtenAgo(writtenAt: string | null): string | null {
 }
 
 /**
+ * A failed briefing, said as something to do rather than something that broke.
+ *
+ * The error text is a line of status codes and a request id — it answers "what
+ * broke" for whoever can trace it, and nothing at all for the person this page
+ * is written for. He needs two things: that the figures below still stand, and
+ * whether anything is his to fix. So the sentence leads, and the technical line
+ * moves out of it (rendered separately, and only where it can help).
+ *
+ * A missing key is the one case Refresh cannot cure — no amount of pressing it
+ * conjures an environment variable — so that case is the exception and says
+ * what is actually wrong instead.
+ */
+const MISSING_KEY = 'ANTHROPIC_API_KEY'
+
+function failureSentence(error: string): string {
+  if (error.includes(MISSING_KEY)) {
+    return 'No written summary yet: the advisor has not been given its API key.'
+  }
+  return 'No written summary this morning. Press Refresh to try again now, or it will be written with tomorrow morning’s run.'
+}
+
+/**
  * Where a trust warning gets fixed.
  *
  * A warning that names a problem and not its remedy leaves the reader to go
@@ -500,16 +522,22 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
             {briefing.error && (
               <div className="rounded-[12px] border border-line bg-surface p-4">
                 <p className="text-[13px] font-medium text-ink">
-                  {/* The raw error names an environment variable, which is an
-                      unanswerable question for the reader PRODUCT.md describes.
-                      The missing-key case is the one we can phrase as an action. */}
-                  {briefing.error.includes('ANTHROPIC_API_KEY')
-                    ? 'No written summary yet: the advisor has not been given its API key.'
-                    : `No written summary: ${briefing.error}`}
+                  {failureSentence(briefing.error)}
                 </p>
                 <p className="mt-1 text-[13px] text-muted">
                   Everything below was still computed from your own figures, and is correct.
                 </p>
+                {/* Small and last, but present: the request id is the only
+                    handle by which a failure can be traced afterwards, and a
+                    failure nobody can trace is one that gets guessed at. */}
+                {!briefing.error.includes(MISSING_KEY) && (
+                  <p
+                    data-testid="briefing-error-detail"
+                    className="mt-2 break-all text-[11px] text-faint"
+                  >
+                    {briefing.error}
+                  </p>
+                )}
               </div>
             )}
 
