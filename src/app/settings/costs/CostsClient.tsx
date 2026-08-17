@@ -78,7 +78,13 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
     <AppShell email={email}>
       <PageHeader
         title="Product costs"
-        subtitle="Every product ever sold appears here, with its store price incl. VAT. Enter a cost and it is used for profit from the date you choose."
+        // The last sentence is the client's own request, answered where it
+        // matters: he was typing the same cost once per webshop, because a cost
+        // is stored against a per-shop product row. It now spreads to that SKU
+        // everywhere, converted into each shop's currency — and a reader has to
+        // know that BEFORE typing, or entering a cost on one shop's row looks
+        // like a partial job.
+        subtitle="Every product ever sold appears here, with its store price incl. VAT. Enter a cost and it is used for profit from the date you choose, for this product in every webshop that sells it."
       >
         <select
           value={shopId}
@@ -319,7 +325,36 @@ function CostModal({
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the cost')
         return
       }
-      toast.success('Cost saved')
+
+      /**
+       * How far the cost reached, said out loud.
+       *
+       * One cost is now written to this SKU in every webshop that sells it,
+       * which is what the client asked for and also completely invisible: the
+       * modal closes on the one row he was standing on. A saved-and-that-is-all
+       * message would leave him switching shops to check, which is the work this
+       * change removed.
+       *
+       * A skipped shop is named rather than folded into the count. Its profit is
+       * still being figured from the old cost, and this is the only place that
+       * ever says so.
+       */
+      const out = (await res.json().catch(() => null)) as
+        | { shops?: number; skipped?: { shopName: string; currency: string }[] }
+        | null
+      const shops = out?.shops ?? 1
+      const skipped = out?.skipped ?? []
+      const reached = `Cost saved for ${shops} webshop${shops === 1 ? '' : 's'}`
+
+      if (skipped.length > 0) {
+        toast.error(
+          `${reached}. No exchange rate for ${skipped
+            .map((s) => `${s.shopName} (${s.currency})`)
+            .join(', ')}, so ${skipped.length === 1 ? 'it is' : 'they are'} still on the old cost.`,
+        )
+      } else {
+        toast.success(reached)
+      }
       onSaved()
     } catch {
       toast.error('Could not reach the server')
