@@ -96,6 +96,30 @@ export function convert(
 }
 
 /**
+ * What one unit of `from` is worth in `to` on a day, or undefined when we hold
+ * no usable rate for either leg.
+ *
+ * The strict form, for callers that must not accept a guess. `crossConvert`
+ * below passes an amount through UNCHANGED when a leg is missing, which is right
+ * for a figure on a screen — never zero out money someone is reading — and wrong
+ * for anything being STORED. A cost entered in NOK and saved into a Swedish
+ * product as though it were SEK is close enough to look plausible while
+ * overstating profit permanently, so the cost writer needs to be able to refuse.
+ */
+export function crossFactor(
+  from: string,
+  to: string,
+  date: Date,
+  rates: RateTable,
+): number | undefined {
+  if (from === to) return 1
+  const fromUsd = from === 'USD' ? 1 : rateOn(from, date, rates)
+  const toUsd = to === 'USD' ? 1 : rateOn(to, date, rates)
+  if (fromUsd === undefined || toUsd === undefined || toUsd === 0) return undefined
+  return fromUsd / toUsd
+}
+
+/**
  * Convert between two arbitrary currencies via their USD legs — needed when a
  * fee fixed in EUR lands on a NOK order shown in NOK. Missing either leg, the
  * amount passes through unchanged (honest, never zeroed).
@@ -109,8 +133,7 @@ export function crossConvert(
 ): number {
   if (from === to) return amount
   if (to === 'USD') return convert(amount, from, date, to, rates)
-  const fromUsd = from === 'USD' ? 1 : rateOn(from, date, rates)
-  const toUsd = rateOn(to, date, rates)
-  if (fromUsd === undefined || toUsd === undefined || toUsd === 0) return amount
-  return mulRate(amount, fromUsd / toUsd)
+  const factor = crossFactor(from, to, date, rates)
+  if (factor === undefined) return amount
+  return mulRate(amount, factor)
 }

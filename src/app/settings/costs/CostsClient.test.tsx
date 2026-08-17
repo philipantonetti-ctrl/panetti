@@ -118,3 +118,93 @@ describe('CostsClient — a rejected save', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeNull()
   })
 })
+
+/**
+ * A cost entered on one webshop's row is now written to that SKU in every
+ * webshop. That is what the client asked for — one product, one cost, not the
+ * same figure typed nine times — but a fan-out nobody can see is a fan-out
+ * nobody trusts, so the save says how far it reached.
+ */
+describe('CostsClient — a cost that reaches every webshop', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const saveReturning = (payload: Record<string, unknown>) =>
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/products?')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ products: [PRODUCT], currency: 'NOK' }),
+        } as unknown as Response)
+      }
+      if (url.includes('/cost')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => payload,
+        } as unknown as Response)
+      }
+      return Promise.reject(new Error(`CostsClient.test: unexpected fetch to ${url}`))
+    })
+
+  async function saveCost() {
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Next' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  }
+
+  it('says how many webshops the cost reached', async () => {
+    vi.stubGlobal('fetch', saveReturning({ ok: true, points: 9, shops: 9, skipped: [] }))
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await saveCost()
+
+    expect(await screen.findByText(/9 webshops/i)).toBeTruthy()
+  })
+
+  it('reads naturally when only one webshop sells it', async () => {
+    vi.stubGlobal('fetch', saveReturning({ ok: true, points: 1, shops: 1, skipped: [] }))
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await saveCost()
+
+    expect(await screen.findByText(/1 webshop\b/i)).toBeTruthy()
+  })
+
+  /**
+   * A shop left on its old cost is the one outcome that must never pass as
+   * success. Its profit is now being figured from a stale number, and only this
+   * message says so.
+   */
+  it('names a webshop it could not convert for, rather than reporting plain success', async () => {
+    vi.stubGlobal(
+      'fetch',
+      saveReturning({
+        ok: true,
+        points: 8,
+        shops: 8,
+        skipped: [{ shopName: 'Panetti Germany', currency: 'EUR' }],
+      }),
+    )
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await saveCost()
+
+    expect(await screen.findByText(/Panetti Germany/)).toBeTruthy()
+  })
+
+  it('tells the reader on the page itself that a cost is shared, before they type one', async () => {
+    vi.stubGlobal('fetch', saveReturning({ ok: true, points: 1, shops: 1, skipped: [] }))
+    const { container } = renderWithToast(
+      <CostsClient email="admin@test.local" shops={[SHOP]} />,
+    )
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    expect(container.textContent).toMatch(/every webshop/i)
+  })
+})
