@@ -39,6 +39,44 @@ async function sell(shopName: string, sku: string, stock: number | null, units: 
   })
 }
 
+/**
+ * Two years of daily sales in two statements.
+ *
+ * A seasonal fixture cannot be sparse: `seasonalIndex` reads 28-day windows, and
+ * a window that happens to fall between two hand-placed orders reads as a dead
+ * season and clamps to 0.25. Real history is continuous, so this one is too.
+ *
+ * `units(daysAgo)` decides what sold on each day, which is where a caller puts
+ * its peak.
+ */
+async function twoYears(shopName: string, sku: string, stock: number, units: (daysAgo: number) => number) {
+  const shop = await db.shop.create({ data: { name: shopName, currency: 'NOK' } })
+  const product = await db.product.create({
+    data: { shopId: shop.id, externalId: `${shopName}-${sku}`, sku, name: 'Pasta Maker',
+            stockQuantity: stock, stockUpdatedAt: new Date() },
+  })
+  const days = Array.from({ length: 730 }, (_, i) => i)
+
+  await db.order.createMany({
+    data: days.map((d) => ({
+      shopId: shop.id, externalId: `${sku}-${d}`, number: `${d}`,
+      placedAt: new Date(TODAY.getTime() - d * 86400000), status: 'completed',
+      currency: 'NOK', grossSales: 0, discountTotal: 0, netSales: 0,
+      shippingCharged: 0, taxTotal: 0, total: 0, shippingCountry: 'NO',
+    })),
+  })
+  const orders = await db.order.findMany({
+    where: { shopId: shop.id }, select: { id: true, placedAt: true },
+  })
+  await db.orderItem.createMany({
+    data: orders.map((o) => ({
+      orderId: o.id, productId: product.id, sku, name: 'Pasta Maker',
+      quantity: units(Math.round((TODAY.getTime() - o.placedAt.getTime()) / 86400000)),
+      unitPrice: 0, lineNetTotal: 0,
+    })),
+  })
+}
+
 describe('loadInventory', () => {
   it('sums demand across shops, because they share one warehouse', async () => {
     await sell(`${TAG}-no`, SKU, 100, 60, 5, 'NO')
@@ -193,6 +231,51 @@ describe('loadInventory', () => {
     expect(runsOut(split)).toEqual(runsOut(five))
     // And the two really are distinguishable, or the assertion above proves nothing.
     expect(runsOut(eight)).not.toEqual(runsOut(five))
+  })
+
+  /**
+   * The client's actual question: does the forecast know we are growing?
+   *
+   * The same 60 calendar days, a year apart, so nothing about the season is in
+   * the answer — only the change in trade.
+   */
+  it('reports how this period compares with the same period last year', async () => {
+    await sell(`${TAG}-no`, SKU, 100, 1380, 5, 'NO')   // this window
+    await sell(`${TAG}-no`, SKU, 100, 1200, 370, 'NO') // the same window, a year back
+    await sell(`${TAG}-no`, SKU, 100, 1, 500, 'NO')    // history reaching past it
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.trend).toBeCloseTo(0.15)
+  })
+
+  it('has no trend to report when there is no matching period to compare against', async () => {
+    await sell(`${TAG}-no`, SKU, 100, 600, 5, 'NO')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.trend).toBeNull()
+  })
+
+  /**
+   * The bug this whole change exists to fix: a rate measured inside a peak,
+   * multiplied by the next peak, counts the season twice.
+   *
+   * The busy stretch sits 380 to 438 days back, which is deliberate. That is
+   * inside the window every one of the last 60 days is measured against, and
+   * outside every window a FUTURE day is measured against — so it can only move
+   * the underlying rate, and the test cannot pass for the wrong reason.
+   */
+  it('does not carry a peak forward twice: a rate measured in a busy season walks down slower', async () => {
+    await twoYears(`${TAG}-season`, SKU, 300, (d) => (d >= 380 && d <= 438 ? 40 : 10))
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    // What the page shows is unchanged: 10 a day is what is selling right now.
+    expect(row.burn).toBeCloseTo(10)
+    // At that rate 300 units would be gone inside a month. They are not, because
+    // 10 a day is this season's rate and not the business's.
+    expect(row.forecast.runsOutOn!.getTime()).toBeGreaterThan(TODAY.getTime() + 60 * 86400000)
   })
 })
 

@@ -45,6 +45,7 @@ export default defineConfig(({ mode }) => {
               'src/app/api/cron/briefing/route.integration.test.ts',
               'src/lib/data/load.test.ts',
               'src/lib/data/load.integration.test.ts',
+              'src/lib/inventory/load.test.ts',
             ],
           },
         },
@@ -67,8 +68,8 @@ export default defineConfig(({ mode }) => {
           test: {
             name: 'delivery',
             // Together with the `setting` project's own include list just above,
-            // this must stay exactly the `app` project's 5-pattern exclude list —
-            // the three projects partition the suite exactly, with no file run
+            // this must stay exactly the `app` project's exclude list — the
+            // three projects partition the suite exactly, with no file run
             // twice and none skipped. The API-route half matters as much as
             // the lib half: those tests write DeliveryPromise and the
             // DeliveryConfig singleton, which no tag can isolate.
@@ -86,10 +87,18 @@ export default defineConfig(({ mode }) => {
               'src/app/api/orders/route.test.ts',
               'src/lib/advisor/**/*.integration.test.ts',
               'src/app/api/cron/briefing/route.integration.test.ts',
+              // Shop.stockSource is workspace-wide: the moment ANY shop carries
+              // it, every caller of loadInventory is scoped to that shop's
+              // catalogue. This file flags shops mid-test, and the advisor
+              // collector above now reads the inventory too — so left in the
+              // parallel `app` project, its flag could empty the rows the
+              // briefing's fixture is asserting on. Membership follows the state
+              // a file touches, not what it is called.
+              'src/lib/inventory/load.test.ts',
             ],
             // These files share a fixed-id singleton, a table the settings route
-            // rewrites wholesale, and a global alert query. No tag can separate
-            // them; only running them one at a time can.
+            // rewrites wholesale, a global alert query and the stock-source flag.
+            // No tag can separate them; only running them one at a time can.
             fileParallelism: false,
           },
         },

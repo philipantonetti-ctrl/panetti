@@ -36,9 +36,22 @@ beforeAll(async () => {
   const shop = await db.shop.create({ data: { name: '[advisor-test] Shop', currency: 'NOK' } })
   shopId = shop.id
   const product = await db.product.create({
-    data: { shopId, externalId: 'adv-1', sku: 'ADV-1', name: 'Advisor Test Product' },
+    // One unit on the shelf, against roughly 2 units a month of demand: the
+    // shelf empties in about a month and the 70-day lead time below therefore
+    // puts the order date well behind us. That is what makes this a reorder.
+    data: {
+      shopId, externalId: 'adv-1', sku: 'ADV-1', name: 'Advisor Test Product',
+      stockQuantity: 1, stockUpdatedAt: NOW,
+    },
   })
   productId = product.id
+
+  await db.supplyItem.create({
+    data: {
+      sku: 'ADV-1', name: 'Advisor Test Product',
+      productionDays: 30, deliveryDays: 40, moq: 200,
+    },
+  })
 
   // Previous window (27 Jul – 2 Aug): 1_000_000 NOK.
   await order('A1', day('2026-07-29'), 1_000_000)
@@ -48,6 +61,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.order.deleteMany({ where: { shopId } })
+  await db.supplyItem.deleteMany({ where: { sku: 'ADV-1' } })
   await db.product.deleteMany({ where: { shopId } })
   await db.shop.delete({ where: { id: shopId } })
 })
@@ -71,6 +85,21 @@ describe('collectFacts', () => {
     const uncosted = facts.find((f) => f.kind === 'UNCOSTED_PRODUCTS' && f.shopId === shopId)
     expect(uncosted).toBeDefined()
     expect(uncosted!.current).toBeGreaterThanOrEqual(1)
+  })
+
+  /**
+   * The client asked to be TOLD when an order needs placing. The Forecast page
+   * has known this all along; the 05:00 briefing is the only thing here that
+   * reaches him without being opened.
+   */
+  it('says an order is overdue for a product past its order date', async () => {
+    const { facts } = await collectFacts(NOW)
+    const reorder = facts.find(
+      (f) => f.kind === 'REORDER_DUE' && f.subject === 'Advisor Test Product',
+    )
+    expect(reorder).toBeDefined()
+    // The supplier's 200 minimum, not the six units demand alone asked for.
+    expect(reorder!.current).toBe(200)
   })
 
   it('gives every fact an id unique within one briefing', async () => {

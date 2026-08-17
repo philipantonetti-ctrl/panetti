@@ -1,6 +1,13 @@
 import { db } from '../db'
 import { VOIDED_STATUSES } from '../metrics/types'
-import { dailyBurn, hasSeasonalHistory, seasonalIndex, type Sale } from './burn'
+import {
+  dailyBurn,
+  hasSeasonalHistory,
+  seasonalIndex,
+  seasonalLevel,
+  yearOverYear,
+  type Sale,
+} from './burn'
 import { forecast, type Forecast } from './forecast'
 import { isUsableSku, normaliseSku } from './sku'
 import { agreeStock, type AgreedStock, type ShopStock } from './stock'
@@ -13,6 +20,17 @@ export type InventoryRow = {
   supplierName: string | null
   stock: AgreedStock
   burn: number
+  /**
+   * This period against the same period last year, as a fraction. Null when
+   * there is no matching period to compare against.
+   *
+   * Shown rather than kept internal because it IS the growth the forecast
+   * applies: `seasonalLevel` reads the current rate with the season taken out,
+   * so every future day comes out at last year's sales on that date times
+   * exactly this. The client asked whether the system can see the business
+   * growing; this is the page answering in a number.
+   */
+  trend: number | null
   /** False = no last year to compare against, so the rate is flat and says so. */
   seasonal: boolean
   forecast: Forecast
@@ -202,6 +220,11 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     const seasonal = hasSeasonalHistory(mine, today)
     const stock = agreeStock(stocks.get(sku) ?? [])
 
+    // One season, read once, used twice — first to take the season OUT of the
+    // rate we can see, then to put the right season back on each future day.
+    // Those two have to be the same function or the two halves disagree.
+    const index = (d: Date) => seasonalIndex(mine, d, today)
+
     return {
       sku,
       name: names.get(sku) ?? item.name,
@@ -209,12 +232,16 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
       supplierName: item.supplier?.name ?? null,
       stock,
       burn,
+      trend: yearOverYear(mine, today),
       seasonal,
       forecast: forecast(
         {
           stock: stock.quantity,
-          burn,
-          index: (d) => seasonalIndex(mine, d, today),
+          // NOT `burn`. That is what is selling in whatever season we are
+          // standing in; multiplying it by the next season's index would count
+          // the season twice and order for two Christmases.
+          level: seasonalLevel(mine, today, index),
+          index,
           arrivals: item.purchaseOrders.map((o) => ({ eta: o.eta, quantity: outstanding(o) })),
           productionDays: item.productionDays,
           deliveryDays: item.deliveryDays,

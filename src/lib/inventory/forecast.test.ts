@@ -6,7 +6,7 @@ const inDays = (n: number) => new Date(TODAY.getTime() + n * 86400000)
 const day = (d: Date) => d.toISOString().slice(0, 10)
 
 const input = (over: Partial<ForecastInput> = {}): ForecastInput => ({
-  stock: 100, burn: 10, index: () => 1, arrivals: [],
+  stock: 100, level: 10, index: () => 1, arrivals: [],
   productionDays: 30, deliveryDays: 40, moq: null, unitsPerContainer: null, coverDays: null,
   ...over,
 })
@@ -68,7 +68,7 @@ describe('forecast', () => {
     // Runs out on day 299, inside the 365-day horizon, so a quantity is
     // genuinely computed: 1/day over 30 + 40 + 90 days = 160 units. The
     // supplier's 500 minimum is what must raise it.
-    const f = forecast(input({ stock: 300, burn: 1, moq: 500 }), TODAY)
+    const f = forecast(input({ stock: 300, level: 1, moq: 500 }), TODAY)
     expect(f.quantity).toBe(500)
   })
 
@@ -81,10 +81,44 @@ describe('forecast', () => {
     // 160 needed, raised to the 500 minimum, then rounded up to two 400-unit
     // containers = 800. Applying the container first would give 400, then the
     // minimum would lift it to 500 — not a whole number of containers.
-    const f = forecast(input({ stock: 300, burn: 1, moq: 500, unitsPerContainer: 400 }), TODAY)
+    const f = forecast(input({ stock: 300, level: 1, moq: 500, unitsPerContainer: 400 }), TODAY)
     expect(f.quantity).toBe(800)
     expect(f.quantity).toBeGreaterThanOrEqual(500)
     expect(f.quantity! % 400).toBe(0)
+  })
+
+  /**
+   * "Order 500" without "you need 160" is a number nobody can sanity-check. The
+   * reorder tips quote both, and say which rule made up the difference, because
+   * "the supplier will not take less" and "that is a whole container" are
+   * different reasons to buy stock you do not yet need.
+   */
+  it('reports what demand alone called for, next to the number to order', () => {
+    const f = forecast(input({ stock: 300, level: 1, moq: 500 }), TODAY)
+    expect(f.needed).toBe(160)
+    expect(f.quantity).toBe(500)
+    expect(f.raisedBy).toBe('minimum')
+  })
+
+  it('names the container, not the minimum, when the container is what rounded it up', () => {
+    const f = forecast(input({ stock: 1000, unitsPerContainer: 1000 }), TODAY)
+    expect(f.needed).toBe(1600)
+    expect(f.raisedBy).toBe('container')
+  })
+
+  it('names nothing when plain demand set the number', () => {
+    const f = forecast(input({ stock: 1000 }), TODAY)
+    expect(f.needed).toBe(1600)
+    expect(f.quantity).toBe(1600)
+    expect(f.raisedBy).toBeNull()
+  })
+
+  it('names the minimum when both rules applied, because the minimum is what binds', () => {
+    // 160 needed. Containers alone would give 400; it is the 500 minimum that
+    // forces the second container.
+    const f = forecast(input({ stock: 300, level: 1, moq: 500, unitsPerContainer: 400 }), TODAY)
+    expect(f.quantity).toBe(800)
+    expect(f.raisedBy).toBe('minimum')
   })
 
   it('says nothing about dates when stock is unknown, and does not assume zero', () => {
@@ -95,9 +129,10 @@ describe('forecast', () => {
   })
 
   it('reads "not selling" when nothing has sold, rather than running out today', () => {
-    const f = forecast(input({ burn: 0 }), TODAY)
+    const f = forecast(input({ level: 0 }), TODAY)
     expect(f.runsOutOn).toBeNull()
     expect(f.note).toBe('not selling')
+    expect(f.needed).toBeNull()
   })
 
   it('asks for lead times rather than inventing an order-by date', () => {

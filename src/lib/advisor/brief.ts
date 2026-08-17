@@ -80,6 +80,9 @@ Rules:
 - Order items so the most consequential is first.
 - Data-quality facts mean a number on his dashboard cannot yet be trusted. Say that
   plainly — it outranks a move he can see for himself.
+- A REORDER_DUE fact means a product has reached the date it must be ordered by if it
+  is to arrive before the shelf empties. Its figure is how many to order, already at
+  the supplier's minimum. Combine them into one item and put the order in "action".
 - Write plainly. No preamble, no encouragement, no exclamation marks.`
 
 /** What a briefing generator does. A function so tests can pass a stub. */
