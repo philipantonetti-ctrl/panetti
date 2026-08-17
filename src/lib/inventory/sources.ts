@@ -60,6 +60,21 @@ export function splitBySource<T extends { sku: string }>(
 }
 
 /**
+ * What the source shops call one product, or its stored name when they do not
+ * carry it.
+ *
+ * The single-row form, for the places a name is nested inside something else —
+ * a purchase order carries its product, not a list of them. `namedFromSource`
+ * is this applied across a list, so the two can never disagree about the rule.
+ */
+export function nameOf(
+  catalogue: Map<string, string> | null,
+  item: { sku: string; name: string },
+): string {
+  return catalogue?.get(normaliseSku(item.sku)) ?? item.name
+}
+
+/**
  * Retitle each row with what the source shop calls it.
  *
  * `SupplyItem.name` is a snapshot taken once, from whichever shop the database
@@ -75,7 +90,7 @@ export function namedFromSource<T extends { sku: string; name: string }>(
 ): T[] {
   if (catalogue === null) return items
   return items.map((i) => {
-    const name = catalogue.get(normaliseSku(i.sku))
-    return name ? { ...i, name } : i
+    const name = nameOf(catalogue, i)
+    return name === i.name ? i : { ...i, name }
   })
 }
