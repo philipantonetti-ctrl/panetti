@@ -208,3 +208,90 @@ describe('CostsClient — a cost that reaches every webshop', () => {
     expect(container.textContent).toMatch(/every webshop/i)
   })
 })
+
+/**
+ * "We only need to see the product one time in the list" — the last clause of
+ * the client's message, on the last page where it was not true. The dropdown
+ * stays, because ten of the sixty-two products are sold only outside Norway and
+ * six of those sold this quarter: removing it would make them uncostable.
+ */
+describe('CostsClient — one row per product', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const listing = (body: Record<string, unknown>) =>
+    vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/products?')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ products: [PRODUCT], currency: 'NOK', ...body }),
+        } as unknown as Response)
+      }
+      return Promise.reject(new Error(`CostsClient.test: unexpected fetch to ${url}`))
+    })
+
+  it('opens on the combined view rather than one webshop', async () => {
+    const fetchMock = listing({ onlyElsewhere: 0 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWithToast(
+      <CostsClient email="admin@test.local" shops={[SHOP]} sourceCurrency="NOK" />,
+    )
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/products?source=1')
+  })
+
+  it('still offers each webshop on its own', async () => {
+    vi.stubGlobal('fetch', listing({ onlyElsewhere: 0 }))
+    renderWithToast(
+      <CostsClient email="admin@test.local" shops={[SHOP]} sourceCurrency="NOK" />,
+    )
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    expect(screen.getByRole('option', { name: /Test Shop/ })).toBeTruthy()
+  })
+
+  /**
+   * A page showing 52 of 62 products and saying nothing reads as "that is all of
+   * them" — the same lie as a blank cell. Six of the ten it leaves out sold this
+   * quarter.
+   */
+  it('says how many products it is not showing, and where to find them', async () => {
+    vi.stubGlobal('fetch', listing({ onlyElsewhere: 10 }))
+    const { container } = renderWithToast(
+      <CostsClient email="admin@test.local" shops={[SHOP]} sourceCurrency="NOK" />,
+    )
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    expect(container.textContent).toMatch(/10 products/i)
+  })
+
+  it('says nothing about missing products when it is showing them all', async () => {
+    vi.stubGlobal('fetch', listing({ onlyElsewhere: 0 }))
+    const { container } = renderWithToast(
+      <CostsClient email="admin@test.local" shops={[SHOP]} sourceCurrency="NOK" />,
+    )
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    expect(container.textContent).not.toMatch(/only in your other webshops/i)
+  })
+
+  /**
+   * Nobody has ticked a stock source, which is how every workspace starts. The
+   * page must work exactly as it did before this view existed rather than
+   * offering an empty one.
+   */
+  it('opens on a single webshop when no shop is a stock source', async () => {
+    const fetchMock = listing({})
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} sourceCurrency={null} />)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/products?shopId=shop-1')
+  })
+})

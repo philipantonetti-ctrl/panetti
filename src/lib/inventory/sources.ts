@@ -60,6 +60,35 @@ export function splitBySource<T extends { sku: string }>(
 }
 
 /**
+ * One row per product, out of a list that may carry it several times.
+ *
+ * The source shops are two catalogues, not one, and a page that lists both shows
+ * anything they share twice — which is the client's complaint arriving by a
+ * different road. First one wins, so the caller's ordering decides, and an
+ * alphabetical list stays alphabetical.
+ *
+ * A SKU that cannot identify a product is never collapsed. Six live products
+ * share the SKU "0", spanning a pizza oven and a massage chair, and folding them
+ * into one row would hide five products that each need costing — worse than
+ * showing a duplicate.
+ */
+export function oneRowPerSku<T extends { sku: string }>(rows: T[]): T[] {
+  const seen = new Set<string>()
+  const kept: T[] = []
+  for (const r of rows) {
+    if (!isUsableSku(r.sku)) {
+      kept.push(r)
+      continue
+    }
+    const sku = normaliseSku(r.sku)
+    if (seen.has(sku)) continue
+    seen.add(sku)
+    kept.push(r)
+  }
+  return kept
+}
+
+/**
  * What the source shops call one product, or its stored name when they do not
  * carry it.
  *

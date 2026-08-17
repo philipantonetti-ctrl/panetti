@@ -3,26 +3,57 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { costOn } from '@/lib/metrics/costs'
-import { normaliseSku } from '@/lib/inventory/sku'
+import { isUsableSku, normaliseSku } from '@/lib/inventory/sku'
+ import { oneRowPerSku } from '@/lib/inventory/sources'
 
 export async function GET(req: Request) {
   try {
     assertAdmin(await currentUser())
 
-    const shopId = new URL(req.url).searchParams.get('shopId')
-    if (!shopId) return NextResponse.json({ error: 'shopId is required' }, { status: 400 })
+    const params = new URL(req.url).searchParams
+    const shopId = params.get('shopId')
 
-    const shop = await db.shop.findUnique({ where: { id: shopId } })
-    if (!shop) return NextResponse.json({ error: 'No such shop' }, { status: 404 })
+    /**
+     * One row per product, from the shops named as stock sources.
+     *
+     * The client asked to see a product once rather than once per country, and
+     * this page was the only list where it genuinely appeared nine times: a cost
+     * is stored against a per-shop `Product` row. The write already fans out
+     * across every shop selling the SKU, so any one row is now enough to cost
+     * the product everywhere — this makes the LIST match that.
+     *
+     * Per-shop mode stays, and is the only way to reach a product no source shop
+     * sells. Ten of the sixty-two are in that position and six of them sold this
+     * quarter, so removing the dropdown would make them permanently uncostable.
+     */
+    const bySource = params.get('source') === '1'
+    if (!shopId && !bySource) {
+      return NextResponse.json({ error: 'shopId is required' }, { status: 400 })
+    }
 
-    const [products, hidden] = await Promise.all([
+    const shop = shopId ? await db.shop.findUnique({ where: { id: shopId } }) : null
+    if (shopId && !shop) return NextResponse.json({ error: 'No such shop' }, { status: 404 })
+
+    const [found, hidden, everywhere] = await Promise.all([
       db.product.findMany({
-        where: { shopId },
-        include: { costs: { orderBy: { effectiveFrom: 'desc' } } },
+        where: bySource ? { shop: { active: true, stockSource: true } } : { shopId: shopId! },
+        include: {
+          costs: { orderBy: { effectiveFrom: 'desc' } },
+          shop: { select: { currency: true } },
+        },
         orderBy: { name: 'asc' },
       }),
       db.supplyItem.findMany({ where: { active: false }, select: { sku: true } }),
+      // Only needed to say how many products this view is NOT showing. A page
+      // listing 52 of 62 and saying nothing reads as "that is all of them".
+      bySource
+        ? db.product.findMany({ where: { shop: { active: true } }, select: { sku: true } })
+        : Promise.resolve([]),
     ])
+
+    // Two source shops are two catalogues, so anything they both list would
+    // appear twice — the same complaint arriving by a different road.
+    const products = bySource ? oneRowPerSku(found) : found
 
     /**
      * Products the client has hidden on the Suppliers page — spare parts and the
@@ -47,13 +78,37 @@ export async function GET(req: Request) {
 
     const today = new Date()
 
+    /**
+     * How many usable SKUs the active shops sell that this view leaves out.
+     *
+     * Zero in per-shop mode, where the question does not arise. In source mode
+     * these are the products only the other webshops list — reachable by picking
+     * that shop above, and named on the page so nobody reads a short list as a
+     * complete one.
+     */
+    const shownSkus = new Set(visible.filter((p) => isUsableSku(p.sku)).map((p) => normaliseSku(p.sku)))
+    const allSkus = new Set(
+      everywhere.filter((p) => isUsableSku(p.sku)).map((p) => normaliseSku(p.sku)),
+    )
+    const onlyElsewhere = [...allSkus].filter((s) => !shownSkus.has(s) && !hiddenSkus.has(s)).length
+
     return NextResponse.json({
-      currency: shop.currency,
+      // In source mode every source shop shares a currency in practice; the page
+      // only offers this view when they do, and reads the figure it will label
+      // its inputs with from here rather than guessing.
+      currency: shop?.currency ?? visible[0]?.shop.currency ?? found[0]?.shop.currency ?? 'NOK',
+      onlyElsewhere,
       products: visible.map((p) => {
         const current = costOn(p.costs, today)
         return {
           id: p.id,
-          sku: p.sku,
+          // Trimmed and uppercased, not the raw spelling one shop happened to
+          // use. In source mode a row stands for the product in every webshop,
+          // so wearing Mazzetti's " csr-shared " would put stray whitespace on
+          // screen and make the row impossible to match against the SKU the rest
+          // of the system keys on. Display only — the cost is saved against
+          // `id`, which never changes.
+          sku: normaliseSku(p.sku),
           name: p.name,
           imageUrl: p.imageUrl,
           // The store's own listed price (incl. VAT) when we have it; the

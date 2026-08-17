@@ -46,6 +46,7 @@ export default defineConfig(({ mode }) => {
               'src/lib/data/load.test.ts',
               'src/lib/data/load.integration.test.ts',
               'src/lib/inventory/load.test.ts',
+              'src/app/api/products/source.integration.test.ts',
             ],
           },
         },
@@ -95,6 +96,11 @@ export default defineConfig(({ mode }) => {
               // briefing's fixture is asserting on. Membership follows the state
               // a file touches, not what it is called.
               'src/lib/inventory/load.test.ts',
+              // Flags stockSource too, to prove the costs page lists each
+              // product once across the source shops. Same reasoning: the flag
+              // is workspace-wide, so this must not run beside anything that
+              // reads the inventory.
+              'src/app/api/products/source.integration.test.ts',
             ],
             // These files share a fixed-id singleton, a table the settings route
             // rewrites wholesale, a global alert query and the stock-source flag.

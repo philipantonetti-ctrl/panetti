@@ -41,10 +41,36 @@ function ProductImage({ product }: { product: Product }) {
   )
 }
 
-export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) {
-  const [shopId, setShopId] = useState(shops[0]?.id ?? '')
+/**
+ * The combined view: one row per product, taken from the stock-source shops.
+ *
+ * A sentinel rather than a shop id, because it is not a shop — it is every source
+ * shop's catalogue with the duplicates folded together, which is what the client
+ * asked to see. Cannot collide with a cuid.
+ */
+const SOURCE = 'source'
+
+export function CostsClient({
+  email,
+  shops,
+  /**
+   * The currency the stock-source shops share, or null when none is ticked or
+   * they disagree.
+   *
+   * Null keeps this page exactly as it was: one webshop at a time. Costs are
+   * stored in minor units of a shop's own currency, so a combined view can only
+   * label its inputs honestly when there is one currency to label them with.
+   */
+  sourceCurrency = null,
+}: {
+  email: string
+  shops: Shop[]
+  sourceCurrency?: string | null
+}) {
+  const [shopId, setShopId] = useState(sourceCurrency ? SOURCE : (shops[0]?.id ?? ''))
   const [currency, setCurrency] = useState('NOK')
   const [products, setProducts] = useState<Product[]>([])
+  const [onlyElsewhere, setOnlyElsewhere] = useState(0)
   const [onlyMissing, setOnlyMissing] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
@@ -57,11 +83,12 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
       return
     }
     setLoading(true)
-    fetch(`/api/products?shopId=${shopId}`)
+    fetch(shopId === SOURCE ? '/api/products?source=1' : `/api/products?shopId=${shopId}`)
       .then((r) => r.json())
       .then((d) => {
         setProducts(d.products ?? [])
         setCurrency(d.currency ?? 'NOK')
+        setOnlyElsewhere(d.onlyElsewhere ?? 0)
       })
       .finally(() => setLoading(false))
   }
@@ -92,6 +119,13 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
           onChange={(e) => setShopId(e.target.value)}
           className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-[13px] text-ink"
         >
+          {/* First and default, because it is the answer: one row per product
+              rather than the same product once per country. The individual shops
+              stay below it — they are the only way to reach a product the source
+              shops do not sell, and six of those sold last quarter. */}
+          {sourceCurrency && (
+            <option value={SOURCE}>All stock-source shops ({sourceCurrency})</option>
+          )}
           {shops.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name} ({s.currency})
@@ -111,6 +145,21 @@ export function CostsClient({ email, shops }: { email: string; shops: Shop[] }) 
       </PageHeader>
 
       <PageBody>
+        {/* Never a short list passing as a complete one. These are products the
+            source shops do not sell — Swedish and Danish listings — and they
+            still need costs, so the sentence says where they are rather than
+            leaving them to be discovered. */}
+        {shopId === SOURCE && onlyElsewhere > 0 && (
+          <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-muted">
+            <strong className="font-semibold text-ink">
+              {onlyElsewhere} product{onlyElsewhere === 1 ? ' is' : 's are'} sold only in your other
+              webshops
+            </strong>{' '}
+            and {onlyElsewhere === 1 ? 'is' : 'are'} not in this list. Pick that webshop above to
+            enter a cost for {onlyElsewhere === 1 ? 'it' : 'them'}.
+          </div>
+        )}
+
         {missing > 0 && (
           <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-warn-soft px-4 py-3 text-[13px] text-warn">
             <strong className="font-semibold">
