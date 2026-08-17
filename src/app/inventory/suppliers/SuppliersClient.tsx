@@ -42,7 +42,27 @@ const FIELDS = [
  * row that is not ready says so. A page that looked complete while half its
  * rows were empty would produce a forecast full of dashes and no explanation.
  */
-export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers: Supplier[] }) {
+export function SuppliersClient({
+  items,
+  suppliers,
+  /**
+   * Products no shop named as a stock source sells.
+   *
+   * Kept out of the working list because the client's complaint was that one
+   * product appeared several times over, once per country's webshop. Kept on the
+   * page because a product the source shops do not list is still a product we
+   * may buy — PC-AF-BOWL sold this quarter — and its lead times, supplier and
+   * open orders are all real.
+   *
+   * Defaults to empty, which is exactly how this page behaved before any shop
+   * was named a source: everything is carried and there is no second drawer.
+   */
+  elsewhere = [],
+}: {
+  items: Item[]
+  suppliers: Supplier[]
+  elsewhere?: Item[]
+}) {
   const router = useRouter()
   const [draft, setDraft] = useState<Record<string, Record<string, string>>>({})
   const [saving, setSaving] = useState<string | null>(null)
@@ -82,9 +102,14 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
   }
 
   const [showHidden, setShowHidden] = useState(false)
+  const [showElsewhere, setShowElsewhere] = useState(false)
 
   const visible = items.filter((i) => i.active)
-  const hidden = items.filter((i) => !i.active)
+  const onlyElsewhere = elsewhere.filter((i) => i.active)
+  // Both lists, because hiding is a deliberate human act and stays the stronger
+  // statement: a product that is hidden AND unstocked by the source shops
+  // belongs in one drawer, not two, or the two counts report the same row twice.
+  const hidden = [...items, ...elsewhere].filter((i) => !i.active)
 
   /**
    * Take a product out of the system's sight, or bring it back.
@@ -169,6 +194,84 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
     }
   }
 
+  /**
+   * One editable purchasing row.
+   *
+   * A function rather than duplicated JSX, because the drawer of products only
+   * the other webshops sell renders exactly this. Two copies would drift, and
+   * the copy that fell behind would be the one nobody looks at — the drawer.
+   */
+  const row = (item: Item) => {
+    const ready = item.productionDays !== null && item.deliveryDays !== null
+    return (
+      <div key={item.sku} className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-[13px] font-semibold text-ink">
+            {item.name} <span className="ml-1 font-normal text-faint">{item.sku}</span>
+          </p>
+          {!ready && (
+            <span className="text-[11px] text-warn">
+              needs lead times before it can be forecast
+            </span>
+          )}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-[12px] text-muted">
+            <span className="block pb-1">Supplier</span>
+            <select
+              value={value(item, 'supplierId')}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, [item.sku]: { ...d[item.sku], supplierId: e.target.value } }))
+              }
+              className="rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
+            >
+              <option value="">—</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </label>
+
+          {FIELDS.map((f) => (
+            <label key={f.key} className="text-[12px] text-muted">
+              <span className="block pb-1">{f.label}</span>
+              <input
+                aria-label={f.label}
+                inputMode="numeric"
+                value={value(item, f.key)}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, [item.sku]: { ...d[item.sku], [f.key]: e.target.value } }))
+                }
+                className="w-24 rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
+              />
+            </label>
+          ))}
+
+          <button
+            onClick={() => save(item)}
+            disabled={saving === item.sku}
+            className="rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[13px] font-semibold text-white disabled:opacity-50"
+          >
+            {saving === item.sku ? 'Saving…' : 'Save'}
+          </button>
+
+          <button
+            onClick={() => setActive(item, false)}
+            disabled={saving === item.sku}
+            className="rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px] text-muted disabled:opacity-50"
+          >
+            Hide
+          </button>
+        </div>
+
+        {error[item.sku] && (
+          <p className="mt-2 text-[12px] text-loss">{error[item.sku]}</p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-3">
       <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
@@ -206,76 +309,36 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
         )}
       </div>
 
-      {visible.map((item) => {
-        const ready = item.productionDays !== null && item.deliveryDays !== null
-        return (
-          <div key={item.sku} className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-[13px] font-semibold text-ink">
-                {item.name} <span className="ml-1 font-normal text-faint">{item.sku}</span>
-              </p>
-              {!ready && (
-                <span className="text-[11px] text-warn">
-                  needs lead times before it can be forecast
-                </span>
-              )}
-            </div>
+      {visible.map(row)}
 
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <label className="text-[12px] text-muted">
-                <span className="block pb-1">Supplier</span>
-                <select
-                  value={value(item, 'supplierId')}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, [item.sku]: { ...d[item.sku], supplierId: e.target.value } }))
-                  }
-                  className="rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
-                >
-                  <option value="">—</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </label>
+      {/*
+        The products the source shops do not sell.
 
-              {FIELDS.map((f) => (
-                <label key={f.key} className="text-[12px] text-muted">
-                  <span className="block pb-1">{f.label}</span>
-                  <input
-                    aria-label={f.label}
-                    inputMode="numeric"
-                    value={value(item, f.key)}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, [item.sku]: { ...d[item.sku], [f.key]: e.target.value } }))
-                    }
-                    className="w-24 rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
-                  />
-                </label>
-              ))}
+        Collapsed, and absent entirely when there are none — which is the state
+        of every workspace until somebody names a source shop. Fully editable
+        inside, not merely listed: PC-AF-BOWL sold this quarter without either
+        .no shop carrying it, and a product we buy has to be a product we can
+        give a supplier and lead times to.
+      */}
+      {onlyElsewhere.length > 0 && (
+        <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
+          <button
+            onClick={() => setShowElsewhere((v) => !v)}
+            className="text-[13px] font-semibold text-ink underline-offset-2 hover:underline"
+          >
+            {showElsewhere
+              ? `Hide the ${onlyElsewhere.length} sold only in other webshops`
+              : `Show ${onlyElsewhere.length} sold only in other webshops`}
+          </button>
+          <p className="mt-1 text-[12px] text-muted">
+            The list above is what your stock-source shops carry, so each product appears once
+            rather than once per country. Lead times you set anywhere apply to that SKU in every
+            webshop.
+          </p>
 
-              <button
-                onClick={() => save(item)}
-                disabled={saving === item.sku}
-                className="rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[13px] font-semibold text-white disabled:opacity-50"
-              >
-                {saving === item.sku ? 'Saving…' : 'Save'}
-              </button>
-
-              <button
-                onClick={() => setActive(item, false)}
-                disabled={saving === item.sku}
-                className="rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px] text-muted disabled:opacity-50"
-              >
-                Hide
-              </button>
-            </div>
-
-            {error[item.sku] && (
-              <p className="mt-2 text-[12px] text-loss">{error[item.sku]}</p>
-            )}
-          </div>
-        )
-      })}
+          {showElsewhere && <div className="mt-3 space-y-3">{onlyElsewhere.map(row)}</div>}
+        </div>
+      )}
 
       {/*
         Collapsed by default, and absent entirely when nothing is hidden. The
