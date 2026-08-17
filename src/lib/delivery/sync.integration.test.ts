@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach, vi, afterEach, afterAll } from 'vitest'
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/secrets'
-import { nextPollFor, syncShipments } from './sync'
-import type { Milestones } from './map'
+import { DHL_CALLS_PER_RUN, nextPollFor, syncShipments } from './sync'
+import type { Milestones } from './milestones'
 
 const NONE: Milestones = {
   bookedAt: null, handedInAt: null, availableAt: null,
@@ -51,6 +51,7 @@ async function cleanup() {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   // Fix round 1: the transaction-failure test below spies on db.$transaction.
   // Restored here rather than only at the end of that one test, so a spy left
   // behind by an assertion failure can never leak into a later test.
@@ -60,6 +61,9 @@ afterAll(cleanup)
 
 beforeEach(async () => {
   await cleanup()
+  // DHL off unless a test says otherwise, so whether the machine running the
+  // suite happens to have a DHL key exported cannot change what these assert.
+  vi.stubEnv('DHL_API_KEY', '')
   // Upsert, never delete-then-create: the singleton must never vanish out
   // from under a parallel suite that also depends on it (e.g. a settings-page
   // test). Every field this suite cares about is reset explicitly instead, so
@@ -122,6 +126,195 @@ describe('syncShipments', () => {
 
   const consignment = (n: string, events: { status: string; dateIso: string }[]) => ({
     packageSet: [{ packageNumber: n, eventSet: events }],
+  })
+
+  /**
+   * DHL, the second carrier. Its parcels were written by the file import with
+   * `nextPollAt: null` precisely because this poller used to ask Bring about
+   * every number regardless of carrier.
+   */
+  describe('with DHL connected', () => {
+    const DUE = { nextPollAt: new Date('2026-01-01'), carrier: 'DHL' }
+    /** Never really sleeps: DHL's spacing is six seconds and a suite is not. */
+    const noSleep = async () => {}
+
+    // Parameters declared, not inferred: without them mock.calls is typed as an
+    // empty tuple and reading calls[0][1] does not compile.
+    function stubDhl(status = 200, body: unknown = { shipments: [] }) {
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        void url
+        void init
+        return new Response(JSON.stringify(body), { status })
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      return fetchMock
+    }
+
+    const shipment = (id: string, statusCode: string) => ({
+      shipments: [{
+        id,
+        events: [{ timestamp: '2026-08-02T06:00:00', statusCode, description: 'x' }],
+      }],
+    })
+
+    it('asks DHL about a DHL parcel, using the header DHL expects', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      await db.shipment.create({ data: { trackingNumber: T1, ...DUE } })
+      const fetchMock = stubDhl(200, shipment(T1, 'transit'))
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.polled).toBe(1)
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(String(url)).toContain('api-eu.dhl.com')
+      expect((init?.headers as Record<string, string>)['DHL-API-Key']).toBe('dhl-key')
+
+      const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+      expect(s.handedInAt).toEqual(new Date('2026-08-02T06:00:00Z'))
+    })
+
+    /**
+     * The whole reason dhl/link.ts refused to set a due date. Asking Bring about
+     * a DHL number gets a confident "Bring does not know this number", which
+     * reads as a warehouse mistake rather than a wiring one.
+     */
+    it('never asks Bring about a DHL parcel', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      await db.shipment.create({ data: { trackingNumber: T1, ...DUE } })
+      const fetchMock = stubDhl(200, shipment(T1, 'transit'))
+
+      await syncShipments({ now, sleep: noSleep })
+
+      const urls = fetchMock.mock.calls.map((c) => String(c[0]))
+      expect(urls.every((u) => !u.includes('bring.com'))).toBe(true)
+    })
+
+    /**
+     * DHL allows 250 calls a day. Left uncapped, one run of a backlog would
+     * spend the lot in a couple of minutes and every later run that day would
+     * get 429s.
+     */
+    it('spends at most its share of the daily allowance in one run', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      for (const n of [T1, T2, T3]) {
+        await db.shipment.create({ data: { trackingNumber: n, ...DUE } })
+      }
+      const fetchMock = stubDhl(200, { shipments: [] })
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(fetchMock).toHaveBeenCalledTimes(DHL_CALLS_PER_RUN)
+      expect(r.dhlCalls).toBe(DHL_CALLS_PER_RUN)
+    })
+
+    it('leaves the parcels it could not reach this run first in line for the next', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      for (const n of [T1, T2, T3]) {
+        await db.shipment.create({ data: { trackingNumber: n, ...DUE } })
+      }
+      stubDhl(200, { shipments: [] })
+
+      await syncShipments({ now, sleep: noSleep })
+
+      // Untouched: same due date, no error written. A parcel skipped for budget
+      // has not failed, and must not look like it has.
+      const skipped = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T3 } })
+      expect(skipped.nextPollAt).toEqual(new Date('2026-01-01'))
+      expect(skipped.lastError).toBeNull()
+    })
+
+    /**
+     * The state this ships in. Nobody has set DHL_API_KEY yet, and a DHL parcel
+     * must then sit exactly as it is — not be marked failed, which would paint
+     * the Delivery page red for a carrier nobody has connected.
+     */
+    it('leaves a DHL parcel completely alone when no key is configured', async () => {
+      await db.shipment.create({ data: { trackingNumber: T1, ...DUE } })
+      const fetchMock = stubDhl()
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(r.failed).toBe(0)
+      const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+      expect(s.lastError).toBeNull()
+      expect(s.nextPollAt).toEqual(new Date('2026-01-01'))
+    })
+
+    it('records a number DHL does not know yet without calling it a failure', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      await db.shipment.create({ data: { trackingNumber: T1, ...DUE } })
+      stubDhl(404, { status: 404, title: 'No result found' })
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.failed).toBe(0)
+      const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+      expect(s.lastError).toMatch(/DHL does not know this number yet/i)
+    })
+
+    it('records a rate limit as the failure it is, not as an unknown parcel', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      await db.shipment.create({ data: { trackingNumber: T1, ...DUE } })
+      stubDhl(429, { status: 429 })
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.failed).toBe(1)
+      const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+      expect(s.lastError).toMatch(/429/)
+    })
+
+    /**
+     * The gap between two DHL calls is six seconds of real time, and the run has
+     * a deadline. Checking the clock, then sleeping past it, then asking anyway
+     * gets a request with a 1ms budget, an abort, and a healthy parcel marked
+     * failed — the poller inventing a failure out of its own waiting.
+     *
+     * The clock is stubbed rather than slept through, so the suite does not take
+     * six seconds to assert it.
+     */
+    it('stops rather than sleeping past its own deadline', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      for (const n of [T1, T2]) {
+        await db.shipment.create({ data: { trackingNumber: n, ...DUE } })
+      }
+      stubDhl(200, { shipments: [] })
+
+      let clock = 1_000_000
+      vi.spyOn(Date, 'now').mockImplementation(() => clock)
+      // Advances the clock instead of waiting, so the second parcel's gap lands
+      // the run past its deadline.
+      const sleep = async (ms: number) => {
+        clock += ms
+      }
+
+      // Enough for the first parcel, not enough to also wait out the gap.
+      const r = await syncShipments({ now, deadline: clock + 1_000, sleep })
+
+      expect(r.dhlCalls).toBe(1)
+      expect(r.failed).toBe(0)
+      const second = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T2 } })
+      expect(second.lastError).toBeNull()
+    })
+
+    it('polls both carriers in one run', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      await db.shipment.create({ data: { trackingNumber: T1, ...DUE } })
+      await db.shipment.create({
+        data: { trackingNumber: T2, carrier: 'BRING', nextPollAt: new Date('2026-01-02') },
+      })
+
+      vi.stubGlobal('fetch', vi.fn(async (url: string) =>
+        String(url).includes('bring.com')
+          ? new Response(JSON.stringify({ consignmentSet: [consignment(T2, [
+              { status: 'HANDED_IN', dateIso: '2026-08-01T16:00:00Z' },
+            ])] }), { status: 200 })
+          : new Response(JSON.stringify(shipment(T1, 'transit')), { status: 200 })))
+
+      const r = await syncShipments({ now, sleep: noSleep })
+      expect(r.updated).toBe(2)
+    })
   })
 
   it('stores events and milestones for a due parcel', async () => {
@@ -203,7 +396,10 @@ describe('syncShipments', () => {
     })
     await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
     const r = await syncShipments({ now })
-    expect(r.error).toMatch(/not connected/i)
+    // Wording widened when this poller took on DHL: with two carriers it can no
+    // longer name Bring. The claim is unchanged — nothing configured, nothing
+    // polled, and no throw.
+    expect(r.error).toMatch(/no carrier is connected/i)
     expect(r.polled).toBe(0)
   })
 
@@ -279,7 +475,8 @@ describe('syncShipments', () => {
     expect(r.failed).toBe(1)
 
     const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
-    expect(cfg.lastError).toMatch(/could not reach bring/i)
+    // Was /could not reach bring/. Same claim, carrier-neutral wording.
+    expect(cfg.lastError).toMatch(/could not reach the carrier/i)
     expect(cfg.lastSyncAt).toBeNull()
   })
 

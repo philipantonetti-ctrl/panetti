@@ -108,7 +108,9 @@ export async function linkDhlShipments(
 
     const existing = await db.shipment.findUnique({
       where: { trackingNumber: s.trackingNumber },
-      select: { availableAt: true, outcome: true, terminal: true },
+      // nextPollAt is read so the file cannot overwrite a schedule the poller
+      // has since decided — see the assignment below.
+      select: { availableAt: true, outcome: true, terminal: true, nextPollAt: true },
     })
 
     const delivered = s.status.toUpperCase() === 'DELIVERED'
@@ -145,9 +147,25 @@ export async function linkDhlShipments(
       outcome: delivered ? 'DELIVERED' : (existing?.outcome ?? null),
       terminal: delivered ? true : (existing?.terminal ?? false),
       lastStatus: s.status,
-      // Left alone deliberately. Nothing polls a DHL parcel yet, and setting a
-      // due date would make the Bring poller ask Bring about a DHL number.
-      nextPollAt: null,
+      /**
+       * The parcel's FIRST due date, and only its first.
+       *
+       * This used to be null on purpose: the poller asked Bring about every
+       * number regardless of carrier, so a due date here would have sent a DHL
+       * number to Bring. delivery/sync.ts now dispatches on `carrier`, so a DHL
+       * parcel can finally be tracked — and without a due date the poller, which
+       * selects on `nextPollAt: { lte: now }`, would never see it.
+       *
+       * Set to `now` so the next run picks it up, but only when the parcel has
+       * none. After that the poller owns the schedule: re-importing yesterday's
+       * file must not drag a parcel it has already tiered back to the front of
+       * the queue, which under oldest-first ordering would starve the parcels
+       * genuinely waiting.
+       *
+       * A delivered parcel gets `terminal: true` above and is never selected at
+       * all, so this costs it nothing.
+       */
+      nextPollAt: existing?.nextPollAt ?? now,
     }
 
     await db.shipment.upsert({

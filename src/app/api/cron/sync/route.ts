@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { syncAllShops } from '@/lib/woo/sync'
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
-import { syncShipments, type ShipmentSyncResult } from '@/lib/bring/sync'
+import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
 import { importVismaPurchaseOrders, type VismaImportResult } from '@/lib/visma/import'
