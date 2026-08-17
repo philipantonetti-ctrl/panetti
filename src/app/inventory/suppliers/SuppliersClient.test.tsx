@@ -197,3 +197,81 @@ describe('SuppliersClient', () => {
     fetchSpy.mockRestore()
   })
 })
+
+/**
+ * The complaint this answers: the list showed every SKU from all nine webshops,
+ * so one product appeared under a Finnish name, a Swedish name and a Danish one.
+ * The Forecast tab has been scoped to the source shops since the flag existed;
+ * this list never was.
+ */
+describe('SuppliersClient, products only the other webshops sell', () => {
+  const elsewhereItem = (over: Partial<Item> = {}): Item =>
+    item({ id: 'i3', sku: 'PC-AF-BOWL', name: 'Air fryer bowl', ...over })
+
+  it('keeps them out of the working list', () => {
+    const { container } = render(
+      <SuppliersClient items={[item()]} elsewhere={[elsewhereItem()]} suppliers={[]} />,
+    )
+
+    expect(container.textContent).toMatch(/Pizzetta Pro/)
+    expect(container.textContent).not.toMatch(/Air fryer bowl/)
+  })
+
+  it('says how many there are, and shows them on request', () => {
+    const { container } = render(
+      <SuppliersClient items={[item()]} elsewhere={[elsewhereItem()]} suppliers={[]} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /sold only in other webshops/i }))
+
+    expect(container.textContent).toMatch(/Air fryer bowl/)
+  })
+
+  it('says nothing about them when every product is carried', () => {
+    render(<SuppliersClient items={[item()]} elsewhere={[]} suppliers={[]} />)
+    expect(screen.queryByRole('button', { name: /sold only in other webshops/i })).toBeNull()
+  })
+
+  /**
+   * The promise that makes scoping safe. A product the source shops do not list
+   * is still a product we may buy -- PC-AF-BOWL sold this quarter -- so it has
+   * to remain something you can give a supplier and lead times to. A read-only
+   * drawer would have quietly removed that ability.
+   */
+  it('leaves them fully editable, not just readable', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 }),
+    )
+    render(<SuppliersClient items={[]} elsewhere={[elsewhereItem()]} suppliers={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /sold only in other webshops/i }))
+    fireEvent.change(screen.getByLabelText('Production days'), { target: { value: '45' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
+      sku: 'PC-AF-BOWL',
+      productionDays: 45,
+    })
+
+    fetchSpy.mockRestore()
+  })
+
+  /**
+   * Hiding is a deliberate human act and stays the stronger statement. A product
+   * that is both hidden and unstocked here belongs in one drawer, not two, or
+   * the two counts would double-report the same row.
+   */
+  it('sends a hidden one to the hidden drawer, not this one', () => {
+    render(
+      <SuppliersClient
+        items={[item()]}
+        elsewhere={[elsewhereItem({ active: false })]}
+        suppliers={[]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /show hidden \(1\)/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /sold only in other webshops/i })).toBeNull()
+  })
+})

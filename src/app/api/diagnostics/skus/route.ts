@@ -44,6 +44,10 @@ export async function GET() {
       db.product.findMany({
         select: {
           sku: true,
+          // Needed to tell a real SKU from a listing that never had one: map.ts
+          // stores `li.sku || String(li.product_id)`, so the two being equal is
+          // what a missing SKU looks like once it reaches us.
+          externalId: true,
           name: true,
           shop: { select: { name: true, stockSource: true, active: true } },
         },

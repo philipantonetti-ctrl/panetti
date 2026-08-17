@@ -5,7 +5,7 @@ const listing = (
   shopName: string,
   sku: string,
   { source = false, active = true, name = 'A product' } = {},
-) => ({ shopName, sku, name, isSource: source, isActive: active })
+) => ({ shopName, sku, name, isSource: source, isActive: active, noSkuInWoo: false })
 
 /** Recent units per SKU. Required by the function, irrelevant to most tests. */
 const NO_SALES = new Map<string, number>()
@@ -123,8 +123,8 @@ describe('skusAcrossShops', () => {
     )
 
     expect(report.sellingButNotSourced).toEqual([
-      { sku: 'PZO-500-DK', shops: ['Panetti Denmark'], recentUnits: 90 },
-      { sku: 'PZO-500-SE', shops: ['Panetti Sweden'], recentUnits: 40 },
+      { sku: 'PZO-500-DK', shops: ['Panetti Denmark'], recentUnits: 90, noSkuInWoo: false },
+      { sku: 'PZO-500-SE', shops: ['Panetti Sweden'], recentUnits: 40, noSkuInWoo: false },
     ])
   })
 
@@ -160,7 +160,7 @@ describe('skusAcrossShops', () => {
     )
 
     expect(report.sellingButNotSourced).toEqual([
-      { sku: 'PZO-500-SE', shops: ['Panetti Sweden'], recentUnits: 40 },
+      { sku: 'PZO-500-SE', shops: ['Panetti Sweden'], recentUnits: 40, noSkuInWoo: false },
     ])
   })
 
@@ -252,8 +252,8 @@ describe('skusAcrossShops, near-duplicate SKUs', () => {
       {
         stem: 'PZO500',
         variants: [
-          { sku: 'PZO-500', shops: ['Panetti Norway'], recentUnits: 300, sourced: true },
-          { sku: 'PZO500SE', shops: ['Panetti Sweden'], recentUnits: 40, sourced: false },
+          { sku: 'PZO-500', shops: ['Panetti Norway'], recentUnits: 300, sourced: true, noSkuInWoo: false },
+          { sku: 'PZO500SE', shops: ['Panetti Sweden'], recentUnits: 40, sourced: false, noSkuInWoo: false },
         ],
       },
     ])
@@ -317,11 +317,13 @@ describe('listingsFrom', () => {
       listingsFrom([
         {
           sku: 'PZO-500',
+          externalId: '9454',
           name: 'Pizza Oven',
           shop: { name: 'Panetti Norway', stockSource: true, active: true },
         },
         {
           sku: 'PZO-500-SE',
+          externalId: '9455',
           name: 'Pizzaugn',
           shop: { name: 'Panetti Sweden', stockSource: false, active: false },
         },
@@ -333,6 +335,7 @@ describe('listingsFrom', () => {
         shopName: 'Panetti Norway',
         isSource: true,
         isActive: true,
+        noSkuInWoo: false,
       },
       {
         sku: 'PZO-500-SE',
@@ -340,7 +343,57 @@ describe('listingsFrom', () => {
         shopName: 'Panetti Sweden',
         isSource: false,
         isActive: false,
+        noSkuInWoo: false,
       },
+    ])
+  })
+})
+
+describe('SKUs that are really Woo product ids', () => {
+  /**
+   * `map.ts` stores `li.sku || String(li.product_id)`, so a listing with no SKU
+   * arrives carrying its Woo product id as one. Those ids are per-store
+   * sequential, so such a "SKU" can never match another shop's and the product
+   * can never be forecast — but it looks like an ordinary code, and the report
+   * would otherwise send someone hunting for a product that is really a blank
+   * field in the webshop.
+   */
+  it('marks a listing whose SKU is just its Woo product id', () => {
+    const [withSku, without] = listingsFrom([
+      {
+        sku: 'PZO-500',
+        externalId: '9454',
+        name: 'Pizza Oven',
+        shop: { name: 'Panetti Norway', stockSource: true, active: true },
+      },
+      {
+        sku: '9454',
+        externalId: '9454',
+        name: 'Pizzaovn',
+        shop: { name: 'Panetti Denmark', stockSource: false, active: true },
+      },
+    ])
+
+    expect(withSku.noSkuInWoo).toBe(false)
+    expect(without.noSkuInWoo).toBe(true)
+  })
+
+  it('says so on the blind spot, so the fix reads as "give it a SKU"', () => {
+    const report = skusAcrossShops(
+      [
+        { shopName: 'Panetti Norway', sku: 'PZO-500', name: 'Oven', isSource: true, isActive: true, noSkuInWoo: false },
+        { shopName: 'Panetti Denmark', sku: '9454', name: 'Ovn', isSource: false, isActive: true, noSkuInWoo: true },
+        { shopName: 'Panetti Sweden', sku: 'PC-AF-BOWL', name: 'Bowl', isSource: false, isActive: true, noSkuInWoo: false },
+      ],
+      new Map([
+        ['9454', 17],
+        ['PC-AF-BOWL', 1],
+      ]),
+    )
+
+    expect(report.sellingButNotSourced).toEqual([
+      { sku: '9454', shops: ['Panetti Denmark'], recentUnits: 17, noSkuInWoo: true },
+      { sku: 'PC-AF-BOWL', shops: ['Panetti Sweden'], recentUnits: 1, noSkuInWoo: false },
     ])
   })
 })

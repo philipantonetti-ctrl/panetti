@@ -10,6 +10,7 @@ import {
 } from './burn'
 import { forecast, type Forecast } from './forecast'
 import { isUsableSku, normaliseSku } from './sku'
+import { catalogueOf } from './sources'
 import { agreeStock, type AgreedStock, type ShopStock } from './stock'
 
 export type InventoryRow = {
@@ -184,7 +185,11 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   // their Finnish and Swedish names. Reading the name here instead fixes every
   // existing row without a migration, and keeps following the source shop if
   // the listing is renamed.
-  const names = new Map<string, string>()
+  //
+  // Shared with the Suppliers & lead times page rather than repeated, so the
+  // two tabs cannot end up calling the same product different things — which is
+  // the whole bug, one page further along.
+  const names = catalogueOf(products)
   // And what it LOOKS like, from the same shops and for the same reason. A
   // photo is how someone recognises "Rei'itetty Pizzalapio" without translating
   // it first. First one wins, so a shop that carries no image cannot blank out
@@ -203,7 +208,6 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
       quantity: p.stockQuantity,
       updatedAt: p.stockUpdatedAt,
     })
-    if (!names.has(sku) && p.name.trim() !== '') names.set(sku, p.name)
     if (!images.has(sku) && p.imageUrl) images.set(sku, p.imageUrl)
   }
 

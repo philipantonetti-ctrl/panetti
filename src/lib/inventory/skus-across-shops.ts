@@ -50,6 +50,12 @@ export type Listing = {
   /** Marked as a stock source, so the Forecast tab lists what it carries. */
   isSource: boolean
   isActive: boolean
+  /**
+   * True when this "SKU" is really the Woo product id, because the listing had
+   * no SKU at all. Such a code can never match another shop's, so the product
+   * can never be forecast — and it looks like an ordinary SKU while doing it.
+   */
+  noSkuInWoo: boolean
 }
 
 export type ShopSkus = {
@@ -68,6 +74,12 @@ export type BlindSpot = {
   /** The shops that do carry it, alphabetically. */
   shops: string[]
   recentUnits: number
+  /**
+   * No shop listing this code gave it a real SKU, so it is a Woo product id.
+   * Its fix is entering a SKU in the webshop, not anything on our side — a
+   * distinction nobody can make from the number alone.
+   */
+  noSkuInWoo: boolean
 }
 
 /** One SKU inside a family of codes that look like the same product. */
@@ -111,6 +123,12 @@ export function skusAcrossShops(
   const perShop = new Map<string, { isSource: boolean; isActive: boolean; skus: Set<string> }>()
   /** SKUs at least one source shop carries — what the forecast can see. */
   const sourced = new Set<string>()
+  /**
+   * Per SKU, whether EVERY listing of it lacked a real SKU. One shop giving it
+   * a proper code makes it a proper code; the Woo id then belongs to a
+   * different row entirely.
+   */
+  const wooIdOnly = new Map<string, boolean>()
 
   // The sales side gets the same normalisation as the listings. A key that
   // misses its SKU reads as no units, no units reads as no blind spot, and the
@@ -136,6 +154,7 @@ export function skusAcrossShops(
     const sku = normaliseSku(l.sku)
     shop.skus.add(sku)
     if (l.isSource) sourced.add(sku)
+    wooIdOnly.set(sku, (wooIdOnly.get(sku) ?? true) && l.noSkuInWoo)
 
     const shops = shopsBySku.get(sku) ?? new Set<string>()
     shops.add(l.shopName)
@@ -163,6 +182,7 @@ export function skusAcrossShops(
     sku,
     shops: [...shopsBySku.get(sku)!].sort((a, b) => a.localeCompare(b)),
     recentUnits: units.get(sku) ?? 0,
+    noSkuInWoo: wooIdOnly.get(sku) ?? false,
   })
 
   // Biggest seller first, SKU as the tiebreaker so a tie cannot reshuffle
@@ -232,6 +252,8 @@ export function unitsBySku(lines: SoldLine[]): Map<string, number> {
 /** A product row, as the route's query loads it. */
 export type ListedProduct = {
   sku: string
+  /** The Woo product id. Equal to `sku` exactly when the listing had no SKU. */
+  externalId: string
   name: string
   shop: { name: string; stockSource: boolean; active: boolean }
 }
@@ -251,5 +273,9 @@ export function listingsFrom(products: ListedProduct[]): Listing[] {
     name: p.name,
     isSource: p.shop.stockSource,
     isActive: p.shop.active,
+    // The same test `mergeKey` makes on the products page: map.ts stores
+    // `li.sku || String(li.product_id)`, so the two being equal is what a
+    // missing SKU looks like by the time it reaches us.
+    noSkuInWoo: p.sku.trim() === p.externalId.trim(),
   }))
 }
