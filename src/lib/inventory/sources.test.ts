@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { catalogueOf, namedFromSource, splitBySource } from './sources'
+import { catalogueOf, nameOf, namedFromSource, splitBySource } from './sources'
 
 const item = (sku: string, name: string) => ({ sku, name })
 
@@ -145,5 +145,32 @@ describe('namedFromSource', () => {
       productionDays: 60,
       supplierId: 's1',
     })
+  })
+})
+
+describe('nameOf', () => {
+  it('gives the source shop’s name for a SKU it carries', () => {
+    expect(nameOf(new Map([['PZO-500', 'Pizzaovn Pro']]), item('PZO-500', 'Stored'))).toBe(
+      'Pizzaovn Pro',
+    )
+  })
+
+  it('matches however the stored row cased its SKU', () => {
+    expect(nameOf(new Map([['PZO-500', 'Pizzaovn Pro']]), item(' pzo-500 ', 'Stored'))).toBe(
+      'Pizzaovn Pro',
+    )
+  })
+
+  /**
+   * The purchase-order list has to name a product whatever its provenance —
+   * including one the source shops stopped carrying after the order was placed.
+   * A blank there would be an order you cannot identify.
+   */
+  it('falls back to the stored name when the source shops do not carry it', () => {
+    expect(nameOf(new Map(), item('PC-AF-BOWL', 'Air fryer bowl'))).toBe('Air fryer bowl')
+  })
+
+  it('falls back to the stored name when no shop is a source', () => {
+    expect(nameOf(null, item('PZO-500', 'Stored'))).toBe('Stored')
   })
 })
