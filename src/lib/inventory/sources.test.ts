@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { catalogueOf, nameOf, namedFromSource, splitBySource } from './sources'
+import { catalogueOf, nameOf, namedFromSource, oneRowPerSku, splitBySource } from './sources'
 
 const item = (sku: string, name: string) => ({ sku, name })
 
@@ -172,5 +172,43 @@ describe('nameOf', () => {
 
   it('falls back to the stored name when no shop is a source', () => {
     expect(nameOf(null, item('PZO-500', 'Stored'))).toBe('Stored')
+  })
+})
+
+describe('oneRowPerSku', () => {
+  /**
+   * Two source shops both list a product, or one shop lists it twice under
+   * different spellings. Either way it is one product to cost, and showing it
+   * twice is the complaint this is here to end.
+   */
+  it('keeps one row per SKU, the first it was given', () => {
+    const rows = oneRowPerSku([
+      { sku: 'PZO-500', id: 'no' },
+      { sku: ' pzo-500 ', id: 'se' },
+      { sku: 'MPX-001', id: 'no-2' },
+    ])
+
+    expect(rows.map((r) => r.id)).toEqual(['no', 'no-2'])
+  })
+
+  /**
+   * Six live products share the SKU "0" and are not one product — a pizza oven
+   * and a massage chair among them. Collapsing them would hide five products
+   * that each need a cost, which is worse than showing a duplicate.
+   */
+  it('never collapses SKUs that cannot identify a product', () => {
+    const rows = oneRowPerSku([
+      { sku: '0', id: 'oven' },
+      { sku: '0', id: 'chair' },
+      { sku: '', id: 'blank' },
+    ])
+
+    expect(rows.map((r) => r.id)).toEqual(['oven', 'chair', 'blank'])
+  })
+
+  it('leaves a list with nothing to collapse exactly as it was', () => {
+    const rows = oneRowPerSku([{ sku: 'A-1', id: 'a' }, { sku: 'B-1', id: 'b' }])
+
+    expect(rows.map((r) => r.id)).toEqual(['a', 'b'])
   })
 })
