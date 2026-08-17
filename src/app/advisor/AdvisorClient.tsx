@@ -132,6 +132,7 @@ const FACT_LABEL: Record<FactKind, string> = {
   PRODUCT_RATE_MOVE: 'Product sales',
   B2B_QUIET: 'Gone quiet',
   AMBASSADOR_MOVE: 'Ambassador sales',
+  REORDER_DUE: 'Order due',
   UNCOSTED_PRODUCTS: 'Uncosted products',
   SHOP_SYNC_FAILING: 'Sync failing',
   MISSING_FX: 'Missing exchange rate',

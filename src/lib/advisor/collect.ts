@@ -12,6 +12,9 @@ import { leaderboard } from '../metrics/ambassadors'
 import { deliveryStats } from '../delivery/stats'
 import { buildMarketing } from '../ads/marketing'
 import { accountIdsForShops, accountSpendRows } from '../ads/attribution'
+import { loadInventory } from '../inventory/load'
+import { reorderTips } from '../inventory/reorder'
+import { reorderFacts } from './facts/inventory'
 import { moneyFacts } from './facts/money'
 import { deliveryFacts } from './facts/delivery'
 import { productFacts } from './facts/products'
@@ -246,6 +249,14 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
     orderDates: c.orders.map((o) => o.placedAt),
   }))
   facts.push(...b2bQuietFacts({ customers, now }))
+
+  // --- what needs ordering -------------------------------------------------
+  //
+  // As of NOW rather than of the briefing's window: a shelf empties on today's
+  // date, not on the seven days this report describes. The forecast has always
+  // known this; until now it only said so to somebody who opened the page.
+  const inventory = await loadInventory(now)
+  facts.push(...reorderFacts(reorderTips(inventory.rows, now)))
 
   // --- data quality --------------------------------------------------------
   const currencies = [...new Set(shops.map((s) => s.currency))]

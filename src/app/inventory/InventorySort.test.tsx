@@ -6,10 +6,10 @@ import { InventoryClient, type Row } from './InventoryClient'
 const row = (over: Partial<Row> & { sku: string }): Row => ({
   name: over.sku, imageUrl: null, supplierName: null,
   stock: { quantity: 0, disagrees: false, byShop: [] },
-  burn: 0, seasonal: true,
+  burn: 0, trend: null, seasonal: true,
   forecast: {
     runsOutOn: null, orderBy: null, daysLate: null,
-    quantity: null, onOrderWithoutEta: 0, note: null,
+    quantity: null, needed: null, raisedBy: null, onOrderWithoutEta: 0, note: null,
   },
   byCountry: [],
   ...over,
@@ -37,13 +37,13 @@ const click = (label: string) => fireEvent.click(screen.getByRole('button', { na
 const ROWS = [
   row({ sku: 'MID', stock: { quantity: 50, disagrees: false, byShop: [] }, burn: 8.6,
         forecast: { runsOutOn: '2026-10-20T00:00:00.000Z', orderBy: null, daysLate: null,
-                    quantity: 200, onOrderWithoutEta: 0, note: null } }),
+                    quantity: 200, needed: 200, raisedBy: null, onOrderWithoutEta: 0, note: null } }),
   row({ sku: 'HIGH', stock: { quantity: 1305, disagrees: false, byShop: [] }, burn: 30.3,
         forecast: { runsOutOn: '2026-09-19T00:00:00.000Z', orderBy: null, daysLate: null,
-                    quantity: 900, onOrderWithoutEta: 0, note: null } }),
+                    quantity: 900, needed: 900, raisedBy: null, onOrderWithoutEta: 0, note: null } }),
   row({ sku: 'LOW', stock: { quantity: 2, disagrees: false, byShop: [] }, burn: 0.1,
         forecast: { runsOutOn: '2026-12-12T00:00:00.000Z', orderBy: null, daysLate: null,
-                    quantity: 10, onOrderWithoutEta: 0, note: null } }),
+                    quantity: 10, needed: 10, raisedBy: null, onOrderWithoutEta: 0, note: null } }),
 ]
 
 describe('sorting the forecast', () => {

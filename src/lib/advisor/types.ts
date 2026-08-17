@@ -20,6 +20,7 @@ export type FactKind =
   | 'PRODUCT_RATE_MOVE'
   | 'B2B_QUIET'
   | 'AMBASSADOR_MOVE'
+  | 'REORDER_DUE'
   | 'UNCOSTED_PRODUCTS'
   | 'SHOP_SYNC_FAILING'
   | 'MISSING_FX'

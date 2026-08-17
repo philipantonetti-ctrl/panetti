@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Thumb } from '@/components/Thumb'
+import { reorderTips, TIP_WINDOW_DAYS } from '@/lib/inventory/reorder'
 
 export type Row = {
   sku: string
@@ -11,17 +12,31 @@ export type Row = {
   supplierName: string | null
   stock: { quantity: number | null; disagrees: boolean; byShop: unknown[] }
   burn: number
+  /** This period against the same period last year. Null = nothing to compare. */
+  trend: number | null
   seasonal: boolean
   forecast: {
     runsOutOn: string | null
     orderBy: string | null
     daysLate: number | null
     quantity: number | null
+    needed: number | null
+    raisedBy: 'minimum' | 'container' | null
     onOrderWithoutEta: number
     note: string | null
   }
   byCountry: { country: string; units: number }[]
 }
+
+/**
+ * How many suggestions the panel shows before it starts counting.
+ *
+ * The day lead times are first entered, EVERY product is past its order date at
+ * once, and twenty suggestions above a twenty-row table is the table again. The
+ * ones it drops are counted out loud below — a list that quietly stops at eight
+ * reads as "that is all of them", which is the same lie as a blank cell.
+ */
+const MAX_TIPS = 8
 
 const when = (iso: string | null) =>
   iso
@@ -110,6 +125,30 @@ export function InventoryClient({
    * place it gets done; the rows go quiet. As soon as any product has lead
    * times the banner disappears and only the stragglers speak up.
    */
+  /**
+   * What to order, lifted out of the table.
+   *
+   * Rebuilt from the same rows rather than passed down separately, so the panel
+   * and the table can never quote different numbers for the same product. The
+   * dates arrive as ISO strings because they crossed the server boundary; the
+   * forecast made them and this turns them back.
+   */
+  const tips = reorderTips(
+    rows.map((r) => ({
+      sku: r.sku,
+      name: r.name,
+      supplierName: r.supplierName,
+      forecast: {
+        orderBy: r.forecast.orderBy ? new Date(r.forecast.orderBy) : null,
+        daysLate: r.forecast.daysLate,
+        quantity: r.forecast.quantity,
+        needed: r.forecast.needed,
+        raisedBy: r.forecast.raisedBy,
+      },
+    })),
+    today,
+  )
+
   const missingLeadTimes = rows.some((r) => r.forecast.note === 'set lead times')
   const anySet = rows.some((r) => r.forecast.orderBy !== null || r.forecast.daysLate !== null)
   const noLeadTimesAnywhere = missingLeadTimes && !anySet
@@ -141,6 +180,74 @@ export function InventoryClient({
 
   return (
     <div className="space-y-5">
+      {tips.length > 0 && (
+        <section
+          data-testid="reorder-tips"
+          className="rounded-[var(--radius-card)] border border-line bg-surface p-4"
+        >
+          <p className="text-[13px] font-semibold text-ink">Time to order</p>
+          <p className="mt-1 text-[12px] text-muted">
+            These reach their order date within {TIP_WINDOW_DAYS} days. Every quantity already
+            meets the supplier&rsquo;s minimum.
+          </p>
+
+          <ul className="mt-3 space-y-2">
+            {tips.slice(0, MAX_TIPS).map((t) => (
+              <li
+                key={t.sku}
+                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line pb-2 last:border-0 last:pb-0"
+              >
+                <div className="min-w-0 text-[13px]">
+                  <span className="font-medium text-ink">{t.name}</span>
+                  <span className="ml-2 text-[12px] text-faint">{t.sku}</span>
+                  {t.supplierName && (
+                    <span className="ml-2 text-[12px] text-muted">{t.supplierName}</span>
+                  )}
+                  {/* Why the number is bigger than the need. Without it "order
+                      800" is a figure to obey rather than one to weigh, which
+                      is the opposite of a suggestion. */}
+                  {t.raisedBy === 'minimum' && (
+                    <div className="text-[12px] text-muted">
+                      {t.needed} needed, raised to the supplier minimum
+                    </div>
+                  )}
+                  {t.raisedBy === 'container' && (
+                    <div className="text-[12px] text-muted">
+                      {t.needed} needed, rounded up to a whole container
+                    </div>
+                  )}
+                </div>
+                <div className="text-right">
+                  <div className="text-[13px] font-semibold tabular-nums text-ink">
+                    Order {t.quantity}
+                  </div>
+                  <div className={`text-[12px] ${t.daysLate !== null ? 'text-loss' : 'text-muted'}`}>
+                    {t.daysLate !== null
+                      ? `order now, ${t.daysLate} days late`
+                      : t.daysUntil === 0
+                        ? 'order today'
+                        : `by ${when(t.orderBy.toISOString())}`}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {tips.length > MAX_TIPS && (
+            <p className="mt-2 text-[12px] text-muted">
+              and {tips.length - MAX_TIPS} more in the table below.
+            </p>
+          )}
+
+          <Link
+            href="/inventory/purchase-orders"
+            className="mt-3 inline-block rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[13px] font-semibold text-white"
+          >
+            Record a purchase order
+          </Link>
+        </section>
+      )}
+
       {noLeadTimesAnywhere && (
         <div className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
           <p className="text-[13px] font-semibold text-ink">
@@ -224,7 +331,20 @@ export function InventoryClient({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 tabular-nums">{r.burn.toFixed(1)}</td>
+                  <td className="px-4 py-2.5 tabular-nums">
+                    <div>{r.burn.toFixed(1)}</div>
+                    {/* The growth the forecast is already applying, said out
+                        loud. The run-out dates rest on this comparison with
+                        last year, and nothing else on the page admits to
+                        making it. U+2212, matching the rest of the product:
+                        a hyphen is narrower than a digit. */}
+                    {r.trend !== null && (
+                      <div className="text-[11px] text-muted">
+                        {r.trend < 0 ? '−' : '+'}
+                        {Math.abs(r.trend * 100).toFixed(0)}% vs last year
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5">
                     {r.forecast.runsOutOn ? (
                       <span

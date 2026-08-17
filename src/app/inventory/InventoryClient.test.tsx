@@ -8,10 +8,11 @@ import { InventoryClient, type Row } from './InventoryClient'
 const row = (over: Partial<Row> = {}): Row => ({
   sku: 'PANPIZPRO', name: 'Pizzetta Pro', imageUrl: null, supplierName: null,
   stock: { quantity: 247, disagrees: false, byShop: [] },
-  burn: 4, seasonal: true,
+  burn: 4, trend: null, seasonal: true,
   forecast: {
     runsOutOn: '2026-11-17T00:00:00.000Z', orderBy: '2026-08-25T00:00:00.000Z',
-    daysLate: null, quantity: 620, onOrderWithoutEta: 0, note: null,
+    daysLate: null, quantity: 620, needed: 620, raisedBy: null,
+    onOrderWithoutEta: 0, note: null,
   },
   byCountry: [{ country: 'NO', units: 90 }],
   ...over,
@@ -36,7 +37,7 @@ describe('InventoryClient', () => {
     shows(
       <InventoryClient rows={[row({
         forecast: { runsOutOn: null, orderBy: null, daysLate: null, quantity: null,
-                    onOrderWithoutEta: 0, note: 'set lead times' },
+                    needed: null, raisedBy: null, onOrderWithoutEta: 0, note: 'set lead times' },
       })]} unusable={[]} />,
       /set lead times/,
     )
@@ -55,7 +56,8 @@ describe('InventoryClient', () => {
     shows(
       <InventoryClient rows={[row({
         forecast: { runsOutOn: '2026-08-20T00:00:00.000Z', orderBy: '2026-06-01T00:00:00.000Z',
-                    daysLate: 61, quantity: 620, onOrderWithoutEta: 0, note: null },
+                    daysLate: 61, quantity: 620, needed: 620, raisedBy: null,
+                    onOrderWithoutEta: 0, note: null },
       })]} unusable={[]} />,
       /61 days late/i,
     )
@@ -72,7 +74,8 @@ describe('InventoryClient', () => {
       <InventoryClient rows={[row({
         forecast: {
           runsOutOn: '2026-11-17T00:00:00.000Z', orderBy: null, daysLate: null,
-          quantity: null, onOrderWithoutEta: 0, note: 'set lead times',
+          quantity: null, needed: null, raisedBy: null,
+          onOrderWithoutEta: 0, note: 'set lead times',
         },
       })]} unusable={[]} />,
       /Set production and shipping days/i,
@@ -93,6 +96,24 @@ describe('InventoryClient', () => {
     shows(<InventoryClient rows={[row({ seasonal: false })]} unusable={[]} />, /no seasonal history/i)
   })
 
+  /**
+   * The growth the forecast is already applying, said out loud. Without it the
+   * run-out dates rest on a comparison with last year that nothing on the page
+   * admits to making.
+   */
+  it('says how this year compares with last, beside the rate it adjusts', () => {
+    shows(<InventoryClient rows={[row({ trend: 0.153 })]} unusable={[]} />, /\+15% vs last year/)
+  })
+
+  it('shows a fall as a fall', () => {
+    shows(<InventoryClient rows={[row({ trend: -0.2 })]} unusable={[]} />, /−20% vs last year/)
+  })
+
+  it('says nothing at all when there is no last year to compare against', () => {
+    const { container } = render(<InventoryClient rows={[row({ trend: null })]} unusable={[]} />)
+    expect(container.textContent).not.toMatch(/vs last year/)
+  })
+
   it('teaches the next action when there is nothing at all', () => {
     // Matched on a phrase that appears exactly once, so the assertion cannot
     // pass by accidentally hitting the "Suppliers & lead times" link text.
@@ -107,7 +128,8 @@ const noLeadTimes = (over: Partial<Row> = {}) =>
   row({
     forecast: {
       runsOutOn: '2026-11-17T00:00:00.000Z', orderBy: null, daysLate: null,
-      quantity: null, onOrderWithoutEta: 0, note: 'set lead times',
+      quantity: null, needed: null, raisedBy: null,
+      onOrderWithoutEta: 0, note: 'set lead times',
     },
     ...over,
   })
@@ -159,6 +181,7 @@ describe('InventoryClient urgency', () => {
         rows={[row({
           stock: { quantity: 0, disagrees: false, byShop: [] },
           forecast: { runsOutOn: NOW, orderBy: null, daysLate: null, quantity: null,
+                      needed: null, raisedBy: null,
                       onOrderWithoutEta: 0, note: 'set lead times' },
         })]}
         unusable={[]}
