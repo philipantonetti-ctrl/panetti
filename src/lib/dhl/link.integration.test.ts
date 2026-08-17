@@ -91,6 +91,12 @@ describe('linkDhlShipments', () => {
     })
     expect(row.carrier).toBe('DHL')
     expect(row.linkSource).toBe('DHL_FILE')
+    // The file gives a parcel its FIRST due date; without one the poller never
+    // sees it, which is the state DHL parcels sat in while nothing could track
+    // them. It selects on `nextPollAt: { lte: now }`, so a date already reached
+    // is what puts the parcel in the next run.
+    expect(row.nextPollAt).not.toBeNull()
+    expect(row.nextPollAt!.getTime()).toBeLessThanOrEqual(NOW.getTime())
     expect(row.order?.number).toBe('15537')
     // The German order, not the Swedish one that shares the number.
     expect(row.order?.shopId).toBe(germanyId)

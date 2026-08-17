@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { mapConsignments, milestonesFrom, type MappedEvent } from './map'
+import { milestonesFrom, type MappedEvent } from '../delivery/milestones'
+import { mapConsignments } from './map'
 
 const ev = (status: string, iso: string): MappedEvent => ({
   status, occurredAt: new Date(iso), description: null, location: null,

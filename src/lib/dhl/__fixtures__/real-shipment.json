@@ -1,0 +1,82 @@
+{
+  "shipments": [
+    {
+      "id": "9599861672",
+      "service": "freight",
+      "origin": {
+        "address": {
+          "addressLocality": "Oslo, NO"
+        }
+      },
+      "destination": {
+        "address": {
+          "addressLocality": "Oslo, NO"
+        }
+      },
+      "status": {
+        "timestamp": "2026-08-17T12:19:54",
+        "location": {
+          "address": {
+            "addressLocality": "Oslo, NO"
+          }
+        },
+        "statusCode": "pre-transit",
+        "status": "ACT-2",
+        "description": "Consignment created"
+      },
+      "returnFlag": false,
+      "details": {
+        "product": {
+          "productCode": "PC",
+          "productName": "Freight"
+        },
+        "proofOfDeliverySignedAvailable": false,
+        "totalNumberOfPieces": 1,
+        "pieceIds": [
+          "00373221591232284659"
+        ],
+        "weight": {
+          "unitText": "KGM",
+          "value": 18
+        },
+        "volume": {
+          "unitText": "MTQ",
+          "value": 0.153
+        },
+        "references": [
+          {
+            "number": "9599861672",
+            "type": "domestic-consignment-id"
+          }
+        ]
+      },
+      "events": [
+        {
+          "timestamp": "2026-08-17T12:19:54",
+          "location": {
+            "address": {
+              "addressLocality": "Oslo, NO"
+            }
+          },
+          "statusCode": "pre-transit",
+          "status": "ACT-2",
+          "description": "Consignment created"
+        }
+      ]
+    }
+  ],
+  "url": "https://api-eu.dhl.com/track/shipments?trackingNumber=9599861672&language=en&limit=20&offset=0",
+  "firstUrl": "https://api-eu.dhl.com/track/shipments?trackingNumber=9599861672&language=en&limit=20&offset=0",
+  "possibleAdditionalShipmentsUrl": [
+    "/track/shipments?trackingNumber=9599861672&service=dgf",
+    "/track/shipments?trackingNumber=9599861672&service=ecommerce",
+    "/track/shipments?trackingNumber=9599861672&service=parcel-de",
+    "/track/shipments?trackingNumber=9599861672&service=parcel-nl",
+    "/track/shipments?trackingNumber=9599861672&service=parcel-pl",
+    "/track/shipments?trackingNumber=9599861672&service=dsc",
+    "/track/shipments?trackingNumber=9599861672&service=express",
+    "/track/shipments?trackingNumber=9599861672&service=svb",
+    "/track/shipments?trackingNumber=9599861672&service=ecommerce-iberia",
+    "/track/shipments?trackingNumber=9599861672&service=bluedart"
+  ]
+}
