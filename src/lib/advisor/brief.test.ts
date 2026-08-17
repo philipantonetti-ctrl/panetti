@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Fact } from './types'
-import { generateBrief, validateItems, type BriefItem } from './brief'
+import { describeFailure, generateBrief, validateItems, type BriefItem } from './brief'
 
 const fact = (id: string): Fact => ({
   id,
@@ -23,6 +23,16 @@ const item = (over: Partial<BriefItem>): BriefItem => ({
   severity: 'high',
   action: 'Check the Meta campaign that changed.',
   ...over,
+})
+
+// generateBrief logs every failure, which is the point of it — but several
+// tests here fail the model on purpose, and their stderr is not a finding.
+beforeEach(() => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('validateItems', () => {
@@ -57,6 +67,69 @@ describe('validateItems', () => {
   })
 })
 
+/**
+ * The shape the Anthropic SDK throws: the parsed body hangs off `error`, and
+ * the request id is the only handle support can trace a failure by.
+ */
+const apiError = (over: Record<string, unknown> = {}) =>
+  Object.assign(new Error('400 {"type":"error","error":{"type":"invalid_request_error","message":"Invalid request data"},"request_id":"req_011Ce7jTJaTjz33YEBYvR3VY"}'), {
+    status: 400,
+    error: {
+      type: 'error',
+      error: { type: 'invalid_request_error', message: 'Invalid request data' },
+      request_id: 'req_011Ce7jTJaTjz33YEBYvR3VY',
+    },
+    ...over,
+  })
+
+describe('describeFailure', () => {
+  /**
+   * Written after a live 400 nobody could explain. The stored text was the raw
+   * JSON body, which says everything except the three things worth having.
+   */
+  it('keeps the status, the kind of failure and the request id', () => {
+    const text = describeFailure(apiError())
+    expect(text).toContain('400')
+    expect(text).toContain('invalid_request_error')
+    expect(text).toContain('req_011Ce7jTJaTjz33YEBYvR3VY')
+  })
+
+  it('keeps what the API actually said', () => {
+    expect(describeFailure(apiError())).toContain('Invalid request data')
+  })
+
+  /**
+   * The point of the exercise. A JSON blob on the page is an unanswerable
+   * question rather than a thing to fix — the same rule this file already
+   * applies to a raw WooCommerce error.
+   */
+  it('is one readable line, not the raw body', () => {
+    const text = describeFailure(apiError())
+    expect(text).not.toContain('{')
+    expect(text.split('\n')).toHaveLength(1)
+  })
+
+  it('reads sensibly when there is no request id to quote', () => {
+    const text = describeFailure(
+      Object.assign(new Error('529 overloaded'), {
+        status: 529,
+        error: { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } },
+      }),
+    )
+    expect(text).toContain('529')
+    expect(text).toContain('overloaded_error')
+    expect(text).not.toContain('undefined')
+  })
+
+  it('falls back to the message of an ordinary error', () => {
+    expect(describeFailure(new Error('socket hang up'))).toBe('socket hang up')
+  })
+
+  it('survives something that is not an Error at all', () => {
+    expect(describeFailure('boom')).toBe('boom')
+  })
+})
+
 describe('generateBrief', () => {
   const collected = { from: new Date('2026-08-03'), to: new Date('2026-08-09'), facts: [fact('revenue:shop_se')] }
 
@@ -80,6 +153,25 @@ describe('generateBrief', () => {
     const result = await generateBrief(collected, model)
     expect(result.items).toBeNull()
     expect(result.error).toContain('529 overloaded')
+  })
+
+  it('stores the request id, so a failure can be traced instead of guessed at', async () => {
+    const model = vi.fn().mockRejectedValue(apiError())
+    const result = await generateBrief(collected, model)
+    expect(result.error).toContain('req_011Ce7jTJaTjz33YEBYvR3VY')
+    expect(result.error).not.toContain('{')
+  })
+
+  /**
+   * The stored line is deliberately short, which means the detail has to live
+   * somewhere. A failure nobody can debug afterwards is how one 400 cost an
+   * afternoon.
+   */
+  it('logs the whole error where the platform will keep it', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const thrown = apiError()
+    await generateBrief(collected, vi.fn().mockRejectedValue(thrown))
+    expect(logged).toHaveBeenCalledWith('advisor briefing failed', thrown)
   })
 
   it('says so plainly when there is no model configured at all', async () => {

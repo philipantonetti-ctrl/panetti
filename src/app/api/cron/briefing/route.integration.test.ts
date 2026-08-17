@@ -80,8 +80,12 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await db.briefing.deleteMany({ where: { day: DAY } })
+  // generateBrief logs every failure, and several tests below fail the model
+  // on purpose. Their stderr is the code working, not a finding.
+  vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 afterEach(async () => {
+  vi.restoreAllMocks()
   await db.briefing.deleteMany({ where: { day: DAY } })
 })
 
