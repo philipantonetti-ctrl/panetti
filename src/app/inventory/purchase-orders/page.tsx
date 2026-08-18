@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { currentUser } from '@/lib/auth/current-user'
 import { db } from '@/lib/db'
-import { catalogueOf, nameOf, namedFromSource } from '@/lib/inventory/sources'
+import { catalogueOf, imageOf, imagesOf, nameOf, namedFromSource } from '@/lib/inventory/sources'
 import { InventoryTabs } from '../InventoryTabs'
 import { PurchaseOrdersClient } from './PurchaseOrdersClient'
 
@@ -25,12 +25,18 @@ export default async function PurchaseOrdersPage() {
     // complaint, one tab along.
     db.product.findMany({
       where: { shop: { active: true, stockSource: true } },
-      select: { sku: true, name: true },
+      select: { sku: true, name: true, imageUrl: true },
     }),
     db.shop.count({ where: { active: true, stockSource: true } }),
   ])
 
   const catalogue = sourceShops > 0 ? catalogueOf(sourceProducts) : null
+  // Not gated on `sourceShops` the way the catalogue is. A missing name has a
+  // fallback worth reaching for — the stored one — so that decision has to be
+  // made deliberately; a missing photo has none, and with no source shops this
+  // query returns nothing anyway, so the map is empty and every row draws the
+  // placeholder. Same rule the Forecast and Stock tabs already use.
+  const images = imagesOf(sourceProducts)
 
   // Deliberately NOT scoped to what those shops carry, unlike the lead-times
   // list. A purchase order for something only Sweden lists is a real purchase
@@ -55,7 +61,13 @@ export default async function PurchaseOrdersPage() {
             // An order already on the water is named the same way as the picker
             // it was chosen from. Two names for one product on one page is worse
             // than one stale name.
-            item: { ...o.item, name: nameOf(catalogue, o.item) },
+            item: {
+              ...o.item,
+              name: nameOf(catalogue, o.item),
+              // A purchase order names a SupplyItem, and only a Product carries a
+              // picture, so the photo is looked up by SKU exactly as the name is.
+              imageUrl: imageOf(images, o.item),
+            },
           }))}
           items={named.map((i) => ({ id: i.id, sku: i.sku, name: i.name }))}
         />

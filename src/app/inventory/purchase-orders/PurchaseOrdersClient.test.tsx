@@ -25,7 +25,7 @@ const order = (over: Partial<Order> = {}): Order => ({
   orderedAt: '2026-08-01T00:00:00.000Z',
   eta: null,
   receivedAt: null,
-  item: { sku: 'PANPIZPRO', name: 'Pizzetta Pro' },
+  item: { sku: 'PANPIZPRO', name: 'Pizzetta Pro', imageUrl: null },
   ...over,
 })
 
@@ -169,5 +169,45 @@ describe('PurchaseOrdersClient', () => {
     )
     expect(screen.getByText(/closed with no receipt/)).toBeInTheDocument()
     expect(screen.queryByText(/none landed yet/)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * The Forecast, Stock and Products tables have shown a photo for as long as
+ * they have existed; this one never did, because a purchase order hangs off a
+ * SupplyItem and only a Product carries a picture. The client asked for it
+ * here, on the page where 161 of 271 rows have one waiting.
+ */
+describe('PurchaseOrdersClient product photos', () => {
+  it('shows the photo the source shops carry for the product on order', () => {
+    render(
+      <PurchaseOrdersClient
+        orders={[order({ item: { sku: 'PANPIZPRO', name: 'Pizzetta Pro', imageUrl: 'https://shop.example/oven.png' } })]}
+        items={[item]}
+      />,
+    )
+
+    expect(screen.getByAltText('Pizzetta Pro')).toHaveAttribute(
+      'src',
+      'https://shop.example/oven.png',
+    )
+  })
+
+  /**
+   * Spare parts are the common case, not an edge one: 101 of the 271 rows are
+   * stones, door covers and handles that no shop lists on its own, so this is
+   * what most of the page looks like and it must stay aligned rather than
+   * showing a broken image.
+   */
+  it('leaves a quiet placeholder rather than a broken image when no shop has a photo', () => {
+    render(
+      <PurchaseOrdersClient
+        orders={[order({ item: { sku: 'PPP-ST-001', name: 'Pizzeta Primo Stone', imageUrl: null } })]}
+        items={[item]}
+      />,
+    )
+
+    expect(screen.getByText('Pizzeta Primo Stone')).toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 })

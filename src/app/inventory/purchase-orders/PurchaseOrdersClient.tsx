@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Thumb } from '@/components/Thumb'
 
 export type Order = {
   id: string
@@ -14,7 +15,12 @@ export type Order = {
   orderedAt: string
   eta: string | null
   receivedAt: string | null
-  item: { sku: string; name: string }
+  /**
+   * What the source shops call it, and what it looks like. A purchase order
+   * hangs off a SupplyItem, which carries no picture at all, so both are
+   * resolved by SKU on the server before they get here.
+   */
+  item: { sku: string; name: string; imageUrl: string | null }
 }
 
 const when = (iso: string | null) =>
@@ -248,7 +254,12 @@ export function PurchaseOrdersClient({
           <tbody>
             {orders.map((o) => (
               <tr key={o.id} className="border-b border-line last:border-0">
-                <td className="px-4 py-2.5 text-ink">{o.item.name}</td>
+                <td className="px-4 py-2.5 text-ink">
+                  <div className="flex items-center gap-2.5">
+                    <Thumb src={o.item.imageUrl} alt={o.item.name} />
+                    <span>{o.item.name}</span>
+                  </div>
+                </td>
                 <td className="px-4 py-2.5 tabular-nums">{units(o)}</td>
                 <td className="px-4 py-2.5">{when(o.orderedAt)}</td>
                 <td className="px-4 py-2.5">
