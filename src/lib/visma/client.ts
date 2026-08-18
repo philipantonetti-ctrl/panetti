@@ -22,7 +22,20 @@ const RENEW_MARGIN_MS = 60_000
 
 export type VismaCredentials = { clientId: string; clientSecret: string; tenantId: string }
 
-export class VismaError extends Error {}
+export class VismaError extends Error {
+  /**
+   * The HTTP status, when there was one. Carried because 429 is not a failure
+   * in the way 500 is: it means "ask again later", and a caller paging through
+   * a large collection has to be able to stop cleanly rather than treat a
+   * half-read collection as the whole truth.
+   */
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message)
+  }
+}
 
 /**
  * The three values from the environment, or null when they are not all there.
@@ -89,7 +102,7 @@ export async function vismaGet<T>(creds: VismaCredentials, path: string): Promis
 
   if (!res.ok) {
     const text = (await res.text()).replace(/\s+/g, ' ').slice(0, 300)
-    throw new VismaError(`Visma responded ${res.status} for ${path}: ${text}`)
+    throw new VismaError(`Visma responded ${res.status} for ${path}: ${text}`, res.status)
   }
 
   return (await res.json()) as T

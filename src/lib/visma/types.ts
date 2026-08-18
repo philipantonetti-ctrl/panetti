@@ -71,3 +71,27 @@ export type VismaInventoryItem = {
   stockItem?: Wrapped<boolean>
   warehouseDetails?: VismaWarehouseDetail[]
 }
+
+/** How a document names the customer it is against. */
+export type VismaCustomerRef = {
+  number?: Wrapped<string | number>
+  name?: Wrapped<string>
+}
+
+/**
+ * A row of Visma's customer ledger: an invoice or a credit note, and what is
+ * left to pay on it. `customerdocument` carries no lines, which is the whole
+ * reason it is cheap enough to read on a schedule.
+ */
+export type VismaCustomerDocument = {
+  referenceNumber?: Wrapped<string | number>
+  customer?: VismaCustomerRef
+  documentType?: Wrapped<string>
+  documentDate?: Wrapped<string>
+  documentDueDate?: Wrapped<string>
+  currencyId?: Wrapped<string>
+  /// In the document's own currency. The non-currency twin is in the company's.
+  amountInCurrency?: Wrapped<number>
+  balanceInCurrency?: Wrapped<number>
+  status?: Wrapped<string>
+}

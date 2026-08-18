@@ -567,18 +567,23 @@ model DeliveryPromise {
 /// Bring and Slack credentials. Its own singleton rather than crowding Setting,
 /// which is purely formats. Follows the AdPlatformApp precedent.
 model DeliveryConfig {
-  id              String    @id @default("singleton")
-  bringApiUid     String? // Mybring account email
-  bringApiKey     String? // encrypted
-  bringClientUrl  String? // sent as X-Bring-Client-URL
-  slackWebhookUrl String? // encrypted
-  lastSyncAt      DateTime?
-  lastError       String?
+  id                     String    @id @default("singleton")
+  bringApiUid            String? // Mybring account email
+  bringApiKey            String? // encrypted
+  bringClientUrl         String? // sent as X-Bring-Client-URL
+  slackWebhookUrl        String? // encrypted
+  /// A SECOND webhook, for the finance channel, encrypted like the first.
+  /// Separate on purpose: overdue invoices are read by whoever chases payment
+  /// and late parcels by whoever chases the warehouse, and one channel carrying
+  /// both is a channel each of them learns to skim.
+  financeSlackWebhookUrl String?
+  lastSyncAt             DateTime?
+  lastError              String?
   /// Why the last Slack post failed; null when it worked. Deliberately NOT
   /// `lastError`, which belongs to the Bring sync: that sync clears its own
   /// field on every successful run, and sharing one column let it wipe a live
   /// Slack failure within one cron tick. Two subsystems, two fields.
-  slackLastError  String?
+  slackLastError         String?
 }
 
 /// Every warehouse file we ingested, so "did yesterday's file land, and did all
@@ -687,6 +692,42 @@ model SupplyItem {
 /// A row is only written for a SKU Visma actually holds a warehouse record for.
 /// A SKU missing here is not zero — it is unknown, and the forecast falls back
 /// to the shops for it.
+/// One unpaid document Visma is still holding open against a customer.
+///
+/// A SNAPSHOT of Visma's own AR ledger, refreshed by the sync, never edited
+/// here: Visma is where an invoice is raised and where a payment is booked, so
+/// anything typed on this side would be a second answer to a question that
+/// already has one.
+///
+/// Keyed on Visma's reference number, which is what makes a re-read update
+/// rather than duplicate - the same seam `PurchaseOrder.externalId` uses.
+///
+/// The webshop collective accounts are NOT stored. Measured 2026-08-18: 994 of
+/// the first 1000 open documents belong to accounts named "... - Webkunde",
+/// 993 of them with a due date equal to their document date and a median age of
+/// 113 days. Those are checkout-paid webshop orders that Visma books and never
+/// reconciles here. They are not debt, and keeping them would bury the six real
+/// ones under a thousand false alarms.
+model Receivable {
+  referenceNumber String    @id
+  customerNumber  String
+  customerName    String
+  /// "Invoice" or "CreditNote", as Visma spells it.
+  documentType    String
+  documentDate    DateTime
+  /// Null when Visma reported none. A document with no due date can never be
+  /// overdue, which is the honest reading rather than treating it as due today.
+  dueDate         DateTime?
+  currency        String
+  /// Minor units, in `currency`. Never summed across currencies without rates.
+  amount          Int
+  balance         Int
+  /// When we last read it, not when Visma changed it.
+  readAt          DateTime  @updatedAt
+
+  @@index([dueDate])
+}
+
 model VismaStock {
   sku            String    @id
   /// The physical count, summed over COUNTED_WAREHOUSES. What the forecast reads.
