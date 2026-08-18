@@ -462,6 +462,25 @@ model B2bCustomer {
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
 
+  /// This customer's account NUMBER in Visma — 20012, 10681, 10705 for the
+  /// three linkable today. Null means not linked, which is the default and the
+  /// state every customer starts in: importVismaB2bSales() ignores an invoice
+  /// whose customer number is not one of these, and that allowlist is the only
+  /// thing keeping every webshop order from being counted twice (Visma raises
+  /// an invoice for those too, against house accounts named "… - Webkunde" —
+  /// 994 of the first 1000 open documents on 2026-08-18).
+  ///
+  /// The NUMBER and never the name. Name matching works for three of the four
+  /// customers we hold and silently fails for Verkkokauppa.com, which exists in
+  /// Visma under no name matching /verkko|kauppa/ — verified by searching every
+  /// customer, zero hits. And a rename on either side breaks a name link with
+  /// no error at all: the invoices simply stop arriving.
+  ///
+  /// Unique across the workspace, not per shop: one Visma account is one
+  /// company, and two customers sharing it would turn each of its invoices into
+  /// two orders.
+  vismaCustomerNumber String? @unique
+
   shop   Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
   prices B2bPrice[]
   orders Order[]

@@ -7,7 +7,7 @@ import { db } from '@/lib/db'
 import { toMinor } from '@/lib/money'
 import { costOn } from '@/lib/metrics/costs'
 import { EXCLUDED_STATUSES } from '@/lib/metrics/types'
-import { assertProductsBelongToShop, Price } from '../route'
+import { assertProductsBelongToShop, cleanVismaNumber, duplicateMessage, Price } from '../route'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -19,6 +19,8 @@ const Body = z.object({
   vatPercent: z.number().min(0).max(100).default(0),
   email: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
+  /** Their account number in Visma. Blank = not linked; see the schema field. */
+  vismaCustomerNumber: z.string().nullable().optional(),
   active: z.boolean().default(true),
   prices: z.array(Price).default([]),
 })
@@ -71,6 +73,7 @@ export async function GET(_req: Request, { params }: Ctx) {
           vatPercent: c.vatPercent,
           email: c.email,
           note: c.note,
+          vismaCustomerNumber: c.vismaCustomerNumber,
           active: c.active,
           priceCount: c.prices.length,
           orderCount: totals._count._all,
@@ -158,6 +161,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
           vatPercent: d.vatPercent,
           email: d.email?.trim() || null,
           note: d.note?.trim() || null,
+          vismaCustomerNumber: cleanVismaNumber(d.vismaCustomerNumber),
           active: d.active,
           prices: {
             create: d.prices.map((p) => ({ productId: p.productId, unitPrice: toMinor(p.unitPrice) })),
@@ -173,10 +177,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (e instanceof RangeError)
       return NextResponse.json({ error: e.message }, { status: 400, headers: NO_STORE })
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
-      return NextResponse.json(
-        { error: 'That shop already has a customer with this name' },
-        { status: 409, headers: NO_STORE },
-      )
+      return NextResponse.json({ error: duplicateMessage(e) }, { status: 409, headers: NO_STORE })
     console.error(e)
     return NextResponse.json({ error: 'Could not save the customer' }, { status: 500, headers: NO_STORE })
   }

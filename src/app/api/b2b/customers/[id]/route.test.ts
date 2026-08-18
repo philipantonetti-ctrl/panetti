@@ -248,6 +248,47 @@ describe('PATCH /api/b2b/customers/[id]', () => {
     })).status).toBe(403)
   })
 
+  /**
+   * Linking is how an existing customer starts receiving their Visma invoices
+   * as orders, so it has to be editable and not only settable at creation.
+   */
+  it('links an existing customer to their Visma account, and unlinks them again', async () => {
+    await asAdmin()
+    const c = await db.b2bCustomer.create({ data: { shopId, name: `Link ${TAG}`, currency: 'SEK' } })
+
+    await patch(c.id, {
+      name: `Link ${TAG}`, currency: 'SEK', vatPercent: 0, vismaCustomerNumber: ' 20012 ', prices: [],
+    })
+    expect((await db.b2bCustomer.findUniqueOrThrow({ where: { id: c.id } })).vismaCustomerNumber)
+      .toBe('20012')
+
+    const detail = await (await GET(new Request('http://localhost/x'), params(c.id))).json()
+    expect(detail.customer.vismaCustomerNumber).toBe('20012')
+
+    // Clearing the field must genuinely unlink them — '' would be a customer
+    // number Visma will never send, but it is not the same as "not linked".
+    await patch(c.id, {
+      name: `Link ${TAG}`, currency: 'SEK', vatPercent: 0, vismaCustomerNumber: '', prices: [],
+    })
+    expect((await db.b2bCustomer.findUniqueOrThrow({ where: { id: c.id } })).vismaCustomerNumber)
+      .toBeNull()
+  })
+
+  it('refuses a Visma number another customer already holds, and says which clash it is', async () => {
+    await asAdmin()
+    await db.b2bCustomer.create({
+      data: { shopId, name: `Held ${TAG}`, currency: 'SEK', vismaCustomerNumber: '10705' },
+    })
+    const c = await db.b2bCustomer.create({ data: { shopId, name: `Other ${TAG}`, currency: 'SEK' } })
+
+    const res = await patch(c.id, {
+      name: `Other ${TAG}`, currency: 'SEK', vatPercent: 0, vismaCustomerNumber: '10705', prices: [],
+    })
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/Visma customer number/i)
+  })
+
   it('deactivates without touching anything they bought', async () => {
     await asAdmin()
     const c = await db.b2bCustomer.create({ data: { shopId, name: `Gone ${TAG}`, currency: 'EUR' } })

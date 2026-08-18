@@ -16,8 +16,13 @@ vi.mock('@/lib/fx/rates', () => ({ ensureRates: vi.fn() }))
 const importVismaPurchaseOrders = vi.fn(async () => ({
   configured: false, read: 0, imported: 0, skipped: [], truncated: false, error: null,
 }))
+const importVismaB2bSales = vi.fn(async () => ({
+  configured: true, linked: 2, read: 40, imported: 3,
+  skipped: [{ reason: 'not a linked customer', count: 37 }], partial: false, error: null,
+}))
 vi.mock('@/lib/visma/import', () => ({
   importVismaPurchaseOrders: () => importVismaPurchaseOrders(),
+  importVismaB2bSales: () => importVismaB2bSales(),
 }))
 
 const { GET } = await import('./route')
@@ -32,6 +37,7 @@ const call = (auth?: string) =>
 const REAL = process.env.CRON_SECRET
 
 beforeEach(() => {
+  importVismaB2bSales.mockClear()
   syncAllShops.mockReset()
   syncAllShops.mockResolvedValue([
     { shopId: 's1', shopName: 'Panetti Norway', ok: true, ordersSynced: 3 },
@@ -90,6 +96,39 @@ describe('the scheduled sync endpoint', () => {
   it('claims the full platform duration, never less', async () => {
     const { maxDuration } = await import('./route')
     expect(maxDuration).toBe(300)
+  })
+
+  /**
+   * The B2B sales import runs on this schedule too, and its counts have to be
+   * visible: `linked` is the difference between "nobody has linked a customer
+   * yet" and "the import is broken", and the skip reasons are what would show a
+   * webshop house account starting to be treated as a sale — the one failure
+   * here that silently doubles revenue.
+   */
+  it('imports B2B sales and reports what it did, per reason', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(importVismaB2bSales).toHaveBeenCalledTimes(1)
+    expect(body).toMatchObject({
+      b2bSalesLinked: 2,
+      b2bSalesImported: 3,
+      b2bSalesPartial: false,
+      b2bSalesError: null,
+    })
+    expect(body.b2bSalesSkipped).toEqual([{ reason: 'not a linked customer', count: 37 }])
+  })
+
+  // Best-effort like every stage after the shops: the ERP having a bad morning
+  // must never take the store sync down with it.
+  it('survives the B2B sales import failing outright', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    importVismaB2bSales.mockRejectedValueOnce(new Error('ERP down'))
+
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(body.ok).toBe(true)
+    expect(body.b2bSalesImported).toBe(0)
   })
 
   // Without a deadline the run keeps starting stores until the platform kills

@@ -5,9 +5,11 @@ import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
 import {
+  importVismaB2bSales,
   importVismaPurchaseOrders,
   importVismaReceivables,
   importVismaStock,
+  type VismaB2bSalesResult,
   type VismaImportResult,
   type VismaReceivablesResult,
   type VismaStockResult,
@@ -143,6 +145,24 @@ export async function GET(req: Request) {
     // It does not throw either. Same belt and braces as the two above.
   }
 
+  // And the invoices raised for a LINKED B2B customer, as their orders. Only
+  // linked ones: Visma raises an invoice for every webshop order too, and those
+  // already arrive from WooCommerce - importing one would count that sale
+  // twice. With nobody linked this costs no HTTP call at all, which is why it
+  // can sit beside the receivables import without stealing its page from the
+  // shared rate limit.
+  //
+  // Best-effort and separate from the three above, for the same reason they are
+  // separate from each other: one failing must never cost us another.
+  let b2bSales: VismaB2bSalesResult = {
+    configured: false, linked: 0, read: 0, imported: 0, skipped: [], partial: false, error: null,
+  }
+  try {
+    b2bSales = await importVismaB2bSales()
+  } catch {
+    // It does not throw either. Same belt and braces as the three above.
+  }
+
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
   // skips accounts synced in the last six hours, so most runs cost nothing.
   // Best-effort like the rates: a broken token must never fail the shop sync.
@@ -231,5 +251,15 @@ export async function GET(req: Request) {
     receivablesExcluded: receivables.excluded,
     receivablesPartial: receivables.partial,
     receivablesError: receivables.error,
+    // Reported per reason, like the purchase-order import and for a sharper
+    // version of the same worry: 'not a linked customer' is the count of
+    // invoices the allowlist held back, and it is the ONLY visible sign that
+    // the guard against counting every webshop order twice is still working.
+    // `linked` separates "nobody has linked a customer yet" from "broken".
+    b2bSalesLinked: b2bSales.linked,
+    b2bSalesImported: b2bSales.imported,
+    b2bSalesSkipped: b2bSales.skipped,
+    b2bSalesPartial: b2bSales.partial,
+    b2bSalesError: b2bSales.error,
   })
 }

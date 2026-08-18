@@ -18,6 +18,8 @@ export type Customer = {
   vatPercent: number
   email: string | null
   note: string | null
+  /** Their account number in Visma. Null = not linked, so nothing is imported. */
+  vismaCustomerNumber: string | null
   active: boolean
   priceCount: number
   orderCount: number
