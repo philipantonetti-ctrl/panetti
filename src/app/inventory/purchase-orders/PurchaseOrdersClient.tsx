@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Thumb } from '@/components/Thumb'
 
@@ -59,12 +59,72 @@ function units(o: Order) {
   return `${o.quantity} ordered · ${o.receivedQuantity} landed · ${outstanding} still coming`
 }
 
+type Status = 'coming' | 'received' | 'all'
+
+/** The columns worth ordering by, and how to read each one for comparison. */
+const COLUMNS = {
+  Product: (o: Order) => o.item.name.toLowerCase(),
+  Units: (o: Order) => o.quantity,
+  Ordered: (o: Order) => o.orderedAt,
+  Expected: (o: Order) => o.eta,
+} as const
+
+type Column = keyof typeof COLUMNS
+
+/**
+ * Which way a column opens on its first click, chosen per column rather than
+ * uniformly, because the useful end differs.
+ *
+ * Expected opens SOONEST first: the question that column answers is "what lands
+ * next", and opening it latest-first would put 2027 above this week. Ordered
+ * opens newest first and Units largest first, both for the same reason the
+ * server already sorts newest first. Product opens A to Z, which is the only
+ * order a name has.
+ */
+const OPENS_ASCENDING: Record<Column, boolean> = {
+  Product: true,
+  Units: false,
+  Ordered: false,
+  Expected: true,
+}
+
+/**
+ * Sorted by one column.
+ *
+ * A null is not a zero and never sorts as one. An order with no ETA is not the
+ * soonest thing arriving, so nulls sit last in BOTH directions and cannot be
+ * sorted INTO the top either — the same rule the Forecast tab's sort follows,
+ * and the same "say when you don't know" rule the row itself already follows
+ * when it prints "no ETA, so it moves no date".
+ */
+function sortRows(rows: Order[], by: Column, ascending: boolean): Order[] {
+  const read = COLUMNS[by]
+  return [...rows].sort((a, b) => {
+    const x = read(a)
+    const y = read(b)
+    if (x === null && y === null) return 0
+    if (x === null) return 1
+    if (y === null) return -1
+    if (x < y) return ascending ? -1 : 1
+    if (x > y) return ascending ? 1 : -1
+    return 0
+  })
+}
+
 /**
  * What is on order and when it lands.
  *
  * An order with no ETA is listed with the reason spelled out, because it is
  * doing nothing for the forecast until someone sets one — counting stock whose
  * arrival nobody knows would push a run-out date out on a guess.
+ *
+ * OPENS FILTERED, which is unusual here and deliberate. Measured against
+ * production on 2026-08-18: 271 orders on this page and 246 of them had already
+ * arrived. The 25 still coming are the reason anyone opens it, and they were
+ * buried under ten times their number in history. So the page starts on those
+ * and says "showing 25 of 271" beside the filter — the count is what stops a
+ * hidden row reading as a missing one, which is the whole risk of opening
+ * filtered at all.
  */
 export function PurchaseOrdersClient({
   orders,
@@ -75,6 +135,13 @@ export function PurchaseOrdersClient({
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
+
+  const [status, setStatus] = useState<Status>('coming')
+  const [product, setProduct] = useState('all')
+  const [q, setQ] = useState('')
+  // Null = untouched, so the server's own order stands: newest first, which is
+  // the question the page exists to answer. Only a click overrides it.
+  const [sort, setSort] = useState<{ by: Column; ascending: boolean } | null>(null)
 
   const [form, setForm] = useState({ itemId: '', quantity: '', orderedAt: '', eta: '' })
   const [addBusy, setAddBusy] = useState(false)
@@ -142,6 +209,37 @@ export function PurchaseOrdersClient({
     } finally {
       setBusy(false)
     }
+  }
+
+  // One entry per product, not one per order: PANPIZPRIELE alone has 28 orders
+  // and a picker listing it 28 times would be unusable. Named the way the rows
+  // are, which is the source shop's name, so the two cannot disagree.
+  const productOptions = useMemo(() => {
+    const by = new Map<string, string>()
+    for (const o of orders) if (!by.has(o.item.sku)) by.set(o.item.sku, o.item.name)
+    return [...by].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [orders])
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    const kept = orders.filter((o) => {
+      if (status === 'coming' && o.receivedAt) return false
+      if (status === 'received' && !o.receivedAt) return false
+      if (product !== 'all' && o.item.sku !== product) return false
+      if (needle === '') return true
+      // Name AND code, because he knows some products by one and some by the
+      // other — the same reason the orders page searches both.
+      return (
+        o.item.name.toLowerCase().includes(needle) || o.item.sku.toLowerCase().includes(needle)
+      )
+    })
+    return sort === null ? kept : sortRows(kept, sort.by, sort.ascending)
+  }, [orders, status, product, q, sort])
+
+  function toggleSort(by: Column) {
+    setSort((s) =>
+      s?.by === by ? { by, ascending: !s.ascending } : { by, ascending: OPENS_ASCENDING[by] },
+    )
   }
 
   const formSection = items.length === 0 ? (
@@ -236,23 +334,89 @@ export function PurchaseOrdersClient({
     )
   }
 
+  const control =
+    'rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[12px] text-ink'
+
   return (
     <div className="space-y-3">
       {formSection}
+
+      <div className="flex flex-wrap items-end gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-3">
+        <label className="text-[11px] text-muted">
+          <span className="block pb-1">Show</span>
+          <select
+            aria-label="Show"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as Status)}
+            className={control}
+          >
+            <option value="coming">Still coming</option>
+            <option value="received">Received</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+
+        <label className="text-[11px] text-muted">
+          <span className="block pb-1">Product</span>
+          <select
+            aria-label="Product"
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+            className={`${control} max-w-[240px]`}
+          >
+            <option value="all">All products</option>
+            {productOptions.map(([sku, name]) => (
+              <option key={sku} value={sku}>{name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-[11px] text-muted">
+          <span className="block pb-1">Search</span>
+          <input
+            type="search"
+            aria-label="Search purchase orders"
+            placeholder="Product or SKU…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className={`${control} w-[200px] placeholder:text-faint`}
+          />
+        </label>
+
+        {/* The count is the point of opening filtered at all: without it a
+            hidden row and a missing row look the same. */}
+        <p className="ml-auto pb-1 text-[12px] text-muted">
+          showing {shown.length} of {orders.length}
+        </p>
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="rounded-[var(--radius-card)] border border-line bg-surface p-5 text-[13px] text-muted">
+          No purchase orders match that. Widen the filters above to see more.
+        </p>
+      ) : (
       <div className="overflow-x-auto rounded-[var(--radius-card)] border border-line bg-surface">
         <table className="w-full text-[13px]">
           <thead>
             <tr className="border-b border-line text-left text-[12px] text-muted">
-              <th className="px-4 py-2.5">Product</th>
-              <th className="px-4 py-2.5">Units</th>
-              <th className="px-4 py-2.5">Ordered</th>
-              <th className="px-4 py-2.5">Expected</th>
+              {(['Product', 'Units', 'Ordered', 'Expected'] as Column[]).map((c) => (
+                <th key={c} className="px-4 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(c)}
+                    className="text-[12px] text-muted hover:text-ink"
+                  >
+                    {c}
+                    {sort?.by === c && <span aria-hidden="true"> {sort.ascending ? '▲' : '▼'}</span>}
+                  </button>
+                </th>
+              ))}
               <th className="px-4 py-2.5">Source</th>
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
           <tbody>
-            {orders.map((o) => (
+            {shown.map((o) => (
               <tr key={o.id} className="border-b border-line last:border-0">
                 <td className="px-4 py-2.5 text-ink">
                   <div className="flex items-center gap-2.5">
@@ -299,6 +463,7 @@ export function PurchaseOrdersClient({
           </tbody>
         </table>
       </div>
+      )}
     </div>
   )
 }

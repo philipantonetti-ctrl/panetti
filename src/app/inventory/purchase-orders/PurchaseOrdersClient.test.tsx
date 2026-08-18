@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { PurchaseOrdersClient, type Order } from './PurchaseOrdersClient'
 
@@ -28,6 +28,20 @@ const order = (over: Partial<Order> = {}): Order => ({
   item: { sku: 'PANPIZPRO', name: 'Pizzetta Pro', imageUrl: null },
   ...over,
 })
+
+/**
+ * Queries scoped to the TABLE. Every product name now appears twice on the
+ * page - once on its row and once in the Product filter's dropdown - so a bare
+ * screen query is ambiguous and would pass on the wrong element.
+ */
+const table = () => within(screen.getByRole('table'))
+
+/**
+ * The page opens on what is still coming, so any test about a RECEIVED row has
+ * to ask for it. That is the filter working, not the test working around it.
+ */
+const showAll = () =>
+  fireEvent.change(screen.getByLabelText('Show'), { target: { value: 'all' } })
 
 /** The same row as Visma would deliver it: part received, with an id of its own. */
 const vismaOrder = (over: Partial<Order> = {}): Order =>
@@ -145,6 +159,7 @@ describe('PurchaseOrdersClient', () => {
         items={[]}
       />,
     )
+    showAll()
     expect(screen.getByText(/recorded/)).toBeInTheDocument()
   })
 
@@ -152,6 +167,7 @@ describe('PurchaseOrdersClient', () => {
     render(
       <PurchaseOrdersClient orders={[order({ receivedAt: '2026-08-18T00:00:00.000Z' })]} items={[]} />,
     )
+    showAll()
     expect(screen.getByText(/received/)).toBeInTheDocument()
     expect(screen.queryByText(/recorded/)).not.toBeInTheDocument()
   })
@@ -167,6 +183,7 @@ describe('PurchaseOrdersClient', () => {
         items={[]}
       />,
     )
+    showAll()
     expect(screen.getByText(/closed with no receipt/)).toBeInTheDocument()
     expect(screen.queryByText(/none landed yet/)).not.toBeInTheDocument()
   })
@@ -207,7 +224,208 @@ describe('PurchaseOrdersClient product photos', () => {
       />,
     )
 
-    expect(screen.getByText('Pizzeta Primo Stone')).toBeInTheDocument()
+    expect(table().getByText('Pizzeta Primo Stone')).toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * 271 purchase orders live on this page and 246 of them have already arrived.
+ * Measured 2026-08-18: the 25 still coming are what someone opens it to see,
+ * and they were buried under ten times their number in history.
+ */
+describe('PurchaseOrdersClient filtering', () => {
+  const coming = order({ id: 'c1', item: { sku: 'PANPIZPRO', name: 'Pizzetta Pro', imageUrl: null } })
+  const landed = order({
+    id: 'l1',
+    receivedAt: '2026-07-01T00:00:00.000Z',
+    item: { sku: 'MACBL661', name: 'Mazzetti Advanced Comfort', imageUrl: null },
+  })
+
+  it('opens on what is still coming, not on the whole history', () => {
+    render(<PurchaseOrdersClient orders={[coming, landed]} items={[]} />)
+
+    expect(table().getByText('Pizzetta Pro')).toBeInTheDocument()
+    expect(table().queryByText('Mazzetti Advanced Comfort')).not.toBeInTheDocument()
+  })
+
+  /**
+   * The count is what stops a hidden row reading as a missing one. Without it,
+   * an opening filter is indistinguishable from data loss.
+   */
+  it('says how many it is showing out of how many there are', () => {
+    render(<PurchaseOrdersClient orders={[coming, landed]} items={[]} />)
+
+    expect(screen.getByText(/showing 1 of 2/i)).toBeInTheDocument()
+  })
+
+  it('shows only what has arrived when asked for received', () => {
+    render(<PurchaseOrdersClient orders={[coming, landed]} items={[]} />)
+    fireEvent.change(screen.getByLabelText('Show'), { target: { value: 'received' } })
+
+    expect(table().getByText('Mazzetti Advanced Comfort')).toBeInTheDocument()
+    expect(table().queryByText('Pizzetta Pro')).not.toBeInTheDocument()
+  })
+
+  it('shows everything when asked for all', () => {
+    render(<PurchaseOrdersClient orders={[coming, landed]} items={[]} />)
+    showAll()
+
+    expect(table().getByText('Pizzetta Pro')).toBeInTheDocument()
+    expect(table().getByText('Mazzetti Advanced Comfort')).toBeInTheDocument()
+    expect(screen.getByText(/showing 2 of 2/i)).toBeInTheDocument()
+  })
+
+  it('narrows to one product', () => {
+    const second = order({ id: 'c2', item: { sku: 'PANPRIMIXPRO', name: 'ProMix', imageUrl: null } })
+    render(<PurchaseOrdersClient orders={[coming, second]} items={[]} />)
+    fireEvent.change(screen.getByLabelText('Product'), { target: { value: 'PANPIZPRO' } })
+
+    expect(table().getByText('Pizzetta Pro')).toBeInTheDocument()
+    expect(table().queryByText('ProMix')).not.toBeInTheDocument()
+  })
+
+  it('lists a product once in the picker however many orders it has', () => {
+    const again = order({ id: 'c2', item: { sku: 'PANPIZPRO', name: 'Pizzetta Pro', imageUrl: null } })
+    render(<PurchaseOrdersClient orders={[coming, again]} items={[]} />)
+
+    const options = screen.getByLabelText('Product').querySelectorAll('option')
+    expect([...options].filter((o) => o.textContent?.includes('Pizzetta Pro'))).toHaveLength(1)
+  })
+
+  it('searches by product name', () => {
+    const second = order({ id: 'c2', item: { sku: 'PANPRIMIXPRO', name: 'ProMix', imageUrl: null } })
+    render(<PurchaseOrdersClient orders={[coming, second]} items={[]} />)
+    fireEvent.change(screen.getByLabelText('Search purchase orders'), { target: { value: 'promix' } })
+
+    expect(table().getByText('ProMix')).toBeInTheDocument()
+    expect(table().queryByText('Pizzetta Pro')).not.toBeInTheDocument()
+  })
+
+  /** He knows some products by their code and some by their name. */
+  it('searches by SKU too', () => {
+    const second = order({ id: 'c2', item: { sku: 'PANPRIMIXPRO', name: 'ProMix', imageUrl: null } })
+    render(<PurchaseOrdersClient orders={[coming, second]} items={[]} />)
+    fireEvent.change(screen.getByLabelText('Search purchase orders'), { target: { value: 'PANPIZ' } })
+
+    expect(table().getByText('Pizzetta Pro')).toBeInTheDocument()
+    expect(table().queryByText('ProMix')).not.toBeInTheDocument()
+  })
+
+  it('does not care about capitals when searching', () => {
+    render(<PurchaseOrdersClient orders={[coming]} items={[]} />)
+    fireEvent.change(screen.getByLabelText('Search purchase orders'), { target: { value: 'PIZZETTA' } })
+
+    expect(table().getByText('Pizzetta Pro')).toBeInTheDocument()
+  })
+
+  it('applies the filters together rather than one at a time', () => {
+    const landedPro = order({
+      id: 'l2',
+      receivedAt: '2026-07-01T00:00:00.000Z',
+      item: { sku: 'PANPIZPRO', name: 'Pizzetta Pro', imageUrl: null },
+    })
+    render(<PurchaseOrdersClient orders={[coming, landedPro, landed]} items={[]} />)
+    showAll()
+    fireEvent.change(screen.getByLabelText('Product'), { target: { value: 'PANPIZPRO' } })
+
+    expect(screen.getByText(/showing 2 of 3/i)).toBeInTheDocument()
+    expect(table().queryByText('Mazzetti Advanced Comfort')).not.toBeInTheDocument()
+  })
+
+  /** A filter that empties the table must say why, or it reads as breakage. */
+  it('says nothing matched rather than showing an empty table', () => {
+    render(<PurchaseOrdersClient orders={[coming]} items={[]} />)
+    fireEvent.change(screen.getByLabelText('Search purchase orders'), { target: { value: 'zzzz' } })
+
+    expect(screen.getByText(/No purchase orders match/i)).toBeInTheDocument()
+  })
+
+  /** Filtering the table must never touch the form above it. */
+  it('leaves the add-an-order form alone', () => {
+    render(<PurchaseOrdersClient orders={[coming]} items={[item]} />)
+    fireEvent.change(screen.getByLabelText('Search purchase orders'), { target: { value: 'zzzz' } })
+
+    expect(screen.getByRole('button', { name: 'Add order' })).toBeInTheDocument()
+  })
+})
+
+describe('PurchaseOrdersClient sorting', () => {
+  const early = order({
+    id: 'e',
+    orderedAt: '2026-01-05T00:00:00.000Z',
+    item: { sku: 'AAA', name: 'Early product', imageUrl: null },
+  })
+  const late = order({
+    id: 'l',
+    orderedAt: '2026-06-05T00:00:00.000Z',
+    item: { sku: 'BBB', name: 'Late product', imageUrl: null },
+  })
+
+  const names = () =>
+    [...document.querySelectorAll('tbody tr')].map((r) => r.querySelector('td')?.textContent?.trim())
+
+  it('leaves the server order alone until a header is clicked', () => {
+    render(<PurchaseOrdersClient orders={[late, early]} items={[]} />)
+
+    expect(names()).toEqual(['Late product', 'Early product'])
+  })
+
+  /**
+  * Fed in oldest-first on purpose. If the fixture already matched the expected
+  * result the test would pass with the sort removed entirely.
+  */
+  it('sorts by when it was ordered, newest first', () => {
+    render(<PurchaseOrdersClient orders={[early, late]} items={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Ordered/ }))
+
+    expect(names()).toEqual(['Late product', 'Early product'])
+  })
+
+  it('reverses when the same header is clicked again', () => {
+    render(<PurchaseOrdersClient orders={[early, late]} items={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Ordered/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ordered/ }))
+
+    expect(names()).toEqual(['Early product', 'Late product'])
+  })
+
+  /**
+  * Expected opens the other way from Ordered, deliberately: that column answers
+  * "what lands next", so the soonest date belongs at the top.
+  */
+  it('opens Expected soonest first, not latest first', () => {
+    const soon = order({ id: 's', eta: '2026-09-01T00:00:00.000Z', item: { sku: 'S', name: 'Soon', imageUrl: null } })
+    const later = order({ id: 'L', eta: '2027-01-01T00:00:00.000Z', item: { sku: 'L', name: 'Later', imageUrl: null } })
+    render(<PurchaseOrdersClient orders={[later, soon]} items={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Expected/ }))
+
+    expect(names()).toEqual(['Soon', 'Later'])
+  })
+
+  it('sorts by product name', () => {
+    render(<PurchaseOrdersClient orders={[late, early]} items={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Product/ }))
+
+    expect(names()).toEqual(['Early product', 'Late product'])
+  })
+
+  /**
+   * An order with no ETA is not the soonest thing arriving. Nulls sit last in
+   * BOTH directions, the same rule the Forecast tab's sort already follows.
+   */
+  it('keeps an order with no expected date out of the top, both ways', () => {
+    const noEta = order({ id: 'n', eta: null, item: { sku: 'CCC', name: 'No date', imageUrl: null } })
+    const dated = order({
+      id: 'd',
+      eta: '2026-09-01T00:00:00.000Z',
+      item: { sku: 'DDD', name: 'Dated', imageUrl: null },
+    })
+    render(<PurchaseOrdersClient orders={[noEta, dated]} items={[]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Expected/ }))
+    expect(names()[1]).toBe('No date')
+    fireEvent.click(screen.getByRole('button', { name: /Expected/ }))
+    expect(names()[1]).toBe('No date')
   })
 })
