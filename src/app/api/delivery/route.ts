@@ -8,7 +8,7 @@ import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
 import { loadDelivery } from '@/lib/delivery/load'
 import { deliveryStats } from '@/lib/delivery/stats'
-import { trackingUrl } from '@/lib/delivery/tracking-url'
+import { carrierName, trackingUrl } from '@/lib/delivery/tracking-url'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -117,6 +117,7 @@ export async function GET(req: Request) {
         // has to know which carrier's site a number belongs to.
         unlinked: unlinked.map((s) => ({
           trackingNumber: s.trackingNumber,
+          carrier: carrierName(s.carrier),
           url: trackingUrl(s.trackingNumber, s.carrier),
           lastStatus: s.lastStatus,
         })),

@@ -6,7 +6,7 @@ const v = (over: Partial<OrderDelivery> = {}): OrderDelivery => ({
   state: 'AVAILABLE', totalDays: 3, warehouseDays: 1, transitDays: 2,
   availableAt: new Date(), collectedAt: null, deadline: new Date(),
   promiseDays: 3, late: false, daysOver: null,
-  parcels: [{ number: 'T1', url: 'https://tracking.bring.com/tracking/T1' }],
+  parcels: [{ number: 'T1', carrier: 'Bring', url: 'https://tracking.bring.com/tracking/T1' }],
   ...over,
 })
 

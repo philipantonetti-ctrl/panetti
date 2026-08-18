@@ -1,7 +1,7 @@
 import { VOIDED_STATUSES } from '../metrics/types'
 import { daysBetween, deadlineFor } from './days'
 import { promiseOn, type PromisePoint } from './promise'
-import { trackingUrl } from './tracking-url'
+import { carrierName, trackingUrl } from './tracking-url'
 
 export type DeliveryState =
   | 'UNTRACKED' // this shop is not delivery-tracked at all
@@ -60,7 +60,13 @@ export type OrderDelivery = {
   parcels: Parcel[]
 }
 
-export type Parcel = { number: string; url: string }
+/**
+ * Both `carrier` and `url` are ready to render: the name is already written
+ * the way a person reads it and the link already points at the right site. The
+ * page shows both carriers in one list, so it needs the name to tell them
+ * apart — but it should not have to know the carrier rules to get either.
+ */
+export type Parcel = { number: string; carrier: string; url: string }
 
 const VOIDED = new Set<string>(VOIDED_STATUSES)
 
@@ -98,6 +104,7 @@ export function deliveryFor(
 ): OrderDelivery {
   const parcels = order.shipments.map((s) => ({
     number: s.trackingNumber,
+    carrier: carrierName(s.carrier),
     url: trackingUrl(s.trackingNumber, s.carrier),
   }))
   const base = { ...EMPTY, parcels }

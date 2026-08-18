@@ -316,7 +316,7 @@ describe('alertMessage', () => {
     const text = alertMessage(
       [{ id: 'o1', number: '1001', shop: 'Panetti', country: 'NO',
          daysOver: 1, promiseDays: 3, state: 'IN_TRANSIT',
-         parcels: [{ number: 'T1', url: 'https://tracking.bring.com/tracking/T1' }] }],
+         parcels: [{ number: 'T1', carrier: 'Bring', url: 'https://tracking.bring.com/tracking/T1' }] }],
       'https://panetti.vercel.app',
     )
     expect(text).toContain('tracking.bring.com/tracking/T1')
@@ -331,7 +331,7 @@ describe('alertMessage', () => {
     const text = alertMessage(
       [{ id: 'o1', number: '1001', shop: 'Panetti', country: 'DE',
          daysOver: 1, promiseDays: 3, state: 'IN_TRANSIT',
-         parcels: [{ number: '9599861672', url: trackingUrl('9599861672', 'DHL') }] }],
+         parcels: [{ number: '9599861672', carrier: 'DHL', url: trackingUrl('9599861672', 'DHL') }] }],
       'https://panetti.vercel.app',
     )
     expect(text).toContain('dhl.com')

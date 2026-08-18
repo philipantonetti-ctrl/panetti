@@ -36,7 +36,7 @@ type Delivery = {
   late: boolean
   daysOver: number | null
   promiseDays: number | null
-  parcels: { number: string; url: string }[]
+  parcels: { number: string; carrier: string; url: string }[]
 }
 type OrderRow = {
   id: string
