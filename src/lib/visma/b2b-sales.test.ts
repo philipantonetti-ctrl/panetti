@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  b2bSalesModifiedSince,
-  B2B_SALES_FIRST_RUN_FROM,
-  isVismaExternalId,
-  mapVismaB2bSales,
-  type LinkedCustomers,
-} from './b2b-sales'
+import { isVismaExternalId, mapVismaB2bSales, type LinkedCustomers } from './b2b-sales'
 import type { VismaCustomerInvoice } from './types'
 
 /** The three customers linkable on 2026-08-18, keyed as Visma numbers them. */
@@ -296,35 +290,5 @@ describe('isVismaExternalId', () => {
     expect(isVismaExternalId('b2b:B-0001')).toBe(false)
     // A WooCommerce order id: bare digits, which is the whole reason for the prefix.
     expect(isVismaExternalId('123194')).toBe(false)
-  })
-})
-
-/**
- * The window this import asks Visma for, and the reason it exists at all:
- * measured 2026-08-18, `customerinvoice` holds roughly 30 000 invoices ordered
- * OLDEST-FIRST, so an unfiltered read spends every page on 2022 and never
- * reaches a current invoice.
- */
-describe('b2bSalesModifiedSince', () => {
-  it('starts from a documented fixed date when nothing has been imported yet', () => {
-    expect(b2bSalesModifiedSince(null)).toBe(B2B_SALES_FIRST_RUN_FROM)
-  })
-
-  /**
-   * A margin, not a watermark on the nose: an invoice can be modified after the
-   * newest one we hold was raised, and a window that began exactly at that date
-   * would step over anything edited in between.
-   */
-  it('reaches back a safety margin before the newest invoice already imported', () => {
-    expect(b2bSalesModifiedSince(new Date('2026-08-14T00:00:00Z'))).toBe('2026-07-15')
-  })
-
-  /**
-   * The floor matters more than it looks. One old invoice imported by hand
-   * would otherwise drag the window back to 2022 and put the whole 30 000-row
-   * ledger back in front of the ten-page ceiling — the exact bug this replaces.
-   */
-  it('never reaches back past the fixed start, however old the newest import is', () => {
-    expect(b2bSalesModifiedSince(new Date('2022-09-09T00:00:00Z'))).toBe(B2B_SALES_FIRST_RUN_FROM)
   })
 })

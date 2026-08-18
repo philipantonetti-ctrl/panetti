@@ -70,14 +70,15 @@ const SHIPMENTS_DEADLINE_MS = 275_000
 const ALERT_START_BY_MS = 280_000
 
 /**
- * The B2B sales import stops STARTING pages at this point in the run.
+ * The B2B sales import stops STARTING requests at this point in the run.
  *
- * It is the only Visma import that can page, and it begins after the shops may
- * already have spent SHOPS_DEADLINE_MS — so unbounded, ten pages at a
- * 60-second request timeout apiece would run far past the 300s ceiling and take
- * the parcel poll and the delivery alert down with it. Set before
- * SHIPMENTS_DEADLINE_MS for exactly that reason: whatever this stage leaves
- * behind arrives on the next run, while an alert never sent is silent.
+ * It makes one request per linked customer — three or four today — and begins
+ * after the shops may already have spent SHOPS_DEADLINE_MS. Unbounded, a slow
+ * ERP at the 60-second request timeout would run past the 300s ceiling and take
+ * the parcel poll and the delivery alert down with it, and the cost grows with
+ * every customer the client links. Set before SHIPMENTS_DEADLINE_MS for exactly
+ * that reason: whatever this stage leaves behind arrives on the next run, while
+ * an alert never sent is silent.
  */
 const B2B_SALES_DEADLINE_MS = 265_000
 

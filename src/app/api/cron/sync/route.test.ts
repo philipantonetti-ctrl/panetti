@@ -27,7 +27,7 @@ const importVismaB2bSales = vi.fn(async (opts?: { deadline?: number }) => ({
 vi.mock('@/lib/visma/import', () => ({
   importVismaPurchaseOrders: () => importVismaPurchaseOrders(),
   // Arguments forwarded, not dropped: the deadline this route hands it is the
-  // only thing keeping a ten-page read inside the platform ceiling.
+  // only thing keeping a request-per-customer read inside the platform ceiling.
   importVismaB2bSales: (...args: [{ deadline?: number }?]) => importVismaB2bSales(...args),
 }))
 
@@ -127,7 +127,8 @@ describe('the scheduled sync endpoint', () => {
 
   /**
    * It starts after the shops may already have spent 240 of the 300 seconds,
-   * and it can page. Unbounded, ten pages at a 60-second timeout apiece would
+   * and it makes one request per linked customer. Unbounded, a slow ERP at the
+   * 60-second request timeout, once across every customer the client links, would
    * run past the platform ceiling and kill the parcel poll and the delivery
    * alert that follow it.
    */

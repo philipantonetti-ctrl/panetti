@@ -3,10 +3,25 @@ import { db } from '../db'
 import { resetVismaTokenCache } from './client'
 import { importVismaB2bSales } from './import'
 
-const TAG = `TEST-B2B-${Date.now()}`
+/**
+ * This file's own prefix, swept whole rather than per run.
+ *
+ * importVismaB2bSales reads EVERY linked customer in the workspace, so one
+ * B2bCustomer left behind by a run that died mid-test silently becomes a second
+ * customer for the next run — an extra request, an extra pause, and assertions
+ * about "one customer" failing for a reason that is nowhere in this file.
+ * Cleaning the prefix rather than the timestamp makes the next run heal it.
+ */
+const TAG_PREFIX = 'TEST-B2B-'
+const TAG = `${TAG_PREFIX}${Date.now()}`
 
-/** The Visma account number this test's linked customer holds. */
-const NUMBER = `${Date.now()}`
+/**
+ * The Visma account numbers this test's linked customers hold. Same length and
+ * differing in the first digit, so the importer's ascending order over them is
+ * unambiguous and the tests below can say which is read first.
+ */
+const NUMBER = `1${Date.now()}`
+const NUMBER2 = `2${Date.now()}`
 
 let shopId = ''
 let customerId = ''
@@ -46,27 +61,41 @@ const invoice = (over: Record<string, unknown> = {}) => ({
 /** Every collection URL this run asked for, token calls excluded. */
 let asked: string[] = []
 
-/** Routes the token call, then serves one response per page number. */
-const stubPages = (pages: Record<number, { body: unknown; status?: number }>) => {
+/**
+ * Routes the token call, then answers each request with that CUSTOMER's
+ * invoices — which is how the real endpoint behaves once `customer=` scopes it.
+ * Keyed on the account number, so a request that dropped or renamed the
+ * parameter is served nothing and the test that depends on rows fails.
+ */
+const stubCustomers = (byCustomer: Record<string, { body: unknown; status?: number }>) => {
   const fetchMock = vi.fn(async (url: string) => {
     const u = String(url)
     if (u.includes('connect/token')) return json({ access_token: 'tok', expires_in: 3600 })
     asked.push(u)
-    const n = Number(new URL(u).searchParams.get('pageNumber') ?? '1')
-    const p = pages[n] ?? { body: [] }
+    const n = new URL(u).searchParams.get('customer') ?? ''
+    const p = byCustomer[n] ?? { body: [] }
     return json(p.body, p.status ?? 200)
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
 
+/** A second linked customer, in the same shop so their invoices can land. */
+const linkSecondCustomer = () =>
+  db.b2bCustomer.create({
+    data: {
+      shopId, name: `JPK ${TAG}`, currency: 'SEK', vatPercent: 25,
+      email: 'orders@jpk.test', vismaCustomerNumber: NUMBER2,
+    },
+  })
+
 // FK-safe order: Order.b2bCustomer is onDelete: Restrict, so orders must go
 // before their B2B customers, which must go before the shop everything hangs
 // off — products and customers both cascade with it.
 async function cleanup() {
-  await db.order.deleteMany({ where: { shop: { name: { contains: TAG } } } })
-  await db.b2bCustomer.deleteMany({ where: { shop: { name: { contains: TAG } } } })
-  await db.shop.deleteMany({ where: { name: { contains: TAG } } })
+  await db.order.deleteMany({ where: { shop: { name: { contains: TAG_PREFIX } } } })
+  await db.b2bCustomer.deleteMany({ where: { shop: { name: { contains: TAG_PREFIX } } } })
+  await db.shop.deleteMany({ where: { name: { contains: TAG_PREFIX } } })
 }
 
 beforeEach(async () => {
@@ -103,7 +132,7 @@ const storedOrder = () =>
 
 describe('importVismaB2bSales', () => {
   it('turns a linked customer’s invoice into one of their orders', async () => {
-    stubPages({ 1: { body: [invoice()] } })
+    stubCustomers({ [NUMBER]: { body: [invoice()] } })
 
     const result = await importVismaB2bSales()
     expect(result.error).toBeNull()
@@ -137,8 +166,11 @@ describe('importVismaB2bSales', () => {
    * 1000 open documents — and those orders already arrive from WooCommerce.
    */
   it('ignores an invoice for a customer nobody linked', async () => {
-    stubPages({
-      1: {
+    // Belt and braces, deliberately: `customer=` already scopes the request, so
+    // a foreign row arriving here means the ERP answered with something we did
+    // not ask for. The allowlist is still what decides, and must stay so.
+    stubCustomers({
+      [NUMBER]: {
         body: [
           invoice(),
           invoice({
@@ -164,7 +196,7 @@ describe('importVismaB2bSales', () => {
    */
   it('makes no HTTP call at all when no customer is linked', async () => {
     await db.b2bCustomer.update({ where: { id: customerId }, data: { vismaCustomerNumber: null } })
-    const fetchMock = stubPages({ 1: { body: [invoice()] } })
+    const fetchMock = stubCustomers({ [NUMBER]: { body: [invoice()] } })
 
     const result = await importVismaB2bSales()
 
@@ -175,10 +207,10 @@ describe('importVismaB2bSales', () => {
 
   /** A cron runs this every fifteen minutes; twice must mean once. */
   it('does not duplicate an order it has already imported', async () => {
-    stubPages({ 1: { body: [invoice()] } })
+    stubCustomers({ [NUMBER]: { body: [invoice()] } })
     await importVismaB2bSales()
     resetVismaTokenCache()
-    stubPages({ 1: { body: [invoice()] } })
+    stubCustomers({ [NUMBER]: { body: [invoice()] } })
     await importVismaB2bSales()
 
     expect(await db.order.count({ where: { shopId, externalId: `visma-${TAG}-1` } })).toBe(1)
@@ -187,10 +219,10 @@ describe('importVismaB2bSales', () => {
   })
 
   it('rereads a changed invoice rather than leaving the first reading standing', async () => {
-    stubPages({ 1: { body: [invoice()] } })
+    stubCustomers({ [NUMBER]: { body: [invoice()] } })
     await importVismaB2bSales()
     resetVismaTokenCache()
-    stubPages({ 1: { body: [invoice({ invoiceLines: [line({ quantity: 3 })] })] } })
+    stubCustomers({ [NUMBER]: { body: [invoice({ invoiceLines: [line({ quantity: 3 })] })] } })
     await importVismaB2bSales()
 
     const order = await storedOrder()
@@ -206,8 +238,8 @@ describe('importVismaB2bSales', () => {
    * line dropped in silence looks exactly like a line that never existed.
    */
   it('drops a line for a product this shop does not have, keeps the order, and says so', async () => {
-    stubPages({
-      1: { body: [invoice({ invoiceLines: [line(), line({ lineNumber: 2, inventoryNumber: 'NOT-OURS' })] })] },
+    stubCustomers({
+      [NUMBER]: { body: [invoice({ invoiceLines: [line(), line({ lineNumber: 2, inventoryNumber: 'NOT-OURS' })] })] },
     })
 
     const result = await importVismaB2bSales()
@@ -217,15 +249,60 @@ describe('importVismaB2bSales', () => {
     expect((await storedOrder())!.items).toHaveLength(1)
   })
 
-  it('reads past the first page', async () => {
-    const page1 = Array.from({ length: 1000 }, (_, n) =>
-      invoice({ referenceNumber: `${TAG}-a${n}`, customer: { number: '1', name: 'Panetti Norge - Webkunde' } }),
-    )
-    stubPages({ 1: { body: page1 }, 2: { body: [invoice()] } })
+  /**
+   * One request per linked customer, which is what makes the run's size depend
+   * on how many customers we have rather than on how big the ledger is.
+   */
+  it('asks once per linked customer, each for their own invoices', async () => {
+    await linkSecondCustomer()
+    stubCustomers({
+      [NUMBER]: { body: [invoice()] },
+      [NUMBER2]: {
+        body: [invoice({
+          referenceNumber: `${TAG}-jpk`,
+          customer: { number: NUMBER2, name: `JPK ${TAG}` },
+        })],
+      },
+    })
 
     const result = await importVismaB2bSales()
 
-    expect(result.partial).toBe(false)
+    expect(result.linked).toBe(2)
+    expect(asked).toHaveLength(2)
+    expect(asked.some((u) => u.includes(`customer=${NUMBER}`))).toBe(true)
+    expect(asked.some((u) => u.includes(`customer=${NUMBER2}`))).toBe(true)
+    // Both customers' invoices landed, not just whichever was read first.
+    expect(result.imported).toBe(2)
+    expect(await storedOrder()).not.toBeNull()
+    expect(await db.order.count({ where: { shopId, externalId: `visma-${TAG}-jpk` } })).toBe(1)
+  })
+
+  /**
+   * A backstop, not the normal path: measured 2026-08-18, the largest linked
+   * customer's ENTIRE history was 31 invoices in one request. A full page means
+   * there may be more we did not see, and saying so beats importing a silent
+   * fraction of somebody's sales.
+   */
+  it('says the run was partial when a customer fills a whole page', async () => {
+    // A full page of 1 000, but only one of them storable: the point under test
+    // is the ceiling, and writing a thousand orders to prove a boolean makes
+    // this file slow enough to time out under a full-suite run.
+    const full = [
+      invoice(),
+      ...Array.from({ length: 999 }, (_, n) =>
+        invoice({
+          referenceNumber: `${TAG}-f${n}`,
+          customer: { number: '1', name: 'Panetti Norge - Webkunde' },
+        }),
+      ),
+    ]
+    stubCustomers({ [NUMBER]: { body: full } })
+
+    const result = await importVismaB2bSales()
+
+    expect(result.partial).toBe(true)
+    expect(result.error).toBeNull()
+    // What did arrive is still stored — this is an upsert feed, not a snapshot.
     expect(await storedOrder()).not.toBeNull()
   })
 
@@ -233,46 +310,51 @@ describe('importVismaB2bSales', () => {
    * 429 is "try next run", not a failure — measured 2026-08-18, six attempts at
    * one page with backoff of 20 to 120 seconds were all refused. Unlike the
    * receivables SNAPSHOT, a partial read here is safe to write: every order is
-   * an upsert keyed on its own reference, so the pages we did reach are simply
-   * correct and the rest arrive next run.
+   * an upsert keyed on its own reference, so the customers we did reach are
+   * simply correct and the rest arrive next run.
    */
-  it('keeps what it read when a later page is refused, and says the run was partial', async () => {
-    const page1 = [
-      invoice(),
-      ...Array.from({ length: 999 }, (_, n) =>
-        invoice({ referenceNumber: `${TAG}-b${n}`, customer: { number: '1', name: 'Panetti Norge - Webkunde' } }),
-      ),
-    ]
-    stubPages({ 1: { body: page1 }, 2: { body: { message: 'slow down' }, status: 429 } })
+  it('keeps what it read when one customer is refused, and says the run was partial', async () => {
+    await linkSecondCustomer()
+    stubCustomers({
+      [NUMBER]: { body: [invoice()] },
+      [NUMBER2]: { body: { message: 'slow down' }, status: 429 },
+    })
 
     const result = await importVismaB2bSales()
 
     expect(result.partial).toBe(true)
     expect(result.error).toBeNull()
+    // The first customer's invoice is stored and stays stored. A refusal on the
+    // next one must not cost us what we already read and mapped.
     expect(await storedOrder()).not.toBeNull()
+    // And it stops there rather than hammering the rest: a 429 means the whole
+    // rolling window is spent, not that this one customer was unlucky.
+    expect(asked).toHaveLength(2)
   })
 
   /**
-   * The request itself is pinned, because getting it wrong is invisible from
-   * the outside. Measured 2026-08-18: `customerinvoice` is ordered OLDEST-FIRST
-   * and holds roughly 30 000 invoices, so an unfiltered read behind the
-   * ten-page ceiling reads 2022 and 2023 forever and never reaches a current
-   * invoice — it returns HTTP 200 and imports nothing, every run, silently.
-   * Without this test that regression leaves the whole suite green.
+   * The request is pinned because getting it wrong here is INVISIBLE. Measured
+   * 2026-08-18:
+   *
+   *   customerinvoice?customer=10681       -> 5 rows, all JPK Trading Kft. WORKS.
+   *   customerinvoice?customerNumber=10681 -> 5 rows, all Kitch'n. IGNORED.
+   *
+   * The second returns HTTP 200 and someone else's invoices. An import built on
+   * it would file real orders under the wrong customer with no error anywhere,
+   * and `customerNumber` is the more natural-looking name of the two — so this
+   * test exists to stop it being "tidied" back. The parameter is `customer`.
    */
-  it('asks the invoice endpoint for a bounded window, never the whole ledger', async () => {
-    stubPages({ 1: { body: [invoice()] } })
+  it('asks for one named customer’s invoices, by the parameter that actually works', async () => {
+    stubCustomers({ [NUMBER]: { body: [invoice()] } })
 
     await importVismaB2bSales()
 
     expect(asked).toHaveLength(1)
     expect(asked[0]).toContain('controller/api/v1/customerinvoice')
-    // The condition is what makes the date do anything at all: the date alone
-    // is accepted and silently ignored, and an ignored parameter still returns
-    // 200 — so "it responded" is never evidence a filter worked.
-    expect(asked[0]).toContain('lastModifiedDateTimeCondition=%3E')
-    expect(asked[0]).toMatch(/lastModifiedDateTime=\d{4}-\d{2}-\d{2}/)
+    expect(asked[0]).toContain(`customer=${NUMBER}`)
     expect(asked[0]).toContain('pageSize=1000')
+    // The trap, named outright: `customerNumber=` is silently ignored.
+    expect(asked[0]).not.toContain('customerNumber=')
   })
 
   /**
@@ -287,7 +369,7 @@ describe('importVismaB2bSales', () => {
       where: { id: customerId },
       data: { vismaCustomerNumber: '   ' },
     })
-    const fetchMock = stubPages({ 1: { body: [invoice({ customer: { name: 'Nobody' } })] } })
+    const fetchMock = stubCustomers({ [NUMBER]: { body: [invoice({ customer: { name: 'Nobody' } })] } })
 
     const result = await importVismaB2bSales()
 
@@ -299,12 +381,12 @@ describe('importVismaB2bSales', () => {
 
   /**
    * This runs after the shops have already spent 240 of the route's 300
-   * seconds, and ten pages at a 60-second timeout apiece would run far past the
-   * platform ceiling — killing the parcel poll and the delivery alert that
-   * follow it. Every other greedy stage in that route takes a deadline.
+   * seconds, and one request per linked customer at a 60-second timeout apiece
+   * would run past the platform ceiling — killing the parcel poll and the
+   * delivery alert that follow it. Every other greedy stage takes a deadline.
    */
   it('does not start when the run is already out of time, and says it was partial', async () => {
-    const fetchMock = stubPages({ 1: { body: [invoice()] } })
+    const fetchMock = stubCustomers({ [NUMBER]: { body: [invoice()] } })
 
     const result = await importVismaB2bSales({ deadline: Date.now() - 1 })
 
@@ -313,22 +395,26 @@ describe('importVismaB2bSales', () => {
     expect(result.error).toBeNull()
   })
 
-  it('stops paging when the deadline passes, keeping what it already read', async () => {
-    const page1 = [
-      invoice(),
-      ...Array.from({ length: 999 }, (_, n) =>
-        invoice({ referenceNumber: `${TAG}-d${n}`, customer: { number: '1', name: 'Panetti Norge - Webkunde' } }),
-      ),
-    ]
-    stubPages({ 1: { body: page1 }, 2: { body: [invoice({ referenceNumber: `${TAG}-p2` })] } })
+  it('stops before the next customer when the deadline passes, keeping what it read', async () => {
+    await linkSecondCustomer()
+    stubCustomers({
+      [NUMBER]: { body: [invoice()] },
+      [NUMBER2]: {
+        body: [invoice({
+          referenceNumber: `${TAG}-late`,
+          customer: { number: NUMBER2, name: `JPK ${TAG}` },
+        })],
+      },
+    })
 
-    // Long enough for the first page, gone by the time the pause before the
+    // Long enough for the first customer, gone by the time the pause before the
     // second one has elapsed.
     const result = await importVismaB2bSales({ deadline: Date.now() + 200 })
 
     expect(asked).toHaveLength(1)
     expect(result.partial).toBe(true)
     expect(await storedOrder()).not.toBeNull()
+    expect(await db.order.count({ where: { shopId, externalId: `visma-${TAG}-late` } })).toBe(0)
   })
 
   it('is quietly skipped when no credentials are configured', async () => {
@@ -341,7 +427,7 @@ describe('importVismaB2bSales', () => {
   })
 
   it('reports a refusal instead of throwing, so the rest of the sync survives', async () => {
-    stubPages({ 1: { body: { message: 'boom' }, status: 500 } })
+    stubCustomers({ [NUMBER]: { body: { message: 'boom' }, status: 500 } })
 
     const result = await importVismaB2bSales()
 

@@ -2,9 +2,7 @@ import { orderTotals } from '../b2b/pricing'
 import { db } from '../db'
 import { normaliseSku } from '../inventory/sku'
 import {
-  b2bSalesModifiedSince,
   mapVismaB2bSales,
-  VISMA_EXTERNAL_ID_PREFIX,
   type LinkedCustomers,
   type MappedB2bOrder,
 } from './b2b-sales'
@@ -345,23 +343,17 @@ export async function importVismaReceivables(): Promise<VismaReceivablesResult> 
   }
 }
 
-/** Visma caps `customerinvoice` at this, the same as `customerdocument`. */
-export const B2B_SALES_PAGE_SIZE = 1000
-
 /**
- * A backstop on the loop, and NOT the thing that keeps this run small — the
- * `lastModifiedDateTime` window is. Measured 2026-08-18: `customerinvoice` runs
- * from reference 100000 dated 2022-09-09 to roughly 130350 today, about 30 000
- * invoices ordered OLDEST-FIRST. Ten unfiltered pages of 1 000 would read
- * references 100000-110000 — all of 2022 and 2023 — and stop, so the ceiling
- * alone would have meant `imported: 0` every run, forever.
+ * Visma caps `customerinvoice` at this, the same as `customerdocument` — and
+ * scoped to one customer it is a ceiling nothing is expected to reach.
  *
- * With the window applied, an ordinary run is one page and a first run from
- * B2B_SALES_FIRST_RUN_FROM is about five. So reaching ten is not proof anything
- * is broken; it means more was modified in the window than a bounded run can
- * carry, and the rest is left for the next one.
+ * Measured 2026-08-18: `customer=10681&pageSize=1000` returned 31 rows, all JPK
+ * Trading Kft, spanning 2024-08-07 to 2026-07-17. That is a linked customer's
+ * ENTIRE invoice history in a single request. A full page therefore means there
+ * is more of somebody's history than we saw, which the run reports as partial
+ * rather than importing a silent fraction of their sales.
  */
-const MAX_B2B_SALES_PAGES = 10
+export const B2B_SALES_PAGE_SIZE = 1000
 
 export type VismaB2bSalesResult = {
   configured: boolean
@@ -508,20 +500,31 @@ async function storeB2bSale(
  * receivables — the pages we did reach are simply correct, and the rest arrive
  * next run rather than deleting anything.
  *
- * **The window is what makes it work at all.** `customerinvoice` is ordered
- * oldest-first over roughly 30 000 invoices, so it is read through
- * `lastModifiedDateTimeCondition=%3E&lastModifiedDateTime=<date>`. That exact
- * pair was measured working on 2026-08-18: with it, page one came back as
- * reference 129612 dated 2026-08-03; the date sent WITHOUT the condition
- * parameter was silently ignored and page one came back as reference 100000
- * dated 2022-09-09. An unknown parameter here returns HTTP 200 and does
- * nothing, so a filter is only ever proven by the rows it returns.
+ * **It reads one customer at a time, and the parameter is `customer`.** Measured
+ * 2026-08-18:
  *
- * A per-customer filter would be better still — we care about three or four
- * customers, so the result would not depend on the ledger's size at all — but
- * `customerNumber=` is UNVERIFIED. This checkout holds no Visma credentials, so
- * it could not be tried. Anyone who can reach the API should test it and check
- * the customer names on every returned row, not the status code.
+ *   customerinvoice?customer=10681       -> 5 rows, all JPK Trading Kft. WORKS.
+ *   customerinvoice?customerNumber=10681 -> 5 rows, all Kitch'n. IGNORED.
+ *
+ * `customerNumber` is the more natural-looking name and it is a TRAP: it comes
+ * back HTTP 200 carrying somebody else's invoices, so an import built on it
+ * would file real orders under the wrong customer with no error anywhere. An
+ * unknown parameter on this endpoint is silently dropped, which is why a filter
+ * here is only ever proven by the rows it returns, never by the status code. Do
+ * not "tidy" this back.
+ *
+ * Scoping the request to the customer is also what makes the history COMPLETE.
+ * This once read the whole ledger through a `lastModifiedDateTime` window
+ * floored at a fixed start date, which quietly meant anything older than that
+ * floor could never be imported at all — and JPK's invoices begin 2024-08-07,
+ * so roughly eighteen months of real B2B sales would have been permanently
+ * invisible in the feature built to show them. Per customer there is no floor
+ * and no watermark: `customer=10681&pageSize=1000` returned that customer's
+ * entire history, 31 rows, in one request. A newly linked customer's whole past
+ * therefore arrives on the very next run.
+ *
+ * The cost of a run now follows how many customers are linked — three or four
+ * today, one bounded request each — instead of how big the ledger is.
  */
 export async function importVismaB2bSales(
   opts: { deadline?: number } = {},
@@ -532,6 +535,12 @@ export async function importVismaB2bSales(
   try {
     const customers = await db.b2bCustomer.findMany({
       where: { vismaCustomerNumber: { not: null } },
+      // Ordered, because the read below is one request per customer and a
+      // deadline or a 429 cuts it off partway: a stable order makes a truncated
+      // run reproducible instead of leaving which customers arrived to chance.
+      // Worth revisiting only if refusals ever become routine here — a fixed
+      // order would then always starve the same names.
+      orderBy: { vismaCustomerNumber: 'asc' },
       select: {
         id: true, shopId: true, currency: true, name: true, email: true,
         vatPercent: true, vismaCustomerNumber: true,
@@ -555,52 +564,48 @@ export async function importVismaB2bSales(
     // Nothing could match, so nothing here is worth a rate-limited request.
     if (linkedByNumber.size === 0) return noSales()
 
-    // The newest invoice we already hold dates the window; see
-    // b2bSalesModifiedSince for why it reaches back a margin before it and why
-    // it can never reach back past the fixed first-run date.
-    const newest = await db.order.findFirst({
-      where: { externalId: { startsWith: VISMA_EXTERNAL_ID_PREFIX } },
-      orderBy: { placedAt: 'desc' },
-      select: { placedAt: true },
-    })
-    const modifiedSince = b2bSalesModifiedSince(newest?.placedAt ?? null)
-
     const invoices: VismaCustomerInvoice[] = []
     let read = 0
     let partial = false
+    let requested = 0
 
-    for (let page = 1; page <= MAX_B2B_SALES_PAGES; page++) {
-      // Checked before each page rather than assumed, exactly as the parcel
-      // poll checks its own: this stage begins after the shops may already have
-      // spent 240 of the route's 300 seconds, and ten pages at a 60-second
-      // timeout apiece would run long past the platform ceiling — killing the
-      // parcel poll and the delivery alert that come after it. A page already
-      // in flight is not interrupted, which is the same contract syncAllShops
-      // and syncShipments have.
-      if (opts.deadline !== undefined && Date.now() > opts.deadline) {
+    for (const number of linkedByNumber.keys()) {
+      // The pause before the NEXT request counts toward the deadline: starting
+      // a wait we already know will end past it just burns the run's last
+      // seconds. Checked rather than assumed, exactly as the parcel poll checks
+      // its own, because this stage begins after the shops may already have
+      // spent 240 of the route's 300 seconds — and a request already in flight
+      // is not interrupted, the same contract syncAllShops and syncShipments
+      // have.
+      const waitFirst = requested === 0 ? 0 : PAGE_PAUSE_MS
+      if (opts.deadline !== undefined && Date.now() + waitFirst > opts.deadline) {
         partial = true
         break
       }
+      if (waitFirst > 0) await pause(waitFirst)
+      requested += 1
 
       let batch: VismaCustomerInvoice[]
       try {
         batch = await vismaGet<VismaCustomerInvoice[]>(
           creds,
-          `controller/api/v1/customerinvoice` +
-            // %3E is '>'. The date WITHOUT this condition parameter is accepted
-            // and silently ignored — measured 2026-08-18, it still returned
-            // reference 100000 from 2022 — so the pair travels together or the
-            // read is unbounded again.
-            `?lastModifiedDateTimeCondition=%3E&lastModifiedDateTime=${modifiedSince}` +
-            `&pageSize=${B2B_SALES_PAGE_SIZE}&pageNumber=${page}`,
+          // `customer`, NOT `customerNumber`. Measured 2026-08-18:
+          // customer=10681 returned 5 rows all JPK Trading Kft, while
+          // customerNumber=10681 returned 5 rows of Kitch'n — HTTP 200, someone
+          // else's invoices, no error. Encoded because the field this comes
+          // from is free text, not a validated number.
+          `controller/api/v1/customerinvoice?customer=${encodeURIComponent(number)}` +
+            `&pageSize=${B2B_SALES_PAGE_SIZE}`,
         )
       } catch (e) {
         // 429 only, exactly as the receivables import treats it: the limit is a
         // rolling window that a burst exhausts for minutes, so a refusal
-        // partway through is expected rather than exceptional. Anything else is
-        // a real failure — a 500 or a bad token is not something waiting
-        // fifteen minutes fixes, and swallowing it would hide a broken
-        // integration behind an import that quietly stopped importing.
+        // partway through is expected rather than exceptional. It stops the
+        // whole loop rather than skipping one customer — the window is spent,
+        // not that customer's luck. Anything else is a real failure: a 500 or a
+        // bad token is not something waiting fifteen minutes fixes, and
+        // swallowing it would hide a broken integration behind an import that
+        // quietly stopped importing.
         if (e instanceof VismaError && e.status === 429) {
           partial = true
           break
@@ -612,11 +617,11 @@ export async function importVismaB2bSales(
       read += rows.length
       invoices.push(...rows)
 
-      // A short page is the end of the collection. A full one on the last
-      // allowed page is not an end, it is a ceiling, and that is a partial read.
-      if (rows.length < B2B_SALES_PAGE_SIZE) break
-      if (page === MAX_B2B_SALES_PAGES) partial = true
-      else await pause(PAGE_PAUSE_MS)
+      // A full page is a ceiling, not an end. One customer's entire history
+      // measured 31 invoices, so this should never fire — and if it does, part
+      // of somebody's sales is missing and the run has to say so rather than
+      // report a confident number built on a fraction of their invoices.
+      if (rows.length >= B2B_SALES_PAGE_SIZE) partial = true
     }
 
     const mapped = mapVismaB2bSales(invoices, linkedByNumber)

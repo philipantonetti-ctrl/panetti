@@ -25,49 +25,6 @@ export function isVismaExternalId(externalId: string): boolean {
   return externalId.startsWith(VISMA_EXTERNAL_ID_PREFIX)
 }
 
-/**
- * How far back the very first run looks, before anything has been imported.
- *
- * Measured 2026-08-18: `customerinvoice` runs from reference 100000 dated
- * 2022-09-09 to roughly 130350 today — about 30 000 invoices over 1 439 days,
- * so around 21 a day and 630 a month. From this date that is roughly 4 800
- * invoices, five pages of 1 000, which fits inside the ten-page ceiling with
- * room to spare. Reaching further back would not.
- */
-export const B2B_SALES_FIRST_RUN_FROM = '2026-01-01'
-
-/**
- * How far before the newest invoice we already hold the window still starts.
- *
- * Thirty days is 2 880 consecutive failed fifteen-minute runs' worth of slack,
- * and at ~630 invoices a month it keeps the ordinary run inside a single page.
- */
-export const B2B_SALES_SAFETY_MARGIN_DAYS = 30
-
-/**
- * The `lastModifiedDateTime` this run asks Visma for, as `YYYY-MM-DD`.
- *
- * THE FILTER IS NOT OPTIONAL. `customerinvoice` is ordered oldest-first and
- * holds roughly 30 000 invoices (see above), so an unfiltered read behind a
- * ten-page ceiling spends every page on 2022 and 2023 and never once reaches a
- * current invoice — it would report `imported: 0` forever.
- *
- * A margin rather than a watermark on the nose, because an invoice can be
- * edited long after it was raised and a window starting exactly at the newest
- * date we hold would step straight over that edit.
- *
- * The floor is the point of the `Math.max`: one old invoice imported by hand
- * would otherwise drag the window back to 2022 and put the whole ledger in
- * front of the ceiling again, which is the bug this exists to prevent.
- */
-export function b2bSalesModifiedSince(newestImported: Date | null): string {
-  const floor = new Date(`${B2B_SALES_FIRST_RUN_FROM}T00:00:00Z`).getTime()
-  const from = newestImported
-    ? Math.max(floor, newestImported.getTime() - B2B_SALES_SAFETY_MARGIN_DAYS * 86_400_000)
-    : floor
-  return new Date(from).toISOString().slice(0, 10)
-}
-
 /** One line of an imported invoice, in the shape an OrderItem is written from. */
 export type MappedB2bLine = {
   /** Normalised, so it joins to a Product the way every other SKU here does. */
