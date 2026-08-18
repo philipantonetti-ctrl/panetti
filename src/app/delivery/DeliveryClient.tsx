@@ -12,7 +12,7 @@ import { trackingUrl } from '@/lib/delivery/tracking-url'
 import type { DeliveryStats, CountryStat } from '@/lib/delivery/stats'
 import type { DeliveryState, Parcel } from '@/lib/delivery/view'
 
-type LateOrder = {
+export type LateOrder = {
   id: string
   number: string
   shop: string
@@ -48,6 +48,9 @@ type Payload = {
   stats: DeliveryStats
   late: LateOrder[]
   lateTotal: number
+  /** Past their promise with no parcel at all — see the AwaitingFile section. */
+  awaitingFile: LateOrder[]
+  awaitingFileTotal: number
   unlinked: UnlinkedParcel[]
   unlinkedTotal: number
   imports: ImportRow[]
@@ -347,19 +350,41 @@ function SplitBar({ label, value, max }: { label: string; value: number | null; 
   )
 }
 
-/** Warehouse against transit, on one scale, so the longer half is obvious at a glance. */
-function Split({ stats }: { stats: DeliveryStats }) {
+/**
+ * Warehouse against transit, on one scale, so the longer half is obvious at a
+ * glance — or, when neither half can be measured, the reason instead of two
+ * dashes.
+ *
+ * Both halves are counted from a HANDOVER moment, and that only ever arrives as
+ * a carrier event (`handedInAt`, milestones.ts). An order already delivered the
+ * first time we saw it never recorded one, so this panel sat at "— / —" while
+ * two dozen orders were delivered perfectly well. A dash reads identically to
+ * "zero days", to "nothing delivered" and to "still loading"; the state is
+ * knowable, so it gets said. Same rule the headline tiles follow with whyBlank.
+ */
+export function Split({ stats }: { stats: DeliveryStats }) {
   const max = Math.max(stats.medianWarehouseDays ?? 0, stats.medianTransitDays ?? 0, 1)
+  const blank = stats.medianWarehouseDays === null && stats.medianTransitDays === null
+  // Nothing delivered is the plainer, more likely explanation, so it wins.
+  // Only once orders HAVE arrived is a missing handover the real story.
+  const why = stats.delivered === 0 ? whyBlank(stats) : 'no handover time was recorded for them'
+
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
       <h2 className="text-[13px] font-semibold text-ink">Warehouse vs. transit</h2>
       <p className="mt-0.5 text-[12px] text-muted">
         Median days from order to handover, and from handover to the customer.
       </p>
-      <div className="mt-4 space-y-3">
-        <SplitBar label="In the warehouse" value={stats.medianWarehouseDays} max={max} />
-        <SplitBar label="In transit" value={stats.medianTransitDays} max={max} />
-      </div>
+      {blank ? (
+        <p className="mt-4 text-[13px] text-muted">
+          Neither half can be measured{why ? `: ${why}` : ''}.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          <SplitBar label="In the warehouse" value={stats.medianWarehouseDays} max={max} />
+          <SplitBar label="In transit" value={stats.medianTransitDays} max={max} />
+        </div>
+      )}
     </section>
   )
 }
@@ -446,8 +471,114 @@ function CountryTable({ rows, waiting }: { rows: CountryStat[]; waiting: string 
   )
 }
 
-/** The only part anyone acts on, so it is the part with the most room. */
-function LateList({
+/**
+ * Orders past their promised date that no warehouse file has mentioned yet.
+ *
+ * These used to sit in the Late list, and on 2026-08-18 that meant roughly 120
+ * rows of which SIX had a parcel. Two separate harms in one section: the six
+ * rows anyone could act on were unfindable, and the other ~114 were filed under
+ * "missed its promise" — a claim the data cannot support. A missing file is not
+ * evidence of a late delivery. Several of these have very likely arrived; we
+ * simply never heard.
+ *
+ * So this section is careful never to use the word "late", and it is collapsed:
+ * the number belongs on screen because it is the size of the blind spot, but
+ * the rows themselves are not a to-do list. The thing to act on is the import,
+ * not the orders — which is why it points at that instead.
+ *
+ * Collapsed-with-a-real-count follows UnlinkedParcels directly below.
+ */
+export function AwaitingFile({ rows, total }: { rows: LateOrder[]; total: number }) {
+  const [open, setOpen] = useState(false)
+  // The route caps what it sends. This count is the size of the blind spot, so
+  // understating it is the one thing it must not do.
+  const capped = total > rows.length
+  if (total === 0) return null
+
+  return (
+    <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left"
+      >
+        <span>
+          <span className="text-[13px] font-semibold text-ink">
+            Past their promise, but no warehouse file yet{' '}
+            <span className="num font-normal text-muted">
+              ({total.toLocaleString('en-US')})
+            </span>
+          </span>
+          <span className="mt-0.5 block text-[12px] text-muted">
+            We hold no parcel for these, so we cannot say what happened to them. Many will have
+            arrived. Importing the warehouse file for this period is what answers it.
+          </span>
+        </span>
+        <span aria-hidden="true" className="text-faint">
+          {open ? '▾' : '▸'}
+        </span>
+      </button>
+
+      {open && (
+        <div className="overflow-x-auto border-t border-line">
+          {capped && (
+            <p className="num px-5 pt-3 text-[12px] text-warn">
+              Showing the {rows.length.toLocaleString('en-US')} furthest past their promise, of{' '}
+              {total.toLocaleString('en-US')}.
+            </p>
+          )}
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
+                <th className="px-5 py-2 text-left">Order</th>
+                <th className="px-4 py-2 text-left">Shop</th>
+                <th className="px-4 py-2 text-left">Country</th>
+                {/* No State or Tracking column: every row here is the same on
+                    both counts, and a column of identical values is furniture. */}
+                <th className="px-4 py-2 text-right">Days over</th>
+                <th className="px-5 py-2 text-right">Promise</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b border-line last:border-b-0 hover:bg-panel">
+                  <td className="px-5 py-2.5 font-medium">
+                    <Link
+                      href={`/orders?q=${encodeURIComponent(r.number)}`}
+                      className="text-accent hover:underline"
+                    >
+                      {r.number}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2.5 text-ink">{r.shop}</td>
+                  <td className="px-4 py-2.5 text-ink">
+                    {r.country ? r.country.toUpperCase() : DASH}
+                  </td>
+                  {/* Muted, not text-loss. The red on the Late table means "this
+                      is going wrong"; here the number is only how long we have
+                      been in the dark, which is not the same accusation. */}
+                  <td className="num px-4 py-2.5 text-right text-muted">{r.daysOver}</td>
+                  <td className="num px-5 py-2.5 text-right text-muted">
+                    {r.promiseDays === null ? DASH : `${r.promiseDays}d`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * The only part anyone acts on, so it is the part with the most room.
+ *
+ * Every row here HAS a parcel. Orders past their promise with nothing to show
+ * for them live in AwaitingFile above — see the reasoning there.
+ */
+export function LateList({
   rows,
   total,
   judged,
@@ -466,7 +597,8 @@ function LateList({
       <div className="px-5 py-3.5">
         <h2 className="text-[13px] font-semibold text-ink">Late</h2>
         <p className="mt-0.5 text-[12px] text-muted">
-          Missed its promise, worst first. Includes orders that have since arrived.
+          Has a parcel and missed its promise, worst first. Includes orders that have since
+          arrived.
         </p>
         {capped && (
           <p className="num mt-0.5 text-[12px] text-warn">
@@ -479,9 +611,12 @@ function LateList({
         // "Nothing is late" and "nothing was looked at" are opposite pieces of
         // news that a single zero reports identically. Say which one it is.
         <p className="px-5 pb-5 text-[13px] text-muted">
+          {/* "No tracked parcel is late", not "nothing is late" — orders with no
+              warehouse file yet sit in their own section below, and a bare
+              "nothing is late" here would quietly speak for them too. */}
           {judged === 0
             ? 'No order has passed its promised date yet, so there is nothing to chase.'
-            : 'Nothing is late in this range.'}
+            : 'No parcel is past its promise in this range.'}
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -880,6 +1015,7 @@ export function DeliveryClient({
                   <Distribution data={data.stats.distribution} waiting={whyBlank(data.stats)} />
                   <CountryTable rows={data.stats.byCountry} waiting={whyBlank(data.stats)} />
                   <LateList rows={data.late} total={data.lateTotal} judged={data.stats.judged} />
+                  <AwaitingFile rows={data.awaitingFile} total={data.awaitingFileTotal} />
                   <UnlinkedParcels items={data.unlinked} total={data.unlinkedTotal} />
                   <div className="space-y-3">
                     <UploadBox onImported={reload} />

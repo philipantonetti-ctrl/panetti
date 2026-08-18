@@ -75,8 +75,48 @@ describe('GET /api/delivery', () => {
     })
     const body = await (await GET(new Request(url))).json()
     expect(body.stats.noTracking).toBe(1)
-    expect(body.late[0].number).toBe('RTE1001')
-    expect(body.late[0].state).toBe('NO_TRACKING')
+    // Still reported, and still past its promise — but in awaitingFile rather
+    // than late, because we hold no parcel for it. See the split below.
+    expect(body.awaitingFile[0].number).toBe('RTE1001')
+    expect(body.awaitingFile[0].state).toBe('NO_TRACKING')
+    expect(body.late).toEqual([])
+  })
+
+  /**
+   * Live on 2026-08-18: roughly 120 late rows, of which SIX had a parcel. The
+   * other ~114 were orders we simply had no warehouse file for, and listing
+   * them under "missed its promise" both claimed something unprovable and
+   * buried the only rows anyone could act on.
+   *
+   * A parcel is the difference between a delivery you chase the carrier about
+   * and a file you chase the warehouse about. They are different jobs, so they
+   * are different lists.
+   */
+  it('separates orders with a parcel to chase from orders with no file yet', async () => {
+    const base = {
+      shopId, placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed',
+      currency: 'NOK', shippingCountry: 'NO',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+    }
+    const tracked = await db.order.create({
+      data: { ...base, externalId: 'E-TRACKED', number: 'RTE2001' },
+    })
+    await db.order.create({ data: { ...base, externalId: 'E-BARE', number: 'RTE2002' } })
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${TRACK}CHASE`, carrier: 'DHL',
+        orderId: tracked.id, lastStatus: 'IN_TRANSIT',
+      },
+    })
+
+    const body = await (await GET(new Request(url))).json()
+
+    expect(body.late.map((l: { number: string }) => l.number)).toEqual(['RTE2001'])
+    expect(body.lateTotal).toBe(1)
+    expect(body.late[0].parcels[0].carrier).toBe('DHL')
+
+    expect(body.awaitingFile.map((l: { number: string }) => l.number)).toEqual(['RTE2002'])
+    expect(body.awaitingFileTotal).toBe(1)
   })
 
   it('lists parcels no order claimed, so they are visible rather than lost', async () => {
@@ -131,10 +171,15 @@ describe('GET /api/delivery', () => {
     expect(body.unlinkedTotal).toBeGreaterThanOrEqual(51)
   })
 
-  it('reports the true count of late orders, not just the shown page', async () => {
+  it('reports the true count of overdue orders, not just the shown page', async () => {
     // Just over route.ts's LATE_LIMIT (200), so the cap bites but the fixture
     // stays cheap. Same shape as 'reports the orders that are late right now'
     // above, just 201 of them in one createMany.
+    //
+    // These carry no shipment, so they land in awaitingFile — which is the
+    // list that actually runs to hundreds in production, and so the one whose
+    // cap most needs proving. Both lists are capped by the same LATE_LIMIT and
+    // both report a true total beside it; asserting here covers the mechanism.
     const count = 201
     await db.order.createMany({
       data: Array.from({ length: count }, (_, i) => ({
@@ -145,10 +190,10 @@ describe('GET /api/delivery', () => {
       })),
     })
     const body = await (await GET(new Request(url))).json()
-    expect(body.late.length).toBe(200)
+    expect(body.awaitingFile.length).toBe(200)
     // Exact, unlike unlinkedTotal above: late orders ARE scoped to this test's
     // one tagged (and tracked) shop — the 11 seeded shops are all UNTRACKED
     // and never contribute — so the true count is fully known here.
-    expect(body.lateTotal).toBe(count)
+    expect(body.awaitingFileTotal).toBe(count)
   })
 })
