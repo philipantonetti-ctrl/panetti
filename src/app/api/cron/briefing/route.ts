@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { writeBriefing } from '@/lib/advisor/write'
+import { sendOverdueAlerts } from '@/lib/finance/alerts'
 
 /**
  * The morning briefing, written once a day by Vercel Cron.
@@ -23,6 +24,20 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Not allowed' }, { status: 401 })
   }
 
+  // One post a day about overdue invoices, on the daily run rather than a cron
+  // of its own: chasing payment is a morning job, and fifteen-minute checking
+  // would only teach the channel to be ignored. Best-effort and FIRST, so a
+  // model call that runs long cannot starve it - the same reasoning that keeps
+  // the delivery alert at the front of its own run.
+  let overdue: { sent: number; skipped: string | null } = { sent: 0, skipped: null }
+  try {
+    overdue = await sendOverdueAlerts()
+  } catch (e) {
+    // postSlack throws deliberately, so a broken webhook lands here. It must
+    // not cost the briefing, which is the thing this route exists for.
+    overdue = { sent: 0, skipped: e instanceof Error ? e.message : 'Slack post failed' }
+  }
+
   try {
     const result = await writeBriefing()
     // ok describes the WRITE, not the model. A row stored with an error is a
@@ -32,6 +47,8 @@ export async function GET(req: Request) {
       day: result.day.toISOString().slice(0, 10),
       items: result.items,
       error: result.error,
+      overdueAlertsSent: overdue.sent,
+      overdueAlertsSkipped: overdue.skipped,
     })
   } catch (e) {
     console.error(e)

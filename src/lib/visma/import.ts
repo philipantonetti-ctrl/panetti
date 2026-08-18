@@ -1,9 +1,15 @@
 import { db } from '../db'
 import { normaliseSku } from '../inventory/sku'
-import { vismaCredentials, vismaGet } from './client'
-import { mapVismaOrders, receiptDatesByNumber } from './purchase-orders'
+import { vismaCredentials, vismaGet, VismaError } from './client'
+import { mapVismaOrders, receiptDatesByNumber, unwrap } from './purchase-orders'
+import { isWebshopAccount, mapReceivables } from './receivables'
 import { COUNTED_WAREHOUSES, mapVismaStock } from './stock'
-import type { VismaInventoryItem, VismaOrder, VismaReceipt } from './types'
+import type {
+  VismaCustomerDocument,
+  VismaInventoryItem,
+  VismaOrder,
+  VismaReceipt,
+} from './types'
 
 /**
  * One page, wide. Measured 2026-08-14: the company holds 227 purchase orders and
@@ -197,5 +203,135 @@ export async function importVismaStock(): Promise<VismaStockResult> {
   } catch (e) {
     // Reported, not thrown. The sync route shows this and the next run retries.
     return noStock({ error: e instanceof Error ? e.message : 'Visma stock import failed' })
+  }
+}
+
+/** Visma caps `customerdocument` at this, whatever larger number you ask for. */
+export const RECEIVABLES_PAGE_SIZE = 1000
+
+/**
+ * A ceiling on the loop, not an expectation. Ten pages is ten thousand open
+ * documents against a company that had a little over a thousand when this was
+ * written — reaching it means something has gone wrong, and the run reports
+ * itself partial rather than pretending it saw everything.
+ */
+const MAX_RECEIVABLE_PAGES = 10
+
+/**
+ * Between pages. Visma refuses at roughly ten calls in quick succession, and a
+ * refused second page costs the whole run — so the pause is cheaper than the
+ * retry it avoids.
+ */
+const PAGE_PAUSE_MS = 2_000
+
+export type VismaReceivablesResult = {
+  configured: boolean
+  /** Documents Visma returned, before any of them were filtered out. */
+  read: number
+  /** Rows written: what is genuinely owed. */
+  stored: number
+  /**
+   * Webshop house accounts dropped. Logged on every run precisely because the
+   * filter is a name test — if those accounts are ever renamed this number
+   * falls off a cliff, and a number that changes is noticed where silence is not.
+   */
+  excluded: number
+  /** True when we did not get to the end. The previous snapshot is kept. */
+  partial: boolean
+  error: string | null
+}
+
+const noAr = (over: Partial<VismaReceivablesResult> = {}): VismaReceivablesResult => ({
+  configured: true,
+  read: 0,
+  stored: 0,
+  excluded: 0,
+  partial: false,
+  error: null,
+  ...over,
+})
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * Pull Visma's open customer ledger into our own table.
+ *
+ * A SNAPSHOT, replaced whole in one transaction, so an invoice that has since
+ * been paid stops appearing without anyone deleting anything. Never throws, for
+ * the same reason the other two imports do not: the scheduled sync calls all
+ * three and one ERP hiccup must not cost the store pull.
+ *
+ * **The partial read is the whole design problem here.** Unlike inventory and
+ * purchase orders, this collection does not fit one request: `pageSize` caps at
+ * 1000 and `pageNumber` is the only paging that works — `skip` is accepted and
+ * silently returns page one again. Worse, the rate limit is a rolling window
+ * that a burst exhausts for minutes: measured 2026-08-18, six consecutive
+ * attempts at a single page with backoff of 20, 40, 60, 80, 100 and 120 seconds
+ * were all refused.
+ *
+ * So a refusal partway through is expected, not exceptional, and it must not
+ * replace the snapshot. Writing a half-read ledger would delete every invoice
+ * living on the pages we never reached, and the finance page would quietly show
+ * less debt than exists — the one error mode that must never happen here. A
+ * partial run keeps yesterday's answer and says so; the next run tries again.
+ */
+export async function importVismaReceivables(): Promise<VismaReceivablesResult> {
+  const creds = vismaCredentials()
+  if (!creds) return noAr({ configured: false })
+
+  try {
+    const docs: VismaCustomerDocument[] = []
+    let read = 0
+    let partial = false
+
+    for (let page = 1; page <= MAX_RECEIVABLE_PAGES; page++) {
+      let batch: VismaCustomerDocument[]
+      try {
+        batch = await vismaGet<VismaCustomerDocument[]>(
+          creds,
+          `controller/api/v1/customerdocument?status=Open` +
+            `&pageSize=${RECEIVABLES_PAGE_SIZE}&pageNumber=${page}`,
+        )
+      } catch (e) {
+        // 429 only. Everything else is a real failure and is reported as one:
+        // a 500 or a bad token is not something waiting fifteen minutes fixes,
+        // and swallowing it would hide a broken integration behind a stale page.
+        if (e instanceof VismaError && e.status === 429) {
+          partial = true
+          break
+        }
+        throw e
+      }
+
+      const rows = Array.isArray(batch) ? batch : []
+      read += rows.length
+      docs.push(...rows)
+
+      // A short page is the end of the collection. A full one on the last
+      // allowed page is not an end, it is a ceiling, and that is a partial read.
+      if (rows.length < RECEIVABLES_PAGE_SIZE) break
+      if (page === MAX_RECEIVABLE_PAGES) partial = true
+      else await pause(PAGE_PAUSE_MS)
+    }
+
+    if (partial) return noAr({ read, partial: true })
+
+    const mapped = mapReceivables(docs)
+    const excluded = docs.filter((d) =>
+      isWebshopAccount(String(unwrap<string>(d?.customer?.name) ?? '')),
+    ).length
+
+    // Emptying the table IS allowed here, unlike the stock snapshot: every
+    // invoice being paid is a real state this page must be able to show, and a
+    // guard against it would freeze a settled debt on screen forever. The read
+    // is known complete by this line, which is what makes that safe.
+    await db.$transaction([
+      db.receivable.deleteMany({}),
+      db.receivable.createMany({ data: mapped }),
+    ])
+
+    return noAr({ read, stored: mapped.length, excluded })
+  } catch (e) {
+    return noAr({ error: e instanceof Error ? e.message : 'Visma receivables import failed' })
   }
 }

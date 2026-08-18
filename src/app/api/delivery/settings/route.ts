@@ -22,6 +22,8 @@ const Body = z.object({
   bringClientUrl: z.string().trim().url().optional().or(z.literal('')),
   // Trimmed for the same reason as bringApiKey above.
   slackWebhookUrl: z.string().trim().optional(),
+  // The finance channel's own webhook. Trimmed for the same reason.
+  financeSlackWebhookUrl: z.string().trim().optional(),
   promises: z
     .array(
       z.object({
@@ -80,6 +82,7 @@ export async function GET() {
         // Never the secrets themselves, only whether they exist.
         hasBringKey: Boolean(row?.bringApiKey),
         hasSlackWebhook: Boolean(row?.slackWebhookUrl),
+        hasFinanceSlackWebhook: Boolean(row?.financeSlackWebhookUrl),
         // DHL's key is a deployment secret in Vercel rather than a stored
         // setting, so there is no row to read — but the page still has to be
         // able to say which of the two carriers is actually connected. Read
@@ -132,6 +135,9 @@ export async function PUT(req: Request) {
         bringApiKey: b.bringApiKey ? encryptSecret(b.bringApiKey) : null,
         bringClientUrl: b.bringClientUrl || null,
         slackWebhookUrl: b.slackWebhookUrl ? encryptSecret(b.slackWebhookUrl) : null,
+        financeSlackWebhookUrl: b.financeSlackWebhookUrl
+          ? encryptSecret(b.financeSlackWebhookUrl)
+          : null,
       },
       update: {
         ...(b.bringApiUid !== undefined ? { bringApiUid: b.bringApiUid || null } : {}),
@@ -139,6 +145,9 @@ export async function PUT(req: Request) {
         // A blank secret leaves the stored one alone. Only a non-empty value replaces it.
         ...(b.bringApiKey ? { bringApiKey: encryptSecret(b.bringApiKey) } : {}),
         ...(b.slackWebhookUrl ? { slackWebhookUrl: encryptSecret(b.slackWebhookUrl) } : {}),
+        ...(b.financeSlackWebhookUrl
+          ? { financeSlackWebhookUrl: encryptSecret(b.financeSlackWebhookUrl) }
+          : {}),
       },
     })
 

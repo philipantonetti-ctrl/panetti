@@ -6,8 +6,10 @@ import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
 import {
   importVismaPurchaseOrders,
+  importVismaReceivables,
   importVismaStock,
   type VismaImportResult,
+  type VismaReceivablesResult,
   type VismaStockResult,
 } from '@/lib/visma/import'
 import { db } from '@/lib/db'
@@ -128,6 +130,19 @@ export async function GET(req: Request) {
     // importVismaStock does not throw either. Same belt and braces as above.
   }
 
+  // And the open customer ledger, for the finance page and the overdue warning.
+  // Paged and paced, and a rate-limited run keeps the previous snapshot rather
+  // than writing a half-read one - see importVismaReceivables for why that
+  // matters more here than anywhere else.
+  let receivables: VismaReceivablesResult = {
+    configured: false, read: 0, stored: 0, excluded: 0, partial: false, error: null,
+  }
+  try {
+    receivables = await importVismaReceivables()
+  } catch {
+    // It does not throw either. Same belt and braces as the two above.
+  }
+
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
   // skips accounts synced in the last six hours, so most runs cost nothing.
   // Best-effort like the rates: a broken token must never fail the shop sync.
@@ -209,5 +224,12 @@ export async function GET(req: Request) {
     vismaStockStored: vismaStock.stored,
     vismaStockTruncated: vismaStock.truncated,
     vismaStockError: vismaStock.error,
+    receivablesStored: receivables.stored,
+    // Logged every run precisely because the webshop filter is a name test: if
+    // those accounts are renamed this number falls off a cliff, and a number
+    // that moves is noticed where silence is not.
+    receivablesExcluded: receivables.excluded,
+    receivablesPartial: receivables.partial,
+    receivablesError: receivables.error,
   })
 }

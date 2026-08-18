@@ -37,6 +37,7 @@ type Settings = {
    */
   hasDhlKey: boolean
   hasSlackWebhook: boolean
+  hasFinanceSlackWebhook: boolean
   lastSyncAt: string | null
   lastError: string | null
   // Its own field, not lastError above: that one belongs to the Bring sync
@@ -342,6 +343,7 @@ function DhlSection({ data }: { data: Settings }) {
 
 function SlackSection({ data, reload }: { data: Settings; reload: () => void }) {
   const [url, setUrl] = useState('')
+  const [financeUrl, setFinanceUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const toast = useToast()
@@ -352,7 +354,10 @@ function SlackSection({ data, reload }: { data: Settings; reload: () => void }) 
       const res = await fetch('/api/delivery/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slackWebhookUrl: url }),
+        // Both sent together, and a blank one leaves its stored secret alone -
+        // the same rule the Bring key follows, so saving one channel can never
+        // wipe the other.
+        body: JSON.stringify({ slackWebhookUrl: url, financeSlackWebhookUrl: financeUrl }),
       })
       if (!res.ok) {
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the Slack webhook')
@@ -360,6 +365,7 @@ function SlackSection({ data, reload }: { data: Settings; reload: () => void }) 
       }
       toast.success('Slack settings saved')
       setUrl('')
+      setFinanceUrl('')
       reload()
     } catch {
       toast.error('Could not reach the server')
@@ -408,6 +414,27 @@ function SlackSection({ data, reload }: { data: Settings; reload: () => void }) 
           api.slack.com/messaging/webhooks
         </a>{' '}
         and paste the URL.
+      </p>
+
+      {/* A SECOND channel, not a second setting on the same one. Overdue
+          invoices are chased by whoever does the books and late parcels by
+          whoever chases the warehouse; one channel carrying both is a channel
+          each of them learns to skim. Leave it empty and no invoice warning is
+          ever posted. */}
+      <label className={`${fieldLabel} mt-5`} htmlFor="finance-slack-url">
+        Finance channel webhook
+      </label>
+      <input
+        id="finance-slack-url"
+        type="password"
+        value={financeUrl}
+        onChange={(e) => setFinanceUrl(e.target.value)}
+        placeholder={data.hasFinanceSlackWebhook ? 'Saved' : 'https://hooks.slack.com/services/…'}
+        className={field}
+      />
+      <p className="mt-1.5 text-[11px] text-faint">
+        Where overdue invoices are posted, once each morning. Nothing is posted on a day when
+        nothing is overdue.
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
