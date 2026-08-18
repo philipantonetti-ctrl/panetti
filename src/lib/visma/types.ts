@@ -95,3 +95,47 @@ export type VismaCustomerDocument = {
   balanceInCurrency?: Wrapped<number>
   status?: Wrapped<string>
 }
+
+/**
+ * One line of a customer invoice, as `customerinvoice` really sends it —
+ * captured live 2026-08-18. Every field of the real payload is named here even
+ * where nothing reads it yet, so the next person can see what is on offer
+ * without going back to the ERP for it.
+ */
+export type VismaInvoiceLine = {
+  lineType?: Wrapped<string>
+  lineNumber?: Wrapped<number>
+  /// The SKU. Same identifier `inventory.number` carries on a purchase order.
+  inventoryNumber?: Wrapped<string | number>
+  description?: Wrapped<string>
+  quantity?: Wrapped<number>
+  /// In the COMPANY's currency. `unitPriceInCurrency` is what the customer was
+  /// actually charged, and is the only one a sale may be read from.
+  unitPrice?: Wrapped<number>
+  unitPriceInCurrency?: Wrapped<number>
+  amount?: Wrapped<number>
+  amountInCurrency?: Wrapped<number>
+  cost?: Wrapped<number>
+  uom?: Wrapped<string>
+  discountAmount?: Wrapped<number>
+}
+
+/**
+ * A customer invoice WITH its lines, from `controller/api/v1/customerinvoice`.
+ *
+ * The same header fields `VismaCustomerDocument` carries, plus the lines that
+ * make it a sale rather than a balance. Deliberately a separate type: carrying
+ * lines is exactly what makes this endpoint expensive to read, and the ledger
+ * import must never accidentally reach for one.
+ */
+export type VismaCustomerInvoice = {
+  referenceNumber?: Wrapped<string | number>
+  customer?: VismaCustomerRef
+  /// "Invoice" or "Credit Note". Only the first is a sale.
+  documentType?: Wrapped<string>
+  documentDate?: Wrapped<string>
+  documentDueDate?: Wrapped<string>
+  currencyId?: Wrapped<string>
+  status?: Wrapped<string>
+  invoiceLines?: VismaInvoiceLine[]
+}

@@ -21,6 +21,23 @@ export function toMajor(minor: number): number {
   return minor / 100
 }
 
+/**
+ * Minor units -> major, keeping "nobody said" as null.
+ *
+ * `toMajor` is a division, and `null / 100` is 0 in JavaScript — so a nullable
+ * money column read through `toMajor` silently becomes a real zero, and the
+ * difference between "this cost nothing" and "nobody entered anything" is lost
+ * without a word. That is not academic: `Order.fulfillmentCost` is exactly such
+ * a column, and a stored zero WINS in the metrics engine, putting the order
+ * permanently beyond the per-SKU shipping rates.
+ *
+ * Two callers made that mistake independently in one change, which is why this
+ * exists rather than a null check repeated at each of them.
+ */
+export function toMajorOrNull(minor: number | null | undefined): number | null {
+  return minor === null || minor === undefined ? null : toMajor(minor)
+}
+
 /** Multiply minor units by a rate (e.g. an FX rate), staying in whole minor units. */
 export function mulRate(minor: number, rate: number): number {
   return roundHalfAway(minor * rate)

@@ -9,11 +9,14 @@ import { utcDay } from '@/lib/dates'
 import { EXCLUDED_STATUSES, VOIDED_STATUSES } from '@/lib/metrics/types'
 import { costOn } from '@/lib/metrics/costs'
 import { fulfillmentOn, type FulfillmentPoint } from '@/lib/metrics/engine'
+import { ratesInCurrency, shippingCostOf, type ShippingPoint } from '@/lib/inventory/shipping'
+import { normaliseSku } from '@/lib/inventory/sku'
 import { buildRateTable, crossConvert } from '@/lib/metrics/fx'
 import { loadRates } from '@/lib/fx/rates'
 import { ACTIVE_GATEWAY } from '@/lib/gateways'
 import { pct } from '@/lib/money'
 import { deliveryFor } from '@/lib/delivery/view'
+import { isVismaExternalId } from '@/lib/visma/b2b-sales'
 import type { CostPoint, RateTable } from '@/lib/metrics/types'
 
 // Voided or simply not paid yet — either way the order earns nothing (yet).
@@ -132,6 +135,9 @@ export async function GET(req: Request) {
           id: true,
           shopId: true,
           number: true,
+          // Only to tell an imported order from one entered here; see `imported`
+          // below. Never shown.
+          externalId: true,
           placedAt: true,
           status: true,
           currency: true,
@@ -195,6 +201,30 @@ export async function GET(req: Request) {
       fulfillmentRates.set(r.shopId, list)
     }
 
+    // Per-unit shipping, keyed by the SKU it was typed against — the same map
+    // lib/data/load.ts builds for the engine, so the two answer this page's
+    // orders identically. Every row, not just this page's SKUs: there are a few
+    // dozen of them, and an IN clause would cost more than it saved.
+    const shippingRates = new Map<string, ShippingPoint[]>()
+    for (const r of await db.shippingRate.findMany()) {
+      const sku = normaliseSku(r.sku)
+      const list = shippingRates.get(sku) ?? []
+      list.push({ perUnit: r.perUnit, currency: r.currency, effectiveFrom: r.effectiveFrom })
+      shippingRates.set(sku, list)
+    }
+    // A ShippingRate names its own currency, because a SKU is not shop-scoped
+    // and so has no shop currency to inherit; an order reads only the rates held
+    // in the currency its costs are in. Narrowed once per currency, not once per
+    // order — a page holds up to 200.
+    const narrowed = new Map<string, Map<string, ShippingPoint[]>>()
+    const skuRatesIn = (currency: string) => {
+      const cached = narrowed.get(currency)
+      if (cached) return cached
+      const made = ratesInCurrency(shippingRates, currency)
+      narrowed.set(currency, made)
+      return made
+    }
+
     const ambassadorIds = [...new Set(rows.map((o) => o.ambassadorId).filter((x): x is string => !!x))]
     const rateByAmbassador = new Map(
       ambassadorIds.length
@@ -241,10 +271,22 @@ export async function GET(req: Request) {
             return sum + i.quantity * (cost.costPerItem + cost.handlingCost)
           }, 0),
         )
-        // A hand-entered order carries what shipping actually cost; a webshop
-        // order is charged the shop's rate on its day.
+        // Most specific answer first, the same three steps engine.ts takes: a
+        // hand-entered order carries what shipping actually cost; otherwise what
+        // its SKUs cost per unit; otherwise the shop's flat rate on its day.
+        //
+        // The middle step is null, never 0, when no line has a rate — so an
+        // installation that has typed none shows exactly the figures it always
+        // has, and this page cannot drift from the profit the engine reports.
+        const perSku = shippingCostOf(
+          o.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+          skuRatesIn(costCurrency),
+          o.placedAt,
+        )
         const fulfillment = toOrder(
-          o.fulfillmentCost ?? fulfillmentOn(fulfillmentRates.get(o.shopId) ?? [], o.placedAt),
+          o.fulfillmentCost ??
+            perSku ??
+            fulfillmentOn(fulfillmentRates.get(o.shopId) ?? [], o.placedAt),
         )
         // An invoiced order never went through the gateway.
         const fee =
@@ -292,6 +334,14 @@ export async function GET(req: Request) {
         customerName: o.customerName,
         customerEmail: o.customerEmail,
         source: o.b2bCustomerId === null ? ('webshop' as const) : ('b2b' as const),
+        /**
+         * Imported from Visma, which makes it READ-ONLY. It is a B2B order like
+         * a hand-entered one, but Visma is its source and the next
+         * fifteen-minute run rewrites its money and its lines from the invoice:
+         * an edit would silently revert and a delete would come back on the
+         * next upsert. Sent so the B2B page can stop offering both.
+         */
+        imported: isVismaExternalId(o.externalId),
         customer: o.b2bCustomer?.name ?? null,
         itemCount: o.items.reduce((n, i) => n + i.quantity, 0),
         products: o.items.map((i) => ({

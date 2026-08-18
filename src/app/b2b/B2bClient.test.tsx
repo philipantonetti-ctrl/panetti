@@ -31,7 +31,8 @@ const shops = [{ id: 's1', name: 'Mazzetti.no', currency: 'NOK' }]
 
 const customer = {
   id: 'c1', name: 'Nordic Retail AS', shopId: 's1', shopName: 'Mazzetti.no',
-  currency: 'EUR', vatPercent: 25, email: null, note: null, active: true,
+  currency: 'EUR', vatPercent: 25, email: null, note: null,
+  vismaCustomerNumber: null, active: true,
   priceCount: 4, orderCount: 12, revenue: 1422000,
 }
 
@@ -39,6 +40,12 @@ const customer = {
 const b2bOrder = {
   id: 'o1', number: 'B-0001', placedAt: '2026-05-01T00:00:00.000Z', status: 'completed',
   currency: 'EUR', netSales: 50000, customer: 'Nordic Retail AS', figures: { profit: 12000 },
+  imported: false,
+}
+
+/** The same row, but imported from Visma — which makes it read-only. */
+const importedOrder = {
+  ...b2bOrder, id: 'o2', number: '123194', imported: true,
 }
 
 // The form shape `GET /api/b2b/orders/[id]` answers — what edit and void both
@@ -201,6 +208,82 @@ describe('B2bClient', () => {
     expect(await screen.findByRole('heading', { name: /edit order/i })).toBeInTheDocument()
   })
 
+  /**
+   * The import's outcome lived only in the cron's JSON response, which nothing
+   * reads — so "refused on every run" and "there are simply no B2B invoices"
+   * were indistinguishable from inside the product, and so would a jump in
+   * `imported` be if the allowlist ever leaked.
+   */
+  it('says what the last Visma import did', async () => {
+    mockFetch([customer], [b2bOrder])
+    renderWithToast(
+      <B2bClient
+        email="a@b.test"
+        shops={shops}
+        importRun={{
+          ranAt: '2026-08-18T09:30:00.000Z', linked: 3, read: 40, imported: 2,
+          partial: false, error: null,
+        }}
+      />,
+    )
+
+    expect(await screen.findByText(/imported 2/i)).toBeInTheDocument()
+  })
+
+  it('says so when the last import failed, rather than looking like a quiet week', async () => {
+    mockFetch([customer], [])
+    renderWithToast(
+      <B2bClient
+        email="a@b.test"
+        shops={shops}
+        importRun={{
+          ranAt: '2026-08-18T09:30:00.000Z', linked: 3, read: 0, imported: 0,
+          partial: false, error: 'Visma responded 429',
+        }}
+      />,
+    )
+
+    expect(await screen.findByText(/429/)).toBeInTheDocument()
+  })
+
+  /** Nobody linked yet is a state with an action attached, not a failure. */
+  it('says nobody is linked when nobody is', async () => {
+    mockFetch([customer], [])
+    renderWithToast(
+      <B2bClient
+        email="a@b.test"
+        shops={shops}
+        importRun={{
+          ranAt: '2026-08-18T09:30:00.000Z', linked: 0, read: 0, imported: 0,
+          partial: false, error: null,
+        }}
+      />,
+    )
+
+    expect(await screen.findByText(/no customers are linked to visma/i)).toBeInTheDocument()
+  })
+
+  /**
+   * Visma is the source of an imported order and the next fifteen-minute run
+   * rewrites it from the invoice: an edit would silently revert and a delete
+   * would come straight back on the next upsert, losing anything typed onto it.
+   * The route refuses both; offering the buttons anyway would just be a way of
+   * telling someone their change was saved when it was not.
+   */
+  it('offers no edit or actions on an order imported from Visma, and says where it came from', async () => {
+    mockFetch([customer], [b2bOrder, importedOrder])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    expect(await screen.findByText('123194')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /edit order 123194/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /actions for 123194/i })).not.toBeInTheDocument()
+    // Says why the buttons are missing, rather than leaving an unexplained gap.
+    expect(screen.getByText(/from visma/i)).toBeInTheDocument()
+
+    // The hand-entered order beside it is untouched by the rule.
+    expect(screen.getByRole('button', { name: /edit order B-0001/i })).toBeInTheDocument()
+  })
+
   it('voids an order by re-sending it with the new status, in major units, converted correctly per discount kind', async () => {
     // PATCH takes the whole order, so voiding loads it first and returns it
     // unchanged but for the status. Assert the request, not just the click —
@@ -233,6 +316,50 @@ describe('B2bClient', () => {
         // -> 7.5 major, same conversion as unitPrice, not skipped.
         { productId: 'p2', quantity: 1, unitPrice: 30, discountValue: 7.5, discountKind: 'AMOUNT' },
       ])
+    })
+  })
+
+  /**
+   * THE ROUND TRIP MUST NOT INVENT A COST. Voiding an order reads it back and
+   * PATCHes it whole, and GET answers `null` for an order nobody costed.
+   * `toMajor` is `minor / 100`, so `toMajor(null)` is 0 — which passes
+   * validation and is stored as a REAL zero.
+   *
+   * That matters later rather than now: the order is voided at the moment of
+   * the write and a voided order earns nothing. But PATCH clears `voidedAt`
+   * when an order returns to completed, and from then on a stored zero wins
+   * outright in the engine — `fulfillmentCost ?? perSku` short-circuits — so
+   * the order can never again be costed by the per-SKU shipping rates and its
+   * profit is overstated by the flat rate, permanently.
+   */
+  it('leaves an order nobody costed uncosted when it is marked refunded', async () => {
+    const calls: { url: string; method?: string; body?: string }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method, body: init?.body as string | undefined })
+      if (url.includes('/api/b2b/customers'))
+        return new Response(JSON.stringify({ customers: [customer] }), { status: 200 })
+      if (url.includes('/api/b2b/orders/')) {
+        if ((init?.method ?? 'GET') === 'PATCH')
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        // An order nobody ever costed, exactly as GET now answers it.
+        return new Response(
+          JSON.stringify({ order: { ...b2bOrderDetail, fulfillmentCost: null } }),
+          { status: 200 },
+        )
+      }
+      return new Response(JSON.stringify({ orders: [b2bOrder], total: 1 }), { status: 200 })
+    }))
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /actions for B-0001/i }))
+    fireEvent.click(screen.getByRole('button', { name: /mark refunded/i }))
+
+    await waitFor(() => {
+      const patch = calls.find((c) => c.method === 'PATCH')
+      expect(patch).toBeTruthy()
+      // Null, not 0. "Nobody said" must survive a round trip taken for an
+      // entirely different reason.
+      expect(JSON.parse(patch!.body!).fulfillmentCost).toBeNull()
     })
   })
 

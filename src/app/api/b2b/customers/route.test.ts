@@ -141,4 +141,53 @@ describe('POST /api/b2b/customers', () => {
     expect((await post({ shopId, name: `Same ${TAG}`, currency: 'EUR' })).status).toBe(200)
     expect((await post({ shopId: otherShopId, name: `Same ${TAG}`, currency: 'SEK' })).status).toBe(200)
   })
+
+  /**
+   * The link that turns a Visma invoice into one of our orders. Stored trimmed,
+   * because a trailing space typed into the form would match nothing and look
+   * exactly like a customer who simply has no invoices.
+   */
+  it('stores the Visma customer number and hands it back', async () => {
+    await asAdmin()
+    expect((await post({
+      shopId, name: `Linked ${TAG}`, currency: 'SEK', vismaCustomerNumber: ' 20012 ',
+    })).status).toBe(200)
+
+    const saved = await db.b2bCustomer.findFirstOrThrow({ where: { shopId } })
+    expect(saved.vismaCustomerNumber).toBe('20012')
+
+    const body = await (await get(`?shopId=${shopId}`)).json()
+    const row = body.customers.find((c: { name: string }) => c.name === `Linked ${TAG}`)
+    expect(row.vismaCustomerNumber).toBe('20012')
+  })
+
+  /**
+   * Not linked is the default and must stay the default: an unlinked customer
+   * is invisible to the sales import, which is the only thing standing between
+   * us and every webshop order being counted twice.
+   */
+  it('leaves the Visma number null when the field was left blank', async () => {
+    await asAdmin()
+    await post({ shopId, name: `Unlinked ${TAG}`, currency: 'SEK', vismaCustomerNumber: '' })
+
+    const saved = await db.b2bCustomer.findFirstOrThrow({ where: { shopId } })
+    expect(saved.vismaCustomerNumber).toBeNull()
+  })
+
+  /**
+   * Two customers on one Visma number would make every invoice for it arrive
+   * as two orders. The unique index catches that; the message has to name the
+   * real reason rather than the name clash the other 409 on this route means.
+   */
+  it('refuses a Visma number already linked to another customer, and says which clash it is', async () => {
+    await asAdmin()
+    await post({ shopId, name: `First ${TAG}`, currency: 'SEK', vismaCustomerNumber: '10681' })
+
+    const res = await post({
+      shopId: otherShopId, name: `Second ${TAG}`, currency: 'SEK', vismaCustomerNumber: '10681',
+    })
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/Visma customer number/i)
+  })
 })

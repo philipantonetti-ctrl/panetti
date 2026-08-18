@@ -18,7 +18,8 @@ function renderWithToast(ui: ReactNode) {
 const customers = [
   {
     id: 'c1', name: 'Nordic Retail AS', shopId: 's1', shopName: 'Mazzetti.no',
-    currency: 'EUR', vatPercent: 25, email: null, note: null, active: true,
+    currency: 'EUR', vatPercent: 25, email: null, note: null,
+    vismaCustomerNumber: null, active: true,
     priceCount: 1, orderCount: 0, revenue: 0,
   },
 ]
@@ -165,7 +166,8 @@ describe('OrderModal', () => {
       customers[0],
       {
         id: 'c2', name: 'Bergen Distro', shopId: 's2', shopName: 'Distro.se',
-        currency: 'EUR', vatPercent: 25, email: null, note: null, active: true,
+        currency: 'EUR', vatPercent: 25, email: null, note: null,
+        vismaCustomerNumber: null, active: true,
         priceCount: 0, orderCount: 0, revenue: 0,
       },
     ]

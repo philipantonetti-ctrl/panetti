@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { formatMoney, toMajor, toMinor } from '@/lib/money'
+import { formatMoney, toMajor, toMajorOrNull, toMinor } from '@/lib/money'
 import { lineTotals, orderTotals, type B2bLine, type DiscountKind } from '@/lib/b2b/pricing'
 import { useToast } from '@/components/toast/useToast'
 import type { Customer } from './B2bClient'
@@ -157,7 +157,11 @@ export function OrderModal({
         pickCustomer(o.customerId)
         setPlacedAt(o.placedAt)
         setShippingCharged(String(toMajor(o.shippingCharged)))
-        setFulfillmentCost(String(toMajor(o.fulfillmentCost)))
+        // Null means nobody costed this order, which is an EMPTY box — not a
+        // zero. Showing 0 here would store one on the next save and quietly
+        // move the order from "not costed" to "shipping was free". Through the
+        // same helper the void action uses, so one null check covers both.
+        setFulfillmentCost(String(toMajorOrNull(o.fulfillmentCost) ?? ''))
         setRows(
           o.lines.map((l: LoadedLine) => ({
             productId: l.productId,
@@ -214,7 +218,9 @@ export function OrderModal({
             // 'completed' — which is exactly what omitting it already means.
             ...(editing ? { status } : {}),
             shippingCharged: parseFloat(shippingCharged) || 0,
-            fulfillmentCost: parseFloat(fulfillmentCost) || 0,
+            // Blank travels as null, so the order is costed by the per-SKU
+            // shipping rates rather than by a zero nobody typed.
+            fulfillmentCost: fulfillmentCost.trim() === '' ? null : parseFloat(fulfillmentCost) || 0,
             lines: rows
               .filter((r) => r.productId)
               .map((r) => ({

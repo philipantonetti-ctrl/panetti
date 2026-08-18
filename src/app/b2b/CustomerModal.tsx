@@ -37,6 +37,7 @@ export function CustomerModal({
   const [vatPercent, setVatPercent] = useState(String(customer?.vatPercent ?? 0))
   const [email, setEmail] = useState(customer?.email ?? '')
   const [note, setNote] = useState(customer?.note ?? '')
+  const [vismaCustomerNumber, setVismaCustomerNumber] = useState(customer?.vismaCustomerNumber ?? '')
   const [rows, setRows] = useState<PriceRow[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [canChangeShop, setCanChangeShop] = useState(true)
@@ -91,6 +92,10 @@ export function CustomerModal({
         vatPercent: parseFloat(vatPercent) || 0,
         email: email.trim() || null,
         note: note.trim() || null,
+        // Sent even when blank, deliberately. Omitting it on an edit would
+        // leave an old link standing, and clearing the field is exactly how
+        // someone stops a customer's invoices being imported.
+        vismaCustomerNumber,
         ...(editing ? { active: customer!.active } : {}),
         prices: rows
           .filter((r) => r.productId && r.price !== '')
@@ -206,6 +211,22 @@ export function CustomerModal({
               id="b2b-note" value={note} onChange={(e) => setNote(e.target.value)}
               className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink"
             />
+          </div>
+
+          <div className="col-span-2">
+            <label htmlFor="b2b-visma" className="block text-xs font-medium text-ink">
+              Visma customer number (optional)
+            </label>
+            <input
+              id="b2b-visma" value={vismaCustomerNumber}
+              onChange={(e) => setVismaCustomerNumber(e.target.value)}
+              placeholder="E.g. 10705"
+              className="mt-1 w-52 rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint"
+            />
+            <p className="mt-1 text-[11px] text-muted">
+              Invoices raised for this customer in Visma become their orders here automatically.
+              Leave it empty and nothing is imported for them.
+            </p>
           </div>
         </div>
 

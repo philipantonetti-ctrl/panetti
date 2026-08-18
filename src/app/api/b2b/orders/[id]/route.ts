@@ -4,8 +4,13 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { VOIDED_STATUSES } from '@/lib/metrics/types'
-import { toMinor } from '@/lib/money'
-import { buildOrderWrite, OrderBody, saveStandingPrices } from '../route'
+import { VISMA_EXTERNAL_ID_PREFIX } from '@/lib/visma/b2b-sales'
+import {
+  buildOrderWrite,
+  fulfillmentCostToStore,
+  OrderBody,
+  saveStandingPrices,
+} from '../route'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -21,10 +26,23 @@ const Body = OrderBody.extend({ status: z.enum(STATUSES).default('completed') })
 
 type Ctx = { params: Promise<{ id: string }> }
 
-/** Only orders this app owns. A synced order is not ours to rewrite. */
+/**
+ * Only orders this app owns. A synced order is not ours to rewrite.
+ *
+ * `b2bCustomerId` alone stopped meaning that the moment `importVismaB2bSales`
+ * shipped: an invoice imported from Visma carries one too, and it is exactly as
+ * synced as a WooCommerce order. Visma is its source and the next
+ * fifteen-minute run rewrites its money and its lines from the invoice, so an
+ * edit accepted here would silently revert and a delete would come back on the
+ * next upsert, taking any fulfillmentCost typed onto it in the meantime.
+ */
 const ownB2bOrder = (id: string) =>
   db.order.findFirst({
-    where: { id, b2bCustomerId: { not: null } },
+    where: {
+      id,
+      b2bCustomerId: { not: null },
+      NOT: { externalId: { startsWith: VISMA_EXTERNAL_ID_PREFIX } },
+    },
     select: { id: true, shopId: true, status: true, voidedAt: true },
   })
 
@@ -70,7 +88,11 @@ export async function GET(_req: Request, { params }: Ctx) {
           shippingCharged: order.shippingCharged,
           // null means "webshop order, use the shop's rate", which a B2B order
           // never is — but the column is nullable, so say 0 rather than null.
-          fulfillmentCost: order.fulfillmentCost ?? 0,
+          // Null travels to the form as null, so re-opening an order nobody
+          // costed shows an EMPTY box. Sent as 0 it would show a zero, and
+          // saving would then store one — turning "nobody said" into "shipping
+          // was free" by the act of looking at it.
+          fulfillmentCost: order.fulfillmentCost,
           lines: order.items.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -145,7 +167,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
           customerName: w.customer.name,
           customerEmail: w.customer.email ?? '',
           b2bCustomerId: w.customer.id,
-          fulfillmentCost: toMinor(parsed.data.fulfillmentCost),
+          fulfillmentCost: fulfillmentCostToStore(parsed.data.fulfillmentCost),
           items: { create: w.items },
         },
       })

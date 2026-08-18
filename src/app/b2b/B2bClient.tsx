@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
-import { formatMoney, toMajor } from '@/lib/money'
+import { formatMoney, toMajor, toMajorOrNull } from '@/lib/money'
 import { useToast } from '@/components/toast/useToast'
 import type { Shop } from '@/components/filters/ShopFilter'
 import { CustomerModal } from './CustomerModal'
@@ -18,6 +18,8 @@ export type Customer = {
   vatPercent: number
   email: string | null
   note: string | null
+  /** Their account number in Visma. Null = not linked, so nothing is imported. */
+  vismaCustomerNumber: string | null
   active: boolean
   priceCount: number
   orderCount: number
@@ -34,6 +36,14 @@ type B2bOrder = {
   netSales: number
   customer: string | null
   figures: { profit: number } | null
+  /**
+   * Imported from Visma, which makes it READ-ONLY here. Visma is its source and
+   * the next fifteen-minute run rewrites its money and its lines from the
+   * invoice — so an edit would silently revert and a delete would come back on
+   * the next upsert. The route refuses both; this is why the row stops offering
+   * them at all.
+   */
+  imported: boolean
 }
 
 /**
@@ -45,7 +55,65 @@ type B2bOrder = {
 const RECENT_DAYS = 365
 const day = (d: Date) => d.toISOString().slice(0, 10)
 
-export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
+/**
+ * What the last B2B sales import did, read from the database by the page.
+ *
+ * Null means no run has been recorded — a workspace with no Visma credentials,
+ * or one where the cron has not run since this shipped.
+ */
+export type ImportRun = {
+  ranAt: string
+  linked: number
+  read: number
+  imported: number
+  partial: boolean
+  error: string | null
+}
+
+/**
+ * One line saying what the import last did.
+ *
+ * It exists because every one of these numbers otherwise lived in the cron's
+ * JSON response, which nothing reads. "Refused on every run" and "there are no
+ * B2B invoices" are both just no new orders on this page, and a JUMP in
+ * `imported` — which is what a leak in the allowlist would look like — would be
+ * invisible too. A line, deliberately, not a dashboard: it is a health check on
+ * a feature that is supposed to be silent, and anything larger would compete
+ * with the orders it is reporting on.
+ */
+function ImportStatus({ run }: { run: ImportRun | null }) {
+  if (!run) return null
+
+  const when = new Date(run.ranAt).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+
+  // Worst news first: an error outranks a partial run, which outranks a count.
+  const body = run.error
+    ? `last import failed — ${run.error}`
+    : run.linked === 0
+      ? 'no customers are linked to Visma yet, so nothing is imported'
+      : `imported ${run.imported} of ${run.read} invoices from ${run.linked} linked ${
+          run.linked === 1 ? 'customer' : 'customers'
+        }${run.partial ? ', and did not reach the end — the rest arrive next run' : ''}`
+
+  return (
+    <p className={`mt-0.5 text-[11px] ${run.error ? 'text-warn' : 'text-muted'}`}>
+      Visma · {when} · {body}
+    </p>
+  )
+}
+
+export function B2bClient({
+  email,
+  shops,
+  importRun = null,
+}: {
+  email: string
+  shops: Shop[]
+  importRun?: ImportRun | null
+}) {
   const toast = useToast()
   const [shopId, setShopId] = useState('') // '' = every shop
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -132,7 +200,11 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
           customerId: d.customerId,
           placedAt: d.placedAt,
           shippingCharged: toMajor(d.shippingCharged),
-          fulfillmentCost: toMajor(d.fulfillmentCost),
+          // Null survives, because `toMajor(null)` is 0 and would be stored as
+          // a real zero — turning an order nobody costed into one whose
+          // shipping was free, on an action taken only to mark it refunded.
+          // See toMajorOrNull; `d` is untyped, so nothing else would catch it.
+          fulfillmentCost: toMajorOrNull(d.fulfillmentCost),
           status,
           lines: d.lines.map((l: { productId: string; quantity: number; unitPrice: number; discountValue: number; discountKind: string }) => ({
             productId: l.productId,
@@ -285,8 +357,13 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
 
         <div className="mt-6 rounded-[var(--radius-card)] border border-line bg-surface p-4">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
-            <div className="text-sm text-ink">
-              B2B orders <span className="text-[11px] text-muted">· last 12 months</span>
+            <div>
+              <div className="text-sm text-ink">
+                B2B orders <span className="text-[11px] text-muted">· last 12 months</span>
+              </div>
+              {/* Beside the orders it is reporting on, so "nothing new here" and
+                  "the import has been failing for a week" stop looking alike. */}
+              <ImportStatus run={importRun} />
             </div>
             <div className="flex items-center gap-2">
               <Link
@@ -348,6 +425,14 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                         {o.figures ? formatMoney(o.figures.profit, o.currency) : '—'}
                       </td>
                       <td className="relative px-3 py-3 text-right">
+                        {/* Nothing to offer on an imported order: the route
+                            refuses an edit and a delete, and the next run would
+                            undo either one. Say where it came from rather than
+                            leaving an unexplained empty cell. */}
+                        {o.imported && (
+                          <span className="text-[11px] text-faint">From Visma</span>
+                        )}
+                        {!o.imported && (
                         <button
                           onClick={() => { setOrderMenuFor(null); setEditingOrder({ id: o.id }) }}
                           aria-label={`Edit order ${o.number}`}
@@ -355,6 +440,8 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                         >
                           Edit
                         </button>
+                        )}
+                        {!o.imported && (
                         <button
                           aria-label={`Actions for ${o.number}`}
                           onClick={() => setOrderMenuFor(orderMenuFor === o.id ? null : o.id)}
@@ -362,6 +449,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                         >
                           ⋯
                         </button>
+                        )}
                         {orderMenuFor === o.id && (
                           <div className="absolute right-3 z-10 mt-1 w-36 rounded-[var(--radius-control)] border border-line bg-surface py-1 text-left shadow-lg">
                             <button

@@ -22,8 +22,37 @@ const Body = z.object({
   vatPercent: z.number().min(0).max(100).default(0),
   email: z.string().nullable().optional(),
   note: z.string().nullable().optional(),
+  /** Their account number in Visma. Blank = not linked; see the schema field. */
+  vismaCustomerNumber: z.string().nullable().optional(),
   prices: z.array(Price).default([]),
 })
+
+/**
+ * Trimmed, or null when there is nothing there.
+ *
+ * A trailing space would match no Visma customer and look exactly like a
+ * customer who simply has no invoices — the failure the import cannot report,
+ * because "no invoices for them" is the normal case.
+ */
+export function cleanVismaNumber(raw: string | null | undefined): string | null {
+  return raw?.trim() || null
+}
+
+/**
+ * Which unique index a duplicate hit, in a sentence worth showing.
+ *
+ * Two of them can fire on this table now, and they mean completely different
+ * things: a name clash is "you already added them", while a Visma number clash
+ * is "that ERP account is linked elsewhere, and linking it twice would import
+ * each of its invoices as two orders". Reporting the name clash for both sends
+ * whoever typed it looking for a customer that is not there.
+ */
+export function duplicateMessage(e: Prisma.PrismaClientKnownRequestError): string {
+  const target = String(e.meta?.target ?? '')
+  return target.includes('vismaCustomerNumber')
+    ? 'Another customer is already linked to that Visma customer number'
+    : 'That shop already has a customer with this name'
+}
 
 /**
  * Every product priced for a customer must belong to that customer's shop.
@@ -86,6 +115,7 @@ export async function GET(req: Request) {
             vatPercent: c.vatPercent,
             email: c.email,
             note: c.note,
+            vismaCustomerNumber: c.vismaCustomerNumber,
             active: c.active,
             priceCount: c._count.prices,
             orderCount: t?._count._all ?? 0,
@@ -125,6 +155,7 @@ export async function POST(req: Request) {
         vatPercent: d.vatPercent,
         email: d.email?.trim() || null,
         note: d.note?.trim() || null,
+        vismaCustomerNumber: cleanVismaNumber(d.vismaCustomerNumber),
         prices: {
           create: d.prices.map((p) => ({ productId: p.productId, unitPrice: toMinor(p.unitPrice) })),
         },
@@ -139,10 +170,7 @@ export async function POST(req: Request) {
     if (e instanceof RangeError)
       return NextResponse.json({ error: e.message }, { status: 400, headers: NO_STORE })
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
-      return NextResponse.json(
-        { error: 'That shop already has a customer with this name' },
-        { status: 409, headers: NO_STORE },
-      )
+      return NextResponse.json({ error: duplicateMessage(e) }, { status: 409, headers: NO_STORE })
     console.error(e)
     return NextResponse.json({ error: 'Could not save the customer' }, { status: 500, headers: NO_STORE })
   }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { CostsClient } from './CostsClient'
 import { ToastProvider } from '@/components/toast/ToastProvider'
@@ -21,8 +21,32 @@ describe('CostsClient with no shops (the live production state)', () => {
   // This page shows no "Loading…" text — it loads as four skeleton rows.
   const skeletons = (container: HTMLElement) => container.querySelectorAll('.skeleton')
 
+  /**
+   * There are no products to fetch without a shop, but the shipping-rates
+   * section fetches its list unconditionally — so without a stub these two
+   * tests fire a real request at the jsdom origin and quietly depend on nothing
+   * answering there. Stubbed the way every other describe in this file does.
+   */
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.startsWith('/api/shipping-rates')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ rates: [] }) } as unknown as Response)
+        }
+        return Promise.reject(new Error(`CostsClient.test: unexpected fetch to ${url}`))
+      }),
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  // Wrapped, like every other render in this file: the shipping-rates section
+  // raises toasts, and app/layout.tsx wraps every page in a ToastProvider.
   it('stops loading instead of spinning forever', async () => {
-    const { container } = render(<CostsClient email="admin@test.local" shops={[]} />)
+    const { container } = renderWithToast(<CostsClient email="admin@test.local" shops={[]} />)
 
     // The bug: loading starts true and load() bails before clearing it, so the
     // skeleton rows shimmer for ever and the page lies about its state.
@@ -32,7 +56,7 @@ describe('CostsClient with no shops (the live production state)', () => {
   })
 
   it('says why the table is empty, and points at connecting a shop', async () => {
-    render(<CostsClient email="admin@test.local" shops={[]} />)
+    renderWithToast(<CostsClient email="admin@test.local" shops={[]} />)
 
     await waitFor(() => {
       expect(screen.getByText('No shops connected yet.')).toBeTruthy()
@@ -241,8 +265,13 @@ describe('CostsClient — one row per product', () => {
       <CostsClient email="admin@test.local" shops={[SHOP]} sourceCurrency="NOK" />,
     )
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/products?source=1')
+    // Found rather than indexed: the shipping-rates section on the same page
+    // fetches too, and a child effect runs before its parent's.
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith('/api/products')),
+      ).toEqual(['/api/products?source=1'])
+    })
   })
 
   it('still offers each webshop on its own', async () => {
@@ -291,7 +320,166 @@ describe('CostsClient — one row per product', () => {
 
     renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} sourceCurrency={null} />)
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/products?shopId=shop-1')
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith('/api/products')),
+      ).toEqual(['/api/products?shopId=shop-1'])
+    })
+  })
+})
+
+/**
+ * "Maybe its easier if we just add an average unit cost we pay per shipping
+ * depending on the supplier" — the client's own words. This section is where
+ * that figure gets typed, on the page he already types costs on.
+ */
+describe('CostsClient — shipping cost per unit', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const RATE = {
+    id: 'rate-1',
+    sku: 'PANPIZPRO',
+    perUnit: 12000,
+    currency: 'NOK',
+    effectiveFrom: '2026-01-01T00:00:00.000Z',
+  }
+
+  /** Products resolve as ever; the shipping list resolves with `rates`. */
+  const withRates = (rates: (typeof RATE)[]) =>
+    vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/products?')) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({ products: [PRODUCT], currency: 'NOK' }),
+        } as unknown as Response)
+      }
+      if (url.startsWith('/api/shipping-rates')) {
+        if ((init?.method ?? 'GET') === 'GET') {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ rates }) } as unknown as Response)
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ ok: true }) } as unknown as Response)
+      }
+      return Promise.reject(new Error(`CostsClient.test: unexpected fetch to ${url}`))
+    })
+
+  it('lists a rate as what one unit costs, and from when', async () => {
+    vi.stubGlobal('fetch', withRates([RATE]))
+    const { container } = renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await waitFor(() => expect(screen.getByText('PANPIZPRO')).toBeTruthy())
+    expect(container.textContent).toContain('120.00')
+    expect(container.textContent).toContain('2026-01-01')
+  })
+
+  /**
+   * An empty list must not read as "shipping is free". It means every order is
+   * still charged the flat per-order rate, which is the truth and also the only
+   * reason this can ship before a single rate is typed.
+   */
+  it('says orders keep their per-order rate while nothing is entered', async () => {
+    vi.stubGlobal('fetch', withRates([]))
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    // The empty-state sentence itself, not a phrase anywhere on the page: the
+    // always-rendered help paragraph above the list also says "per-order", so a
+    // loose match went green with the empty state deleted outright.
+    expect(
+      screen.getByText('No per-unit rates yet. Every order is charged your per-order fulfillment rate.'),
+    ).toBeTruthy()
+  })
+
+  /**
+   * The advice above the list is "give every product on an order a rate, or
+   * none of them" — and for six live products it cannot be followed. They all
+   * carry the SKU "0", spanning a pizza oven and a massage chair, and the route
+   * refuses a rate against a key like that because one product's shipping would
+   * be charged to a completely different one.
+   *
+   * So the page has to say so. Without it, someone who cannot rate those
+   * products reads a page that gives impossible advice and refuses their entry
+   * with no explanation, and concludes the page is broken.
+   */
+  it('says why a product without a usable SKU cannot be given a rate', async () => {
+    vi.stubGlobal('fetch', withRates([]))
+    const { container } = renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    expect(container.textContent).toMatch(/needs its own SKU/i)
+  })
+
+  it('drops that sentence the moment a rate exists', async () => {
+    // The other half: a page that said "every order is charged your per-order
+    // rate" beside a list of per-unit rates would contradict itself.
+    vi.stubGlobal('fetch', withRates([RATE]))
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await waitFor(() => expect(screen.getByText('PANPIZPRO')).toBeTruthy())
+    expect(screen.queryByText(/No per-unit rates yet/)).toBeNull()
+  })
+
+  it('sends what was typed to the shipping route, then re-reads the list', async () => {
+    const fetchMock = withRates([])
+    vi.stubGlobal('fetch', fetchMock)
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} sourceCurrency="NOK" />)
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+
+    fireEvent.change(screen.getByLabelText('Shipping SKU'), { target: { value: 'panpizpro' } })
+    fireEvent.change(screen.getByLabelText(/Cost per unit/), { target: { value: '120' } })
+    fireEvent.change(screen.getByLabelText('Shipping from date'), { target: { value: '2026-01-01' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add shipping rate' }))
+
+    await waitFor(() => {
+      const posted = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === 'POST')
+      expect(posted).toBeTruthy()
+      expect(JSON.parse(String((posted![1] as RequestInit).body))).toEqual({
+        sku: 'panpizpro',
+        perUnit: 120,
+        currency: 'NOK',
+        effectiveFrom: '2026-01-01',
+      })
+    })
+
+    // Re-read, so the row the user just created appears without a page reload.
+    await waitFor(() => {
+      const gets = fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          String(url).startsWith('/api/shipping-rates') && ((init as RequestInit)?.method ?? 'GET') === 'GET',
+      )
+      expect(gets.length).toBeGreaterThan(1)
+    })
+  })
+
+  it('refuses to save a half-filled rate rather than posting a blank one', async () => {
+    const fetchMock = withRates([])
+    vi.stubGlobal('fetch', fetchMock)
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Shipping SKU'), { target: { value: 'PANPIZPRO' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add shipping rate' }))
+
+    expect(await screen.findByText(/SKU, a cost per unit and a from date/i)).toBeTruthy()
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit)?.method === 'POST')).toBe(false)
+  })
+
+  it('deletes a rate by its id', async () => {
+    const fetchMock = withRates([RATE])
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('confirm', () => true)
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await waitFor(() => expect(screen.getByText('PANPIZPRO')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /Delete the shipping rate for PANPIZPRO/ }))
+
+    await waitFor(() => {
+      const deleted = fetchMock.mock.calls.find(([, init]) => (init as RequestInit)?.method === 'DELETE')
+      expect(deleted).toBeTruthy()
+      expect(String(deleted![0])).toBe('/api/shipping-rates?id=rate-1')
+    })
   })
 })

@@ -5,9 +5,11 @@ import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
 import {
+  importVismaB2bSales,
   importVismaPurchaseOrders,
   importVismaReceivables,
   importVismaStock,
+  type VismaB2bSalesResult,
   type VismaImportResult,
   type VismaReceivablesResult,
   type VismaStockResult,
@@ -68,6 +70,25 @@ const SHIPMENTS_DEADLINE_MS = 275_000
 const ALERT_START_BY_MS = 280_000
 
 /**
+ * The B2B sales import is finished by this point in the run — genuinely, not
+ * merely stopped from starting more work.
+ *
+ * It makes one request per linked customer, three or four today, and the cost
+ * grows with every customer the client links. The Visma client clamps every
+ * request it sends — the token mint as well as the GET — to whatever is left of
+ * this deadline, exactly as `bring/client.ts` clamps the parcel poll, so
+ * nothing it does can outlive the number. That clamp is what makes this number
+ * mean anything: with the fixed 60-second ceiling alone, a request starting at
+ * 264.9s would return around 325s, overrun the 300s platform maxDuration, and
+ * take the parcel poll and the delivery alert down with it — the outcome this
+ * constant exists to prevent.
+ *
+ * Set before SHIPMENTS_DEADLINE_MS because whatever this stage leaves behind
+ * arrives on the next run, while an alert never sent is simply silent.
+ */
+const B2B_SALES_DEADLINE_MS = 265_000
+
+/**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
  * dashboard see new sales without anyone pressing a button.
  *
@@ -96,13 +117,43 @@ export async function GET(req: Request) {
   const results = await syncAllShops({ deadline: runStartedAt + SHOPS_DEADLINE_MS })
   const failed = results.filter((r) => !r.ok).map((r) => r.shopName)
 
+  // THE ORDER OF THE FOUR VISMA IMPORTS BELOW IS A DECISION. Do not reorder
+  // them for tidiness.
+  //
+  // One run makes roughly nine calls to Visma back to back, and the measured
+  // limit is that about ten quick calls earn a 429 which then holds for
+  // minutes. Whichever import goes last therefore meets the emptiest part of
+  // that window — and because the order is fixed and the calls before it are
+  // identical every run, it does not lose at random: it loses the SAME rows
+  // every time, forever, while every gate stays green.
+  //
+  // B2B sales goes FIRST for two reasons. It is the smallest and most bounded
+  // read of the four — one request per linked customer, three or four today.
+  // And it is the only one whose absence produces a WRONG revenue picture
+  // rather than a stale operational one: stock and purchase orders can be a
+  // quarter of an hour out of date without misleading anyone about money,
+  // while a B2B sale that never arrives is simply missing from the totals.
+  //
+  // Only linked customers are read: Visma raises an invoice for every webshop
+  // order too, and those already arrive from WooCommerce - importing one would
+  // count that sale twice. With nobody linked this costs no HTTP call at all.
+  //
+  // Best-effort like everything after the shops: the ERP being unreachable must
+  // never fail the store sync, and each result carries its own error for the
+  // response below.
+  let b2bSales: VismaB2bSalesResult = {
+    configured: false, linked: 0, read: 0, imported: 0, skipped: [], partial: false, error: null,
+  }
+  try {
+    b2bSales = await importVismaB2bSales({ deadline: runStartedAt + B2B_SALES_DEADLINE_MS })
+  } catch {
+    // importVismaB2bSales does not throw, but a caller that assumes so is one
+    // refactor away from a failed sync.
+  }
+
   // Purchase orders from Visma. Two bounded calls against a company holding a
   // couple of hundred orders in total, so it costs the run almost nothing, and
   // it goes here rather than behind the greedy parcel poll for that reason.
-  //
-  // Best-effort like everything after the shops: the ERP being unreachable must
-  // never fail the store sync, and the result carries its own error for the
-  // response below.
   let visma: VismaImportResult = {
     configured: false, read: 0, imported: 0, skipped: [], truncated: false, error: null,
   }
@@ -140,7 +191,7 @@ export async function GET(req: Request) {
   try {
     receivables = await importVismaReceivables()
   } catch {
-    // It does not throw either. Same belt and braces as the two above.
+    // It does not throw either. Same belt and braces as the others.
   }
 
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
@@ -231,5 +282,20 @@ export async function GET(req: Request) {
     receivablesExcluded: receivables.excluded,
     receivablesPartial: receivables.partial,
     receivablesError: receivables.error,
+    // Reported per reason, like the purchase-order import: 'not a linked
+    // customer' is the count of invoices the allowlist held back, and a
+    // collapse in it would be the first sign of a leak in the guard against
+    // counting every webshop order twice.
+    //
+    // This response is a RECORD, not a warning. Nothing reads it, so nothing
+    // here is seen by a person — which is why importVismaB2bSales also writes
+    // its outcome to B2bImportRun and the B2B page shows it. That line carries
+    // the headline (linked, read, imported, partial, error); these per-reason
+    // counts are for whoever goes looking after it.
+    b2bSalesLinked: b2bSales.linked,
+    b2bSalesImported: b2bSales.imported,
+    b2bSalesSkipped: b2bSales.skipped,
+    b2bSalesPartial: b2bSales.partial,
+    b2bSalesError: b2bSales.error,
   })
 }

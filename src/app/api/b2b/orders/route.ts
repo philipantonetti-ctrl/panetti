@@ -29,8 +29,17 @@ export const OrderBody = z.object({
   placedAt: z.string(),
   /** MAJOR units, customer currency, ex VAT. */
   shippingCharged: z.number().min(0).default(0),
-  /** MAJOR units, SHOP currency — it is a cost, and costs live there. */
-  fulfillmentCost: z.number().min(0).default(0),
+  /**
+   * MAJOR units, SHOP currency — it is a cost, and costs live there.
+   *
+   * Nullable, and NOT defaulted to 0: a stored zero wins outright in the engine
+   * (`fulfillmentCost ?? perSku` short-circuits on it), so an order saved with
+   * this box blank could never be costed by the per-SKU shipping rates, while
+   * an imported order that leaves the column null is. "Shipping was free" and
+   * "nobody said" have to be different values or the two populations of B2B
+   * order are costed by different rules with nothing saying so.
+   */
+  fulfillmentCost: z.number().min(0).nullable().optional(),
   lines: z.array(Line).min(1),
 })
 
@@ -97,6 +106,16 @@ export async function buildOrderWrite(d: OrderInput) {
   }
 }
 
+/**
+ * What goes in the column: minor units, or null when nobody said.
+ *
+ * Shared with PATCH so an edit cannot disagree with a create about which of the
+ * two "blank" means.
+ */
+export function fulfillmentCostToStore(typed: number | null | undefined): number | null {
+  return typed === null || typed === undefined ? null : toMinor(typed)
+}
+
 /** Write the ticked prices. Shared with PATCH, which does the same on edit. */
 export async function saveStandingPrices(
   tx: Prisma.TransactionClient,
@@ -151,7 +170,7 @@ export async function POST(req: Request) {
               customerName: w.customer.name,
               customerEmail: w.customer.email ?? '',
               b2bCustomerId: w.customer.id,
-              fulfillmentCost: toMinor(parsed.data.fulfillmentCost),
+              fulfillmentCost: fulfillmentCostToStore(parsed.data.fulfillmentCost),
               items: { create: w.items },
             },
             select: { id: true, number: true },

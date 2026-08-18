@@ -16,8 +16,19 @@ vi.mock('@/lib/fx/rates', () => ({ ensureRates: vi.fn() }))
 const importVismaPurchaseOrders = vi.fn(async () => ({
   configured: false, read: 0, imported: 0, skipped: [], truncated: false, error: null,
 }))
+const importVismaB2bSales = vi.fn(async (opts?: { deadline?: number }) => ({
+  configured: true, linked: 2, read: 40, imported: 3,
+  skipped: [{ reason: 'not a linked customer', count: 37 }],
+  // Honours the deadline the way the real one does, so a route that forgot to
+  // pass a usable one cannot look identical to a route that passed a good one.
+  partial: opts?.deadline !== undefined && Date.now() > opts.deadline,
+  error: null,
+}))
 vi.mock('@/lib/visma/import', () => ({
   importVismaPurchaseOrders: () => importVismaPurchaseOrders(),
+  // Arguments forwarded, not dropped: the deadline this route hands it is the
+  // only thing keeping a request-per-customer read inside the platform ceiling.
+  importVismaB2bSales: (...args: [{ deadline?: number }?]) => importVismaB2bSales(...args),
 }))
 
 const { GET } = await import('./route')
@@ -32,6 +43,8 @@ const call = (auth?: string) =>
 const REAL = process.env.CRON_SECRET
 
 beforeEach(() => {
+  importVismaB2bSales.mockClear()
+  importVismaPurchaseOrders.mockClear()
   syncAllShops.mockReset()
   syncAllShops.mockResolvedValue([
     { shopId: 's1', shopName: 'Panetti Norway', ok: true, ordersSynced: 3 },
@@ -90,6 +103,80 @@ describe('the scheduled sync endpoint', () => {
   it('claims the full platform duration, never less', async () => {
     const { maxDuration } = await import('./route')
     expect(maxDuration).toBe(300)
+  })
+
+  /**
+   * The B2B sales import runs on this schedule too, and its counts have to be
+   * visible: `linked` is the difference between "nobody has linked a customer
+   * yet" and "the import is broken", and the skip reasons are what would show a
+   * webshop house account starting to be treated as a sale — the one failure
+   * here that silently doubles revenue.
+   */
+  it('imports B2B sales and reports what it did, per reason', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(importVismaB2bSales).toHaveBeenCalledTimes(1)
+    expect(body).toMatchObject({
+      b2bSalesLinked: 2,
+      b2bSalesImported: 3,
+      b2bSalesPartial: false,
+      b2bSalesError: null,
+    })
+    expect(body.b2bSalesSkipped).toEqual([{ reason: 'not a linked customer', count: 37 }])
+  })
+
+  /**
+   * ORDER IS A DECISION HERE, NOT AN ACCIDENT. One run makes roughly nine Visma
+   * calls back to back, and the spec's own measurement is that about ten quick
+   * calls earn a 429 which then holds for minutes. Whichever import goes last
+   * meets the empty end of that window — and because the call order is fixed
+   * and the preceding calls are identical every run, it loses the SAME
+   * customers every time, importing nothing while every gate stays green.
+   *
+   * B2B sales goes first because it is the smallest and most bounded read of
+   * the four, and because it is the only one whose absence produces a WRONG
+   * revenue picture rather than a stale operational one: stock and purchase
+   * orders can be a quarter of an hour out of date without misleading anyone
+   * about money.
+   */
+  it('reads B2B sales before the other Visma imports, not last into a spent rate limit', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    await call('Bearer right-secret')
+
+    expect(importVismaB2bSales.mock.invocationCallOrder[0])
+      .toBeLessThan(importVismaPurchaseOrders.mock.invocationCallOrder[0])
+  })
+
+  /**
+   * It starts after the shops may already have spent 240 of the 300 seconds,
+   * and it makes one request per linked customer. Unbounded, a slow ERP at the
+   * 60-second request timeout, once across every customer the client links, would
+   * run past the platform ceiling and kill the parcel poll and the delivery
+   * alert that follow it.
+   */
+  it('bounds the B2B sales import inside the function ceiling', async () => {
+    process.env.CRON_SECRET = 'shhh'
+    const before = Date.now()
+    await call('Bearer shhh')
+
+    const [opts] = importVismaB2bSales.mock.calls[0] as [{ deadline: number }]
+    expect(opts.deadline).toBeGreaterThan(before)
+    // Comfortably under maxDuration, and before the parcel poll's own budget so
+    // the greedy stage after it is not starved.
+    expect(opts.deadline).toBeLessThan(before + 275_000)
+  })
+
+  // Best-effort like every stage after the shops: the ERP having a bad morning
+  // must never take the store sync down with it.
+  it('survives the B2B sales import failing outright', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    importVismaB2bSales.mockRejectedValueOnce(new Error('ERP down'))
+
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(body.ok).toBe(true)
+    expect(body.b2bSalesImported).toBe(0)
   })
 
   // Without a deadline the run keeps starting stores until the platform kills

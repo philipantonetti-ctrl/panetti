@@ -35,7 +35,7 @@ function order(over: Partial<EngineOrder> = {}): EngineOrder {
     total: 117500, // what the customer was charged, incl VAT
     ambassadorId: null,
     commissionRate: 0,
-    items: [{ productId: 'p1', quantity: 2, lineNetTotal: 90000 }],
+    items: [{ productId: 'p1', sku: 'PANPIZPRO', quantity: 2, lineNetTotal: 90000 }],
     ...over,
   }
 }
@@ -228,7 +228,9 @@ describe('computeMetrics', () => {
   it('costs an order with a product that has no cost entered as zero, not as a crash', () => {
     const res = computeMetrics({
       shops: [shops[0]],
-      orders: [order({ items: [{ productId: 'unknown-product', quantity: 3, lineNetTotal: 90000 }] })],
+      orders: [
+        order({ items: [{ productId: 'unknown-product', sku: 'UNKNOWN', quantity: 3, lineNetTotal: 90000 }] }),
+      ],
       expenses: [], costs, rates,
       displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
     })
@@ -381,6 +383,125 @@ describe('computeMetrics', () => {
     expect(
       computeMetrics({ ...input, orders: [order({ fulfillmentCost: 0 })] }).total.fulfillment,
     ).toBe(0)
+  })
+
+  describe('per-SKU shipping', () => {
+    // 300 kr per order, flat, from January — what this shop has always charged.
+    const flat = {
+      shops: [shops[0]],
+      expenses: [],
+      costs,
+      rates,
+      displayCurrency: 'NOK',
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-01'),
+      fulfillmentRates: new Map([
+        ['no', [{ perOrder: 30000, effectiveFrom: new Date('2026-01-01') }]],
+      ]),
+      orders: [order({ items: [{ productId: 'p1', sku: 'PANPIZPRO', quantity: 2, lineNetTotal: 90000 }] })],
+    }
+
+    /**
+     * THE regression. Every installation is this one until somebody types a
+     * rate, and there is real trading history in these numbers: if per-SKU
+     * shipping changes what an existing order cost, past profit has been
+     * silently rewritten and nobody notices until the client disputes a figure.
+     *
+     * Pinned to LITERALS worked out from the fixtures, never to another
+     * computeMetrics call. There is no "before this feature existed" to compare
+     * against inside this file, so a comparison between two runs of the same
+     * code would go green whenever both halves broke the same way — which is
+     * exactly how the null-vs-0 bug would break them. These numbers are the only
+     * witness to what the engine used to answer:
+     *
+     *   cogs        2 x (100.00 + 10.00 handling)          = 22000
+     *   netRevenue  900.00 net sales + 50.00 shipping      = 95000
+     *   fulfillment the shop's flat 300.00 per order       = 30000
+     *   netProfit   95000 - 22000 - 30000, no fee, no ads  = 43000
+     *
+     * Not just fulfillment, because a wrong shipping figure moves net profit and
+     * margin too — and those are what the client reads.
+     */
+    it('leaves an installation with no SKU rates exactly as it was', () => {
+      const t = computeMetrics(flat).total
+
+      expect(t.fulfillment).toBe(30000)
+      expect(t.cogs).toBe(22000)
+      expect(t.netRevenue).toBe(95000)
+      expect(t.netProfit).toBe(43000)
+      expect(t.netMargin).toBeCloseTo(43000 / 95000, 6)
+    })
+
+    /**
+     * Three spellings of "nobody has typed a rate": no field at all, an empty
+     * map, and an explicit undefined. Worth pinning that they are one path —
+     * `loadMetricsInput` always passes a map, tests pass none, and a caller
+     * somewhere will one day pass undefined.
+     *
+     * This is deliberately NOT the regression guard above and must not be
+     * mistaken for one: all three sides run the same code, so any bug that
+     * broke them would break them identically and this would stay green.
+     */
+    it('treats an absent, an empty and an undefined rate table as the same thing', () => {
+      const absent = computeMetrics(flat)
+
+      expect(computeMetrics({ ...flat, shippingRates: new Map() })).toEqual(absent)
+      expect(computeMetrics({ ...flat, shippingRates: undefined })).toEqual(absent)
+    })
+
+    it('leaves an order alone when the rates that exist are for other SKUs', () => {
+      // Rates get filled in gradually. An order of something nobody has costed
+      // yet must keep the figure it has always had, not fall to zero.
+      const before = computeMetrics(flat)
+      const other = new Map([
+        ['MAZADVCOM', [{ perUnit: 90000, currency: 'NOK', effectiveFrom: new Date('2026-01-01') }]],
+      ])
+      expect(computeMetrics({ ...flat, shippingRates: other })).toEqual(before)
+      // Spelled out as well as compared, so this cannot pass by both sides
+      // being broken the same way.
+      expect(computeMetrics({ ...flat, shippingRates: other }).total.fulfillment).toBe(30000)
+    })
+
+    it('charges per unit once the SKU has a rate, so fifty ovens cost more than one', () => {
+      const perSku = new Map([
+        ['PANPIZPRO', [{ perUnit: 12000, currency: 'NOK', effectiveFrom: new Date('2026-01-01') }]],
+      ])
+      // 2 units x 120 kr, not the flat 300 kr the shop charges every order.
+      expect(computeMetrics({ ...flat, shippingRates: perSku }).total.fulfillment).toBe(24000)
+    })
+
+    it('ignores a per-SKU rate that starts after the order was placed', () => {
+      const future = new Map([
+        ['PANPIZPRO', [{ perUnit: 12000, currency: 'NOK', effectiveFrom: new Date('2026-08-01') }]],
+      ])
+      expect(computeMetrics({ ...flat, shippingRates: future }).total.fulfillment).toBe(30000)
+    })
+
+    it('keeps the hand-entered cost winning over the per-SKU one', () => {
+      const perSku = new Map([
+        ['PANPIZPRO', [{ perUnit: 12000, currency: 'NOK', effectiveFrom: new Date('2026-01-01') }]],
+      ])
+      const overridden = {
+        ...flat,
+        shippingRates: perSku,
+        orders: [
+          order({
+            fulfillmentCost: 45000,
+            items: [{ productId: 'p1', sku: 'PANPIZPRO', quantity: 2, lineNetTotal: 90000 }],
+          }),
+        ],
+      }
+      expect(computeMetrics(overridden).total.fulfillment).toBe(45000)
+    })
+
+    it('does not read a rate typed in another currency as this shop’s', () => {
+      // 90.00 EUR read as 90.00 NOK is an elevenfold error in the wrong
+      // direction. The order keeps its flat rate until someone types a NOK one.
+      const eur = new Map([
+        ['PANPIZPRO', [{ perUnit: 9000, currency: 'EUR', effectiveFrom: new Date('2026-01-01') }]],
+      ])
+      expect(computeMetrics({ ...flat, shippingRates: eur }).total.fulfillment).toBe(30000)
+    })
   })
 
   // Placed 1 July, refunded 8 July. Look at each day and at both together.
