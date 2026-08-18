@@ -44,10 +44,25 @@ const STATUS: Record<string, string> = {
  *
  * Handed to `new Date()` unchanged, that string is parsed as the READER's local
  * time: the same parcel would sit at 12:19 on Vercel and 04:19 on a laptop in
- * Manila, and a delivery median would move with whoever ran the query. Read as
- * UTC it is identical everywhere, and exactly right in production, where the
- * server clock is UTC. The same call src/lib/inventory/load.ts makes about UTC
- * days, for the same reason.
+ * Manila, and a delivery median would move with whoever ran the query. Reading
+ * it as UTC at least makes the answer identical everywhere.
+ *
+ * UNVERIFIED ASSUMPTION, stated plainly rather than dressed up as a decision:
+ * we do not know that DHL MEANS UTC. Checked against a full live response
+ * 2026-08-18 — there is no zone field anywhere in the payload (no offset, no
+ * tz key, nothing on the event or the shipment), so it cannot be read off the
+ * data. If DHL is reporting local time at the event's location, every one of
+ * these is two hours early for a European summer parcel.
+ *
+ * Impact is bounded: everything downstream is measured in DAYS, so a two-hour
+ * error only changes an answer for a parcel whose event falls within two hours
+ * of midnight. Worth knowing, not worth guessing a correction for — applying a
+ * +2 that turns out to be wrong is worse than a known 2-hour uncertainty.
+ *
+ * To settle it: fetch a parcel that is moving RIGHT NOW and compare its newest
+ * event to the current UTC time. A timestamp AHEAD of UTC proves local time in
+ * one observation. Could not be done on 2026-08-18 — every DHL parcel we hold
+ * was already delivered, so no event was recent enough to discriminate.
  *
  * A timestamp that already carries a zone is left alone.
  */

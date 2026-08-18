@@ -104,42 +104,70 @@ describe('linkDhlShipments', () => {
     expect(row.handedInAt).toEqual(new Date('2026-08-12T00:00:00Z'))
   })
 
-  it('records a parcel already delivered without inventing a delivery date', async () => {
-    // We know THAT it arrived, not WHEN. A guessed date would go straight into
-    // the delivery-time median and stay wrong forever.
+  /**
+   * The export says a parcel IS delivered. It never says WHEN — and DHL's
+   * tracking API does, to the second. So the file supplies the fact and the API
+   * supplies the moment, and this file stamps nothing.
+   *
+   * `terminal` is the whole hinge. It used to be set true here, which took the
+   * parcel out of the poller's `terminal: false` selection permanently — so the
+   * real timestamp could never arrive, and the comment promising it would was
+   * describing something the code prevented. Left false, one poll fills the
+   * date in and nextPollFor makes the parcel terminal on its own.
+   */
+  it('leaves a delivered parcel pollable, so DHL can supply the real date', async () => {
     const r = await linkDhlShipments(
       [parcel({ trackingNumber: `${PREFIX}00002`, status: 'DELIVERED' })],
       NOW,
     )
     expect(r.linked).toBe(1)
     const row = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: `${PREFIX}00002` } })
-    expect(row.availableAt).toBeNull()
+    // Known from the file, so recorded.
     expect(row.outcome).toBe('DELIVERED')
-    expect(row.terminal).toBe(true)
+    // Not known from the file, so not invented.
+    expect(row.availableAt).toBeNull()
+    // And still reachable by the poller, which is where the date comes from.
+    expect(row.terminal).toBe(false)
+    expect(row.nextPollAt).not.toBeNull()
   })
 
-  it('stamps the delivery moment when a parcel we already hold turns delivered', async () => {
+  it('does not stamp the import moment when a parcel we hold turns delivered', async () => {
+    // The old rule wrote `now` here and called it "the moment we learned". It
+    // then fed the delivery-time median as though it were the moment the
+    // customer got the parcel, which is a different and later thing.
     const t = `${PREFIX}00003`
     await linkDhlShipments([parcel({ trackingNumber: t, status: 'INTRANSIT' })], NOW)
-    expect((await db.shipment.findUniqueOrThrow({ where: { trackingNumber: t } })).availableAt).toBeNull()
 
     const later = new Date('2026-08-16T10:00:00Z')
     await linkDhlShipments([parcel({ trackingNumber: t, status: 'DELIVERED' })], later)
 
     const row = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: t } })
-    expect(row.availableAt).toEqual(later)
+    expect(row.availableAt).toBeNull()
     expect(row.outcome).toBe('DELIVERED')
+    expect(row.terminal).toBe(false)
   })
 
-  it('never moves a delivery date once it has one', async () => {
+  it('never moves a delivery date once DHL has supplied one', async () => {
     const t = `${PREFIX}00004`
     await linkDhlShipments([parcel({ trackingNumber: t, status: 'INTRANSIT' })], NOW)
-    const first = new Date('2026-08-16T10:00:00Z')
-    await linkDhlShipments([parcel({ trackingNumber: t, status: 'DELIVERED' })], first)
-    await linkDhlShipments([parcel({ trackingNumber: t, status: 'DELIVERED' })], new Date('2026-08-20T10:00:00Z'))
+
+    // What the poller writes after asking DHL: a real, observed timestamp.
+    const real = new Date('2026-08-13T13:58:00Z')
+    await db.shipment.update({
+      where: { trackingNumber: t },
+      data: { availableAt: real, outcome: 'DELIVERED', terminal: true },
+    })
+
+    // Re-importing yesterday's file must not overwrite it, nor resurrect a
+    // parcel the poller has already finished with.
+    await linkDhlShipments(
+      [parcel({ trackingNumber: t, status: 'DELIVERED' })],
+      new Date('2026-08-20T10:00:00Z'),
+    )
 
     const row = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: t } })
-    expect(row.availableAt).toEqual(first)
+    expect(row.availableAt).toEqual(real)
+    expect(row.terminal).toBe(true)
   })
 
   it('refuses a shop that is not delivery-tracked, and says which', async () => {
