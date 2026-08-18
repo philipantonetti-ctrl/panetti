@@ -1,6 +1,7 @@
 import { VOIDED_STATUSES } from '../metrics/types'
 import { daysBetween, deadlineFor } from './days'
 import { promiseOn, type PromisePoint } from './promise'
+import { trackingUrl } from './tracking-url'
 
 export type DeliveryState =
   | 'UNTRACKED' // this shop is not delivery-tracked at all
@@ -15,6 +16,8 @@ export type DeliveryState =
 
 export type DeliveryShipment = {
   trackingNumber: string
+  /** Who is carrying it. Decides where its tracking link points. */
+  carrier: string
   bookedAt: Date | null
   handedInAt: Date | null
   availableAt: Date | null
@@ -48,8 +51,16 @@ export type OrderDelivery = {
   promiseDays: number | null
   late: boolean
   daysOver: number | null
-  trackingNumbers: string[]
+  /**
+   * The order's parcels, each with the link that actually reaches its own
+   * carrier. Carries the built URL rather than the carrier name so that the
+   * three screens showing these — the delivery page, the Slack alert and the
+   * Orders column — cannot each get the mapping slightly different.
+   */
+  parcels: Parcel[]
 }
+
+export type Parcel = { number: string; url: string }
 
 const VOIDED = new Set<string>(VOIDED_STATUSES)
 
@@ -85,8 +96,11 @@ export function deliveryFor(
   fallbackTz: string,
   now: Date,
 ): OrderDelivery {
-  const trackingNumbers = order.shipments.map((s) => s.trackingNumber)
-  const base = { ...EMPTY, trackingNumbers }
+  const parcels = order.shipments.map((s) => ({
+    number: s.trackingNumber,
+    url: trackingUrl(s.trackingNumber, s.carrier),
+  }))
+  const base = { ...EMPTY, parcels }
 
   // Three ways an order is simply not our business to judge. Each is separate
   // because each reads differently on screen, and "we are not tracking this"
@@ -171,6 +185,6 @@ export function deliveryFor(
     promiseDays,
     late,
     daysOver,
-    trackingNumbers,
+    parcels,
   }
 }

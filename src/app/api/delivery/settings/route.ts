@@ -80,6 +80,12 @@ export async function GET() {
         // Never the secrets themselves, only whether they exist.
         hasBringKey: Boolean(row?.bringApiKey),
         hasSlackWebhook: Boolean(row?.slackWebhookUrl),
+        // DHL's key is a deployment secret in Vercel rather than a stored
+        // setting, so there is no row to read — but the page still has to be
+        // able to say which of the two carriers is actually connected. Read
+        // exactly as syncShipments reads it, so the panel and the poller can
+        // never disagree about whether DHL is on.
+        hasDhlKey: Boolean(process.env.DHL_API_KEY),
         lastSyncAt: row?.lastSyncAt?.toISOString() ?? null,
         lastError: row?.lastError ?? null,
         // Its own field, separate from the Bring sync's lastError above — see

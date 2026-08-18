@@ -8,8 +8,9 @@ import { DateFilter } from '@/components/filters/DateFilter'
 import { UploadBox } from './UploadBox'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { Preset } from '@/lib/dates'
+import { trackingUrl } from '@/lib/delivery/tracking-url'
 import type { DeliveryStats, CountryStat } from '@/lib/delivery/stats'
-import type { DeliveryState } from '@/lib/delivery/view'
+import type { DeliveryState, Parcel } from '@/lib/delivery/view'
 
 type LateOrder = {
   id: string
@@ -19,10 +20,10 @@ type LateOrder = {
   daysOver: number
   promiseDays: number | null
   state: DeliveryState
-  trackingNumbers: string[]
+  parcels: Parcel[]
 }
 
-type UnlinkedParcel = { trackingNumber: string; lastStatus: string | null }
+type UnlinkedParcel = { trackingNumber: string; url: string; lastStatus: string | null }
 
 type ImportRow = {
   id: string
@@ -87,7 +88,15 @@ function formatPct(v: number | null): string {
   return `${Math.round(v * 100)}%`
 }
 
-const trackingUrl = (n: string) => `https://tracking.bring.com/tracking/${encodeURIComponent(n)}`
+/**
+ * Every link on this page is built on the server, beside the data, so the page
+ * never has to know which carrier a number belongs to — except this one. Import
+ * refusals are parsed out of TrackingImport.unmatched here in the browser, and
+ * that file is the warehouse's Bring report (lib/bring/import.ts), so its
+ * numbers are Bring's by construction. Named rather than defaulted, so the
+ * assumption is visible if a second kind of import ever arrives.
+ */
+const refusalUrl = (n: string) => trackingUrl(n, 'BRING')
 
 const STATE_LABEL: Record<DeliveryState, string> = {
   UNTRACKED: 'Not tracked',
@@ -505,18 +514,18 @@ function LateList({
                   </td>
                   <td className="px-5 py-2.5">
                     <div className="flex flex-wrap gap-x-2 gap-y-1">
-                      {r.trackingNumbers.length === 0 ? (
+                      {r.parcels.length === 0 ? (
                         <span className="text-muted">{DASH}</span>
                       ) : (
-                        r.trackingNumbers.map((t) => (
+                        r.parcels.map((p) => (
                           <a
-                            key={t}
-                            href={trackingUrl(t)}
+                            key={p.number}
+                            href={p.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-accent hover:underline"
                           >
-                            {t}
+                            {p.number}
                           </a>
                         ))
                       )}
@@ -585,7 +594,7 @@ function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: num
                   <tr key={p.trackingNumber} className="border-b border-line last:border-b-0 hover:bg-panel">
                     <td className="px-5 py-2.5">
                       <a
-                        href={trackingUrl(p.trackingNumber)}
+                        href={p.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-accent hover:underline"
@@ -704,7 +713,7 @@ function ImportsList({ items }: { items: ImportRow[] }) {
                                 {r.trackingNumber && (
                                   <>
                                     <a
-                                      href={trackingUrl(r.trackingNumber)}
+                                      href={refusalUrl(r.trackingNumber)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="num text-accent hover:underline"

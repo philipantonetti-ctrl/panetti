@@ -3,7 +3,7 @@ import { VOIDED_STATUSES } from '../metrics/types'
 import { postSlack } from '../slack/notify'
 import { getSetting } from '../settings'
 import { getDeliveryConfig } from './config'
-import { deliveryFor, type DeliveryState } from './view'
+import { deliveryFor, type DeliveryState, type Parcel } from './view'
 
 export type LateAlert = {
   id: string
@@ -13,7 +13,7 @@ export type LateAlert = {
   daysOver: number
   promiseDays: number | null
   state: DeliveryState
-  trackingNumbers: string[]
+  parcels: Parcel[]
 }
 
 /** Lines printed before the message summarises the rest. Slack limits payloads. */
@@ -58,9 +58,10 @@ export function alertMessage(late: LateAlert[], appUrl: string): string {
   const lines = late.slice(0, MAX_LINES).map((l) => {
     const where = l.country ? ` to ${l.country}` : ''
     const promise = l.promiseDays === null ? '' : ` (promise ${l.promiseDays} days)`
-    const track = l.trackingNumbers
-      .map((n) => ` <https://tracking.bring.com/tracking/${n}|track>`)
-      .join('')
+    // Each parcel carries its own link. This line used to hardcode Bring's
+    // tracking site, so every late DHL parcel sent the reader to a page that
+    // has never heard of the number — and this alert is the link he clicks.
+    const track = l.parcels.map((p) => ` <${p.url}|track>`).join('')
     return (
       `• <${appUrl}/orders?q=${encodeURIComponent(l.number)}|${l.number}> ` +
       `${l.shop}${where} — ${l.daysOver} days over${promise}. ${SAYS[l.state]}.${track}`
@@ -129,7 +130,9 @@ export async function flushDeliveryAlerts(
         shop: { select: { name: true, timezone: true, deliveryTrackingFrom: true } },
         shipments: {
           select: {
-            trackingNumber: true, bookedAt: true, handedInAt: true,
+            // See lib/delivery/load.ts: carrier is what points the alert's
+            // "track" link at the carrier actually holding the parcel.
+            trackingNumber: true, carrier: true, bookedAt: true, handedInAt: true,
             availableAt: true, collectedAt: true, outcome: true, lastStatus: true,
           },
         },
@@ -168,7 +171,7 @@ export async function flushDeliveryAlerts(
       daysOver: view.daysOver ?? 0,
       promiseDays: view.promiseDays,
       state: view.state,
-      trackingNumbers: view.trackingNumbers,
+      parcels: view.parcels,
     })
   }
 

@@ -27,7 +27,7 @@ const order = (over: Partial<DeliveryOrder> = {}): DeliveryOrder => ({
 })
 
 const parcel = (over = {}) => ({
-  trackingNumber: 'T1', bookedAt: null, handedInAt: null,
+  trackingNumber: 'T1', carrier: 'BRING', bookedAt: null, handedInAt: null,
   availableAt: null, collectedAt: null, outcome: null, lastStatus: null,
   ...over,
 })
@@ -70,7 +70,27 @@ describe('deliveryFor', () => {
       ],
     }), promises, OSLO, NOW)
     expect(v.availableAt).toEqual(new Date('2026-08-07T09:00:00Z'))
-    expect(v.trackingNumbers).toEqual(['T1', 'T2'])
+    expect(v.parcels.map((p) => p.number)).toEqual(['T1', 'T2'])
+  })
+
+  /**
+   * One order can hold parcels from both carriers, so the link cannot be a
+   * property of the page — it has to be a property of the parcel. Before this,
+   * every number on every screen went to Bring's tracking site, so a DHL
+   * number led to a page that has never heard of it.
+   */
+  it('links each parcel to its own carrier, never all to Bring', () => {
+    const v = deliveryFor(order({
+      shipments: [
+        parcel({ trackingNumber: 'B1', carrier: 'BRING' }),
+        parcel({ trackingNumber: 'D1', carrier: 'DHL' }),
+      ],
+    }), promises, OSLO, NOW)
+
+    expect(v.parcels).toEqual([
+      { number: 'B1', url: 'https://tracking.bring.com/tracking/B1' },
+      { number: 'D1', url: 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=D1' },
+    ])
   })
 
   it('is not available while one parcel of an order is still moving', () => {
