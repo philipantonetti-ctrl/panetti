@@ -28,6 +28,17 @@ export type CostPoint = {
 
 export type EngineOrderItem = {
   productId: string
+  /**
+   * What was bought, as the object rather than the listing. `productId` is
+   * shop-scoped, so the same physical item is up to nine ids; a per-unit
+   * shipping rate is typed once against the SKU and has to reach all nine.
+   *
+   * Required rather than optional, the same call the `costCurrency` field below
+   * makes: an OrderItem always carries a SKU, and a loader that quietly omitted
+   * it would make every per-SKU shipping rate silently stop applying — a change
+   * in profit with nothing on screen to explain it.
+   */
+  sku: string
   quantity: number
   lineNetTotal: number // after discount, excl VAT
 }

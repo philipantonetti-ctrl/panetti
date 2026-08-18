@@ -61,7 +61,7 @@ describe('dailySeries', () => {
       voidedAt: voidedOn ? new Date(voidedOn) : undefined,
       grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0, taxTotal: 2500, total: 12500,
       ambassadorId: null, commissionRate: 0,
-      items: [{ productId: 'p1', quantity: 1, lineNetTotal: 10000 }],
+      items: [{ productId: 'p1', sku: 'PANPIZPRO', quantity: 1, lineNetTotal: 10000 }],
     }
   }
 

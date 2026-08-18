@@ -5,7 +5,9 @@ import { zoneDayEndUtc, zoneDayStartUtc } from '../tz'
 import { buildRateTable } from '../metrics/fx'
 import { ensureRates, loadRates } from '../fx/rates'
 import { attributedSpend, relevantAdCurrencies } from '../ads/attribution'
+import { normaliseSku } from '../inventory/sku'
 import { getSetting } from '../settings'
+import type { ShippingPoint } from '../inventory/shipping'
 import type { CostBook, EngineAdSpend, EngineExpense, EngineOrder, EngineShop, Recurrence } from '../metrics/types'
 import type { MetricsInput } from '../metrics/engine'
 
@@ -72,7 +74,9 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   )
 
   // Select ONLY the columns the engine reads — a big range is thousands of rows,
-  // so every unused column (SKU, names, prices) is wasted transfer and hydration.
+  // so every unused column (names, prices) is wasted transfer and hydration.
+  // The line's SKU is now one the engine does read: it is what a per-unit
+  // shipping rate is keyed by, and a product id could not be, being shop-scoped.
   const orderRows = await db.order.findMany({
     where: {
       shopId: { in: shopIds },
@@ -98,7 +102,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
       b2bCustomerId: true,
       fulfillmentCost: true,
       ambassadorId: true,
-      items: { select: { productId: true, quantity: true, lineNetTotal: true } },
+      items: { select: { productId: true, sku: true, quantity: true, lineNetTotal: true } },
     },
   })
 
@@ -125,6 +129,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     commissionRate: o.ambassadorId ? rateByAmbassador.get(o.ambassadorId) ?? 0 : 0,
     items: o.items.map((i) => ({
       productId: i.productId,
+      sku: i.sku,
       quantity: i.quantity,
       lineNetTotal: i.lineNetTotal,
     })),
@@ -162,6 +167,19 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     const list = fulfillmentRates.get(r.shopId) ?? []
     list.push({ perOrder: r.perOrder, effectiveFrom: r.effectiveFrom })
     fulfillmentRates.set(r.shopId, list)
+  }
+
+  // Per-unit shipping, keyed by the SKU it was typed against. Every row, not
+  // just the SKUs on this page's orders: there are a few dozen of them against
+  // thousands of order lines, so an IN clause would cost more than it saved.
+  // Keys are normalised because the resolver looks them up that way — a rate
+  // typed as "panpizpro" must reach an order line reading "PANPIZPRO".
+  const shippingRates = new Map<string, ShippingPoint[]>()
+  for (const r of await db.shippingRate.findMany()) {
+    const sku = normaliseSku(r.sku)
+    const list = shippingRates.get(sku) ?? []
+    list.push({ perUnit: r.perUnit, currency: r.currency, effectiveFrom: r.effectiveFrom })
+    shippingRates.set(sku, list)
   }
 
   // Ad spend, so the engine can charge marketing to profit. Resolved per
@@ -206,6 +224,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     from,
     to,
     fulfillmentRates,
+    shippingRates,
     processingFee,
     timezone: tz,
     shopTimezones,

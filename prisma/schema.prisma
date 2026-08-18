@@ -267,6 +267,35 @@ model FulfillmentRate {
   @@index([shopId, effectiveFrom])
 }
 
+// What one unit of a product costs us to ship, so an order of fifty pizza ovens
+// no longer carries the same shipping cost as an order of one — which is all
+// FulfillmentRate above can express.
+//
+// Keyed by SKU, not productId, for the same reason SupplyItem is: the cost
+// belongs to the physical object, not to a Norwegian listing of it. Product is
+// shop-scoped, so the same item is up to nine rows and the cost would have to be
+// typed nine times to be true once.
+//
+// Effective-dated, exactly as ProductCost and FulfillmentRate are, and for the
+// same reason: a rate typed today must never rewrite what an order cost last
+// year. The resolver takes the newest row with effectiveFrom <= the order's
+// date, so history is answered by the row that was in force then.
+//
+// `currency` is carried per row because SKU is not shop-scoped and so there is
+// no shop currency to inherit — unlike FulfillmentRate.perOrder, which is always
+// its shop's. A rate is only in force for an order whose costs are held in the
+// SAME currency; see src/lib/inventory/shipping.ts for why we never guess.
+model ShippingRate {
+  id            String   @id @default(cuid())
+  sku           String
+  perUnit       Int // minor units, `currency`
+  currency      String
+  effectiveFrom DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([sku, effectiveFrom])
+}
+
 // Per-gateway fee rates. Orders are charged the fee of the gateway the stores
 // actually route through (Dintero Checkout); other rows are stored settings.
 model ProcessingFee {

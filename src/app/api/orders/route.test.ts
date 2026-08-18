@@ -42,7 +42,24 @@ async function wipe() {
   // country code below — a bare '*' would race the delivery route suite's own
   // '*' fixture in the shared database (see src/app/api/delivery/route.integration.test.ts).
   await db.deliveryPromise.deleteMany({ where: { country: PROMISE_COUNTRY } })
+  // ShippingRate hangs off a SKU, not a shop, so there is no `contains: MARK`
+  // to sweep it by. Cleaned by the file-exclusive SKU prefix below instead —
+  // and by prefix rather than by id, so a run that crashes before its
+  // afterEach cannot leave a rate behind that silently re-prices another
+  // file's orders.
+  // insensitive because a SKU is matched case-insensitively everywhere else
+  // (normaliseSku) and this file deliberately types one in lower case. A
+  // case-sensitive sweep left that row behind, and the next run then read a
+  // rate that was supposed to be absent — the leak this comment exists to stop.
+  await db.shippingRate.deleteMany({
+    where: { sku: { startsWith: SHIP_SKU_PREFIX, mode: 'insensitive' } },
+  })
 }
+
+// Owned by this file alone. A ShippingRate leaked under a SKU another test uses
+// (GUN-1, CHAIR-1) would change what that test's orders cost to ship.
+const SHIP_SKU_PREFIX = 'ZZORDTEST'
+const SHIP_SKU = `${SHIP_SKU_PREFIX}-OVEN`
 
 // Reserved for this file's delivery-state fixtures only — never the real
 // wildcard '*', which src/app/api/delivery/route.integration.test.ts owns.
@@ -334,6 +351,56 @@ describe('B2B orders in the order list', () => {
 
     const onlyWebshop = await (await get(`from=2026-07-01&to=2026-07-31&shops=${shopId}&source=webshop`)).json()
     expect(onlyWebshop.orders.map((o: { number: string }) => o.number)).toEqual(['9001'])
+  })
+
+  it('charges shipping per unit by SKU, and leaves an uncosted SKU exactly as it was', async () => {
+    await asAdmin()
+    // 15.00 per order, flat, from March 1st — what this shop has always charged.
+    await db.fulfillmentRate.create({
+      data: { shopId: shopA, perOrder: 1500, effectiveFrom: new Date('2026-03-01') },
+    })
+    await order(shopA, prodA, 'A-perunit', '2026-03-25T12:00:00Z', [
+      { name: 'Pizza oven', sku: SHIP_SKU, quantity: 3 },
+    ])
+    await order(shopA, prodA, 'A-uncosted', '2026-03-25T12:00:00Z', [
+      { name: 'Massage Gun', sku: 'GUN-1', quantity: 3 },
+    ])
+    // Hand-entered: 9.99 is what shipping this one actually cost, and no rate
+    // of any kind may talk over it.
+    await db.order.create({
+      data: {
+        shopId: shopA, externalId: 'A-typed', number: 'A-typed',
+        placedAt: new Date('2026-03-25T12:00:00Z'), status: 'completed', currency: 'DKK',
+        grossSales: 10000, discountTotal: 0, netSales: 10000, shippingCharged: 0,
+        taxTotal: 0, total: 10000, fulfillmentCost: 999,
+        items: { create: [{ productId: prodA, name: 'Pizza oven', sku: SHIP_SKU, quantity: 3, unitPrice: 5000, lineNetTotal: 5000 }] },
+      },
+    })
+
+    const day = `from=2026-03-25&to=2026-03-25&shops=${shopA}`
+    const shipping = (body: { orders: { number: string; figures: { fulfillment: number } }[] }, number: string) =>
+      body.orders.find((x) => x.number === number)!.figures.fulfillment
+
+    // Before a single rate is typed — the state every installation is in on the
+    // day this ships. Every order must carry the figure it always has.
+    const before = await (await get(day)).json()
+    expect(shipping(before, 'A-perunit')).toBe(1500)
+    expect(shipping(before, 'A-uncosted')).toBe(1500)
+    expect(shipping(before, 'A-typed')).toBe(999)
+
+    // Typed in lower case on purpose: a rate must reach the order line whatever
+    // case either was written in.
+    await db.shippingRate.create({
+      data: {
+        sku: SHIP_SKU.toLowerCase(), perUnit: 400, currency: 'DKK',
+        effectiveFrom: new Date('2026-03-01'),
+      },
+    })
+
+    const after = await (await get(day)).json()
+    expect(shipping(after, 'A-perunit')).toBe(1200) // 3 units x 4.00, not one flat 15.00
+    expect(shipping(after, 'A-uncosted')).toBe(1500) // nobody has costed this SKU; unmoved
+    expect(shipping(after, 'A-typed')).toBe(999) // the manual figure still wins
   })
 
   it('charges a B2B order no gateway fee and its own shipping cost', async () => {

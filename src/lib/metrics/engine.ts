@@ -4,6 +4,7 @@ import { pct, sum } from '../money'
 import { costOn } from './costs'
 import { expenseInRange } from './expenses'
 import { crossConvert } from './fx'
+import { ratesInCurrency, shippingCostOf, type ShippingPoint } from '../inventory/shipping'
 import {
   EXCLUDED_STATUSES,
   ZERO_FIGURES,
@@ -32,6 +33,15 @@ export type MetricsInput = {
   to: Date
   /** shopId -> that shop's fulfillment rate history (any order). */
   fulfillmentRates?: Map<string, FulfillmentPoint[]>
+  /**
+   * normalised SKU -> that SKU's per-unit shipping rate history, in every
+   * currency anyone has typed one in.
+   *
+   * Absent, or holding nothing that covers an order, means the order keeps the
+   * flat `fulfillmentRates` figure it has always had — which is what makes this
+   * safe to ship before a single rate exists. See lib/inventory/shipping.ts.
+   */
+  shippingRates?: Map<string, ShippingPoint[]>
   /** The one global gateway fee, or null when none is configured. */
   processingFee?: ProcessingFeeRule | null
   /**
@@ -152,6 +162,26 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     else spendByShop.set(row.shopId, [row])
   }
 
+  /**
+   * The per-SKU shipping rates an order in a given cost currency may read.
+   *
+   * A SKU is not shop-scoped, so a `ShippingRate` names the currency it was
+   * typed in and only the rows matching the order's own cost currency are in
+   * force for it — see `ratesInCurrency` for why the others are dropped rather
+   * than converted. Narrowed once per currency and cached, not once per order:
+   * dailySeries runs this whole function for every day in the range, so work
+   * done per order is work done range-length times over.
+   */
+  const skuRates = input.shippingRates ?? new Map<string, ShippingPoint[]>()
+  const narrowed = new Map<string, Map<string, ShippingPoint[]>>()
+  const skuRatesIn = (currency: string) => {
+    const cached = narrowed.get(currency)
+    if (cached) return cached
+    const made = ratesInCurrency(skuRates, currency)
+    narrowed.set(currency, made)
+    return made
+  }
+
   const byShop: ShopFigures[] = shops.map((shop) => {
     const shopOrders = live.filter((e) => e.order.shopId === shop.id)
 
@@ -175,13 +205,30 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const shippingCharged = sum(shopOrders.map((e) => e.sign * conv(e.order.shippingCharged, e.order)))
     const taxes = sum(shopOrders.map((e) => e.sign * conv(e.order.taxTotal, e.order)))
 
-    // Fulfillment: what this order actually cost to ship when it says so — a
-    // hand-entered B2B order does — otherwise the shop's rate on its day.
+    // Fulfillment, most specific answer first: what this order actually cost to
+    // ship when it says so — a hand-entered B2B order does — then what its SKUs
+    // cost per unit, and only then the shop's flat per-order rate on its day.
+    //
+    // The middle step is null, never 0, when no line has a rate: an installation
+    // that has typed none behaves EXACTLY as it did before this existed, which
+    // matters because these numbers are years of real trading history and a
+    // change in resolution would rewrite past profit in silence.
     const ratesForShop = input.fulfillmentRates?.get(shop.id) ?? []
     const fulfillment = sum(
-      shopOrders.map((e) =>
-        e.sign * convCost(e.order.fulfillmentCost ?? fulfillmentOn(ratesForShop, e.order.placedAt), e.order),
-      ),
+      shopOrders.map((e) => {
+        const perSku = shippingCostOf(
+          e.order.items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+          skuRatesIn(e.order.costCurrency),
+          e.order.placedAt,
+        )
+        return (
+          e.sign *
+          convCost(
+            e.order.fulfillmentCost ?? perSku ?? fulfillmentOn(ratesForShop, e.order.placedAt),
+            e.order,
+          )
+        )
+      }),
     )
 
     // Gateway fee: % of the CHARGED total (incl. VAT — that is what the gateway

@@ -41,6 +41,14 @@ function ProductImage({ product }: { product: Product }) {
   )
 }
 
+type ShippingRate = {
+  id: string
+  sku: string
+  perUnit: number
+  currency: string
+  effectiveFrom: string
+}
+
 /**
  * The combined view: one row per product, taken from the stock-source shops.
  *
@@ -251,6 +259,8 @@ export function CostsClient({
             </tbody>
           </table>
         </section>
+
+        <ShippingRates shops={shops} sourceCurrency={sourceCurrency} />
       </PageBody>
 
       {editing && (
@@ -265,6 +275,224 @@ export function CostsClient({
         />
       )}
     </AppShell>
+  )
+}
+
+const SHIP_INPUT =
+  'rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint'
+
+/**
+ * What one unit of a SKU costs us to ship — the client's own request: "add an
+ * average unit cost we pay per shipping depending on the supplier ... so it
+ * calculate the shipping cost we had to pay based on the SKU and quantity the
+ * customer bought".
+ *
+ * It lives on this page rather than beside the flat per-order rate in Settings ->
+ * Fulfillment because it is a per-product cost, typed against a SKU, by whoever
+ * is already costing products. It follows the same conventions as that flat rate
+ * all the same: list, add, remove, against /api/shipping-rates, which is
+ * /api/fulfillment verb for verb.
+ */
+function ShippingRates({
+  shops,
+  sourceCurrency,
+}: {
+  shops: Shop[]
+  sourceCurrency: string | null
+}) {
+  const toast = useToast()
+  const [rates, setRates] = useState<ShippingRate[]>([])
+  const [sku, setSku] = useState('')
+  const [perUnit, setPerUnit] = useState('')
+  const [currency, setCurrency] = useState(sourceCurrency ?? shops[0]?.currency ?? 'NOK')
+  const [from, setFrom] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [reload, setReload] = useState(0)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/shipping-rates')
+      .then(async (r) => {
+        const loaded = r.ok ? ((await r.json()) as { rates: ShippingRate[] }).rates : null
+        if (alive && loaded) setRates(loaded)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [reload])
+
+  // Exactly the currencies the shops trade in, because a rate is only in force
+  // for an order whose costs are held in the SAME currency — see
+  // lib/inventory/shipping.ts. Offering a currency no shop uses would let
+  // someone type a rate that could never apply to anything.
+  const shopCurrencies = [...new Set(shops.map((s) => s.currency))]
+  const currencyOptions = shopCurrencies.length > 0 ? shopCurrencies : [currency]
+
+  async function add() {
+    if (!sku.trim() || !perUnit || !from) {
+      toast.error('Enter a SKU, a cost per unit and a from date')
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/shipping-rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku, perUnit: Number(perUnit), currency, effectiveFrom: from }),
+      })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the rate')
+        return
+      }
+      toast.success('Shipping rate saved')
+      setSku('')
+      setPerUnit('')
+      setReload((n) => n + 1)
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(false) // always — the button must never stick on "Saving…"
+    }
+  }
+
+  async function remove(rate: ShippingRate) {
+    if (
+      !window.confirm(
+        `Delete the shipping rate for ${rate.sku} from ${rate.effectiveFrom.slice(0, 10)}? Its orders go back to the rate that applied before it, or to your per-order rate.`,
+      )
+    )
+      return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/shipping-rates?id=${rate.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not delete the rate')
+        return
+      }
+      toast.success('Rate deleted')
+      setReload((n) => n + 1)
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="mt-6 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+      <div className="border-b border-line px-5 py-4">
+        <h2 className="text-[14px] font-semibold text-ink">Shipping cost per unit</h2>
+        {/* The empty state has to say what happens INSTEAD, or a blank list
+            reads as "shipping is free". It is not: every order still carries the
+            flat per-order rate from Settings -> Fulfillment until its SKU has a
+            rate here, which is what makes this safe to fill in one SKU at a
+            time. The currency sentence is the other half a reader needs before
+            typing: a rate applies to the webshops trading in its currency, and
+            reading a EUR figure as NOK would be an elevenfold error. */}
+        <p className="mt-0.5 text-[12px] text-muted">
+          What one unit of a product costs us to ship, so an order of fifty costs more to ship
+          than an order of one. An order with no rate for its SKU keeps your flat per-order
+          fulfillment rate. A rate applies to the webshops that trade in its currency, from the
+          date you choose — history before that date keeps the rate that applied then.
+        </p>
+      </div>
+
+      <div className="divide-y divide-line">
+        {rates.length === 0 ? (
+          <p className="px-5 py-6 text-center text-[12px] text-faint">
+            No per-unit rates yet. Every order is charged your per-order fulfillment rate.
+          </p>
+        ) : (
+          rates.map((r) => (
+            <div key={r.id} className="flex items-center gap-3 px-5 py-2.5 text-[13px]">
+              <span className="num font-medium text-ink">{r.sku}</span>
+              <span className="num ml-auto text-muted">
+                {formatMoney(r.perUnit, r.currency)} per unit
+              </span>
+              <span className="num text-faint">from {r.effectiveFrom.slice(0, 10)}</span>
+              <button
+                onClick={() => void remove(r)}
+                disabled={busy}
+                aria-label={`Delete the shipping rate for ${r.sku} from ${r.effectiveFrom.slice(0, 10)}`}
+                className="px-1.5 text-[16px] font-semibold text-muted hover:text-loss disabled:opacity-50"
+              >
+                ⋯
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="grid items-end gap-3 border-t border-line px-5 py-4 sm:grid-cols-4">
+        <div>
+          <label htmlFor="ship-sku" className="block text-[11px] font-medium text-muted">
+            Shipping SKU
+          </label>
+          <input
+            id="ship-sku"
+            value={sku}
+            placeholder="PANPIZPRO"
+            onChange={(e) => setSku(e.target.value)}
+            className={`mt-1 w-full ${SHIP_INPUT}`}
+          />
+        </div>
+        <div>
+          <label htmlFor="ship-cost" className="block text-[11px] font-medium text-muted">
+            Cost per unit ({currency})
+          </label>
+          <input
+            id="ship-cost"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="120"
+            value={perUnit}
+            onChange={(e) => setPerUnit(e.target.value)}
+            className={`mt-1 w-full ${SHIP_INPUT}`}
+          />
+        </div>
+        <div>
+          <label htmlFor="ship-currency" className="block text-[11px] font-medium text-muted">
+            Currency
+          </label>
+          <select
+            id="ship-currency"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className={`mt-1 w-full ${SHIP_INPUT}`}
+          >
+            {currencyOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="ship-from" className="block text-[11px] font-medium text-muted">
+            Shipping from date
+          </label>
+          <input
+            id="ship-from"
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className={`mt-1 w-full ${SHIP_INPUT}`}
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-end border-t border-line px-5 py-3">
+        <button
+          onClick={() => void add()}
+          disabled={busy}
+          className="rounded-[var(--radius-control)] bg-ink px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-60"
+        >
+          {busy ? 'Saving…' : 'Add shipping rate'}
+        </button>
+      </div>
+    </section>
   )
 }
 
