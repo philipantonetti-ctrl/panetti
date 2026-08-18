@@ -57,6 +57,49 @@ function authorised(req: Request): boolean {
 type Attachment = { Name?: unknown; Content?: unknown; ContentID?: unknown }
 
 /**
+ * Who sent this, and is it who we expect?
+ *
+ * The URL token above authenticates POSTMARK, not the person who emailed. Until
+ * this existed nothing read `From` at all, so anyone who learned the inbound
+ * address could post a spreadsheet straight into the shipment data — and that
+ * address has to be given to the warehouse for any of this to work, so it
+ * cannot stay secret forever.
+ *
+ * A WARNING, never a refusal, and that is the whole design decision. As of
+ * 2026-08-18 the warehouse has never sent a single email: Postmark's own record
+ * shows three inbound messages ever, all internal tests. So the first real
+ * report is precisely the one most likely to arrive from an address slightly
+ * different from the one we were told, and refusing it would drop the file this
+ * feature has been waiting weeks for. Importing it and saying so loudly costs
+ * nothing and still surfaces the surprise, on the one screen built to show it.
+ *
+ * Unset means unchecked. Nobody has configured a sender yet, and an
+ * unconfigured guard must not start flagging every ordinary morning.
+ *
+ * A sender we cannot read is not called unexpected either — we would be
+ * asserting something we do not know. Postmark always sends `From`, so in
+ * practice this only covers a malformed payload.
+ *
+ * Case-insensitive: mail addresses are not case sensitive, and a mailer that
+ * upper-cases the domain must not raise an alarm every day.
+ */
+function senderWarning(body: { From?: unknown; FromFull?: { Email?: unknown } }): string | null {
+  const expected = process.env.WAREHOUSE_SENDER?.trim().toLowerCase()
+  if (!expected) return null
+
+  const raw =
+    typeof body?.FromFull?.Email === 'string'
+      ? body.FromFull.Email
+      : typeof body?.From === 'string'
+        ? body.From
+        : ''
+  const actual = raw.trim().toLowerCase()
+  if (!actual || actual === expected) return null
+
+  return `Imported, but sent from ${actual} instead of ${expected}. Check who sent this.`
+}
+
+/**
  * Is this part of the message BODY rather than something enclosed with it?
  *
  * Postmark puts inline images in the same `Attachments` array as real files —
@@ -128,12 +171,15 @@ export async function POST(req: Request) {
   if (!authorised(req))
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401, headers: NO_STORE })
 
-  let body: { Attachments?: unknown }
+  let body: { Attachments?: unknown; From?: unknown; FromFull?: { Email?: unknown } }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Expected JSON' }, { status: 400, headers: NO_STORE })
   }
+
+  // Per email, not per attachment — one sender sends the whole message.
+  const oddSender = senderWarning(body)
 
   const attachments = Array.isArray(body.Attachments) ? (body.Attachments as Attachment[]) : []
   const results: { filename: string; linked?: number; error?: string }[] = []
@@ -207,6 +253,24 @@ export async function POST(req: Request) {
     try {
       const r = await importWarehouseFile(buf, filename, 'EMAIL', { deadline })
       results.push({ filename, linked: r.linked })
+
+      // Onto the import's OWN row, so the Imports list stays one line per file:
+      // what arrived, whether it worked, and anything odd about it. Written
+      // after the import rather than before because only now is there a row to
+      // write on.
+      //
+      // Best-effort, exactly like recordRefusal above: a note about the sender
+      // must never turn a successful import into a 500 that makes Postmark
+      // redeliver a file we have already taken.
+      //
+      // Only the success path. When the import throws it has already recorded
+      // its own reason, and that reason is what an operator needs first — a
+      // sender note would overwrite the thing that actually went wrong.
+      if (oddSender) {
+        await db.trackingImport
+          .update({ where: { id: r.importId }, data: { error: oddSender } })
+          .catch(() => {})
+      }
     } catch (e) {
       // importWarehouseFile guards every step that can fail — parsing,
       // Bring, matching, the Shipment and TrackingImport writes — and
