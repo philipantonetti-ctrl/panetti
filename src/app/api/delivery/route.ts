@@ -6,7 +6,7 @@ import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { getSetting } from '@/lib/settings'
 import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
-import { loadDelivery } from '@/lib/delivery/load'
+import { loadDelivery, type LoadedDelivery } from '@/lib/delivery/load'
 import { deliveryStats } from '@/lib/delivery/stats'
 import { carrierName, trackingUrl } from '@/lib/delivery/tracking-url'
 
@@ -58,20 +58,45 @@ export async function GET(req: Request) {
     // "50", on the one section whose whole job is to make a linking outage
     // visible.
     const lateMatching = rows.filter((r) => r.view.late)
-    const lateTotal = lateMatching.length
-    const late = lateMatching
-      .sort((a, b) => (b.view.daysOver ?? 0) - (a.view.daysOver ?? 0))
-      .slice(0, LATE_LIMIT)
-      .map((r) => ({
-        id: r.order.id,
-        number: r.order.number,
-        shop: r.order.shopName,
-        country: r.order.shippingCountry || null,
-        daysOver: r.view.daysOver ?? 0,
-        promiseDays: r.view.promiseDays,
-        state: r.view.state,
-        parcels: r.view.parcels,
-      }))
+
+    /**
+     * Two lists, not one, because they are two different jobs.
+     *
+     * An order with a parcel that is overdue is chased with the CARRIER: there
+     * is a number, and somebody can go and ask where it is. An order past its
+     * promise with no parcel at all is chased with the WAREHOUSE: we are not
+     * saying it is late, only that no file has told us anything about it.
+     *
+     * Measured live 2026-08-18: ~120 late rows, SIX of them with a parcel. Run
+     * together, the six rows anyone could act on were invisible, and the other
+     * ~114 asserted a lateness the data cannot support — a missing file is not
+     * evidence of a missed promise.
+     *
+     * Split on the parcel rather than on state === 'NO_TRACKING': the parcel IS
+     * the thing that makes a row actionable, so it should be the thing the
+     * split reads.
+     */
+    const byUrgency = (a: LoadedDelivery, b: LoadedDelivery) =>
+      (b.view.daysOver ?? 0) - (a.view.daysOver ?? 0)
+
+    const toRow = (r: LoadedDelivery) => ({
+      id: r.order.id,
+      number: r.order.number,
+      shop: r.order.shopName,
+      country: r.order.shippingCountry || null,
+      daysOver: r.view.daysOver ?? 0,
+      promiseDays: r.view.promiseDays,
+      state: r.view.state,
+      parcels: r.view.parcels,
+    })
+
+    const chasable = lateMatching.filter((r) => r.view.parcels.length > 0)
+    const unfiled = lateMatching.filter((r) => r.view.parcels.length === 0)
+
+    const lateTotal = chasable.length
+    const late = chasable.sort(byUrgency).slice(0, LATE_LIMIT).map(toRow)
+    const awaitingFileTotal = unfiled.length
+    const awaitingFile = unfiled.sort(byUrgency).slice(0, LATE_LIMIT).map(toRow)
 
     const [unlinked, unlinkedTotal, imports, config] = await Promise.all([
       db.shipment.findMany({
@@ -113,6 +138,8 @@ export async function GET(req: Request) {
         stats,
         late,
         lateTotal,
+        awaitingFile,
+        awaitingFileTotal,
         // The link is built here, beside every other one, so the page never
         // has to know which carrier's site a number belongs to.
         unlinked: unlinked.map((s) => ({
