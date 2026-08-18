@@ -19,6 +19,32 @@ const consignment = (
   packageSet: [{ packageNumber, eventSet: events }],
 })
 
+/**
+ * WHICH STATUS WORDS ARE PROVEN, AND WHICH ARE ONLY DOCUMENTED.
+ *
+ * The events below are hand-made, so they prove the RULES — what each word does
+ * to a milestone — and not the WORDS themselves. If Bring's real string for a
+ * home delivery were something other than 'DELIVERED', every test here would
+ * still pass while no home-delivered parcel ever completed, and those parcels
+ * would sit past their promise forever with nothing to say why. That is not
+ * hypothetical: the identical failure was live on the DHL side until
+ * 2026-08-18, from a different cause.
+ *
+ * Seen in a real Bring response, so the word is certain:
+ *   PRE_NOTIFIED, HANDED_IN            __fixtures__/real-package.json
+ *   READY_FOR_PICKUP                   live api.bring.com, 2026-08-18 — the
+ *                                      clock-stop for a Nordic parcel, and the
+ *                                      one that most needed confirming
+ *   IN_TRANSIT, NOTIFICATION_SENT, TRANSPORT_TO_RECIPIENT, DEVIATION
+ *                                      seen, and correctly move no date
+ *
+ * NOT yet seen in any real response — documentation only:
+ *   DELIVERED, COLLECTED, RETURN, DELIVERED_SENDER, DELIVERY_CANCELLED
+ *
+ * To close the gap: track a parcel through to collection. The pickup-point
+ * parcel observed on 2026-08-18 will produce COLLECTED or DELIVERED when the
+ * customer picks it up, which settles the most important of the five.
+ */
 describe('milestonesFrom', () => {
   it('reads a pickup-point parcel: available on READY_FOR_PICKUP, collected later', () => {
     const m = milestonesFrom([
