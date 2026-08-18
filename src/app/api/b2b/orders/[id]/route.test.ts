@@ -103,6 +103,24 @@ describe('PATCH /api/b2b/orders/[id]', () => {
     expect(after.externalId).toBe('b2b:B-0001')
   })
 
+  /**
+   * The write half of the same rule POST follows. An edit — or a void, which
+   * goes through this route too — must not turn "nobody costed this" into
+   * "shipping was free", because a stored zero wins outright in the engine and
+   * puts the order permanently beyond the per-SKU shipping rates.
+   */
+  it('leaves the fulfillment cost null when the edit does not name one', async () => {
+    await asAdmin()
+    const id = await createOrder()
+
+    expect((await patch(id, {
+      customerId, placedAt: '2026-07-01',
+      lines: [{ productId, quantity: 2, unitPrice: 89 }],
+    })).status).toBe(200)
+
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).fulfillmentCost).toBeNull()
+  })
+
   it('can void an order', async () => {
     await asAdmin()
     const id = await createOrder()

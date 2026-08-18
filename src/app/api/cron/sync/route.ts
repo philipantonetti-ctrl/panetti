@@ -74,13 +74,14 @@ const ALERT_START_BY_MS = 280_000
  * merely stopped from starting more work.
  *
  * It makes one request per linked customer, three or four today, and the cost
- * grows with every customer the client links. `vismaGet` clamps each request to
- * whatever is left of this deadline, exactly as `bring/client.ts` clamps the
- * parcel poll, so a request cannot outlive it. That clamp is what makes this
- * number mean anything: with the fixed 60-second ceiling alone, a request
- * starting at 264.9s would return around 325s, overrun the 300s platform
- * maxDuration, and take the parcel poll and the delivery alert down with it —
- * the outcome this constant exists to prevent.
+ * grows with every customer the client links. The Visma client clamps every
+ * request it sends — the token mint as well as the GET — to whatever is left of
+ * this deadline, exactly as `bring/client.ts` clamps the parcel poll, so
+ * nothing it does can outlive the number. That clamp is what makes this number
+ * mean anything: with the fixed 60-second ceiling alone, a request starting at
+ * 264.9s would return around 325s, overrun the 300s platform maxDuration, and
+ * take the parcel poll and the delivery alert down with it — the outcome this
+ * constant exists to prevent.
  *
  * Set before SHIPMENTS_DEADLINE_MS because whatever this stage leaves behind
  * arrives on the next run, while an alert never sent is simply silent.

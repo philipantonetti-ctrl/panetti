@@ -167,4 +167,33 @@ describe('vismaRequestBudgetMs', () => {
     // rejected by AbortSignal.timeout rather than failing the request cleanly.
     expect(vismaRequestBudgetMs({ deadline: now - 1 }, now)).toBe(1)
   })
+
+  /**
+   * EVERY request, not just the GET. A cold token cache pays a mint first, so a
+   * clamp that covered only the GET would leave the claim "a request started
+   * near the budget's end cannot overrun" true of one call and false of the one
+   * that always comes before it — which is precisely the kind of comment
+   * outrunning its code that this clamp was added to stop.
+   */
+  it('clamps the token mint as well, which a cold cache always pays first', async () => {
+    const signals: (AbortSignal | null | undefined)[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        signals.push(init?.signal)
+        return String(url).includes('connect/token')
+          ? json({ access_token: 'tok', expires_in: 3600 })
+          : json([])
+      }),
+    )
+
+    await vismaGet(CREDS, 'controller/api/v1/purchaseorder', { deadline: Date.now() - 1 })
+
+    // The token call is the first one out. Given the 1ms floor it aborts almost
+    // at once; given the bare 60-second ceiling it never would.
+    const tokenSignal = signals[0]
+    expect(tokenSignal).toBeInstanceOf(AbortSignal)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(tokenSignal!.aborted).toBe(true)
+  })
 })

@@ -319,6 +319,50 @@ describe('B2bClient', () => {
     })
   })
 
+  /**
+   * THE ROUND TRIP MUST NOT INVENT A COST. Voiding an order reads it back and
+   * PATCHes it whole, and GET answers `null` for an order nobody costed.
+   * `toMajor` is `minor / 100`, so `toMajor(null)` is 0 — which passes
+   * validation and is stored as a REAL zero.
+   *
+   * That matters later rather than now: the order is voided at the moment of
+   * the write and a voided order earns nothing. But PATCH clears `voidedAt`
+   * when an order returns to completed, and from then on a stored zero wins
+   * outright in the engine — `fulfillmentCost ?? perSku` short-circuits — so
+   * the order can never again be costed by the per-SKU shipping rates and its
+   * profit is overstated by the flat rate, permanently.
+   */
+  it('leaves an order nobody costed uncosted when it is marked refunded', async () => {
+    const calls: { url: string; method?: string; body?: string }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method, body: init?.body as string | undefined })
+      if (url.includes('/api/b2b/customers'))
+        return new Response(JSON.stringify({ customers: [customer] }), { status: 200 })
+      if (url.includes('/api/b2b/orders/')) {
+        if ((init?.method ?? 'GET') === 'PATCH')
+          return new Response(JSON.stringify({ ok: true }), { status: 200 })
+        // An order nobody ever costed, exactly as GET now answers it.
+        return new Response(
+          JSON.stringify({ order: { ...b2bOrderDetail, fulfillmentCost: null } }),
+          { status: 200 },
+        )
+      }
+      return new Response(JSON.stringify({ orders: [b2bOrder], total: 1 }), { status: 200 })
+    }))
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /actions for B-0001/i }))
+    fireEvent.click(screen.getByRole('button', { name: /mark refunded/i }))
+
+    await waitFor(() => {
+      const patch = calls.find((c) => c.method === 'PATCH')
+      expect(patch).toBeTruthy()
+      // Null, not 0. "Nobody said" must survive a round trip taken for an
+      // entirely different reason.
+      expect(JSON.parse(patch!.body!).fulfillmentCost).toBeNull()
+    })
+  })
+
   it('asks before deleting, because the Dashboard moves', async () => {
     const calls: { url: string; method?: string }[] = []
     mockFetchCapturing(calls, [customer], [b2bOrder])

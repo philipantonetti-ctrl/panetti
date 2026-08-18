@@ -62,6 +62,7 @@ export function resetVismaTokenCache(): void {
 export async function vismaToken(
   creds: VismaCredentials,
   now: number = Date.now(),
+  opts: VismaRequestOpts = {},
 ): Promise<string> {
   // Keyed by client and tenant so a credential change is never served a stale token.
   const key = `${creds.clientId}:${creds.tenantId}`
@@ -77,7 +78,10 @@ export async function vismaToken(
       scope: SCOPE,
       tenant_id: creds.tenantId,
     }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    // Clamped like the GET below. A cold cache pays this mint FIRST, so a
+    // clamp covering only the GET would leave the deadline honoured by the
+    // second request and ignored by the one that always precedes it.
+    signal: AbortSignal.timeout(vismaRequestBudgetMs(opts)),
   })
 
   if (!res.ok) {
@@ -106,6 +110,15 @@ export type VismaRequestOpts = { deadline?: number }
  * exactly what the deadline exists to prevent. `bring/client.ts` clamps for
  * this reason and this is the same rule.
  *
+ * BOTH requests a call can make are clamped: the token mint and the GET. A cold
+ * cache pays the mint first, so covering only the GET would honour the deadline
+ * on the second request and ignore it on the one that always comes before.
+ * Each is clamped to what remains when IT starts, so the pair cannot together
+ * outlive the budget either.
+ *
+ * A caller that passes no deadline — the other three Visma imports — is
+ * unaffected and still gets the full ceiling.
+ *
  * Never below 1ms: an expired budget still has to be a timeout a caller can
  * pass to AbortSignal, and it is the caller's loop that stops, not this.
  */
@@ -119,7 +132,10 @@ export async function vismaGet<T>(
   path: string,
   opts: VismaRequestOpts = {},
 ): Promise<T> {
-  const token = await vismaToken(creds)
+  // The caller's budget covers the whole call, mint included. Each request is
+  // clamped to what is left when IT starts, so a slow mint leaves the GET the
+  // 1ms floor rather than a fresh minute of its own.
+  const token = await vismaToken(creds, Date.now(), opts)
   const res = await fetch(`${BASE}/${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(vismaRequestBudgetMs(opts)),

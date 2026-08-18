@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
-import { formatMoney, toMajor } from '@/lib/money'
+import { formatMoney, toMajor, toMajorOrNull } from '@/lib/money'
 import { useToast } from '@/components/toast/useToast'
 import type { Shop } from '@/components/filters/ShopFilter'
 import { CustomerModal } from './CustomerModal'
@@ -200,7 +200,11 @@ export function B2bClient({
           customerId: d.customerId,
           placedAt: d.placedAt,
           shippingCharged: toMajor(d.shippingCharged),
-          fulfillmentCost: toMajor(d.fulfillmentCost),
+          // Null survives, because `toMajor(null)` is 0 and would be stored as
+          // a real zero — turning an order nobody costed into one whose
+          // shipping was free, on an action taken only to mark it refunded.
+          // See toMajorOrNull; `d` is untyped, so nothing else would catch it.
+          fulfillmentCost: toMajorOrNull(d.fulfillmentCost),
           status,
           lines: d.lines.map((l: { productId: string; quantity: number; unitPrice: number; discountValue: number; discountKind: string }) => ({
             productId: l.productId,
