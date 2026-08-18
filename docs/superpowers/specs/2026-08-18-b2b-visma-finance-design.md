@@ -26,10 +26,10 @@ decision here and the rest follows from it.
 
 ### The evidence
 
-Open documents in Visma, `customerdocument?status=Open`. **This is the first
-page of 1000, not the whole ledger** — the page came back full, so more exist,
+Open documents in Visma, `customerdocument?status=Open`. **This was the first
+page of 1000, not the whole ledger** — the page came back full, so more existed,
 and every attempt to fetch page 2 was rate-limited (see below). The proportions
-are a sample, not a census, and the design does not depend on the exact totals:
+below are a sample, not a census:
 
 | group | docs | overdue | balance |
 |---|---|---|---|
@@ -45,6 +45,24 @@ and warning on them would produce 993 false alarms.
 The six named ones are real: Konfliktrådene, Halsnæs Kommune,
 Eriksdalstrafikskola, Nordic Acceleration Group AB, FRÜTEC GmbH, and one
 2023 balance from Hans Hoff Petersen.
+
+**What the first COMPLETE production import actually found**, once slice 3
+shipped and the cron paged the whole ledger on 2026-08-18 — recorded here
+because it is the number that matters and it is three and a half times the
+sample:
+
+| | |
+|---|---|
+| receivables imported | **21** |
+| overdue | **8** |
+| not yet due | 10 |
+| no due date | 3 |
+| overdue totals | 108 248 NOK, 49 998 SEK, 24 999 DKK, 5 423 EUR |
+
+Every one of the six above survived, joined by fifteen the sample never showed —
+including two invoices to `Verkkokauppa`, the customer this document had
+declared absent from Visma. **A capped page is a sample. Label it as one, and
+never conclude an absence from it.**
 
 Four of those six are provably the client's described flow — the order is
 already in our database from the webshop, matching to the cent:
@@ -127,10 +145,23 @@ picker on the existing B2B customer screen, listing Visma customers by number
 and name. Explicit, survives a rename on either side, and one wrong character
 fails closed rather than matching the wrong company.
 
-Name matching is rejected: it works for three of the four customers today and
-silently fails for `Verkkokauppa.com`, which does not exist in Visma under any
-name matching `/verkko|kauppa/`. A rename would break the link silently or, if
-two customers ever share a name, bind to the wrong one.
+Name matching is rejected, and the reason turned out to be stronger than first
+written. `Verkkokauppa.com` appeared to be absent from Visma entirely — a search
+of every customer for `/verkko|kauppa/` returned nothing. **That was wrong, and
+wrong in the way that matters**: `controller/api/v1/customer` caps at 1000 rows,
+the search only ever saw the first page, and the customer is really there as
+`Verkkokauppa` — no `.com` — under number **10488**. The first complete
+receivables import found it immediately, holding two open invoices.
+
+So name matching would not merely have failed for that customer; it would have
+failed while looking like a fact about the data. A number cannot do that. It
+also survives a rename on either side, and cannot bind to the wrong company if
+two ever share a name.
+
+**Numbers confirmed live on 2026-08-18**, read out of our own receivables table
+rather than from the API: `Verkkokauppa.com` 10488, `Play Nöjesdistribution AB`
+20012, `JPK Trading Kft` 10681. `Bagaren och Kocken` has no open invoice, so its
+number is still unknown and it stays unlinked until one appears.
 
 **Import.** A new `importVismaB2bSales()` beside the existing purchase-order
 import, on the same 15-minute cron, best-effort, never throwing.
@@ -242,11 +273,13 @@ honest answer is that this cannot be built, and no amount of code changes that.
 1. **Slice 3, receivables and Slack.** It is the client's clearest pain, it is
    independent of everything else, and it is the only slice with real data
    waiting for it today — six invoices, four of them provably his own flow.
-2. **Slice 1, B2B sales.** Larger, and it may well import nothing on the day it
-   ships: the three linkable customers have no open invoice anywhere in the
-   1000 documents sampled. It pays off on the next B2B invoice raised, and its
-   first run should be treated as a test of the filter rather than of the
-   volume.
+2. **Slice 1, B2B sales.** Larger, and it has work to do on day one — a claim
+   this document previously got backwards. The sampled page suggested the
+   linkable customers had nothing open; the first complete import showed
+   otherwise, with open invoices for both `JPK Trading Kft` and
+   `Play Nöjesdistribution AB`. Two readings of the same ledger disagreed
+   because one of them was a capped page, which is the lesson worth keeping:
+   on this endpoint, a single page is a sample and must be labelled as one.
 3. **Slice 2, shipping cost.** Useful alone, but its value is in costing the
    orders slice 1 brings in.
 4. **Slice 4, Klarna.** Only once the credential question is answered.
@@ -256,9 +289,11 @@ needs to ship as one change, and none of it should.
 
 ## Open questions for the client
 
-1. **Verkkokauppa.com** is in our software but does not exist in Visma under any
-   name resembling it. Is it invoiced elsewhere, or under a different company
-   name? Until answered, that customer stays manual.
+1. ~~**Verkkokauppa.com** is in our software but does not exist in Visma.~~
+   **ANSWERED 2026-08-18, and by the data rather than by the client.** It is
+   Visma customer **10488**, filed as `Verkkokauppa` without the `.com`. The
+   original search missed it because the customer endpoint caps at 1000 rows.
+   Nothing needs asking; the customer needs linking.
 2. **Klarna API credentials** — portal only, or real API access? Slice 4 cannot
    start without this.
 3. **Hans Hoff Petersen**, 23 250 NOK, due 2023-02-01, still open. Is that a
