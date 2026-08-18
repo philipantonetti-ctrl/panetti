@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest'
+import { describe, expect, it, beforeAll, afterAll, afterEach, vi } from 'vitest'
 
 const importWarehouseFile = vi.fn()
 vi.mock('@/lib/bring/import', async (importOriginal) => {
@@ -415,5 +415,84 @@ describe('POST /api/delivery/inbound', () => {
     })
     expect(row).not.toBeNull()
     await db.trackingImport.deleteMany({ where: { id: row!.id } })
+  })
+
+  /**
+   * WHO SENT IT.
+   *
+   * Anyone who learns the Postmark inbound address can post a spreadsheet
+   * straight into the shipment data, because until now nothing read `From` at
+   * all — the URL token authenticates POSTMARK, not the person who emailed it.
+   * And the address has to be handed to the warehouse for any of this to work,
+   * so it cannot stay secret forever.
+   *
+   * Deliberately a WARNING and not a refusal. The warehouse has never sent a
+   * single email yet (Postmark: 3 inbound ever, all internal tests), so the
+   * very first real report is the one most likely to arrive from an address
+   * slightly different from the one we were told. Refusing it would drop the
+   * file we have been waiting weeks for; importing it and saying so loudly
+   * loses nothing and still surfaces the surprise.
+   *
+   * The note lands on the import's own row rather than a second one, so the
+   * Imports list shows one line per email: what arrived, whether it worked,
+   * and anything odd about it.
+   */
+  describe('sender check', () => {
+    /** A real row for the route to annotate — the mock's id must point at one. */
+    async function seedImport() {
+      const row = await db.trackingImport.create({
+        data: { filename: 'eod.xlsx', source: 'EMAIL', rowsParsed: 3, rowsLinked: 3, rowsUnmatched: 0 },
+      })
+      importWarehouseFile.mockReset()
+      importWarehouseFile.mockResolvedValue({
+        importId: row.id, parsed: 3, linked: 3, unmatched: [], unaccounted: 0,
+      })
+      return row.id
+    }
+
+    const from = (address: string) => ({
+      Subject: 'EOD report',
+      From: address,
+      FromFull: { Email: address, Name: 'Warehouse', MailboxHash: '' },
+      Attachments: [{ Name: 'eod.xlsx', Content: Buffer.from('x').toString('base64') }],
+    })
+
+    afterEach(() => vi.unstubAllEnvs())
+
+    it('still imports a file from an unexpected sender, and says so on the row', async () => {
+      vi.stubEnv('WAREHOUSE_SENDER', 'noreply@selected3pl.se')
+      const id = await seedImport()
+
+      const res = await post(from('someone-else@evil.test'))
+      expect(res.status).toBe(200)
+      // Imported: the file was not dropped.
+      expect(importWarehouseFile).toHaveBeenCalledTimes(1)
+
+      const row = await db.trackingImport.findUniqueOrThrow({ where: { id } })
+      expect(row.error).toContain('someone-else@evil.test')
+      expect(row.error).toContain('noreply@selected3pl.se')
+    })
+
+    it('says nothing when the sender is the expected one, whatever its case', async () => {
+      vi.stubEnv('WAREHOUSE_SENDER', 'noreply@selected3pl.se')
+      const id = await seedImport()
+
+      // Mail addresses are not case sensitive, and a mailer that upper-cases
+      // the domain must not raise an alarm every morning.
+      await post(from('NoReply@Selected3PL.se'))
+
+      expect((await db.trackingImport.findUniqueOrThrow({ where: { id } })).error).toBeNull()
+    })
+
+    it('checks nothing at all until an expected sender is configured', async () => {
+      // The state this ships in. Nobody has set WAREHOUSE_SENDER yet, and an
+      // unconfigured check must not start flagging every ordinary email.
+      vi.stubEnv('WAREHOUSE_SENDER', '')
+      const id = await seedImport()
+
+      await post(from('anyone@anywhere.test'))
+
+      expect((await db.trackingImport.findUniqueOrThrow({ where: { id } })).error).toBeNull()
+    })
   })
 })
