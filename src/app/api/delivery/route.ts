@@ -8,6 +8,7 @@ import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
 import { loadDelivery } from '@/lib/delivery/load'
 import { deliveryStats } from '@/lib/delivery/stats'
+import { trackingUrl } from '@/lib/delivery/tracking-url'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
         daysOver: r.view.daysOver ?? 0,
         promiseDays: r.view.promiseDays,
         state: r.view.state,
-        trackingNumbers: r.view.trackingNumbers,
+        parcels: r.view.parcels,
       }))
 
     const [unlinked, unlinkedTotal, imports, config] = await Promise.all([
@@ -77,7 +78,10 @@ export async function GET(req: Request) {
         where: { orderId: null },
         orderBy: { createdAt: 'desc' },
         take: 50,
-        select: { trackingNumber: true, lastStatus: true },
+        // carrier so an unlinked parcel links to whoever is actually holding
+        // it. These come straight off the shipment rather than through
+        // deliveryFor, which is why the URL is built here instead.
+        select: { trackingNumber: true, carrier: true, lastStatus: true },
       }),
       db.shipment.count({ where: { orderId: null } }),
       db.trackingImport.findMany({
@@ -109,7 +113,13 @@ export async function GET(req: Request) {
         stats,
         late,
         lateTotal,
-        unlinked,
+        // The link is built here, beside every other one, so the page never
+        // has to know which carrier's site a number belongs to.
+        unlinked: unlinked.map((s) => ({
+          trackingNumber: s.trackingNumber,
+          url: trackingUrl(s.trackingNumber, s.carrier),
+          lastStatus: s.lastStatus,
+        })),
         unlinkedTotal,
         imports: imports.map((i) => ({ ...i, receivedAt: i.receivedAt.toISOString() })),
         trackedShops: shops.filter((s) => s.deliveryTrackingFrom !== null).length,

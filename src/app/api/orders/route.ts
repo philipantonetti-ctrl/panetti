@@ -149,7 +149,9 @@ export async function GET(req: Request) {
           shippingCountry: true,
           shipments: {
             select: {
-              trackingNumber: true, bookedAt: true, handedInAt: true,
+              // See the same select in lib/delivery/load.ts: carrier is what
+              // makes a parcel's tracking link reach the right carrier.
+              trackingNumber: true, carrier: true, bookedAt: true, handedInAt: true,
               availableAt: true, collectedAt: true, outcome: true, lastStatus: true,
             },
           },

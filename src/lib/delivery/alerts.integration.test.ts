@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterAll, vi, afterEach } from 'vites
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/secrets'
 import { alertMessage, flushDeliveryAlerts } from './alerts'
+import { trackingUrl } from './tracking-url'
 
 const NOW = new Date('2026-08-20T12:00:00Z')
 let shopId: string
@@ -301,7 +302,7 @@ describe('alertMessage', () => {
   it('names the order, the shortfall and what is actually happening', () => {
     const text = alertMessage(
       [{ id: 'o1', number: '1001', shop: 'Panetti', country: 'NO',
-         daysOver: 2, promiseDays: 3, state: 'NO_TRACKING', trackingNumbers: [] }],
+         daysOver: 2, promiseDays: 3, state: 'NO_TRACKING', parcels: [] }],
       'https://panetti.vercel.app',
     )
     expect(text).toContain('1001')
@@ -314,9 +315,26 @@ describe('alertMessage', () => {
   it('links the parcel on Bring when there is one', () => {
     const text = alertMessage(
       [{ id: 'o1', number: '1001', shop: 'Panetti', country: 'NO',
-         daysOver: 1, promiseDays: 3, state: 'IN_TRANSIT', trackingNumbers: ['T1'] }],
+         daysOver: 1, promiseDays: 3, state: 'IN_TRANSIT',
+         parcels: [{ number: 'T1', url: 'https://tracking.bring.com/tracking/T1' }] }],
       'https://panetti.vercel.app',
     )
     expect(text).toContain('tracking.bring.com/tracking/T1')
+  })
+
+  /**
+   * The alert is the link the client actually clicks — he reads Slack, not the
+   * delivery page. So this is the one that mattered most: every late DHL parcel
+   * was sending him to Bring's site, which has never heard of the number.
+   */
+  it('links a DHL parcel to DHL, not to Bring', () => {
+    const text = alertMessage(
+      [{ id: 'o1', number: '1001', shop: 'Panetti', country: 'DE',
+         daysOver: 1, promiseDays: 3, state: 'IN_TRANSIT',
+         parcels: [{ number: '9599861672', url: trackingUrl('9599861672', 'DHL') }] }],
+      'https://panetti.vercel.app',
+    )
+    expect(text).toContain('dhl.com')
+    expect(text).not.toContain('bring.com')
   })
 })

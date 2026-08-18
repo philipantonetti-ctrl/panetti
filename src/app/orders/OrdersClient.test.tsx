@@ -57,7 +57,7 @@ const paidOrder = {
     late: false,
     daysOver: null,
     promiseDays: 5,
-    trackingNumbers: ['TRACK1'],
+    parcels: [{ number: 'TRACK1', url: 'https://tracking.bring.com/tracking/TRACK1' }],
   },
 }
 
@@ -77,7 +77,7 @@ const refundedOrder = {
     late: false,
     daysOver: null,
     promiseDays: null,
-    trackingNumbers: [],
+    parcels: [],
   },
 }
 
@@ -397,7 +397,7 @@ describe('delivery column', () => {
     late: false,
     daysOver: null,
     promiseDays: null,
-    trackingNumbers: [],
+    parcels: [],
     ...over,
   })
 

@@ -80,9 +80,30 @@ describe('GET /api/delivery', () => {
   })
 
   it('lists parcels no order claimed, so they are visible rather than lost', async () => {
+    // No carrier given, so the column default applies — and the link has to
+    // follow it. `url` is new: the page used to build this itself and always
+    // built a Bring one, which was wrong for every DHL parcel.
     await db.shipment.create({ data: { trackingNumber: UNLINKED, lastStatus: 'IN_TRANSIT' } })
     const body = await (await GET(new Request(url))).json()
-    expect(body.unlinked).toEqual([{ trackingNumber: UNLINKED, lastStatus: 'IN_TRANSIT' }])
+    expect(body.unlinked).toEqual([
+      {
+        trackingNumber: UNLINKED,
+        lastStatus: 'IN_TRANSIT',
+        url: `https://tracking.bring.com/tracking/${UNLINKED}`,
+      },
+    ])
+  })
+
+  it('links an unlinked DHL parcel to DHL, not to Bring', async () => {
+    await db.shipment.create({
+      data: { trackingNumber: `${UNLINKED}-DHL`, carrier: 'DHL', lastStatus: 'IN_TRANSIT' },
+    })
+    const body = await (await GET(new Request(url))).json()
+    const parcel = body.unlinked.find((p: { trackingNumber: string }) =>
+      p.trackingNumber === `${UNLINKED}-DHL`,
+    )
+    expect(parcel.url).toContain('dhl.com')
+    expect(parcel.url).not.toContain('bring.com')
   })
 
   it('reports the true count of unlinked parcels, not just the capped list', async () => {

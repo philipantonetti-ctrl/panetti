@@ -30,7 +30,9 @@ export async function loadDelivery(
         shop: { select: { name: true, timezone: true, deliveryTrackingFrom: true } },
         shipments: {
           select: {
-            trackingNumber: true, bookedAt: true, handedInAt: true,
+            // carrier decides where the parcel's tracking link points. Without
+            // it every number on screen went to Bring's site, DHL's included.
+            trackingNumber: true, carrier: true, bookedAt: true, handedInAt: true,
             availableAt: true, collectedAt: true, outcome: true, lastStatus: true,
           },
         },

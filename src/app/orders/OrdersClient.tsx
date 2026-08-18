@@ -36,7 +36,7 @@ type Delivery = {
   late: boolean
   daysOver: number | null
   promiseDays: number | null
-  trackingNumbers: string[]
+  parcels: { number: string; url: string }[]
 }
 type OrderRow = {
   id: string
