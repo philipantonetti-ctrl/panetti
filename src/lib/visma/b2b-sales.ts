@@ -1,6 +1,72 @@
 import { isUsableSku, normaliseSku } from '../inventory/sku'
 import { unwrap } from './purchase-orders'
+import { isWebshopAccount } from './receivables'
 import type { VismaCustomerInvoice, VismaInvoiceLine } from './types'
+
+/**
+ * What namespaces an imported invoice's `externalId`.
+ *
+ * A WooCommerce order id and a Visma reference number are both bare integers,
+ * so without this `123194` from each would be one row on
+ * `@@unique([shopId, externalId])`. It is also how the rest of the app
+ * recognises an order it does not own: see `isVismaExternalId`.
+ */
+export const VISMA_EXTERNAL_ID_PREFIX = 'visma-'
+
+/**
+ * Was this order imported from Visma rather than entered here?
+ *
+ * Such an order is READ-ONLY. Visma is the source of it, and the next
+ * fifteen-minute run rewrites its money and its lines from the invoice — so an
+ * edit made here would silently revert, and a delete would come straight back
+ * on the next upsert, losing anything typed onto it in the meantime.
+ */
+export function isVismaExternalId(externalId: string): boolean {
+  return externalId.startsWith(VISMA_EXTERNAL_ID_PREFIX)
+}
+
+/**
+ * How far back the very first run looks, before anything has been imported.
+ *
+ * Measured 2026-08-18: `customerinvoice` runs from reference 100000 dated
+ * 2022-09-09 to roughly 130350 today — about 30 000 invoices over 1 439 days,
+ * so around 21 a day and 630 a month. From this date that is roughly 4 800
+ * invoices, five pages of 1 000, which fits inside the ten-page ceiling with
+ * room to spare. Reaching further back would not.
+ */
+export const B2B_SALES_FIRST_RUN_FROM = '2026-01-01'
+
+/**
+ * How far before the newest invoice we already hold the window still starts.
+ *
+ * Thirty days is 2 880 consecutive failed fifteen-minute runs' worth of slack,
+ * and at ~630 invoices a month it keeps the ordinary run inside a single page.
+ */
+export const B2B_SALES_SAFETY_MARGIN_DAYS = 30
+
+/**
+ * The `lastModifiedDateTime` this run asks Visma for, as `YYYY-MM-DD`.
+ *
+ * THE FILTER IS NOT OPTIONAL. `customerinvoice` is ordered oldest-first and
+ * holds roughly 30 000 invoices (see above), so an unfiltered read behind a
+ * ten-page ceiling spends every page on 2022 and 2023 and never once reaches a
+ * current invoice — it would report `imported: 0` forever.
+ *
+ * A margin rather than a watermark on the nose, because an invoice can be
+ * edited long after it was raised and a window starting exactly at the newest
+ * date we hold would step straight over that edit.
+ *
+ * The floor is the point of the `Math.max`: one old invoice imported by hand
+ * would otherwise drag the window back to 2022 and put the whole ledger in
+ * front of the ceiling again, which is the bug this exists to prevent.
+ */
+export function b2bSalesModifiedSince(newestImported: Date | null): string {
+  const floor = new Date(`${B2B_SALES_FIRST_RUN_FROM}T00:00:00Z`).getTime()
+  const from = newestImported
+    ? Math.max(floor, newestImported.getTime() - B2B_SALES_SAFETY_MARGIN_DAYS * 86_400_000)
+    : floor
+  return new Date(from).toISOString().slice(0, 10)
+}
 
 /** One line of an imported invoice, in the shape an OrderItem is written from. */
 export type MappedB2bLine = {
@@ -26,6 +92,7 @@ export type MappedB2bOrder = {
 
 export type B2bSkipReason =
   | 'not a linked customer'
+  | 'webshop house account'
   | 'credit note'
   | 'unusable invoice'
   | 'no lines'
@@ -117,6 +184,17 @@ export function mapVismaB2bSales(
       continue
     }
 
+    // Linked is not enough. The number is typed into a free-text field, so one
+    // typo — a "… - Webkunde" house account's number — would turn every webshop
+    // invoice booked to it into a duplicate order, which is precisely the
+    // failure this whole design exists to prevent. A house account is never a
+    // B2B customer however convincingly it has been linked, so it is refused on
+    // its NAME as well, and counted so the typo is visible rather than silent.
+    if (isWebshopAccount(str(inv?.customer?.name))) {
+      skip('webshop house account')
+      continue
+    }
+
     if (str(inv?.documentType).toLowerCase() !== 'invoice') {
       skip('credit note')
       continue
@@ -128,6 +206,20 @@ export function mapVismaB2bSales(
     // placedAt — which is not nullable, and a guessed date in a revenue figure
     // is worse than an invoice we did not import.
     if (referenceNumber === '' || !placedAt) {
+      skip('unusable invoice')
+      continue
+    }
+
+    // The line amounts below are read from `unitPriceInCurrency`, which is the
+    // INVOICE's currency, while the order is labelled with the CUSTOMER's — and
+    // the B2B customer page sums those columns without converting. So the two
+    // must be the same currency or the figure is simply wrong: 45 000 NOK
+    // recorded as 45 000 EUR is a tenfold error nothing downstream can notice.
+    //
+    // Fails closed, blank included: an invoice that does not say what currency
+    // it is in cannot be proven to be in the right one. Refusing it is visible
+    // in the run's skip counts; importing it would not be.
+    if (str(inv?.currencyId).toUpperCase() !== customer.currency.trim().toUpperCase()) {
       skip('unusable invoice')
       continue
     }
@@ -169,11 +261,8 @@ export function mapVismaB2bSales(
     }
 
     orders.push({
-      // Prefixed, and the prefix is load-bearing. A WooCommerce order id and a
-      // Visma reference number are both bare integers, so `123194` from each
-      // would be one row on @@unique([shopId, externalId]) — one sale silently
-      // overwriting the other.
-      externalId: `visma-${referenceNumber}`,
+      // Prefixed, and the prefix is load-bearing — see VISMA_EXTERNAL_ID_PREFIX.
+      externalId: `${VISMA_EXTERNAL_ID_PREFIX}${referenceNumber}`,
       referenceNumber,
       b2bCustomerId: customer.b2bCustomerId,
       shopId: customer.shopId,

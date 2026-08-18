@@ -31,7 +31,8 @@ const shops = [{ id: 's1', name: 'Mazzetti.no', currency: 'NOK' }]
 
 const customer = {
   id: 'c1', name: 'Nordic Retail AS', shopId: 's1', shopName: 'Mazzetti.no',
-  currency: 'EUR', vatPercent: 25, email: null, note: null, active: true,
+  currency: 'EUR', vatPercent: 25, email: null, note: null,
+  vismaCustomerNumber: null, active: true,
   priceCount: 4, orderCount: 12, revenue: 1422000,
 }
 
@@ -39,6 +40,12 @@ const customer = {
 const b2bOrder = {
   id: 'o1', number: 'B-0001', placedAt: '2026-05-01T00:00:00.000Z', status: 'completed',
   currency: 'EUR', netSales: 50000, customer: 'Nordic Retail AS', figures: { profit: 12000 },
+  imported: false,
+}
+
+/** The same row, but imported from Visma — which makes it read-only. */
+const importedOrder = {
+  ...b2bOrder, id: 'o2', number: '123194', imported: true,
 }
 
 // The form shape `GET /api/b2b/orders/[id]` answers — what edit and void both
@@ -199,6 +206,27 @@ describe('B2bClient', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /edit order B-0001/i }))
     expect(await screen.findByRole('heading', { name: /edit order/i })).toBeInTheDocument()
+  })
+
+  /**
+   * Visma is the source of an imported order and the next fifteen-minute run
+   * rewrites it from the invoice: an edit would silently revert and a delete
+   * would come straight back on the next upsert, losing anything typed onto it.
+   * The route refuses both; offering the buttons anyway would just be a way of
+   * telling someone their change was saved when it was not.
+   */
+  it('offers no edit or actions on an order imported from Visma, and says where it came from', async () => {
+    mockFetch([customer], [b2bOrder, importedOrder])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+
+    expect(await screen.findByText('123194')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /edit order 123194/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /actions for 123194/i })).not.toBeInTheDocument()
+    // Says why the buttons are missing, rather than leaving an unexplained gap.
+    expect(screen.getByText(/from visma/i)).toBeInTheDocument()
+
+    // The hand-entered order beside it is untouched by the rule.
+    expect(screen.getByRole('button', { name: /edit order B-0001/i })).toBeInTheDocument()
   })
 
   it('voids an order by re-sending it with the new status, in major units, converted correctly per discount kind', async () => {

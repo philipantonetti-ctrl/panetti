@@ -1,7 +1,13 @@
 import { orderTotals } from '../b2b/pricing'
 import { db } from '../db'
 import { normaliseSku } from '../inventory/sku'
-import { mapVismaB2bSales, type LinkedCustomers, type MappedB2bOrder } from './b2b-sales'
+import {
+  b2bSalesModifiedSince,
+  mapVismaB2bSales,
+  VISMA_EXTERNAL_ID_PREFIX,
+  type LinkedCustomers,
+  type MappedB2bOrder,
+} from './b2b-sales'
 import { vismaCredentials, vismaGet, VismaError } from './client'
 import { mapVismaOrders, receiptDatesByNumber, unwrap } from './purchase-orders'
 import { isWebshopAccount, mapReceivables } from './receivables'
@@ -343,9 +349,17 @@ export async function importVismaReceivables(): Promise<VismaReceivablesResult> 
 export const B2B_SALES_PAGE_SIZE = 1000
 
 /**
- * A ceiling on the loop, not an expectation — the same shape and the same
- * reasoning as MAX_RECEIVABLE_PAGES above. Reaching it means something has gone
- * wrong, and the run says it was partial rather than pretending it saw the lot.
+ * A backstop on the loop, and NOT the thing that keeps this run small — the
+ * `lastModifiedDateTime` window is. Measured 2026-08-18: `customerinvoice` runs
+ * from reference 100000 dated 2022-09-09 to roughly 130350 today, about 30 000
+ * invoices ordered OLDEST-FIRST. Ten unfiltered pages of 1 000 would read
+ * references 100000-110000 — all of 2022 and 2023 — and stop, so the ceiling
+ * alone would have meant `imported: 0` every run, forever.
+ *
+ * With the window applied, an ordinary run is one page and a first run from
+ * B2B_SALES_FIRST_RUN_FROM is about five. So reaching ten is not proof anything
+ * is broken; it means more was modified in the window than a bounded run can
+ * carry, and the rest is left for the next one.
  */
 const MAX_B2B_SALES_PAGES = 10
 
@@ -493,8 +507,25 @@ async function storeB2bSale(
  * That is also why a PARTIAL read is safe to write here where it is not for
  * receivables — the pages we did reach are simply correct, and the rest arrive
  * next run rather than deleting anything.
+ *
+ * **The window is what makes it work at all.** `customerinvoice` is ordered
+ * oldest-first over roughly 30 000 invoices, so it is read through
+ * `lastModifiedDateTimeCondition=%3E&lastModifiedDateTime=<date>`. That exact
+ * pair was measured working on 2026-08-18: with it, page one came back as
+ * reference 129612 dated 2026-08-03; the date sent WITHOUT the condition
+ * parameter was silently ignored and page one came back as reference 100000
+ * dated 2022-09-09. An unknown parameter here returns HTTP 200 and does
+ * nothing, so a filter is only ever proven by the rows it returns.
+ *
+ * A per-customer filter would be better still — we care about three or four
+ * customers, so the result would not depend on the ledger's size at all — but
+ * `customerNumber=` is UNVERIFIED. This checkout holds no Visma credentials, so
+ * it could not be tried. Anyone who can reach the API should test it and check
+ * the customer names on every returned row, not the status code.
  */
-export async function importVismaB2bSales(): Promise<VismaB2bSalesResult> {
+export async function importVismaB2bSales(
+  opts: { deadline?: number } = {},
+): Promise<VismaB2bSalesResult> {
   const creds = vismaCredentials()
   if (!creds) return noSales({ configured: false })
 
@@ -508,25 +539,60 @@ export async function importVismaB2bSales(): Promise<VismaB2bSalesResult> {
     })
 
     const linkedByNumber: LinkedCustomers = new Map(
-      customers.map((c) => [
-        c.vismaCustomerNumber!.trim(),
-        { b2bCustomerId: c.id, shopId: c.shopId, currency: c.currency },
-      ]),
+      customers
+        .map((c) => ({ ...c, number: c.vismaCustomerNumber!.trim() }))
+        // A blank key would open the guard the whole product's revenue rests
+        // on: a whitespace-only number trims to '', and `str()` in the mapper
+        // reads a missing customer number as '' too, so EVERY such invoice
+        // would match it. Both write paths clean the field before it is stored,
+        // and this does not depend on that being true two files away.
+        .filter((c) => c.number !== '')
+        .map((c) => [
+          c.number,
+          { b2bCustomerId: c.id, shopId: c.shopId, currency: c.currency },
+        ]),
     )
     // Nothing could match, so nothing here is worth a rate-limited request.
     if (linkedByNumber.size === 0) return noSales()
+
+    // The newest invoice we already hold dates the window; see
+    // b2bSalesModifiedSince for why it reaches back a margin before it and why
+    // it can never reach back past the fixed first-run date.
+    const newest = await db.order.findFirst({
+      where: { externalId: { startsWith: VISMA_EXTERNAL_ID_PREFIX } },
+      orderBy: { placedAt: 'desc' },
+      select: { placedAt: true },
+    })
+    const modifiedSince = b2bSalesModifiedSince(newest?.placedAt ?? null)
 
     const invoices: VismaCustomerInvoice[] = []
     let read = 0
     let partial = false
 
     for (let page = 1; page <= MAX_B2B_SALES_PAGES; page++) {
+      // Checked before each page rather than assumed, exactly as the parcel
+      // poll checks its own: this stage begins after the shops may already have
+      // spent 240 of the route's 300 seconds, and ten pages at a 60-second
+      // timeout apiece would run long past the platform ceiling — killing the
+      // parcel poll and the delivery alert that come after it. A page already
+      // in flight is not interrupted, which is the same contract syncAllShops
+      // and syncShipments have.
+      if (opts.deadline !== undefined && Date.now() > opts.deadline) {
+        partial = true
+        break
+      }
+
       let batch: VismaCustomerInvoice[]
       try {
         batch = await vismaGet<VismaCustomerInvoice[]>(
           creds,
           `controller/api/v1/customerinvoice` +
-            `?pageSize=${B2B_SALES_PAGE_SIZE}&pageNumber=${page}`,
+            // %3E is '>'. The date WITHOUT this condition parameter is accepted
+            // and silently ignored — measured 2026-08-18, it still returned
+            // reference 100000 from 2022 — so the pair travels together or the
+            // read is unbounded again.
+            `?lastModifiedDateTimeCondition=%3E&lastModifiedDateTime=${modifiedSince}` +
+            `&pageSize=${B2B_SALES_PAGE_SIZE}&pageNumber=${page}`,
         )
       } catch (e) {
         // 429 only, exactly as the receivables import treats it: the limit is a

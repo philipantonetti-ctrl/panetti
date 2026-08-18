@@ -16,13 +16,19 @@ vi.mock('@/lib/fx/rates', () => ({ ensureRates: vi.fn() }))
 const importVismaPurchaseOrders = vi.fn(async () => ({
   configured: false, read: 0, imported: 0, skipped: [], truncated: false, error: null,
 }))
-const importVismaB2bSales = vi.fn(async () => ({
+const importVismaB2bSales = vi.fn(async (opts?: { deadline?: number }) => ({
   configured: true, linked: 2, read: 40, imported: 3,
-  skipped: [{ reason: 'not a linked customer', count: 37 }], partial: false, error: null,
+  skipped: [{ reason: 'not a linked customer', count: 37 }],
+  // Honours the deadline the way the real one does, so a route that forgot to
+  // pass a usable one cannot look identical to a route that passed a good one.
+  partial: opts?.deadline !== undefined && Date.now() > opts.deadline,
+  error: null,
 }))
 vi.mock('@/lib/visma/import', () => ({
   importVismaPurchaseOrders: () => importVismaPurchaseOrders(),
-  importVismaB2bSales: () => importVismaB2bSales(),
+  // Arguments forwarded, not dropped: the deadline this route hands it is the
+  // only thing keeping a ten-page read inside the platform ceiling.
+  importVismaB2bSales: (...args: [{ deadline?: number }?]) => importVismaB2bSales(...args),
 }))
 
 const { GET } = await import('./route')
@@ -117,6 +123,24 @@ describe('the scheduled sync endpoint', () => {
       b2bSalesError: null,
     })
     expect(body.b2bSalesSkipped).toEqual([{ reason: 'not a linked customer', count: 37 }])
+  })
+
+  /**
+   * It starts after the shops may already have spent 240 of the 300 seconds,
+   * and it can page. Unbounded, ten pages at a 60-second timeout apiece would
+   * run past the platform ceiling and kill the parcel poll and the delivery
+   * alert that follow it.
+   */
+  it('bounds the B2B sales import inside the function ceiling', async () => {
+    process.env.CRON_SECRET = 'shhh'
+    const before = Date.now()
+    await call('Bearer shhh')
+
+    const [opts] = importVismaB2bSales.mock.calls[0] as [{ deadline: number }]
+    expect(opts.deadline).toBeGreaterThan(before)
+    // Comfortably under maxDuration, and before the parcel poll's own budget so
+    // the greedy stage after it is not starved.
+    expect(opts.deadline).toBeLessThan(before + 275_000)
   })
 
   // Best-effort like every stage after the shops: the ERP having a bad morning

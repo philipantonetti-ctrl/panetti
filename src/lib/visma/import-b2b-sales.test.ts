@@ -43,11 +43,15 @@ const invoice = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
+/** Every collection URL this run asked for, token calls excluded. */
+let asked: string[] = []
+
 /** Routes the token call, then serves one response per page number. */
 const stubPages = (pages: Record<number, { body: unknown; status?: number }>) => {
   const fetchMock = vi.fn(async (url: string) => {
     const u = String(url)
     if (u.includes('connect/token')) return json({ access_token: 'tok', expires_in: 3600 })
+    asked.push(u)
     const n = Number(new URL(u).searchParams.get('pageNumber') ?? '1')
     const p = pages[n] ?? { body: [] }
     return json(p.body, p.status ?? 200)
@@ -66,6 +70,7 @@ async function cleanup() {
 }
 
 beforeEach(async () => {
+  asked = []
   resetVismaTokenCache()
   vi.stubEnv('VISMA_CLIENT_ID', 'cid')
   vi.stubEnv('VISMA_CLIENT_SECRET', 'sec')
@@ -244,6 +249,85 @@ describe('importVismaB2bSales', () => {
 
     expect(result.partial).toBe(true)
     expect(result.error).toBeNull()
+    expect(await storedOrder()).not.toBeNull()
+  })
+
+  /**
+   * The request itself is pinned, because getting it wrong is invisible from
+   * the outside. Measured 2026-08-18: `customerinvoice` is ordered OLDEST-FIRST
+   * and holds roughly 30 000 invoices, so an unfiltered read behind the
+   * ten-page ceiling reads 2022 and 2023 forever and never reaches a current
+   * invoice — it returns HTTP 200 and imports nothing, every run, silently.
+   * Without this test that regression leaves the whole suite green.
+   */
+  it('asks the invoice endpoint for a bounded window, never the whole ledger', async () => {
+    stubPages({ 1: { body: [invoice()] } })
+
+    await importVismaB2bSales()
+
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toContain('controller/api/v1/customerinvoice')
+    // The condition is what makes the date do anything at all: the date alone
+    // is accepted and silently ignored, and an ignored parameter still returns
+    // 200 — so "it responded" is never evidence a filter worked.
+    expect(asked[0]).toContain('lastModifiedDateTimeCondition=%3E')
+    expect(asked[0]).toMatch(/lastModifiedDateTime=\d{4}-\d{2}-\d{2}/)
+    expect(asked[0]).toContain('pageSize=1000')
+  })
+
+  /**
+   * A whitespace-only number trims to '', and an invoice with no customer
+   * number at all reads as '' too — so a blank key would match EVERY such
+   * invoice and open the one guard the product's revenue rests on. Both write
+   * paths clean the field today; the guard must not depend on an invariant
+   * enforced two files away.
+   */
+  it('never lets a blank customer number become a live allowlist key', async () => {
+    await db.b2bCustomer.update({
+      where: { id: customerId },
+      data: { vismaCustomerNumber: '   ' },
+    })
+    const fetchMock = stubPages({ 1: { body: [invoice({ customer: { name: 'Nobody' } })] } })
+
+    const result = await importVismaB2bSales()
+
+    // Nothing linked once the blank is dropped, so not even a request is spent.
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.linked).toBe(0)
+    expect(result.imported).toBe(0)
+  })
+
+  /**
+   * This runs after the shops have already spent 240 of the route's 300
+   * seconds, and ten pages at a 60-second timeout apiece would run far past the
+   * platform ceiling — killing the parcel poll and the delivery alert that
+   * follow it. Every other greedy stage in that route takes a deadline.
+   */
+  it('does not start when the run is already out of time, and says it was partial', async () => {
+    const fetchMock = stubPages({ 1: { body: [invoice()] } })
+
+    const result = await importVismaB2bSales({ deadline: Date.now() - 1 })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.partial).toBe(true)
+    expect(result.error).toBeNull()
+  })
+
+  it('stops paging when the deadline passes, keeping what it already read', async () => {
+    const page1 = [
+      invoice(),
+      ...Array.from({ length: 999 }, (_, n) =>
+        invoice({ referenceNumber: `${TAG}-d${n}`, customer: { number: '1', name: 'Panetti Norge - Webkunde' } }),
+      ),
+    ]
+    stubPages({ 1: { body: page1 }, 2: { body: [invoice({ referenceNumber: `${TAG}-p2` })] } })
+
+    // Long enough for the first page, gone by the time the pause before the
+    // second one has elapsed.
+    const result = await importVismaB2bSales({ deadline: Date.now() + 200 })
+
+    expect(asked).toHaveLength(1)
+    expect(result.partial).toBe(true)
     expect(await storedOrder()).not.toBeNull()
   })
 

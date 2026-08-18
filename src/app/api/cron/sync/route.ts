@@ -70,6 +70,18 @@ const SHIPMENTS_DEADLINE_MS = 275_000
 const ALERT_START_BY_MS = 280_000
 
 /**
+ * The B2B sales import stops STARTING pages at this point in the run.
+ *
+ * It is the only Visma import that can page, and it begins after the shops may
+ * already have spent SHOPS_DEADLINE_MS — so unbounded, ten pages at a
+ * 60-second request timeout apiece would run far past the 300s ceiling and take
+ * the parcel poll and the delivery alert down with it. Set before
+ * SHIPMENTS_DEADLINE_MS for exactly that reason: whatever this stage leaves
+ * behind arrives on the next run, while an alert never sent is silent.
+ */
+const B2B_SALES_DEADLINE_MS = 265_000
+
+/**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
  * dashboard see new sales without anyone pressing a button.
  *
@@ -158,7 +170,7 @@ export async function GET(req: Request) {
     configured: false, linked: 0, read: 0, imported: 0, skipped: [], partial: false, error: null,
   }
   try {
-    b2bSales = await importVismaB2bSales()
+    b2bSales = await importVismaB2bSales({ deadline: runStartedAt + B2B_SALES_DEADLINE_MS })
   } catch {
     // It does not throw either. Same belt and braces as the three above.
   }

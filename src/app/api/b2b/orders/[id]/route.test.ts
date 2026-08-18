@@ -302,3 +302,48 @@ describe('GET /api/b2b/orders/[id]', () => {
     expect((await GET(new Request('http://localhost/x'), params(woo.id))).status).toBe(404)
   })
 })
+
+/**
+ * An order imported from Visma carries a b2bCustomerId, so it satisfied "an
+ * order this app owns" and became editable the moment the sales import shipped.
+ * It is not ours to rewrite: Visma is its source, and the next fifteen-minute
+ * run rewrites its money and its lines from the invoice. An edit made here
+ * would silently revert, and a delete would come straight back on the next
+ * upsert — taking any fulfillmentCost typed onto it in the meantime.
+ */
+describe('an order imported from Visma', () => {
+  const imported = () =>
+    db.order.create({
+      data: {
+        shopId, externalId: 'visma-123194', number: '123194', placedAt: new Date('2026-08-14'),
+        status: 'completed', currency: 'EUR', grossSales: 1000, discountTotal: 0,
+        netSales: 1000, shippingCharged: 0, taxTotal: 0, total: 1000,
+        customerName: 'Nordic', customerEmail: '', b2bCustomerId: customerId,
+      },
+    })
+
+  it('cannot be edited, because the next run would undo it anyway', async () => {
+    await asAdmin()
+    const order = await imported()
+
+    const res = await patch(order.id, {
+      customerId, placedAt: '2026-08-14',
+      lines: [{ productId, quantity: 99, unitPrice: 1 }],
+    })
+
+    expect(res.status).toBe(404)
+    // Proves the refusal, not merely a message: the order is untouched.
+    const after = await db.order.findUniqueOrThrow({ where: { id: order.id } })
+    expect(after.netSales).toBe(1000)
+  })
+
+  it('cannot be deleted, because the next run would bring it back', async () => {
+    await asAdmin()
+    const order = await imported()
+
+    const res = await DELETE(new Request('http://localhost/x', { method: 'DELETE' }), params(order.id))
+
+    expect(res.status).toBe(404)
+    expect(await db.order.count({ where: { id: order.id } })).toBe(1)
+  })
+})

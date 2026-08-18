@@ -36,6 +36,14 @@ type B2bOrder = {
   netSales: number
   customer: string | null
   figures: { profit: number } | null
+  /**
+   * Imported from Visma, which makes it READ-ONLY here. Visma is its source and
+   * the next fifteen-minute run rewrites its money and its lines from the
+   * invoice — so an edit would silently revert and a delete would come back on
+   * the next upsert. The route refuses both; this is why the row stops offering
+   * them at all.
+   */
+  imported: boolean
 }
 
 /**
@@ -350,6 +358,14 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                         {o.figures ? formatMoney(o.figures.profit, o.currency) : '—'}
                       </td>
                       <td className="relative px-3 py-3 text-right">
+                        {/* Nothing to offer on an imported order: the route
+                            refuses an edit and a delete, and the next run would
+                            undo either one. Say where it came from rather than
+                            leaving an unexplained empty cell. */}
+                        {o.imported && (
+                          <span className="text-[11px] text-faint">From Visma</span>
+                        )}
+                        {!o.imported && (
                         <button
                           onClick={() => { setOrderMenuFor(null); setEditingOrder({ id: o.id }) }}
                           aria-label={`Edit order ${o.number}`}
@@ -357,6 +373,8 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                         >
                           Edit
                         </button>
+                        )}
+                        {!o.imported && (
                         <button
                           aria-label={`Actions for ${o.number}`}
                           onClick={() => setOrderMenuFor(orderMenuFor === o.id ? null : o.id)}
@@ -364,6 +382,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                         >
                           ⋯
                         </button>
+                        )}
                         {orderMenuFor === o.id && (
                           <div className="absolute right-3 z-10 mt-1 w-36 rounded-[var(--radius-control)] border border-line bg-surface py-1 text-left shadow-lg">
                             <button

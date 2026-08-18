@@ -297,6 +297,35 @@ describe('B2B orders in the order list', () => {
     expect(webshop.customer).toBeNull()
   })
 
+  /**
+   * An order imported from Visma is B2B and is NOT ours to rewrite: the next
+   * fifteen-minute run rewrites it from the invoice, so an edit made here would
+   * silently revert. The list has to say which is which, or the B2B page cannot
+   * stop offering an Edit button that quietly does nothing.
+   */
+  it('says an order came from Visma, so nothing offers to edit it', async () => {
+    await asAdmin()
+    await db.order.create({
+      data: {
+        shopId, externalId: 'visma-123194', number: '123194', placedAt: new Date('2026-07-07'),
+        status: 'completed', currency: 'NOK', grossSales: 10000, discountTotal: 0,
+        netSales: 10000, shippingCharged: 0, taxTotal: 0, total: 10000,
+        customerName: 'Nordic Retail [orders-test]', customerEmail: '',
+        b2bCustomerId: (await db.b2bCustomer.findFirstOrThrow({ where: { shopId } })).id,
+      },
+    })
+
+    const body = await (await get(`from=2026-07-01&to=2026-07-31&shops=${shopId}`)).json()
+
+    const fromVisma = body.orders.find((o: { number: string }) => o.number === '123194')
+    expect(fromVisma.source).toBe('b2b')
+    expect(fromVisma.imported).toBe(true)
+
+    // A hand-entered B2B order is still editable and must not be swept up.
+    const typedHere = body.orders.find((o: { number: string }) => o.number === 'B-0001')
+    expect(typedHere.imported).toBe(false)
+  })
+
   it('filters to one source or the other', async () => {
     await asAdmin()
 

@@ -5,6 +5,7 @@ import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { VOIDED_STATUSES } from '@/lib/metrics/types'
 import { toMinor } from '@/lib/money'
+import { VISMA_EXTERNAL_ID_PREFIX } from '@/lib/visma/b2b-sales'
 import { buildOrderWrite, OrderBody, saveStandingPrices } from '../route'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
@@ -21,10 +22,23 @@ const Body = OrderBody.extend({ status: z.enum(STATUSES).default('completed') })
 
 type Ctx = { params: Promise<{ id: string }> }
 
-/** Only orders this app owns. A synced order is not ours to rewrite. */
+/**
+ * Only orders this app owns. A synced order is not ours to rewrite.
+ *
+ * `b2bCustomerId` alone stopped meaning that the moment `importVismaB2bSales`
+ * shipped: an invoice imported from Visma carries one too, and it is exactly as
+ * synced as a WooCommerce order. Visma is its source and the next
+ * fifteen-minute run rewrites its money and its lines from the invoice, so an
+ * edit accepted here would silently revert and a delete would come back on the
+ * next upsert, taking any fulfillmentCost typed onto it in the meantime.
+ */
 const ownB2bOrder = (id: string) =>
   db.order.findFirst({
-    where: { id, b2bCustomerId: { not: null } },
+    where: {
+      id,
+      b2bCustomerId: { not: null },
+      NOT: { externalId: { startsWith: VISMA_EXTERNAL_ID_PREFIX } },
+    },
     select: { id: true, shopId: true, status: true, voidedAt: true },
   })
 

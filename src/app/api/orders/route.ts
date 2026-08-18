@@ -14,6 +14,7 @@ import { loadRates } from '@/lib/fx/rates'
 import { ACTIVE_GATEWAY } from '@/lib/gateways'
 import { pct } from '@/lib/money'
 import { deliveryFor } from '@/lib/delivery/view'
+import { isVismaExternalId } from '@/lib/visma/b2b-sales'
 import type { CostPoint, RateTable } from '@/lib/metrics/types'
 
 // Voided or simply not paid yet — either way the order earns nothing (yet).
@@ -132,6 +133,9 @@ export async function GET(req: Request) {
           id: true,
           shopId: true,
           number: true,
+          // Only to tell an imported order from one entered here; see `imported`
+          // below. Never shown.
+          externalId: true,
           placedAt: true,
           status: true,
           currency: true,
@@ -292,6 +296,14 @@ export async function GET(req: Request) {
         customerName: o.customerName,
         customerEmail: o.customerEmail,
         source: o.b2bCustomerId === null ? ('webshop' as const) : ('b2b' as const),
+        /**
+         * Imported from Visma, which makes it READ-ONLY. It is a B2B order like
+         * a hand-entered one, but Visma is its source and the next
+         * fifteen-minute run rewrites its money and its lines from the invoice:
+         * an edit would silently revert and a delete would come back on the
+         * next upsert. Sent so the B2B page can stop offering both.
+         */
+        imported: isVismaExternalId(o.externalId),
         customer: o.b2bCustomer?.name ?? null,
         itemCount: o.items.reduce((n, i) => n + i.quantity, 0),
         products: o.items.map((i) => ({
