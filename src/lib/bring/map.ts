@@ -12,13 +12,24 @@ import { milestonesFrom, str, type MappedEvent, type MappedPackage } from '../de
 /**
  * Defensive throughout: a malformed reply must degrade, never stop the run.
  *
- * Field selectors below (`packageSet`, `packageNumber`, `eventSet`, `status`,
- * `dateIso`, `description`, `city`, `countryCode`) are Bring's *documented*
- * shape, not a recorded response — the Phase 0 probe that would confirm them
- * has not run yet (no warehouse-booked tracking number supplied). They are
- * provisional. See map.test.ts's skipped 'maps the recorded real response'
- * test: the moment __fixtures__/real-package.json exists, that recording wins
- * over the documentation and these selectors get re-checked against it.
+ * The field selectors below (`packageSet`, `packageNumber`, `eventSet`,
+ * `status`, `dateIso`, `description`, `city`, `countryCode`) are CONFIRMED
+ * against a recorded real response — __fixtures__/real-package.json, exercised
+ * by map.test.ts's 'maps the recorded real response', which runs rather than
+ * skips. (This comment used to say the opposite, describing them as provisional
+ * and the probe as not yet run; that was true when written and stopped being
+ * true when the fixture landed.)
+ *
+ * Timestamps need no interpretation here, unlike DHL's. Bring sends
+ * `dateIso` with an explicit offset — "2026-08-18T08:52:56+02:00", verified
+ * live 2026-08-18 — so `new Date()` reads it exactly, with no assumption about
+ * which zone was meant. See the long note in dhl/map.ts for the carrier that
+ * gives no offset at all.
+ *
+ * Statuses pass through UNTRANSLATED, again unlike DHL's: our milestone
+ * vocabulary in delivery/milestones.ts is Bring's own wording, so there is no
+ * mapping table to get wrong. Which words are proven by real data, and which
+ * are still only documented, is recorded in map.test.ts.
  */
 export function mapConsignments(raw: unknown[]): MappedPackage[] {
   const out: MappedPackage[] = []
