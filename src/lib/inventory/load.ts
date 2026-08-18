@@ -11,7 +11,7 @@ import {
 import { forecast, type Forecast } from './forecast'
 import { isUsableSku, normaliseSku } from './sku'
 import { catalogueOf } from './sources'
-import { agreeStock, type AgreedStock, type ShopStock } from './stock'
+import { resolveStock, type ResolvedStock, type ShopStock } from './stock'
 
 export type InventoryRow = {
   sku: string
@@ -19,7 +19,7 @@ export type InventoryRow = {
   /** Product photo, from the shops that report stock. Null when none carries one. */
   imageUrl: string | null
   supplierName: string | null
-  stock: AgreedStock
+  stock: ResolvedStock
   burn: number
   /**
    * This period against the same period last year, as a fraction. Null when
@@ -118,7 +118,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   ])
   const scoped = sources.length > 0
 
-  const [items, products, lines] = await Promise.all([
+  const [items, products, visma, lines] = await Promise.all([
     db.supplyItem.findMany({
       where: { active: true },
       select: {
@@ -143,6 +143,10 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
         shop: { select: { name: true } },
       },
     }),
+    // What Visma counted. Read unfiltered and joined by SKU below: the table
+    // holds the whole company, and which products are worth forecasting is
+    // already settled by the shops. Nothing here widens that list.
+    db.vismaStock.findMany({ select: { sku: true, quantityOnHand: true, measuredAt: true } }),
     db.orderItem.findMany({
       where: {
         order: {
@@ -179,6 +183,13 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   }
 
   const stocks = new Map<string, ShopStock[]>()
+
+  // SKU to what Visma counted. A SKU absent here is UNKNOWN, never zero — that
+  // is the whole reason resolveStock takes a nullable reading rather than a
+  // number with a default.
+  const vismaStock = new Map(
+    visma.map((v) => [normaliseSku(v.sku), { quantity: v.quantityOnHand, measuredAt: v.measuredAt }]),
+  )
   // What each product is CALLED, according to the shops that count. SupplyItem
   // snapshots its name once, from whichever shop the database returned first
   // and never updates it, which is why Norwegian products were listed under
@@ -222,7 +233,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     const mine = sales.get(sku) ?? []
     const burn = dailyBurn(mine, today)
     const seasonal = hasSeasonalHistory(mine, today)
-    const stock = agreeStock(stocks.get(sku) ?? [])
+    const stock = resolveStock(vismaStock.get(sku) ?? null, stocks.get(sku) ?? [])
 
     // One season, read once, used twice — first to take the season OUT of the
     // rate we can see, then to put the right season back on each future day.
