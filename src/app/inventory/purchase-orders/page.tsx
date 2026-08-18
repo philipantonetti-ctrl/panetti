@@ -47,7 +47,19 @@ export default async function PurchaseOrdersPage() {
 
   return (
     <AppShell email={user.email}>
-      <PageHeader title="Inventory and forecasting" subtitle="What is on the water" />
+      {/* "What is on the water" until 2026-08-18, which was wrong about most of
+          the page and jargon besides. Measured that day: of 271 rows, 246 were
+          already received and 25 still coming — so the old subtitle described
+          9% of what the reader was looking at, in a trade phrase for goods in
+          transit that means nothing to someone reading English as a second
+          language. The three sibling tabs each say plainly what their page is
+          ("What each shop says is on the shelf", "Who makes what, and how long
+          it takes"); this one now does too, and names both halves because the
+          page holds both. */}
+      <PageHeader
+        title="Inventory and forecasting"
+        subtitle="What you have ordered, and what is still coming."
+      />
       <PageBody>
         <div className="mb-5"><InventoryTabs /></div>
         <PurchaseOrdersClient
