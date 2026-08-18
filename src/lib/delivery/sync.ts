@@ -153,7 +153,26 @@ export async function syncShipments(
   const { timezone: fallbackTz } = await getSetting()
 
   const due = await db.shipment.findMany({
-    where: { terminal: false, nextPollAt: { lte: now } },
+    /**
+     * NULL means "never scheduled", and that is the STRONGEST claim on this
+     * poller's attention, not the weakest.
+     *
+     * `nextPollAt: { lte: now }` alone silently drops those rows: in SQL
+     * `NULL <= now()` evaluates to NULL, not true, so they are not returned by
+     * any run, ever. And nothing backfills the column — the DHL import wrote
+     * NULL deliberately, back when this poller asked Bring about every number
+     * regardless of carrier and a due date would have sent a DHL number to
+     * Bring. Those parcels were left permanently invisible.
+     *
+     * Found live 2026-08-18: five DHL parcels shown as "In transit" and counted
+     * as late, while DHL's API reported every one delivered, the oldest five
+     * days before. The orderBy below already said `nulls: 'first'`; only this
+     * where clause disagreed with it.
+     *
+     * Self-healing on purpose: one run gives every stranded parcel a real
+     * schedule, so no migration or re-import is needed to rescue them.
+     */
+    where: { terminal: false, OR: [{ nextPollAt: null }, { nextPollAt: { lte: now } }] },
     orderBy: { nextPollAt: { sort: 'asc', nulls: 'first' } },
     select: {
       id: true,

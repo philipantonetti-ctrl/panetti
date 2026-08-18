@@ -157,6 +157,42 @@ describe('syncShipments', () => {
       }],
     })
 
+    /**
+     * The bug this file's own header describes and nothing ever undid.
+     *
+     * Parcels written by the DHL import before nextPollAt was set carry NULL in
+     * that column. The poller selected `nextPollAt: { lte: now }`, and in SQL
+     * `NULL <= now()` is NULL, not true — so those rows were never returned.
+     * Not "polled late": never polled, by any run, ever. Nothing backfills the
+     * column, so they were stranded showing whatever the file last said.
+     *
+     * Found live 2026-08-18: five DHL parcels sat on the delivery page as "In
+     * transit" and counted as late, while DHL's own API reported every one of
+     * them delivered — one of them five days earlier.
+     *
+     * NULL means "never scheduled", which is the strongest possible claim on a
+     * poller's attention, not the weakest. The query's own
+     * `orderBy: { nulls: 'first' }` already said so; only the where disagreed.
+     *
+     * Carrier-neutral — the where clause has no carrier in it — but written
+     * against DHL because that is the import that produced the NULLs.
+     */
+    it('polls a parcel that was never given a due date, rather than stranding it', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      await db.shipment.create({
+        data: { trackingNumber: T1, carrier: 'DHL', nextPollAt: null, terminal: false },
+      })
+      stubDhl(200, shipment(T1, 'delivered'))
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.polled).toBe(1)
+      const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+      expect(s.outcome).toBe('DELIVERED')
+      // And it now has a schedule, so it can never fall back into the gap.
+      expect(s.terminal).toBe(true)
+    })
+
     it('asks DHL about a DHL parcel, using the header DHL expects', async () => {
       vi.stubEnv('DHL_API_KEY', 'dhl-key')
       await db.shipment.create({ data: { trackingNumber: T1, ...DUE } })

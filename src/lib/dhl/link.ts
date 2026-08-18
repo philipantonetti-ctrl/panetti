@@ -116,26 +116,22 @@ export async function linkDhlShipments(
     const delivered = s.status.toUpperCase() === 'DELIVERED'
 
     /**
-     * The delivery moment, and the one genuinely difficult call in this file.
+     * The delivery moment, which this file never supplies.
      *
-     * The export says a parcel IS delivered. It never says WHEN. So:
+     * The export says a parcel IS delivered. It never says WHEN. DHL's tracking
+     * API does, to the second — so the file provides the fact and the API
+     * provides the moment, and nothing here is stamped.
      *
-     * - A parcel already delivered the first time we see it gets NO date. We
-     *   did not watch it arrive and cannot honestly claim a day. A guess here
-     *   would go straight into the delivery-time median and stay wrong forever,
-     *   which is exactly the failure link.ts refuses for ambiguous orders.
-     * - A parcel we already hold, which turns delivered in a later export, is
-     *   stamped at the moment we learned. With a daily feed that is accurate to
-     *   the day, and it is a real observation rather than an invention.
-     * - A date already set is never moved, so re-importing an old file cannot
-     *   rewrite history.
+     * This used to write `now` for a parcel that turned delivered in a later
+     * export, described as "the moment we learned". That is a real observation
+     * of the wrong thing: it then fed the delivery-time median as though it
+     * were the moment the customer received the parcel, which is a different
+     * and always later event. With a weekly file, or a backfill, it is days out.
      *
-     * The consequence, stated plainly: parcels delivered before the first
-     * import are counted as still moving until DHL's tracking API fills their
-     * dates in. Under-claiming is the right way to be wrong.
+     * A date already set is never moved, so re-importing an old file cannot
+     * rewrite what the poller observed.
      */
-    const availableAt =
-      existing?.availableAt ?? (delivered && existing ? now : null)
+    const availableAt = existing?.availableAt ?? null
 
     const link = {
       orderId: orders[0].id,
@@ -145,7 +141,25 @@ export async function linkDhlShipments(
       handedInAt: s.pickupAt,
       availableAt,
       outcome: delivered ? 'DELIVERED' : (existing?.outcome ?? null),
-      terminal: delivered ? true : (existing?.terminal ?? false),
+      /**
+       * The file never ends a parcel's life. Only the poller does.
+       *
+       * `delivered ? true` here was the reason DHL's real delivery timestamps
+       * could never arrive: syncShipments selects `terminal: false`, so a
+       * parcel the file called delivered was removed from the poller's reach
+       * permanently — and the comment above promising the API would fill its
+       * date in was describing something this line prevented.
+       *
+       * Worse for a parcel already delivered the first time we saw it: no
+       * availableAt, no poll, so it counted as still moving and sat in the late
+       * list forever with nothing able to correct it.
+       *
+       * Left to the poller, one lookup writes the real availableAt, and
+       * nextPollFor turns the parcel terminal itself — DHL's `delivered` maps
+       * into COLLECTED, which is a full stop. One extra call per delivered
+       * parcel, once, against a 240/day budget.
+       */
+      terminal: existing?.terminal ?? false,
       lastStatus: s.status,
       /**
        * The parcel's FIRST due date, and only its first.
