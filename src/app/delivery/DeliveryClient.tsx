@@ -23,7 +23,12 @@ type LateOrder = {
   parcels: Parcel[]
 }
 
-type UnlinkedParcel = { trackingNumber: string; url: string; lastStatus: string | null }
+type UnlinkedParcel = {
+  trackingNumber: string
+  carrier: string
+  url: string
+  lastStatus: string | null
+}
 
 type ImportRow = {
   id: string
@@ -518,15 +523,21 @@ function LateList({
                         <span className="text-muted">{DASH}</span>
                       ) : (
                         r.parcels.map((p) => (
-                          <a
-                            key={p.number}
-                            href={p.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-accent hover:underline"
-                          >
-                            {p.number}
-                          </a>
+                          // The carrier rides beside the number rather than in
+                          // a column of its own: this table is already seven
+                          // wide, and the name is only ever read together with
+                          // the number it belongs to.
+                          <span key={p.number} className="whitespace-nowrap">
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-accent hover:underline"
+                            >
+                              {p.number}
+                            </a>
+                            <span className="ml-1 text-[11px] text-faint">{p.carrier}</span>
+                          </span>
                         ))
                       )}
                     </div>
@@ -578,7 +589,8 @@ function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: num
       {open &&
         (items.length === 0 ? (
           <p className="border-t border-line px-5 py-4 text-[13px] text-muted">
-            None right now — every parcel Bring has told us about is linked to an order.
+            None right now — every parcel the carriers have told us about is linked to an
+            order.
           </p>
         ) : (
           <div className="overflow-x-auto border-t border-line">
@@ -586,6 +598,11 @@ function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: num
               <thead>
                 <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
                   <th className="px-5 py-2 text-left">Tracking number</th>
+                  {/* Its own column here, unlike the late table above: this one
+                      has two columns and the room, and an unlinked parcel is
+                      chased BY carrier — you go and ask that carrier's file
+                      where the order reference went. */}
+                  <th className="px-5 py-2 text-left">Carrier</th>
                   <th className="px-5 py-2 text-left">Last status</th>
                 </tr>
               </thead>
@@ -602,6 +619,7 @@ function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: num
                         {p.trackingNumber}
                       </a>
                     </td>
+                    <td className="px-5 py-2.5 text-muted">{p.carrier}</td>
                     <td className="px-5 py-2.5 text-ink">{p.lastStatus ?? DASH}</td>
                   </tr>
                 ))}

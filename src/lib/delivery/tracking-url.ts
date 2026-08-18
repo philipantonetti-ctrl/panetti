@@ -26,3 +26,25 @@ export function trackingUrl(trackingNumber: string, carrier: string): string {
   const site = SITES[carrier.toUpperCase()] ?? SITES.BRING
   return site(encodeURIComponent(trackingNumber))
 }
+
+/** How each carrier is written for a person to read. */
+const NAMES: Record<string, string> = { BRING: 'Bring', DHL: 'DHL' }
+
+/**
+ * The carrier's name, as it appears on screen.
+ *
+ * Note where this DIFFERS from trackingUrl above: an unrecognised carrier
+ * falls back to Bring's LINK, because a link has to point somewhere and that
+ * is where such a row pointed before. It does NOT fall back to Bring's NAME —
+ * labelling a PostNord parcel "Bring" would state something false to whoever
+ * is chasing it. An unfamiliar name is a much smaller problem than a wrong one.
+ *
+ * A blank is the exception, and not really one: the column defaults to 'BRING',
+ * so an empty value is a row written before the column existed rather than an
+ * unnamed carrier.
+ */
+export function carrierName(carrier: string): string {
+  const key = carrier.trim().toUpperCase()
+  if (!key) return NAMES.BRING
+  return NAMES[key] ?? key.charAt(0) + key.slice(1).toLowerCase()
+}

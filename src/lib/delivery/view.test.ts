@@ -88,8 +88,12 @@ describe('deliveryFor', () => {
     }), promises, OSLO, NOW)
 
     expect(v.parcels).toEqual([
-      { number: 'B1', url: 'https://tracking.bring.com/tracking/B1' },
-      { number: 'D1', url: 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=D1' },
+      { number: 'B1', carrier: 'Bring', url: 'https://tracking.bring.com/tracking/B1' },
+      {
+        number: 'D1',
+        carrier: 'DHL',
+        url: 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=D1',
+      },
     ])
   })
 

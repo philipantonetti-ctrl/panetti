@@ -89,6 +89,7 @@ describe('GET /api/delivery', () => {
       {
         trackingNumber: UNLINKED,
         lastStatus: 'IN_TRANSIT',
+        carrier: 'Bring',
         url: `https://tracking.bring.com/tracking/${UNLINKED}`,
       },
     ])
@@ -104,6 +105,9 @@ describe('GET /api/delivery', () => {
     )
     expect(parcel.url).toContain('dhl.com')
     expect(parcel.url).not.toContain('bring.com')
+    // And it says so on screen. Both carriers feed this one list, so without a
+    // name there is nothing to tell them apart by.
+    expect(parcel.carrier).toBe('DHL')
   })
 
   it('reports the true count of unlinked parcels, not just the capped list', async () => {

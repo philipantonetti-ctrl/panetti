@@ -57,7 +57,9 @@ const paidOrder = {
     late: false,
     daysOver: null,
     promiseDays: 5,
-    parcels: [{ number: 'TRACK1', url: 'https://tracking.bring.com/tracking/TRACK1' }],
+    parcels: [
+      { number: 'TRACK1', carrier: 'Bring', url: 'https://tracking.bring.com/tracking/TRACK1' },
+    ],
   },
 }
 
