@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { catalogueOf, nameOf, namedFromSource, oneRowPerSku, splitBySource } from './sources'
+import {
+  catalogueOf,
+  imageOf,
+  imagesOf,
+  nameOf,
+  namedFromSource,
+  oneRowPerSku,
+  splitBySource,
+} from './sources'
 
 const item = (sku: string, name: string) => ({ sku, name })
 
@@ -210,5 +218,99 @@ describe('oneRowPerSku', () => {
     const rows = oneRowPerSku([{ sku: 'A-1', id: 'a' }, { sku: 'B-1', id: 'b' }])
 
     expect(rows.map((r) => r.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('imagesOf', () => {
+  it('keys the source shops photos by SKU', () => {
+    const images = imagesOf([
+      { sku: 'PZO-500', imageUrl: 'https://shop.example/oven.png' },
+      { sku: 'MPX-001', imageUrl: 'https://shop.example/gun.png' },
+    ])
+
+    expect(images.get('PZO-500')).toBe('https://shop.example/oven.png')
+    expect(images.get('MPX-001')).toBe('https://shop.example/gun.png')
+  })
+
+  it('finds a SKU however the shop cased or spaced it', () => {
+    expect(
+      imagesOf([{ sku: ' pzo-500 ', imageUrl: 'https://shop.example/oven.png' }]).get('PZO-500'),
+    ).toBe('https://shop.example/oven.png')
+  })
+
+  /**
+   * First one wins, for the same reason the name does: two source shops both
+   * carrying a SKU must not have the winner depend on the order Postgres
+   * returned them in.
+   */
+  it('keeps the first photo when two source shops both carry a SKU', () => {
+    const images = imagesOf([
+      { sku: 'PZO-500', imageUrl: 'https://no.example/oven.png' },
+      { sku: 'PZO-500', imageUrl: 'https://se.example/oven.png' },
+    ])
+
+    expect(images.get('PZO-500')).toBe('https://no.example/oven.png')
+  })
+
+  /**
+   * The rule the name follows for a blank title. A source shop that lists the
+   * product with no picture must not blank out one another source shop has,
+   * or a product loses its photo depending on which shop synced first.
+   */
+  it('does not let a shop with no photo blank out one another shop has', () => {
+    const images = imagesOf([
+      { sku: 'PZO-500', imageUrl: null },
+      { sku: 'PZO-500', imageUrl: 'https://shop.example/oven.png' },
+    ])
+
+    expect(images.get('PZO-500')).toBe('https://shop.example/oven.png')
+  })
+
+  it('leaves out a SKU that cannot identify a product', () => {
+    expect(imagesOf([{ sku: '0', imageUrl: 'https://shop.example/oven.png' }]).size).toBe(0)
+  })
+})
+
+describe('imageOf', () => {
+  it('gives the photo a source shop shows for the product', () => {
+    expect(
+      imageOf(new Map([['PZO-500', 'https://shop.example/oven.png']]), item('PZO-500', 'Stored')),
+    ).toBe('https://shop.example/oven.png')
+  })
+
+  it('finds it however the shop cased or spaced the SKU', () => {
+    expect(
+      imageOf(new Map([['PZO-500', 'https://shop.example/oven.png']]), item(' pzo-500 ', 'Stored')),
+    ).toBe('https://shop.example/oven.png')
+  })
+
+  /**
+   * Null, not undefined: this goes straight into a prop the table renders as a
+   * placeholder, and a spare part no shop lists on its own is the common case
+   * rather than the exception.
+   */
+  it('gives null for a product no source shop carries', () => {
+    expect(imageOf(new Map(), item('PPP-ST-001', 'Pizzeta Primo Stone'))).toBeNull()
+  })
+})
+
+/**
+ * Not hypothetical: one live product on a source shop stores an empty string
+ * rather than null for its photo. Prisma reports that as a value, so a guard
+ * written as `!== null` would put '' in the map and the page would render an
+ * img with no src — a broken image where the placeholder belongs.
+ */
+describe('imagesOf, on the empty string a live shop actually stores', () => {
+  it('treats an empty photo as no photo', () => {
+    expect(imagesOf([{ sku: 'PZO-500', imageUrl: '' }]).size).toBe(0)
+  })
+
+  it('does not let an empty photo beat a real one from another source shop', () => {
+    const images = imagesOf([
+      { sku: 'PZO-500', imageUrl: '' },
+      { sku: 'PZO-500', imageUrl: 'https://shop.example/oven.png' },
+    ])
+
+    expect(images.get('PZO-500')).toBe('https://shop.example/oven.png')
   })
 })

@@ -33,6 +33,30 @@ export function catalogueOf(products: { sku: string; name: string }[]): Map<stri
 }
 
 /**
+ * SKU to the photo the source shops show for it.
+ *
+ * The companion to `catalogueOf`, one field along. A photo is how someone
+ * recognises a product without translating its name first, which is why the
+ * Forecast and Stock tabs have built this exact map for as long as they have
+ * shown one.
+ *
+ * First non-null wins, not first row. A source shop that lists the product
+ * without a picture must not blank out a picture another source shop does
+ * have — the same reason a blank title cannot win in `catalogueOf`.
+ */
+export function imagesOf(
+  products: { sku: string; imageUrl: string | null }[],
+): Map<string, string> {
+  const images = new Map<string, string>()
+  for (const p of products) {
+    if (!isUsableSku(p.sku)) continue
+    const sku = normaliseSku(p.sku)
+    if (!images.has(sku) && p.imageUrl) images.set(sku, p.imageUrl)
+  }
+  return images
+}
+
+/**
  * Split purchasing rows into what the source shops sell and what only the other
  * webshops do.
  *
@@ -101,6 +125,17 @@ export function nameOf(
   item: { sku: string; name: string },
 ): string {
   return catalogue?.get(normaliseSku(item.sku)) ?? item.name
+}
+
+/**
+ * The photo a source shop shows for one product, or null when none does.
+ *
+ * The single-row form of `imagesOf`, exactly as `nameOf` is of `catalogueOf`,
+ * so a page never has to know how a SKU is normalised. Null rather than
+ * undefined because that is what `Thumb` takes, and it draws a placeholder.
+ */
+export function imageOf(images: Map<string, string>, item: { sku: string }): string | null {
+  return images.get(normaliseSku(item.sku)) ?? null
 }
 
 /**
