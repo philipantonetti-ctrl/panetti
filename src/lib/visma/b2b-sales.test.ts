@@ -174,12 +174,74 @@ describe('mapVismaB2bSales', () => {
   /** Minor units everywhere, as every other money column in this database is. */
   it('stores money in minor units, rounded rather than truncated', () => {
     const { orders } = mapVismaB2bSales(
-      [invoice({ invoiceLines: [line({ unitPriceInCurrency: 92.575 })] })],
+      // 2 x 92.575 = 185.15, which is the line total Visma sends beside it.
+      [invoice({ invoiceLines: [line({ unitPriceInCurrency: 92.575, amountInCurrency: 185.15 })] })],
       linked,
     )
 
     // Math.trunc would lose an øre a line, every line, forever.
     expect(orders[0].lines[0].unitPrice).toBe(9258)
+  })
+
+  /**
+   * THE NET-PRICE ASSUMPTION, CHECKED RATHER THAN BELIEVED.
+   *
+   * The importer prices a line as quantity x unitPriceInCurrency and passes no
+   * discount, on the reasoning that Visma prices each line net so any discount
+   * is already inside the unit price. The only evidence for that was a fixture
+   * reading `discountAmount: 0`; it has never been seen on a real discounted
+   * invoice. If `unitPriceInCurrency` is in fact the LIST price, every
+   * discounted invoice imports with overstated net sales — the direction that
+   * flatters the numbers, for a client who reconciles line by line.
+   *
+   * The payload settles it itself: `amountInCurrency` is the line total. When
+   * it agrees with quantity x unit price the price is net and the reading is
+   * right; when it disagrees the line is not what we assume and is refused
+   * rather than guessed at. A skipped line that shows up in a count is
+   * recoverable. A silently inflated sale is not.
+   */
+  it('refuses a line whose total does not match its quantity times its unit price', () => {
+    const result = mapVismaB2bSales(
+      // 2 x 3999 would be 7998; Visma says the line came to 7000.
+      [invoice({ invoiceLines: [line({ amountInCurrency: 7000 })] })],
+      linked,
+    )
+
+    expect(result.orders).toEqual([])
+    expect(skipped(result, 'line total disagrees')).toBe(1)
+  })
+
+  /** A fractional price rounds; a rounded øre is not a discount. */
+  it('does not mistake rounding for a discount', () => {
+    const { orders } = mapVismaB2bSales(
+      // 3 x 33.335 = 100.005, which Visma sends rounded to 100.01.
+      [invoice({ invoiceLines: [line({ quantity: 3, unitPriceInCurrency: 33.335, amountInCurrency: 100.01 })] })],
+      linked,
+    )
+
+    expect(orders[0].lines[0].quantity).toBe(3)
+  })
+
+  /** No line total is no check, and an unchecked assumption is the whole risk. */
+  it('refuses a line that carries no total to check against', () => {
+    const result = mapVismaB2bSales(
+      [invoice({ invoiceLines: [line({ amountInCurrency: null })] })],
+      linked,
+    )
+
+    expect(result.orders).toEqual([])
+    expect(skipped(result, 'line total disagrees')).toBe(1)
+  })
+
+  /** One odd line still does not cost the whole order. */
+  it('keeps the order when only one of its lines disagrees', () => {
+    const result = mapVismaB2bSales(
+      [invoice({ invoiceLines: [line(), line({ lineNumber: 2, amountInCurrency: 1 })] })],
+      linked,
+    )
+
+    expect(result.orders[0].lines).toHaveLength(1)
+    expect(skipped(result, 'line total disagrees')).toBe(1)
   })
 
   /**

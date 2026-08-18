@@ -405,6 +405,20 @@ function ShippingRates({
           or none of them. A rate applies to the webshops that trade in its currency, from the
           date you choose — history before that date keeps the rate that applied then.
         </p>
+        {/* The advice above is impossible to follow for six live products,
+            which all carry the SKU "0" — they span a pizza oven and a massage
+            chair, so a rate typed against that key would charge one product's
+            shipping to a completely different one, and the route refuses it.
+            Saying so here is the difference between "I cannot rate this yet and
+            I know why" and "this page is broken". The real fix is the client
+            giving those products their own SKUs, which is not something code
+            can do. */}
+        <p className="mt-1.5 text-[12px] text-muted">
+          A product needs its own SKU before it can have a rate. Several products sharing one
+          SKU — or a product with none — cannot be told apart here, and rating them together
+          would charge one product&rsquo;s shipping to another. Those orders keep the flat
+          per-order rate until the products are given real SKUs.
+        </p>
       </div>
 
       <div className="divide-y divide-line">

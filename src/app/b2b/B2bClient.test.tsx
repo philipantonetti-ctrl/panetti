@@ -209,6 +209,61 @@ describe('B2bClient', () => {
   })
 
   /**
+   * The import's outcome lived only in the cron's JSON response, which nothing
+   * reads — so "refused on every run" and "there are simply no B2B invoices"
+   * were indistinguishable from inside the product, and so would a jump in
+   * `imported` be if the allowlist ever leaked.
+   */
+  it('says what the last Visma import did', async () => {
+    mockFetch([customer], [b2bOrder])
+    renderWithToast(
+      <B2bClient
+        email="a@b.test"
+        shops={shops}
+        importRun={{
+          ranAt: '2026-08-18T09:30:00.000Z', linked: 3, read: 40, imported: 2,
+          partial: false, error: null,
+        }}
+      />,
+    )
+
+    expect(await screen.findByText(/imported 2/i)).toBeInTheDocument()
+  })
+
+  it('says so when the last import failed, rather than looking like a quiet week', async () => {
+    mockFetch([customer], [])
+    renderWithToast(
+      <B2bClient
+        email="a@b.test"
+        shops={shops}
+        importRun={{
+          ranAt: '2026-08-18T09:30:00.000Z', linked: 3, read: 0, imported: 0,
+          partial: false, error: 'Visma responded 429',
+        }}
+      />,
+    )
+
+    expect(await screen.findByText(/429/)).toBeInTheDocument()
+  })
+
+  /** Nobody linked yet is a state with an action attached, not a failure. */
+  it('says nobody is linked when nobody is', async () => {
+    mockFetch([customer], [])
+    renderWithToast(
+      <B2bClient
+        email="a@b.test"
+        shops={shops}
+        importRun={{
+          ranAt: '2026-08-18T09:30:00.000Z', linked: 0, read: 0, imported: 0,
+          partial: false, error: null,
+        }}
+      />,
+    )
+
+    expect(await screen.findByText(/no customers are linked to visma/i)).toBeInTheDocument()
+  })
+
+  /**
    * Visma is the source of an imported order and the next fifteen-minute run
    * rewrites it from the invoice: an edit would silently revert and a delete
    * would come straight back on the next upsert, losing anything typed onto it.

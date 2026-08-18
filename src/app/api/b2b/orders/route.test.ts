@@ -88,6 +88,38 @@ describe('POST /api/b2b/orders', () => {
     expect(saved.fulfillmentCost).toBe(42000) // minor units, SHOP currency
   })
 
+  /**
+   * "Shipping was free" and "nobody said" must not be the same value.
+   *
+   * A stored 0 wins outright in the engine — `fulfillmentCost ?? perSku`
+   * short-circuits on it — so an order saved with the box left blank could
+   * never be costed by the per-SKU shipping rates, while a Visma-imported order
+   * leaves the column null and is. This branch is what creates that pair, and
+   * with a zod default of 0 there was nothing anywhere to tell them apart.
+   */
+  it('stores no fulfillment cost at all when the field was left blank', async () => {
+    await asAdmin()
+    expect((await post({
+      customerId, placedAt: '2026-07-01',
+      lines: [{ productId, quantity: 1, unitPrice: 89 }],
+    })).status).toBe(200)
+
+    const saved = await db.order.findFirstOrThrow({ where: { b2bCustomerId: customerId } })
+    expect(saved.fulfillmentCost).toBeNull()
+  })
+
+  /** An explicit zero still means free, and must survive as a real figure. */
+  it('keeps a fulfillment cost of zero that somebody actually typed', async () => {
+    await asAdmin()
+    await post({
+      customerId, placedAt: '2026-07-01', fulfillmentCost: 0,
+      lines: [{ productId, quantity: 1, unitPrice: 89 }],
+    })
+
+    const saved = await db.order.findFirstOrThrow({ where: { b2bCustomerId: customerId } })
+    expect(saved.fulfillmentCost).toBe(0)
+  })
+
   it('stores the order in the CUSTOMER’S currency, not the shop’s', async () => {
     await asAdmin()
     await post({ customerId, placedAt: '2026-07-01', lines: [{ productId, quantity: 1, unitPrice: 89 }] })

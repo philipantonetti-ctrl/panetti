@@ -392,6 +392,25 @@ describe('CostsClient — shipping cost per unit', () => {
     ).toBeTruthy()
   })
 
+  /**
+   * The advice above the list is "give every product on an order a rate, or
+   * none of them" — and for six live products it cannot be followed. They all
+   * carry the SKU "0", spanning a pizza oven and a massage chair, and the route
+   * refuses a rate against a key like that because one product's shipping would
+   * be charged to a completely different one.
+   *
+   * So the page has to say so. Without it, someone who cannot rate those
+   * products reads a page that gives impossible advice and refuses their entry
+   * with no explanation, and concludes the page is broken.
+   */
+  it('says why a product without a usable SKU cannot be given a rate', async () => {
+    vi.stubGlobal('fetch', withRates([]))
+    const { container } = renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
+    expect(container.textContent).toMatch(/needs its own SKU/i)
+  })
+
   it('drops that sentence the moment a rate exists', async () => {
     // The other half: a page that said "every order is charged your per-order
     // rate" beside a list of per-unit rates would contradict itself.

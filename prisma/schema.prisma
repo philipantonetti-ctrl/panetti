@@ -139,8 +139,17 @@ model Order {
   // B2B marker, and the reason the order pays no gateway fee.
   b2bCustomerId   String?
   // What shipping this order actually cost us, in the SHOP's currency (the
-  // same frame as FulfillmentRate.perOrder). null = a webshop order, which
-  // uses the shop's standing rate instead.
+  // same frame as FulfillmentRate.perOrder).
+  //
+  // null = NOBODY SAID, whoever the order belongs to. A webshop order, a B2B
+  // order imported from Visma, and a hand-entered one whose shipping box was
+  // left blank all read the same here, and all fall through to the per-SKU
+  // shipping rates and then to the shop's standing per-order rate.
+  //
+  // Zero is a different statement: it means shipping this order cost us
+  // nothing, and it WINS — `fulfillmentCost ?? perSku` short-circuits on it, so
+  // a zero stored by accident makes an order permanently uncostable by any
+  // rate. That is why the B2B form no longer defaults the field to 0.
   fulfillmentCost Int?
 
   // When this order entered a refunded or cancelled state, so the reversal can
@@ -640,6 +649,34 @@ model DeliveryConfig {
   /// field on every successful run, and sharing one column let it wipe a live
   /// Slack failure within one cron tick. Two subsystems, two fields.
   slackLastError         String?
+}
+
+/// What the last B2B sales import from Visma did, so a person can see it.
+///
+/// It exists because everything this import knows otherwise lives in the cron's
+/// JSON response, which nothing reads. From inside the product, "the import is
+/// refused on every run" and "there are no B2B invoices to import" looked
+/// exactly alike — both are simply no new orders — and so would a sudden JUMP
+/// in `imported`, which is what a leak in the allowlist would look like.
+///
+/// A singleton, like DeliveryConfig: only the newest run is worth showing, and
+/// a history of runs is a table nobody would ever open.
+model B2bImportRun {
+  id    String   @id @default("singleton")
+  ranAt DateTime
+
+  /// B2bCustomers carrying a Visma number. Zero is the difference between
+  /// "nobody has linked a customer yet" and "the import is broken".
+  linked   Int @default(0)
+  /// Invoices Visma returned, before the allowlist filtered any of them out.
+  read     Int @default(0)
+  /// Orders written.
+  imported Int @default(0)
+
+  /// True when the run did not get to the end — a refusal or the cron's
+  /// deadline. What it did read is still stored; the rest arrives next run.
+  partial Boolean @default(false)
+  error   String?
 }
 
 /// Every warehouse file we ingested, so "did yesterday's file land, and did all

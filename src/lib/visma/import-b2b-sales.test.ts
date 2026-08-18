@@ -93,6 +93,9 @@ const linkSecondCustomer = () =>
 // before their B2B customers, which must go before the shop everything hangs
 // off — products and customers both cascade with it.
 async function cleanup() {
+  // The run record is a workspace singleton nothing else writes, so each test
+  // starts with no record rather than the one the test before it left.
+  await db.b2bImportRun.deleteMany({})
   await db.order.deleteMany({ where: { shop: { name: { contains: TAG_PREFIX } } } })
   await db.b2bCustomer.deleteMany({ where: { shop: { name: { contains: TAG_PREFIX } } } })
   await db.shop.deleteMany({ where: { name: { contains: TAG_PREFIX } } })
@@ -130,11 +133,23 @@ const storedOrder = () =>
     include: { items: true },
   })
 
+/**
+ * The import under test, with its pacing stubbed out.
+ *
+ * Real pacing is two seconds before every request, which is right in production
+ * and would add half a minute to this file. The deadline arithmetic does not
+ * depend on the wait actually happening — it asks whether the wait WOULD end
+ * past the deadline before starting it — so a no-op sleep changes nothing this
+ * file asserts, except the one test that is specifically about elapsed time.
+ */
+const runImport = (opts: Parameters<typeof importVismaB2bSales>[0] = {}) =>
+  importVismaB2bSales({ sleep: async () => {}, ...opts })
+
 describe('importVismaB2bSales', () => {
   it('turns a linked customer’s invoice into one of their orders', async () => {
     stubCustomers({ [NUMBER]: { body: [invoice()] } })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
     expect(result.error).toBeNull()
     expect(result.imported).toBe(1)
 
@@ -181,7 +196,7 @@ describe('importVismaB2bSales', () => {
       },
     })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     expect(result.imported).toBe(1)
     expect(result.skipped).toContainEqual({ reason: 'not a linked customer', count: 1 })
@@ -198,7 +213,7 @@ describe('importVismaB2bSales', () => {
     await db.b2bCustomer.update({ where: { id: customerId }, data: { vismaCustomerNumber: null } })
     const fetchMock = stubCustomers({ [NUMBER]: { body: [invoice()] } })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     expect(fetchMock).not.toHaveBeenCalled()
     expect(result.error).toBeNull()
@@ -208,10 +223,10 @@ describe('importVismaB2bSales', () => {
   /** A cron runs this every fifteen minutes; twice must mean once. */
   it('does not duplicate an order it has already imported', async () => {
     stubCustomers({ [NUMBER]: { body: [invoice()] } })
-    await importVismaB2bSales()
+    await runImport()
     resetVismaTokenCache()
     stubCustomers({ [NUMBER]: { body: [invoice()] } })
-    await importVismaB2bSales()
+    await runImport()
 
     expect(await db.order.count({ where: { shopId, externalId: `visma-${TAG}-1` } })).toBe(1)
     // Rewritten, not appended to: a re-read must never double an order's lines.
@@ -220,10 +235,14 @@ describe('importVismaB2bSales', () => {
 
   it('rereads a changed invoice rather than leaving the first reading standing', async () => {
     stubCustomers({ [NUMBER]: { body: [invoice()] } })
-    await importVismaB2bSales()
+    await runImport()
     resetVismaTokenCache()
-    stubCustomers({ [NUMBER]: { body: [invoice({ invoiceLines: [line({ quantity: 3 })] })] } })
-    await importVismaB2bSales()
+    // Quantity and line total move together, as a real invoice's would — the
+    // mapper checks one against the other before believing either.
+    stubCustomers({
+      [NUMBER]: { body: [invoice({ invoiceLines: [line({ quantity: 3, amountInCurrency: 11997 })] })] },
+    })
+    await runImport()
 
     const order = await storedOrder()
     expect(order!.items[0].quantity).toBe(3)
@@ -242,11 +261,35 @@ describe('importVismaB2bSales', () => {
       [NUMBER]: { body: [invoice({ invoiceLines: [line(), line({ lineNumber: 2, inventoryNumber: 'NOT-OURS' })] })] },
     })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     expect(result.imported).toBe(1)
     expect(result.skipped).toContainEqual({ reason: 'not our product', count: 1 })
     expect((await storedOrder())!.items).toHaveLength(1)
+  })
+
+  /**
+   * The rate limit is a rolling window shared with three other Visma imports,
+   * and a burst exhausts it for minutes. Pacing BEFORE the first request, not
+   * only between customers, is what keeps this import from arriving on the
+   * heels of whatever else the run has just done — and this import is the one
+   * whose loss produces a wrong revenue picture rather than a stale
+   * operational one.
+   */
+  it('pauses before its first request, not only between customers', async () => {
+    // How many requests had already gone out each time it paused. A pause
+    // before the first one records 0, which is what proves the ordering rather
+    // than leaving it inferred from a count of pauses.
+    const pausedAfter: number[] = []
+    stubCustomers({ [NUMBER]: { body: [invoice()] } })
+
+    await importVismaB2bSales({
+      sleep: async (ms) => {
+        if (ms > 0) pausedAfter.push(asked.length)
+      },
+    })
+
+    expect(pausedAfter).toEqual([0])
   })
 
   /**
@@ -265,7 +308,7 @@ describe('importVismaB2bSales', () => {
       },
     })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     expect(result.linked).toBe(2)
     expect(asked).toHaveLength(2)
@@ -298,7 +341,7 @@ describe('importVismaB2bSales', () => {
     ]
     stubCustomers({ [NUMBER]: { body: full } })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     expect(result.partial).toBe(true)
     expect(result.error).toBeNull()
@@ -320,7 +363,7 @@ describe('importVismaB2bSales', () => {
       [NUMBER2]: { body: { message: 'slow down' }, status: 429 },
     })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     expect(result.partial).toBe(true)
     expect(result.error).toBeNull()
@@ -347,7 +390,7 @@ describe('importVismaB2bSales', () => {
   it('asks for one named customer’s invoices, by the parameter that actually works', async () => {
     stubCustomers({ [NUMBER]: { body: [invoice()] } })
 
-    await importVismaB2bSales()
+    await runImport()
 
     expect(asked).toHaveLength(1)
     expect(asked[0]).toContain('controller/api/v1/customerinvoice')
@@ -371,7 +414,7 @@ describe('importVismaB2bSales', () => {
     })
     const fetchMock = stubCustomers({ [NUMBER]: { body: [invoice({ customer: { name: 'Nobody' } })] } })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     // Nothing linked once the blank is dropped, so not even a request is spent.
     expect(fetchMock).not.toHaveBeenCalled()
@@ -388,7 +431,7 @@ describe('importVismaB2bSales', () => {
   it('does not start when the run is already out of time, and says it was partial', async () => {
     const fetchMock = stubCustomers({ [NUMBER]: { body: [invoice()] } })
 
-    const result = await importVismaB2bSales({ deadline: Date.now() - 1 })
+    const result = await runImport({ deadline: Date.now() - 1 })
 
     expect(fetchMock).not.toHaveBeenCalled()
     expect(result.partial).toBe(true)
@@ -407,9 +450,10 @@ describe('importVismaB2bSales', () => {
       },
     })
 
-    // Long enough for the first customer, gone by the time the pause before the
-    // second one has elapsed.
-    const result = await importVismaB2bSales({ deadline: Date.now() + 200 })
+    // The one test that pays the REAL pacing, because elapsed time is the
+    // property under test: long enough to afford the pause before the first
+    // customer, and gone by the time that pause has actually run.
+    const result = await importVismaB2bSales({ deadline: Date.now() + 2_500 })
 
     expect(asked).toHaveLength(1)
     expect(result.partial).toBe(true)
@@ -417,10 +461,46 @@ describe('importVismaB2bSales', () => {
     expect(await db.order.count({ where: { shopId, externalId: `visma-${TAG}-late` } })).toBe(0)
   })
 
+  /**
+   * Everything this import knows lived only in the cron's JSON response, which
+   * nothing reads. So "it 429s on every run" and "there are no B2B invoices"
+   * looked identical from inside the product — and so would a jump in
+   * `imported` if the allowlist ever leaked. The row is what the B2B page
+   * shows.
+   */
+  it('records what the last run did, where a person can see it', async () => {
+    stubCustomers({ [NUMBER]: { body: [invoice()] } })
+
+    await runImport()
+
+    const run = await db.b2bImportRun.findUnique({ where: { id: 'singleton' } })
+    expect(run).toMatchObject({ linked: 1, read: 1, imported: 1, partial: false, error: null })
+    expect(run!.ranAt.getTime()).toBeGreaterThan(Date.now() - 60_000)
+  })
+
+  it('records a failed run too, so a broken import cannot pass for a quiet one', async () => {
+    stubCustomers({ [NUMBER]: { body: { message: 'boom' }, status: 500 } })
+
+    await runImport()
+
+    const run = await db.b2bImportRun.findUnique({ where: { id: 'singleton' } })
+    expect(run!.error).toMatch(/500/)
+    expect(run!.imported).toBe(0)
+  })
+
+  /** A deployment without Visma has nothing to report and must not report one. */
+  it('writes no record at all when Visma is not configured', async () => {
+    vi.stubEnv('VISMA_CLIENT_SECRET', '')
+
+    await runImport()
+
+    expect(await db.b2bImportRun.findUnique({ where: { id: 'singleton' } })).toBeNull()
+  })
+
   it('is quietly skipped when no credentials are configured', async () => {
     vi.stubEnv('VISMA_CLIENT_SECRET', '')
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     expect(result.configured).toBe(false)
     expect(result.error).toBeNull()
@@ -429,7 +509,7 @@ describe('importVismaB2bSales', () => {
   it('reports a refusal instead of throwing, so the rest of the sync survives', async () => {
     stubCustomers({ [NUMBER]: { body: { message: 'boom' }, status: 500 } })
 
-    const result = await importVismaB2bSales()
+    const result = await runImport()
 
     expect(result.error).toMatch(/500/)
     expect(result.imported).toBe(0)

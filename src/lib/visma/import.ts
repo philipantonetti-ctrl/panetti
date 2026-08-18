@@ -527,8 +527,52 @@ async function storeB2bSale(
  * today, one bounded request each — instead of how big the ledger is.
  */
 export async function importVismaB2bSales(
-  opts: { deadline?: number } = {},
+  opts: { deadline?: number; sleep?: (ms: number) => Promise<unknown> } = {},
 ): Promise<VismaB2bSalesResult> {
+  const result = await readVismaB2bSales(opts)
+
+  // Recorded so the B2B page can show what the last run did. A deployment
+  // without Visma has nothing to report and writes nothing, so an unconfigured
+  // workspace does not grow a row saying it imported nothing.
+  if (result.configured) await recordB2bImportRun(result)
+
+  return result
+}
+
+/**
+ * Keep the last run where a person will see it.
+ *
+ * Best-effort and deliberately swallowing its own failure: this is a REPORT of
+ * the import, and a report that could fail the thing it reports on would be
+ * worse than no report. The orders are already written by this point.
+ */
+async function recordB2bImportRun(result: VismaB2bSalesResult): Promise<void> {
+  const row = {
+    ranAt: new Date(),
+    linked: result.linked,
+    read: result.read,
+    imported: result.imported,
+    partial: result.partial,
+    error: result.error,
+  }
+  try {
+    await db.b2bImportRun.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton', ...row },
+      update: row,
+    })
+  } catch {
+    // The import stands whatever this did. The page shows the previous run.
+  }
+}
+
+async function readVismaB2bSales(
+  opts: { deadline?: number; sleep?: (ms: number) => Promise<unknown> },
+): Promise<VismaB2bSalesResult> {
+  // Injected by tests so two seconds of pacing a customer does not make a suite
+  // take half a minute. Production always uses the real one.
+  const sleep = opts.sleep ?? pause
+
   const creds = vismaCredentials()
   if (!creds) return noSales({ configured: false })
 
@@ -567,23 +611,21 @@ export async function importVismaB2bSales(
     const invoices: VismaCustomerInvoice[] = []
     let read = 0
     let partial = false
-    let requested = 0
-
     for (const number of linkedByNumber.keys()) {
-      // The pause before the NEXT request counts toward the deadline: starting
-      // a wait we already know will end past it just burns the run's last
-      // seconds. Checked rather than assumed, exactly as the parcel poll checks
-      // its own, because this stage begins after the shops may already have
-      // spent 240 of the route's 300 seconds — and a request already in flight
-      // is not interrupted, the same contract syncAllShops and syncShipments
-      // have.
-      const waitFirst = requested === 0 ? 0 : PAGE_PAUSE_MS
-      if (opts.deadline !== undefined && Date.now() + waitFirst > opts.deadline) {
+      // Paced before EVERY request, the first one included. The rate limit is a
+      // rolling window shared with the other three Visma imports and a burst
+      // exhausts it for minutes, so arriving on the heels of whatever the run
+      // just did is how this import comes to lose the same customers every
+      // time — and it is the one whose loss is a wrong revenue picture rather
+      // than a stale operational one.
+      //
+      // The wait counts toward the deadline: starting one we already know will
+      // end past it just burns the run's last seconds.
+      if (opts.deadline !== undefined && Date.now() + PAGE_PAUSE_MS > opts.deadline) {
         partial = true
         break
       }
-      if (waitFirst > 0) await pause(waitFirst)
-      requested += 1
+      await sleep(PAGE_PAUSE_MS)
 
       let batch: VismaCustomerInvoice[]
       try {
@@ -596,6 +638,11 @@ export async function importVismaB2bSales(
           // from is free text, not a validated number.
           `controller/api/v1/customerinvoice?customer=${encodeURIComponent(number)}` +
             `&pageSize=${B2B_SALES_PAGE_SIZE}`,
+          // The deadline reaches the REQUEST, not just this loop. Without it the
+          // fixed 60-second ceiling makes the deadline a claim rather than a
+          // bound: a request starting just inside it finishes well past the
+          // platform's 300s ceiling and takes the stages after this one down.
+          { deadline: opts.deadline },
         )
       } catch (e) {
         // 429 only, exactly as the receivables import treats it: the limit is a

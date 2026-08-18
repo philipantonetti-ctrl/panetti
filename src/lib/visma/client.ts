@@ -14,7 +14,7 @@ const TOKEN_URL = 'https://connect.visma.com/connect/token'
 const BASE = 'https://integration.visma.net/API'
 const SCOPE = 'vismanet_erp_service_api:read'
 
-/** No single request gets longer than this. */
+/** No single request gets longer than this, deadline or not. */
 const REQUEST_TIMEOUT_MS = 60_000
 
 /** Mint a new token this far before the old one dies, so a slow run cannot expire mid-flight. */
@@ -93,11 +93,36 @@ export async function vismaToken(
   return cached.token
 }
 
-export async function vismaGet<T>(creds: VismaCredentials, path: string): Promise<T> {
+export type VismaRequestOpts = { deadline?: number }
+
+/**
+ * What one request is allowed: the ceiling, or whatever is left of the caller's
+ * run, whichever is smaller.
+ *
+ * Without this a deadline does not bound anything. The sync route gives the B2B
+ * sales import until 265s of a 300s platform ceiling; a request starting at
+ * 264.9s and taking its full 60 seconds finishes around 325s, overruns the
+ * invocation, and takes the parcel poll and the delivery alert down with it —
+ * exactly what the deadline exists to prevent. `bring/client.ts` clamps for
+ * this reason and this is the same rule.
+ *
+ * Never below 1ms: an expired budget still has to be a timeout a caller can
+ * pass to AbortSignal, and it is the caller's loop that stops, not this.
+ */
+export function vismaRequestBudgetMs(opts: VismaRequestOpts, now = Date.now()): number {
+  const left = opts.deadline === undefined ? REQUEST_TIMEOUT_MS : opts.deadline - now
+  return Math.max(1, Math.min(REQUEST_TIMEOUT_MS, left))
+}
+
+export async function vismaGet<T>(
+  creds: VismaCredentials,
+  path: string,
+  opts: VismaRequestOpts = {},
+): Promise<T> {
   const token = await vismaToken(creds)
   const res = await fetch(`${BASE}/${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(vismaRequestBudgetMs(opts)),
   })
 
   if (!res.ok) {

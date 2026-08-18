@@ -44,6 +44,7 @@ const REAL = process.env.CRON_SECRET
 
 beforeEach(() => {
   importVismaB2bSales.mockClear()
+  importVismaPurchaseOrders.mockClear()
   syncAllShops.mockReset()
   syncAllShops.mockResolvedValue([
     { shopId: 's1', shopName: 'Panetti Norway', ok: true, ordersSynced: 3 },
@@ -123,6 +124,28 @@ describe('the scheduled sync endpoint', () => {
       b2bSalesError: null,
     })
     expect(body.b2bSalesSkipped).toEqual([{ reason: 'not a linked customer', count: 37 }])
+  })
+
+  /**
+   * ORDER IS A DECISION HERE, NOT AN ACCIDENT. One run makes roughly nine Visma
+   * calls back to back, and the spec's own measurement is that about ten quick
+   * calls earn a 429 which then holds for minutes. Whichever import goes last
+   * meets the empty end of that window — and because the call order is fixed
+   * and the preceding calls are identical every run, it loses the SAME
+   * customers every time, importing nothing while every gate stays green.
+   *
+   * B2B sales goes first because it is the smallest and most bounded read of
+   * the four, and because it is the only one whose absence produces a WRONG
+   * revenue picture rather than a stale operational one: stock and purchase
+   * orders can be a quarter of an hour out of date without misleading anyone
+   * about money.
+   */
+  it('reads B2B sales before the other Visma imports, not last into a spent rate limit', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    await call('Bearer right-secret')
+
+    expect(importVismaB2bSales.mock.invocationCallOrder[0])
+      .toBeLessThan(importVismaPurchaseOrders.mock.invocationCallOrder[0])
   })
 
   /**

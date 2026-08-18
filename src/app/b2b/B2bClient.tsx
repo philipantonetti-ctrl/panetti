@@ -55,7 +55,65 @@ type B2bOrder = {
 const RECENT_DAYS = 365
 const day = (d: Date) => d.toISOString().slice(0, 10)
 
-export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
+/**
+ * What the last B2B sales import did, read from the database by the page.
+ *
+ * Null means no run has been recorded — a workspace with no Visma credentials,
+ * or one where the cron has not run since this shipped.
+ */
+export type ImportRun = {
+  ranAt: string
+  linked: number
+  read: number
+  imported: number
+  partial: boolean
+  error: string | null
+}
+
+/**
+ * One line saying what the import last did.
+ *
+ * It exists because every one of these numbers otherwise lived in the cron's
+ * JSON response, which nothing reads. "Refused on every run" and "there are no
+ * B2B invoices" are both just no new orders on this page, and a JUMP in
+ * `imported` — which is what a leak in the allowlist would look like — would be
+ * invisible too. A line, deliberately, not a dashboard: it is a health check on
+ * a feature that is supposed to be silent, and anything larger would compete
+ * with the orders it is reporting on.
+ */
+function ImportStatus({ run }: { run: ImportRun | null }) {
+  if (!run) return null
+
+  const when = new Date(run.ranAt).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+
+  // Worst news first: an error outranks a partial run, which outranks a count.
+  const body = run.error
+    ? `last import failed — ${run.error}`
+    : run.linked === 0
+      ? 'no customers are linked to Visma yet, so nothing is imported'
+      : `imported ${run.imported} of ${run.read} invoices from ${run.linked} linked ${
+          run.linked === 1 ? 'customer' : 'customers'
+        }${run.partial ? ', and did not reach the end — the rest arrive next run' : ''}`
+
+  return (
+    <p className={`mt-0.5 text-[11px] ${run.error ? 'text-warn' : 'text-muted'}`}>
+      Visma · {when} · {body}
+    </p>
+  )
+}
+
+export function B2bClient({
+  email,
+  shops,
+  importRun = null,
+}: {
+  email: string
+  shops: Shop[]
+  importRun?: ImportRun | null
+}) {
   const toast = useToast()
   const [shopId, setShopId] = useState('') // '' = every shop
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -295,8 +353,13 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
 
         <div className="mt-6 rounded-[var(--radius-card)] border border-line bg-surface p-4">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
-            <div className="text-sm text-ink">
-              B2B orders <span className="text-[11px] text-muted">· last 12 months</span>
+            <div>
+              <div className="text-sm text-ink">
+                B2B orders <span className="text-[11px] text-muted">· last 12 months</span>
+              </div>
+              {/* Beside the orders it is reporting on, so "nothing new here" and
+                  "the import has been failing for a week" stop looking alike. */}
+              <ImportStatus run={importRun} />
             </div>
             <div className="flex items-center gap-2">
               <Link

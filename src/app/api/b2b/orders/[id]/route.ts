@@ -4,9 +4,13 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { VOIDED_STATUSES } from '@/lib/metrics/types'
-import { toMinor } from '@/lib/money'
 import { VISMA_EXTERNAL_ID_PREFIX } from '@/lib/visma/b2b-sales'
-import { buildOrderWrite, OrderBody, saveStandingPrices } from '../route'
+import {
+  buildOrderWrite,
+  fulfillmentCostToStore,
+  OrderBody,
+  saveStandingPrices,
+} from '../route'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -84,7 +88,11 @@ export async function GET(_req: Request, { params }: Ctx) {
           shippingCharged: order.shippingCharged,
           // null means "webshop order, use the shop's rate", which a B2B order
           // never is — but the column is nullable, so say 0 rather than null.
-          fulfillmentCost: order.fulfillmentCost ?? 0,
+          // Null travels to the form as null, so re-opening an order nobody
+          // costed shows an EMPTY box. Sent as 0 it would show a zero, and
+          // saving would then store one — turning "nobody said" into "shipping
+          // was free" by the act of looking at it.
+          fulfillmentCost: order.fulfillmentCost,
           lines: order.items.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -159,7 +167,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
           customerName: w.customer.name,
           customerEmail: w.customer.email ?? '',
           b2bCustomerId: w.customer.id,
-          fulfillmentCost: toMinor(parsed.data.fulfillmentCost),
+          fulfillmentCost: fulfillmentCostToStore(parsed.data.fulfillmentCost),
           items: { create: w.items },
         },
       })

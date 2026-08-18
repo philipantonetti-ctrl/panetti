@@ -54,6 +54,7 @@ export type B2bSkipReason =
   | 'unusable invoice'
   | 'no lines'
   | 'unusable line'
+  | 'line total disagrees'
 
 /**
  * Visma customer number to the customer we hold. THE allowlist: an invoice
@@ -199,14 +200,45 @@ export function mapVismaB2bSales(
         continue
       }
 
+      // …InCurrency, never the bare twin: `unitPrice` is converted to the
+      // COMPANY's currency, so reading it for a customer invoiced in EUR would
+      // record roughly eleven times what they were charged.
+      const unitPrice = money(l?.unitPriceInCurrency)
+
+      // THE NET-PRICE ASSUMPTION, CHECKED AT RUNTIME RATHER THAN BELIEVED.
+      //
+      // The importer prices this line as quantity x unitPrice and passes no
+      // discount, on the reasoning that Visma prices each line net so a
+      // discount is already inside the unit price. The only evidence for that
+      // was a fixture reading `discountAmount: 0` — it has never been observed
+      // on a real discounted invoice. If `unitPriceInCurrency` turns out to be
+      // the LIST price, every discounted invoice imports with OVERSTATED net
+      // sales, which is the direction that flatters the numbers, for a client
+      // who reconciles line by line.
+      //
+      // `amountInCurrency` is the line total, so the payload answers the
+      // question itself. Agreement means the price is net and the reading above
+      // is right. Disagreement means this line is not what we assume, and it is
+      // refused rather than guessed at: a skipped line shows up in a count and
+      // can be recovered, while a silently inflated sale cannot.
+      //
+      // No total at all is no check, and an unchecked assumption is the entire
+      // risk — so that is refused too.
+      const lineTotal = num(l?.amountInCurrency)
+      // Both sides are rounded to minor units, so each unit price can be half a
+      // unit out and the total half a unit more. Anything inside that is
+      // arithmetic; anything beyond it is a real difference.
+      const tolerance = Math.ceil(quantity / 2) + 1
+      if (lineTotal === null || Math.abs(quantity * unitPrice - money(lineTotal)) > tolerance) {
+        skip('line total disagrees')
+        continue
+      }
+
       lines.push({
         sku: normaliseSku(rawSku),
         name: str(l?.description),
         quantity,
-        // …InCurrency, never the bare twin: `unitPrice` is converted to the
-        // COMPANY's currency, so reading it for a customer invoiced in EUR
-        // would record roughly eleven times what they were charged.
-        unitPrice: money(l?.unitPriceInCurrency),
+        unitPrice,
       })
     }
 
