@@ -4,7 +4,12 @@ import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
-import { importVismaPurchaseOrders, type VismaImportResult } from '@/lib/visma/import'
+import {
+  importVismaPurchaseOrders,
+  importVismaStock,
+  type VismaImportResult,
+  type VismaStockResult,
+} from '@/lib/visma/import'
 import { db } from '@/lib/db'
 
 /**
@@ -106,6 +111,23 @@ export async function GET(req: Request) {
     // one refactor away from a failed sync.
   }
 
+  // And the warehouse count from the same ERP. One more bounded call, for the
+  // number the whole forecast turns on: the shops are copies of this and they
+  // drift, and on 2026-08-18 twelve of the fifty-two forecast SKUs disagreed
+  // with it while ten had no shop figure at all.
+  //
+  // Best-effort, and deliberately separate from the purchase-order import: one
+  // failing must not cost us the other, and a failed run simply leaves the
+  // previous snapshot standing.
+  let vismaStock: VismaStockResult = {
+    configured: false, read: 0, stored: 0, removed: 0, truncated: false, error: null,
+  }
+  try {
+    vismaStock = await importVismaStock()
+  } catch {
+    // importVismaStock does not throw either. Same belt and braces as above.
+  }
+
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
   // skips accounts synced in the last six hours, so most runs cost nothing.
   // Best-effort like the rates: a broken token must never fail the shop sync.
@@ -183,5 +205,9 @@ export async function GET(req: Request) {
     vismaSkipped: visma.skipped,
     vismaTruncated: visma.truncated,
     vismaError: visma.error,
+    vismaStockConfigured: vismaStock.configured,
+    vismaStockStored: vismaStock.stored,
+    vismaStockTruncated: vismaStock.truncated,
+    vismaStockError: vismaStock.error,
   })
 }

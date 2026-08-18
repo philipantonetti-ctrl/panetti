@@ -13,6 +13,8 @@ const row = (over: Partial<StockRow> = {}): StockRow => ({
   imageUrl: null,
   quantity: 1085,
   disagrees: false,
+  source: 'shops',
+  countedAt: null,
   runsOutOn: '2026-09-19T00:00:00.000Z',
   note: null,
   byShop: [
@@ -138,5 +140,71 @@ describe('StockClient', () => {
     ])
     const names = screen.getAllByTestId('stock-name').map((e) => e.textContent)
     expect(names).toEqual(['Soon', 'Quiet'])
+  })
+})
+
+/**
+ * The shops are copies of Visma and they drift. Once Visma decides the number,
+ * the page has to say so — a figure with no stated origin is the thing that
+ * made "which one is right?" unanswerable in the first place.
+ */
+describe('StockClient, on where the number came from', () => {
+  it('says the number came from Visma when Visma decided it', () => {
+    show([row({ source: 'visma', quantity: 991, countedAt: '2026-08-13T22:00:00.000Z' })])
+
+    expect(screen.getByText(/from Visma/)).toBeInTheDocument()
+  })
+
+  it('still says how many shops agree when it fell back to them', () => {
+    show([row({ source: 'shops' })])
+
+    expect(screen.getByText(/2 shops agree/)).toBeInTheDocument()
+    expect(screen.queryByText(/from Visma/)).not.toBeInTheDocument()
+  })
+
+  /**
+   * The case the old gate would have hidden. Every shop agrees with every other
+   * shop and all of them are wrong — 976 against Visma's 991, which is exactly
+   * what twelve of the fifty-two forecast SKUs looked like on 2026-08-18. The
+   * shops do not "disagree", so nothing would have been shown.
+   */
+  it('names the shops that differ from Visma even when they all agree with each other', () => {
+    show([
+      row({
+        source: 'visma',
+        quantity: 991,
+        disagrees: false,
+        byShop: [
+          { shopName: 'Norway', quantity: 976, updatedAt: '2026-08-13T22:00:00.000Z' },
+          { shopName: 'Sweden', quantity: 976, updatedAt: '2026-08-13T21:00:00.000Z' },
+        ],
+      }),
+    ])
+
+    expect(screen.getByText('Norway')).toBeInTheDocument()
+    expect(screen.getAllByText('976')).toHaveLength(2)
+  })
+
+  it('says nothing about shops when every shop matches Visma', () => {
+    show([row({ source: 'visma', quantity: 1085 })])
+
+    expect(screen.queryByText('Norway')).not.toBeInTheDocument()
+  })
+
+  /**
+   * A stale count is worth as much as a wrong one, and Visma dates its own
+   * warehouse rows — Goteborg had not moved since February.
+   */
+  it('says when Visma last counted it', () => {
+    show([row({ source: 'visma', countedAt: '2026-08-13T00:00:00.000Z' })])
+
+    expect(screen.getByText(/counted/)).toBeInTheDocument()
+  })
+
+  it('does not claim a source when neither Visma nor a shop has a figure', () => {
+    show([row({ source: 'none', quantity: null, byShop: [] })])
+
+    expect(screen.queryByText(/from Visma/)).not.toBeInTheDocument()
+    expect(screen.getByText('no stock data')).toBeInTheDocument()
   })
 })

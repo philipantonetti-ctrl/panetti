@@ -49,3 +49,25 @@ export type VismaReceipt = {
   status?: Wrapped<string>
   date?: Wrapped<string>
 }
+
+/** One warehouse's line on an inventory item: where the stock actually is. */
+export type VismaWarehouseDetail = {
+  warehouse?: Wrapped<string | number>
+  /** The physical count. This is the number the forecast uses. */
+  quantityOnHand?: Wrapped<number>
+  /**
+   * Visma's own figure, net of allocations and inbound. NOT the forecast's
+   * number: it reads 992 where 991 are on hand, so it folds in stock that has
+   * not landed, and arriving purchase orders are already counted separately.
+   */
+  available?: Wrapped<number>
+  lastModifiedDateTime?: Wrapped<string>
+}
+
+/** An item in Visma's inventory, with its stock spread across warehouses. */
+export type VismaInventoryItem = {
+  inventoryNumber?: Wrapped<string | number>
+  /** False on a service, a course video or a bundle. Those carry no quantity. */
+  stockItem?: Wrapped<boolean>
+  warehouseDetails?: VismaWarehouseDetail[]
+}

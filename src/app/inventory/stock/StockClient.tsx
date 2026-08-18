@@ -9,6 +9,14 @@ export type StockRow = {
   imageUrl: string | null
   quantity: number | null
   disagrees: boolean
+  /**
+   * Who the figure above belongs to. Visma is the ERP the warehouse works in
+   * and wins wherever it holds the SKU; `shops` is the vote among copies, kept
+   * for the ones it does not.
+   */
+  source: 'visma' | 'shops' | 'none'
+  /** When Visma last moved that warehouse row. Null unless it decided the number. */
+  countedAt: string | null
   /** From the forecast, so this page and the Forecast tab never contradict. */
   runsOutOn: string | null
   /** Why there is no run-out date, in the forecast's own words. */
@@ -87,6 +95,13 @@ export function StockClient({ rows, now }: { rows: StockRow[]; now?: string }) {
       {sorted.map((r) => {
         const c = cover(r, today)
         const read = lastRead(r.byShop)
+        const counted = r.countedAt ? new Date(r.countedAt) : null
+        // Any shop quoting a different figure from the one shown. Deliberately
+        // NOT `disagrees`, which only means the shops differ from each OTHER:
+        // the common case is every shop agreeing on 976 while Visma counted
+        // 991, and a page gated on `disagrees` would say nothing at all about
+        // the twelve SKUs where that is exactly what happens.
+        const shopsDiffer = r.byShop.some((s) => s.quantity !== null && s.quantity !== r.quantity)
 
         return (
           <div
@@ -111,21 +126,32 @@ export function StockClient({ rows, now }: { rows: StockRow[]; now?: string }) {
                   {c && <p className={`text-[12px] ${c.tone}`}>{c.text}</p>}
                 </div>
 
-                {/* Nothing to say when no shop carries this product: "0 shops
-                    agree" is not a reassurance, it is a sentence with no
-                    meaning, and the figure above already reads "no stock data". */}
-                {r.byShop.length > 0 && (
+                {/* Where the number came from, always said out loud. A figure
+                    with no stated origin is what made "which one is right?"
+                    unanswerable before Visma was asked at all. */}
+                {r.source === 'visma' ? (
                   <p className="mt-1.5 text-[11px] text-muted">
-                    {r.disagrees ? (
-                      <span className="text-warn">shops disagree</span>
-                    ) : (
-                      `${r.byShop.length} ${r.byShop.length === 1 ? 'shop' : 'shops'} agree`
-                    )}
-                    {read && <span> · read {readAgo(read, today)}</span>}
+                    from Visma
+                    {counted && <span> · counted {readAgo(counted, today)}</span>}
+                    {shopsDiffer && <span className="text-warn"> · the shops say otherwise</span>}
                   </p>
+                ) : (
+                  // Nothing to say when no shop carries this product: "0 shops
+                  // agree" is not a reassurance, it is a sentence with no
+                  // meaning, and the figure above already reads "no stock data".
+                  r.byShop.length > 0 && (
+                    <p className="mt-1.5 text-[11px] text-muted">
+                      {r.disagrees ? (
+                        <span className="text-warn">shops disagree</span>
+                      ) : (
+                        `${r.byShop.length} ${r.byShop.length === 1 ? 'shop' : 'shops'} agree`
+                      )}
+                      {read && <span> · read {readAgo(read, today)}</span>}
+                    </p>
+                  )
                 )}
 
-                {r.disagrees && (
+                {(r.disagrees || shopsDiffer) && (
                   // The odd ones out are marked rather than left to be found.
                   // Eleven shops report this product and one of them differs;
                   // reading eleven numbers to spot which is work the page can

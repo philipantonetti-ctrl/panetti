@@ -34,6 +34,8 @@ export default async function StockPage() {
             imageUrl: r.imageUrl,
             quantity: r.stock.quantity,
             disagrees: r.stock.disagrees,
+            source: r.stock.source,
+            countedAt: r.stock.visma?.measuredAt?.toISOString() ?? null,
             // Straight from the forecast, so "36 days left" here and the
             // run-out date on the Forecast tab are the same fact.
             runsOutOn: r.forecast.runsOutOn?.toISOString() ?? null,

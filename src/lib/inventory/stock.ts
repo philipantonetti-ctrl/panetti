@@ -58,3 +58,47 @@ export function agreeStock(rows: ShopStock[]): AgreedStock {
 
   return { quantity: best, disagrees: counts.size > 1, byShop: rows }
 }
+
+/** Where the number on the page actually came from. */
+export type StockSource = 'visma' | 'shops' | 'none'
+
+/** What Visma counted, in the warehouses we sell from. */
+export type VismaReading = {
+  quantity: number
+  /** When Visma last moved that warehouse row, not when we read it. */
+  measuredAt: Date | null
+}
+
+export type ResolvedStock = AgreedStock & {
+  source: StockSource
+  /** Visma's reading, kept even when it decided the number, so the gap shows. */
+  visma: VismaReading | null
+}
+
+/**
+ * One stock figure, from the source that is entitled to give it.
+ *
+ * Visma is the ERP the warehouse works in. The shops are copies of it, and
+ * `agreeStock` exists only because copies drift — a vote is what you do when
+ * nobody is authoritative. So Visma wins outright wherever it has the SKU, and
+ * the vote is left to settle the ones it does not.
+ *
+ * Measured on 2026-08-18: of the 52 SKUs the forecast covers, the shops and
+ * Visma disagreed on 12. The gaps are small on the big sellers (976 against 991
+ * on Pizzetta Pro) and proportionally large on parts (5 against 13 on the
+ * Mazzetti Pro mainline), and ten SKUs had no shop figure at all.
+ *
+ * `disagrees` keeps its own meaning either way: it is the SHOPS disagreeing
+ * among themselves, which is worth saying whoever settled the number, because
+ * it means a storefront is quoting customers a figure the warehouse never had.
+ */
+export function resolveStock(visma: VismaReading | null, rows: ShopStock[]): ResolvedStock {
+  const agreed = agreeStock(rows)
+
+  // `visma !== null`, never a truthiness check: a sold-out product reads zero,
+  // zero is falsy, and falling through on it would quietly hand the forecast a
+  // stale shop figure for exactly the product that most needs reordering.
+  if (visma !== null) return { ...agreed, quantity: visma.quantity, source: 'visma', visma }
+
+  return { ...agreed, source: agreed.quantity === null ? 'none' : 'shops', visma: null }
+}
