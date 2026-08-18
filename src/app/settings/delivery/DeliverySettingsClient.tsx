@@ -30,6 +30,12 @@ type Settings = {
   bringApiUid: string
   bringClientUrl: string
   hasBringKey: boolean
+  /**
+   * Whether DHL_API_KEY is set on the server. Not a stored setting like the
+   * others — DHL's key is a Vercel environment variable — so there is no
+   * matching input on this page, only this flag and the test button.
+   */
+  hasDhlKey: boolean
   hasSlackWebhook: boolean
   lastSyncAt: string | null
   lastError: string | null
@@ -86,7 +92,7 @@ function Skeleton() {
  * ok, red otherwise. The server always answers in a sentence a human can act
  * on, so the client never needs to interpret the outcome itself.
  */
-async function runTest(target: 'bring' | 'slack'): Promise<{ ok: boolean; message: string }> {
+async function runTest(target: 'bring' | 'dhl' | 'slack'): Promise<{ ok: boolean; message: string }> {
   const res = await fetch('/api/delivery/test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -134,7 +140,7 @@ export function DeliverySettingsClient({ email }: { email: string }) {
     <AppShell email={email}>
       <PageHeader
         title="Delivery settings"
-        subtitle="Set these up in order. Connect Bring, connect Slack, say how many days each country is promised, then switch on the shops you want tracked."
+        subtitle="Set these up in order. Connect the carriers, connect Slack, say how many days each country is promised, then switch on the shops you want tracked."
       />
       <PageBody>
         {error && (
@@ -148,6 +154,7 @@ export function DeliverySettingsClient({ email }: { email: string }) {
         ) : data ? (
           <div className="space-y-4">
             <BringSection data={data} reload={load} />
+            <DhlSection data={data} />
             <SlackSection data={data} reload={load} />
             <PromisesSection promises={data.promises} shops={data.shops} reload={load} />
             <ShopsSection shops={data.shops} reload={load} />
@@ -253,6 +260,81 @@ function BringSection({ data, reload }: { data: Settings; reload: () => void }) 
       <div className="mt-4 border-t border-line pt-3 text-[12px] text-muted">
         <p>Last synced: {data.lastSyncAt ? new Date(data.lastSyncAt).toLocaleString() : 'Never'}</p>
         {data.lastError && <p className="mt-1 text-loss">{data.lastError}</p>}
+      </div>
+    </Card>
+  )
+}
+
+/** Where the key is pasted. One click beats hunting through the dashboard. */
+const VERCEL_ENV_URL = 'https://vercel.com/panetti-intelligence/panetti/settings/environment-variables'
+
+/**
+ * DHL, which has no fields to fill in.
+ *
+ * Bring's credentials are stored settings, so its panel is a form. DHL's key is
+ * a deployment secret in Vercel, which means this page cannot set it — and
+ * until this panel existed, could not report on it either. Somebody pasted a
+ * key into Vercel, redeployed, and had nothing anywhere to confirm it worked.
+ *
+ * Two claims, kept apart on purpose. "Key set" is what the server can see
+ * without spending a call. "DHL accepted it" needs an actual request, so it
+ * lives behind the button — a set variable and a working key are not the same
+ * thing, and a panel that blurred them would be the same silent failure one
+ * step further along.
+ */
+function DhlSection({ data }: { data: Settings }) {
+  const [testing, setTesting] = useState(false)
+  const toast = useToast()
+
+  async function test() {
+    setTesting(true)
+    try {
+      const result = await runTest('dhl')
+      if (result.ok) toast.success(result.message)
+      else toast.error(result.message)
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <Card
+      title="DHL"
+      subtitle="Tracking for the parcels DHL carries. The key lives in Vercel, not on this page."
+    >
+      {/* Words, not a status dot. Every other state on this page is stated in
+          text, and a lone coloured circle would be the only one of its kind —
+          as well as decoration in a palette whose green is reserved for money. */}
+      <p className={`text-[13px] font-medium ${data.hasDhlKey ? 'text-ink' : 'text-muted'}`}>
+        {data.hasDhlKey ? 'Key set' : 'No key set'}
+      </p>
+
+      <p className="mt-1.5 text-[11px] text-faint">
+        {data.hasDhlKey ? (
+          <>Test the connection to check DHL still accepts it.</>
+        ) : (
+          <>
+            Add <span className="num text-muted">DHL_API_KEY</span> in{' '}
+            <a
+              href={VERCEL_ENV_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              Vercel
+            </a>
+            , then redeploy. Until then DHL parcels are left alone rather than
+            marked failed.
+          </>
+        )}
+      </p>
+
+      <div className="mt-4">
+        <button onClick={test} disabled={testing} className={quietBtn}>
+          {testing ? 'Checking…' : 'Test connection'}
+        </button>
       </div>
     </Card>
   )

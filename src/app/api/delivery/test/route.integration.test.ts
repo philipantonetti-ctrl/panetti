@@ -55,12 +55,29 @@ async function seedConfig(fields: {
 
 const blank = () => seedConfig({})
 
+/**
+ * DHL answers 404 to a number it does not know — verified against the live API
+ * 2026-08-18 with the real key. fetchTracking turns that into null, so a 404 is
+ * exactly the "your key was accepted, this parcel just isn't real" answer the
+ * probe wants.
+ */
+const notFoundFetch = () =>
+  vi.fn<FetchFn>(async () => new Response(JSON.stringify({ status: 404 }), { status: 404 }))
+
 beforeEach(async () => {
   await blank()
   vi.mocked(currentUser).mockResolvedValue({ id: 'u1', email: 'a@b.c', role: 'ADMIN' } as never)
+  // The real key lives in .env, which the test runner can load. Blanking it
+  // makes "not connected" the deliberate default rather than an accident of
+  // whose machine the suite runs on — the same guard sync.integration.test.ts
+  // opens with, and for the same reason.
+  vi.stubEnv('DHL_API_KEY', '')
 })
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+})
 afterAll(blank)
 
 describe('POST /api/delivery/test', () => {
@@ -86,6 +103,7 @@ describe('POST /api/delivery/test', () => {
     // 200 ok:false — nothing stored
     expect((await post({ target: 'bring' })).headers.get('Cache-Control')).toBe('private, no-store')
     expect((await post({ target: 'slack' })).headers.get('Cache-Control')).toBe('private, no-store')
+    expect((await post({ target: 'dhl' })).headers.get('Cache-Control')).toBe('private, no-store')
 
     // 200 ok:true — stored, upstream accepts
     await seedConfig({
@@ -206,6 +224,56 @@ describe('POST /api/delivery/test', () => {
   it('an unknown target is refused with 400, not 500', async () => {
     const res = await post({ target: 'carrier-pigeon' })
     expect(res.status).toBe(400)
-    expect(await res.json()).toEqual({ error: 'Choose Bring or Slack.' })
+    expect(await res.json()).toEqual({ error: 'Choose Bring, DHL or Slack.' })
+  })
+
+  /**
+   * DHL's key is a deployment secret in Vercel, not a stored setting like
+   * Bring's — so there is nothing on the settings page to look at, and until
+   * this button existed nobody could tell a working key from a missing one.
+   */
+  it('dhl: accepts the key, sending it in the DHL-API-Key header', async () => {
+    vi.stubEnv('DHL_API_KEY', 'the-real-dhl-key')
+    const fetchMock = notFoundFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await post({ target: 'dhl' })
+    expect(await res.json()).toEqual({ ok: true, message: 'DHL accepted the credentials.' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    // Not Authorization, not x-api-key — DHL answers 401 to anything else.
+    expect((init.headers as Record<string, string>)['DHL-API-Key']).toBe('the-real-dhl-key')
+  })
+
+  it('dhl: names the environment variable to set when the key is missing', async () => {
+    const fetchMock = vi.fn<FetchFn>()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await post({ target: 'dhl' })
+    expect(await res.json()).toEqual({
+      ok: false,
+      message: 'DHL is not connected. Add DHL_API_KEY in Vercel, then redeploy.',
+    })
+    // Nothing to ask, so nothing is asked — and no daily call is spent proving
+    // what we already know.
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('a failing DHL call must not leak the key or the upstream host into the response', async () => {
+    vi.stubEnv('DHL_API_KEY', 'REAL-DHL-KEY-abc123')
+    vi.stubGlobal(
+      'fetch',
+      failingFetch('connect ECONNREFUSED https://api-eu.dhl.com/track/shipments key=REAL-DHL-KEY-abc123'),
+    )
+
+    const res = await post({ target: 'dhl' })
+    const text = await res.text()
+    expect(text).not.toContain('REAL-DHL-KEY-abc123')
+    expect(text).not.toContain('api-eu.dhl.com')
+    expect(JSON.parse(text)).toEqual({
+      ok: false,
+      message: 'DHL refused the key. Check DHL_API_KEY in Vercel, then redeploy.',
+    })
   })
 })

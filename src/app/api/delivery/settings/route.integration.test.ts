@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterAll, vi } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, afterAll, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { decryptSecret } from '@/lib/secrets'
 
@@ -43,8 +43,24 @@ beforeEach(cleanup)
 // DeliveryConfig in a test), but untidy, and exactly the kind of leftover the
 // Global Constraints ask fixtures to avoid. Added for hygiene.
 afterAll(cleanup)
+afterEach(() => vi.unstubAllEnvs())
 
 describe('delivery settings', () => {
+  /**
+   * DHL's key is a Vercel environment variable, not a stored setting, so the
+   * settings page has nothing in the database to read. Without this the DHL
+   * panel could only ever say "press the button and find out".
+   */
+  it('says whether DHL is connected, without ever returning the key', async () => {
+    vi.stubEnv('DHL_API_KEY', 'a-real-looking-dhl-key')
+    const connected = await (await GET()).json()
+    expect(connected.hasDhlKey).toBe(true)
+    expect(JSON.stringify(connected)).not.toContain('a-real-looking-dhl-key')
+
+    vi.stubEnv('DHL_API_KEY', '')
+    expect((await (await GET()).json()).hasDhlKey).toBe(false)
+  })
+
   it('refuses a non-admin on both verbs', async () => {
     vi.mocked(currentUser).mockResolvedValue({ id: 'u2', email: 'x@y.z', role: 'AMBASSADOR' } as never)
     expect((await GET()).status).toBe(403)
