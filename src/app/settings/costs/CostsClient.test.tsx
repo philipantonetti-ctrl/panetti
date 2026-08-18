@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { CostsClient } from './CostsClient'
 import { ToastProvider } from '@/components/toast/ToastProvider'
@@ -20,6 +20,28 @@ vi.mock('next/link', () => ({
 describe('CostsClient with no shops (the live production state)', () => {
   // This page shows no "Loading…" text — it loads as four skeleton rows.
   const skeletons = (container: HTMLElement) => container.querySelectorAll('.skeleton')
+
+  /**
+   * There are no products to fetch without a shop, but the shipping-rates
+   * section fetches its list unconditionally — so without a stub these two
+   * tests fire a real request at the jsdom origin and quietly depend on nothing
+   * answering there. Stubbed the way every other describe in this file does.
+   */
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.startsWith('/api/shipping-rates')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ rates: [] }) } as unknown as Response)
+        }
+        return Promise.reject(new Error(`CostsClient.test: unexpected fetch to ${url}`))
+      }),
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
 
   // Wrapped, like every other render in this file: the shipping-rates section
   // raises toasts, and app/layout.tsx wraps every page in a ToastProvider.
@@ -359,10 +381,25 @@ describe('CostsClient — shipping cost per unit', () => {
    */
   it('says orders keep their per-order rate while nothing is entered', async () => {
     vi.stubGlobal('fetch', withRates([]))
-    const { container } = renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
 
     await waitFor(() => expect(screen.getByText('Widget')).toBeTruthy())
-    expect(container.textContent).toMatch(/per-order/i)
+    // The empty-state sentence itself, not a phrase anywhere on the page: the
+    // always-rendered help paragraph above the list also says "per-order", so a
+    // loose match went green with the empty state deleted outright.
+    expect(
+      screen.getByText('No per-unit rates yet. Every order is charged your per-order fulfillment rate.'),
+    ).toBeTruthy()
+  })
+
+  it('drops that sentence the moment a rate exists', async () => {
+    // The other half: a page that said "every order is charged your per-order
+    // rate" beside a list of per-unit rates would contradict itself.
+    vi.stubGlobal('fetch', withRates([RATE]))
+    renderWithToast(<CostsClient email="admin@test.local" shops={[SHOP]} />)
+
+    await waitFor(() => expect(screen.getByText('PANPIZPRO')).toBeTruthy())
+    expect(screen.queryByText(/No per-unit rates yet/)).toBeNull()
   })
 
   it('sends what was typed to the shipping route, then re-reads the list', async () => {

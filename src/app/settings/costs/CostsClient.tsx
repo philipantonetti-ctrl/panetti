@@ -383,17 +383,26 @@ function ShippingRates({
     <section className="mt-6 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <div className="border-b border-line px-5 py-4">
         <h2 className="text-[14px] font-semibold text-ink">Shipping cost per unit</h2>
-        {/* The empty state has to say what happens INSTEAD, or a blank list
-            reads as "shipping is free". It is not: every order still carries the
-            flat per-order rate from Settings -> Fulfillment until its SKU has a
-            rate here, which is what makes this safe to fill in one SKU at a
-            time. The currency sentence is the other half a reader needs before
-            typing: a rate applies to the webshops trading in its currency, and
-            reading a EUR figure as NOK would be an elevenfold error. */}
+        {/* The half-rated order is the sentence that has to be right, because it
+            is the state this page is in for as long as it takes to fill the
+            rates in. The flat per-order rate is dropped the moment ONE line is
+            rated, and the unrated lines then count as nothing — so an order gets
+            CHEAPER to ship and its profit RISES half way through the job. An
+            earlier draft here said the opposite ("an order with no rate for its
+            SKU keeps your flat per-order rate"), which is true only when no line
+            is rated at all. The client reconciles these figures line by line and
+            would have quoted that sentence back.
+
+            The currency sentence is the other half a reader needs before typing:
+            a rate applies to the webshops trading in its currency, and reading a
+            EUR figure as NOK would be an elevenfold error. */}
         <p className="mt-0.5 text-[12px] text-muted">
           What one unit of a product costs us to ship, so an order of fifty costs more to ship
-          than an order of one. An order with no rate for its SKU keeps your flat per-order
-          fulfillment rate. A rate applies to the webshops that trade in its currency, from the
+          than an order of one. An order keeps your flat per-order fulfillment rate until{' '}
+          <strong className="font-semibold text-ink">one</strong> of its products has a rate
+          here. From then on that order is charged only for the products that have one, and any
+          product without a rate counts as nothing — so give every product on an order a rate,
+          or none of them. A rate applies to the webshops that trade in its currency, from the
           date you choose — history before that date keeps the rate that applied then.
         </p>
       </div>

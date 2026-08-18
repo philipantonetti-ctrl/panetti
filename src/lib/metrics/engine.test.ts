@@ -407,16 +407,46 @@ describe('computeMetrics', () => {
      * shipping changes what an existing order cost, past profit has been
      * silently rewritten and nobody notices until the client disputes a figure.
      *
-     * Compared as whole results, not as one field, because a wrong fulfillment
-     * figure moves net profit and margin too — and those are what the client
-     * reads.
+     * Pinned to LITERALS worked out from the fixtures, never to another
+     * computeMetrics call. There is no "before this feature existed" to compare
+     * against inside this file, so a comparison between two runs of the same
+     * code would go green whenever both halves broke the same way — which is
+     * exactly how the null-vs-0 bug would break them. These numbers are the only
+     * witness to what the engine used to answer:
+     *
+     *   cogs        2 x (100.00 + 10.00 handling)          = 22000
+     *   netRevenue  900.00 net sales + 50.00 shipping      = 95000
+     *   fulfillment the shop's flat 300.00 per order       = 30000
+     *   netProfit   95000 - 22000 - 30000, no fee, no ads  = 43000
+     *
+     * Not just fulfillment, because a wrong shipping figure moves net profit and
+     * margin too — and those are what the client reads.
      */
-    it('leaves an installation with no SKU rates byte-for-byte as it was', () => {
-      const before = computeMetrics(flat)
+    it('leaves an installation with no SKU rates exactly as it was', () => {
+      const t = computeMetrics(flat).total
 
-      expect(computeMetrics({ ...flat, shippingRates: new Map() })).toEqual(before)
-      expect(computeMetrics({ ...flat, shippingRates: undefined })).toEqual(before)
-      expect(before.total.fulfillment).toBe(30000) // the flat per-order rate, untouched
+      expect(t.fulfillment).toBe(30000)
+      expect(t.cogs).toBe(22000)
+      expect(t.netRevenue).toBe(95000)
+      expect(t.netProfit).toBe(43000)
+      expect(t.netMargin).toBeCloseTo(43000 / 95000, 6)
+    })
+
+    /**
+     * Three spellings of "nobody has typed a rate": no field at all, an empty
+     * map, and an explicit undefined. Worth pinning that they are one path —
+     * `loadMetricsInput` always passes a map, tests pass none, and a caller
+     * somewhere will one day pass undefined.
+     *
+     * This is deliberately NOT the regression guard above and must not be
+     * mistaken for one: all three sides run the same code, so any bug that
+     * broke them would break them identically and this would stay green.
+     */
+    it('treats an absent, an empty and an undefined rate table as the same thing', () => {
+      const absent = computeMetrics(flat)
+
+      expect(computeMetrics({ ...flat, shippingRates: new Map() })).toEqual(absent)
+      expect(computeMetrics({ ...flat, shippingRates: undefined })).toEqual(absent)
     })
 
     it('leaves an order alone when the rates that exist are for other SKUs', () => {
