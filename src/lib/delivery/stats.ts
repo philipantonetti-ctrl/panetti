@@ -105,11 +105,21 @@ export function deliveryStats(
     onTimeRate: rate(delivered),
     judged: delivered.filter((v) => v.promiseDays !== null).length,
     unjudged: delivered.filter((v) => v.promiseDays === null).length,
-    // "Late RIGHT NOW" is the live queue: missed its promise AND still not with
-    // the customer. `late` alone also covers orders that arrived late, which
-    // belong in the on-time rate but not in a tile someone reads as a to-do
-    // list. A returned parcel has no availableAt, so it correctly stays here.
-    lateNow: views.filter((v) => v.late && v.availableAt === null).length,
+    // "Late RIGHT NOW" is the live queue: missed its promise, still not with
+    // the customer, and HAS A PARCEL somebody can go and ask about. `late`
+    // alone also covers orders that arrived late, which belong in the on-time
+    // rate but not in a tile someone reads as a to-do list. A returned parcel
+    // has no availableAt, so it correctly stays here.
+    //
+    // The parcel clause is the one that was missing. api/delivery/route.ts
+    // splits the late rows in two — a parcel is chased with the carrier, a
+    // missing file is chased with the warehouse — and this count was never
+    // told. Live on 2026-08-19 the tile read 155 against a list of 8, and the
+    // 147-row difference was orders with no tracking number at all: unchasable
+    // by the tile's own definition of itself, and asserting a lateness that a
+    // missing file is no evidence of. They keep their own section and their
+    // own count; what they lose is a claim on this one.
+    lateNow: views.filter((v) => v.late && v.availableAt === null && v.parcels.length > 0).length,
     noTracking: views.filter((v) => v.state === 'NO_TRACKING').length,
     // Booked is the warehouse still holding it; in transit is the carrier
     // moving it. Counted from the same `state` the Late list and the Orders

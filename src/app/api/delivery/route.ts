@@ -82,6 +82,9 @@ export async function GET(req: Request) {
     const toRow = (r: LoadedDelivery) => ({
       id: r.order.id,
       number: r.order.number,
+      // Null stays null rather than becoming ''. The page decides how to print
+      // an order we hold no name for, and it cannot if the two are flattened.
+      customerName: r.customerName,
       shop: r.order.shopName,
       country: r.order.shippingCountry || null,
       daysOver: r.view.daysOver ?? 0,

@@ -119,6 +119,140 @@ describe('GET /api/delivery', () => {
     expect(body.awaitingFileTotal).toBe(1)
   })
 
+  /**
+   * The whole reported bug, end to end: "it says 155 late right now, but only
+   * shows some when I scroll down."
+   *
+   * Seeded here at the same shape in miniature — three orders past their
+   * promise with no parcel, one with a parcel — the tile read 4 while the list
+   * under it held 1. Same page, same range, two numbers 4x apart and no way to
+   * tell from the screen why.
+   */
+  it('does not let the late tile count orders the late list refuses to show', async () => {
+    const base = {
+      shopId, placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed',
+      currency: 'NOK', shippingCountry: 'NO',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+    }
+    for (const n of [1, 2, 3]) {
+      await db.order.create({ data: { ...base, externalId: `E-BARE${n}`, number: `RTE40${n}` } })
+    }
+    const chasable = await db.order.create({
+      data: { ...base, externalId: 'E-CHASE', number: 'RTE404' },
+    })
+    await db.shipment.create({
+      data: { trackingNumber: `${TRACK}TILE`, carrier: 'BRING', orderId: chasable.id },
+    })
+
+    const body = await (await GET(new Request(url))).json()
+
+    // The tile now counts exactly the rows the list can show.
+    expect(body.stats.lateNow).toBe(1)
+    expect(body.lateTotal).toBe(1)
+    expect(body.late).toHaveLength(1)
+
+    // And the other three are still fully accounted for, just not as "late".
+    expect(body.awaitingFileTotal).toBe(3)
+    expect(body.stats.noTracking).toBe(3)
+  })
+
+  /**
+   * The second half of the same complaint: "many orders will never receive
+   * tracking, will this forever show 637?"
+   *
+   * Moving the shop's cutoff past them is the cure, and it used to cost the
+   * delivery history over the same period. It must not any more.
+   */
+  it('drops unfilable orders when the cutoff moves, without losing what did deliver', async () => {
+    const base = {
+      shopId, placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed',
+      currency: 'NOK', shippingCountry: 'NO',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+    }
+    for (const n of [1, 2] as const) {
+      await db.order.create({ data: { ...base, externalId: `E-NEVER${n}`, number: `RTE50${n}` } })
+    }
+    const done = await db.order.create({
+      data: { ...base, externalId: 'E-DONE', number: 'RTE503' },
+    })
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${TRACK}DONE`, carrier: 'BRING', orderId: done.id,
+        handedInAt: new Date('2026-08-04T08:00:00Z'),
+        availableAt: new Date('2026-08-05T08:00:00Z'),
+        outcome: 'DELIVERED', terminal: true,
+      },
+    })
+
+    const before = await (await GET(new Request(url))).json()
+    expect(before.stats.noTracking).toBe(2)
+    expect(before.stats.delivered).toBe(1)
+
+    // The warehouse will never file for anything before today.
+    await db.shop.update({
+      where: { id: shopId },
+      data: { deliveryTrackingFrom: new Date('2026-08-19') },
+    })
+    const after = await (await GET(new Request(url))).json()
+
+    // The two unfilable orders are gone...
+    expect(after.stats.noTracking).toBe(0)
+    expect(after.awaitingFileTotal).toBe(0)
+    // ...and the one we have real evidence for is untouched. Before this fix
+    // it read delivered 0, medianDays null, onTimeRate null.
+    expect(after.stats.delivered).toBe(1)
+    expect(after.stats.medianDays).toBe(2)
+    expect(after.stats.onTimeRate).toBe(1)
+  })
+
+  /**
+   * Both lists, because both get read by a person who has to talk to someone.
+   * An order number identifies the row for us; the customer's name is what a
+   * human needs to write the apology or answer the phone, and looking it up
+   * meant opening every order one at a time.
+   */
+  it('carries the customer name on both late lists', async () => {
+    const base = {
+      shopId, placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed',
+      currency: 'NOK', shippingCountry: 'NO',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+    }
+    const tracked = await db.order.create({
+      data: { ...base, externalId: 'E-NAMED', number: 'RTE3001', customerName: 'Kristian Coster' },
+    })
+    await db.order.create({
+      data: { ...base, externalId: 'E-NAMED2', number: 'RTE3002', customerName: 'Louise Nielsen' },
+    })
+    await db.shipment.create({
+      data: { trackingNumber: `${TRACK}NAME`, carrier: 'BRING', orderId: tracked.id },
+    })
+
+    const body = await (await GET(new Request(url))).json()
+
+    expect(body.late[0].customerName).toBe('Kristian Coster')
+    expect(body.awaitingFile[0].customerName).toBe('Louise Nielsen')
+  })
+
+  /**
+   * Null and '' are different facts here — see the schema comment on
+   * Order.customerName. Neither is a name, and the page must not print
+   * "null" at a person.
+   */
+  it('reports no name as null rather than inventing one', async () => {
+    await db.order.create({
+      data: {
+        shopId, externalId: 'E-ANON', number: 'RTE3003',
+        placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed',
+        currency: 'NOK', shippingCountry: 'NO', customerName: null,
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      },
+    })
+
+    const body = await (await GET(new Request(url))).json()
+
+    expect(body.awaitingFile[0].customerName).toBeNull()
+  })
+
   it('lists parcels no order claimed, so they are visible rather than lost', async () => {
     // No carrier given, so the column default applies — and the link has to
     // follow it. `url` is new: the page used to build this itself and always
