@@ -6,7 +6,7 @@ import { AwaitingFile, LateList, Split, type LateOrder } from './DeliveryClient'
 import type { DeliveryStats } from '@/lib/delivery/stats'
 
 const order = (over: Partial<LateOrder> = {}): LateOrder => ({
-  id: 'o1', number: '15749', shop: 'Panetti Germany', country: 'DE',
+  id: 'o1', number: '15749', customerName: null, shop: 'Panetti Germany', country: 'DE',
   daysOver: 4, promiseDays: 5, state: 'IN_TRANSIT',
   parcels: [{
     number: '9597256404', carrier: 'DHL',
@@ -28,6 +28,47 @@ describe('LateList', () => {
     expect(container.textContent).toMatch(/15749/)
     expect(container.textContent).toMatch(/9597256404/)
     expect(container.textContent).toMatch(/DHL/)
+  })
+
+  /**
+   * The order number identifies the row for us. It is not what somebody
+   * writing an apology needs, and looking each one up meant opening every
+   * order in turn.
+   */
+  it('names the customer who is waiting', () => {
+    const { container } = render(
+      <LateList rows={[order({ customerName: 'Kristian Coster' })]} total={1} judged={24} />,
+    )
+    expect(container.textContent).toMatch(/Kristian Coster/)
+  })
+
+  // Null and '' both mean "we hold no name", and neither must print as the
+  // word null at a person. A dash is the page's existing way of saying so.
+  it('prints a dash rather than the word null when no name was captured', () => {
+    const { container } = render(
+      <LateList rows={[order({ customerName: null })]} total={1} judged={24} />,
+    )
+    expect(container.textContent).not.toMatch(/null/i)
+  })
+
+  /**
+   * The tile above counts the live queue — still not with the customer — while
+   * this list deliberately keeps orders that have since arrived, so the two
+   * legitimately differ. Left unexplained that is the same complaint that
+   * started this: a number on the page matching nothing under it.
+   */
+  it('reconciles itself with the tile when some rows have already arrived', () => {
+    const { container } = render(
+      <LateList rows={[order(), order({ id: 'o2', state: 'AVAILABLE' })]} total={2} stillOut={1} judged={24} />,
+    )
+    expect(container.textContent).toMatch(/1 still out/i)
+  })
+
+  it('says nothing extra when every row is still out', () => {
+    const { container } = render(
+      <LateList rows={[order()]} total={1} stillOut={1} judged={24} />,
+    )
+    expect(container.textContent).not.toMatch(/still out/i)
   })
 })
 
@@ -57,6 +98,14 @@ describe('AwaitingFile', () => {
     render(<AwaitingFile rows={[bare]} total={1} />)
     fireEvent.click(screen.getByRole('button'))
     expect(screen.getByText('27345')).toBeInTheDocument()
+  })
+
+  // These are the rows most likely to need a phone call — nobody can even say
+  // whether the parcel exists — so the name matters here at least as much.
+  it('names the customer once opened', () => {
+    render(<AwaitingFile rows={[{ ...bare, customerName: 'Louise Nielsen' }]} total={1} />)
+    fireEvent.click(screen.getByRole('button'))
+    expect(screen.getByText('Louise Nielsen')).toBeInTheDocument()
   })
 
   /**

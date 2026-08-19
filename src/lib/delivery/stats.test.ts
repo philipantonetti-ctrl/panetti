@@ -121,6 +121,32 @@ describe('deliveryStats', () => {
     expect(s.noTracking).toBe(2)
   })
 
+  /**
+   * Reported live 2026-08-19: the tile read 155 while the Late list under it
+   * showed 8. The other 147 were orders past their promise with no parcel at
+   * all, which api/delivery/route.ts deliberately moved into their own section
+   * — a missing warehouse file is not evidence of a missed promise. lateNow
+   * was never taught about that split, so the tile went on counting both.
+   *
+   * The tile's own tooltip calls itself "the list to chase". An order nobody
+   * has a tracking number for cannot be chased with anyone.
+   */
+  it('leaves an order with no parcel out of the chase queue', () => {
+    const s = deliveryStats(
+      [
+        v({ state: 'IN_TRANSIT', totalDays: null, availableAt: null, late: true }),
+        v({ state: 'NO_TRACKING', totalDays: null, availableAt: null, late: true, parcels: [] }),
+        v({ state: 'NO_TRACKING', totalDays: null, availableAt: null, late: true, parcels: [] }),
+      ],
+      ['NO', 'NO', 'NO'],
+    )
+
+    expect(s.lateNow).toBe(1)
+    // Still counted, and still visible in their own section — removed from the
+    // chase queue, not from the page.
+    expect(s.noTracking).toBe(2)
+  })
+
   it('does not queue an order that already arrived, however late it was', () => {
     // It missed its promise, so it must hurt the on-time rate. But nobody is
     // waiting for it any more, so it does not belong in a tile people read as

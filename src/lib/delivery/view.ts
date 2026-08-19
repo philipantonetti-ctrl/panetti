@@ -113,7 +113,25 @@ export function deliveryFor(
   // because each reads differently on screen, and "we are not tracking this"
   // must never look like "this has not shipped".
   if (!order.shopTrackingFrom) return { ...base, state: 'UNTRACKED' }
-  if (order.placedAt < order.shopTrackingFrom) return { ...base, state: 'BEFORE_TRACKING' }
+  /**
+   * The cutoff hides only what it cannot speak for.
+   *
+   * It answers "could we possibly know what happened to this order", and for
+   * one holding a parcel the answer is yes — we are looking straight at it.
+   * Hiding it anyway threw away real evidence for no gain.
+   *
+   * That gain matters because of what the cutoff is FOR. The warehouse does
+   * not send files for past orders, so every order older than the feed reads
+   * NO_TRACKING forever and no amount of importing will move it; walking the
+   * cutoff forward is the only cure. But while the cutoff silenced older
+   * orders regardless of evidence, that cure also erased the median, the
+   * on-time rate and the distribution chart over the same period — measured on
+   * a seeded run: delivered 1 -> 0, medianDays 2 -> null, onTimeRate 1 -> null.
+   * Nobody would accept that trade, so the feature went unused and the
+   * unanswerable orders stayed on the page.
+   */
+  if (order.placedAt < order.shopTrackingFrom && order.shipments.length === 0)
+    return { ...base, state: 'BEFORE_TRACKING' }
   // A refunded order is never going to be delivered. Without this, every refund
   // in the tracked window becomes a permanent late delivery.
   if (VOIDED.has(order.status.toLowerCase())) return { ...base, state: 'VOIDED' }

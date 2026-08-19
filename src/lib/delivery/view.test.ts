@@ -143,6 +143,50 @@ describe('deliveryFor', () => {
     expect(v.late).toBe(false)
   })
 
+  /**
+   * The cutoff answers "could we possibly know what happened to this order",
+   * and for an order holding a delivered parcel the answer is yes — we are
+   * looking straight at it.
+   *
+   * This matters because of what the cutoff is FOR. The warehouse will not
+   * send files for past orders, so orders older than the feed are stuck
+   * reading NO_TRACKING forever; moving the cutoff forward is the cure. But
+   * when the cutoff silenced every older order regardless of evidence, that
+   * cure also erased the median, the on-time rate and the whole distribution
+   * chart for the same period. Measured on a seeded run: delivered 1 -> 0,
+   * medianDays 2 -> null, onTimeRate 1 -> null.
+   *
+   * So the cutoff now hides only what it cannot speak for.
+   */
+  it('still judges an order placed before the cutoff if a parcel actually arrived', () => {
+    const v = deliveryFor(
+      order({
+        shopTrackingFrom: new Date('2026-08-10'),
+        shipments: [parcel({
+          handedInAt: new Date('2026-08-04T16:00:00Z'),
+          availableAt: new Date('2026-08-06T09:00:00Z'),
+          outcome: 'DELIVERED',
+        })],
+      }),
+      promises, OSLO, NOW,
+    )
+
+    expect(v.state).toBe('AVAILABLE')
+    expect(v.totalDays).toBe(3)
+  })
+
+  it('still hides an order placed before the cutoff that has no parcel', () => {
+    const v = deliveryFor(
+      order({ shopTrackingFrom: new Date('2026-08-10'), shipments: [] }),
+      promises, OSLO, NOW,
+    )
+
+    // The 637 the client is looking at. No file will ever come for these, so
+    // they must fall out entirely rather than sit in NO_TRACKING forever.
+    expect(v.state).toBe('BEFORE_TRACKING')
+    expect(v.late).toBe(false)
+  })
+
   it('never marks a refunded order late, because it is never going to arrive', () => {
     for (const status of ['refunded', 'cancelled', 'failed', 'trash']) {
       const v = deliveryFor(order({ status }), promises, OSLO, NOW)

@@ -15,6 +15,12 @@ import type { DeliveryState, Parcel } from '@/lib/delivery/view'
 export type LateOrder = {
   id: string
   number: string
+  /**
+   * Who is waiting. Null when we hold no name, '' when the shop was checked
+   * and had none — see the schema comment on Order.customerName. Both print as
+   * a dash, which is why the cells below use `||` rather than `??`.
+   */
+  customerName: string | null
   shop: string
   country: string | null
   daysOver: number
@@ -233,7 +239,11 @@ function Tiles({ stats }: { stats: DeliveryStats }) {
           label="LATE RIGHT NOW"
           value={stats.lateNow.toLocaleString('en-US')}
           tone={stats.lateNow > 0 ? 'text-loss' : undefined}
-          hint="Missed its promise and still not with the customer — the list to chase."
+          // "has a parcel" is load-bearing, not decoration. This tile used to
+          // count orders with no tracking number too, and read 155 against a
+          // Late list of 8. Saying what it counts is half of what stops that
+          // returning; the other half is the count itself, in stats.ts.
+          hint="Has a parcel, missed its promise, and still not with the customer — the list to chase."
         />
       </div>
       <Tile
@@ -532,6 +542,7 @@ export function AwaitingFile({ rows, total }: { rows: LateOrder[]; total: number
             <thead>
               <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
                 <th className="px-5 py-2 text-left">Order</th>
+                <th className="px-4 py-2 text-left">Customer</th>
                 <th className="px-4 py-2 text-left">Shop</th>
                 <th className="px-4 py-2 text-left">Country</th>
                 {/* No State or Tracking column: every row here is the same on
@@ -551,6 +562,7 @@ export function AwaitingFile({ rows, total }: { rows: LateOrder[]; total: number
                       {r.number}
                     </Link>
                   </td>
+                  <td className="px-4 py-2.5 text-ink">{r.customerName || DASH}</td>
                   <td className="px-4 py-2.5 text-ink">{r.shop}</td>
                   <td className="px-4 py-2.5 text-ink">
                     {r.country ? r.country.toUpperCase() : DASH}
@@ -581,10 +593,22 @@ export function AwaitingFile({ rows, total }: { rows: LateOrder[]; total: number
 export function LateList({
   rows,
   total,
+  stillOut,
   judged,
 }: {
   rows: LateOrder[]
   total: number
+  /**
+   * How many of these have NOT reached the customer — the same figure the
+   * "LATE RIGHT NOW" tile shows.
+   *
+   * The tile counts the live queue and this list deliberately keeps orders
+   * that have since arrived, so the two differ by design. Unexplained, that
+   * is the complaint this whole section came from: a number on the page
+   * matching nothing underneath it. Optional, so a caller with nothing to
+   * reconcile simply says nothing.
+   */
+  stillOut?: number
   /** How many orders were actually assessed. Zero makes "nothing is late" a lie. */
   judged: number
 }) {
@@ -599,6 +623,17 @@ export function LateList({
         <p className="mt-0.5 text-[12px] text-muted">
           Has a parcel and missed its promise, worst first. Includes orders that have since
           arrived.
+          {/* Only when it actually differs. "8 late, 8 still out" is noise, and
+              a line that prints on every load stops being read. */}
+          {stillOut !== undefined && stillOut < total && (
+            <>
+              {' '}
+              <span className="num text-ink">
+                {stillOut.toLocaleString('en-US')} still out
+              </span>
+              , which is the figure in the tile above.
+            </>
+          )}
         </p>
         {capped && (
           <p className="num mt-0.5 text-[12px] text-warn">
@@ -624,6 +659,7 @@ export function LateList({
             <thead>
               <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
                 <th className="px-5 py-2 text-left">Order</th>
+                <th className="px-4 py-2 text-left">Customer</th>
                 <th className="px-4 py-2 text-left">Shop</th>
                 <th className="px-4 py-2 text-left">Country</th>
                 <th className="px-4 py-2 text-right">Days over</th>
@@ -643,6 +679,10 @@ export function LateList({
                       {r.number}
                     </Link>
                   </td>
+                  {/* `|| DASH`, not `?? DASH`: Order.customerName is '' when
+                      the shop was checked and holds none, and an empty cell
+                      would read as a column that failed to load. */}
+                  <td className="px-4 py-2.5 text-ink">{r.customerName || DASH}</td>
                   <td className="px-4 py-2.5 text-ink">{r.shop}</td>
                   <td className="px-4 py-2.5 text-ink">{r.country ? r.country.toUpperCase() : DASH}</td>
                   <td className="num px-4 py-2.5 text-right font-semibold text-loss">{r.daysOver}</td>
@@ -1023,7 +1063,12 @@ export function DeliveryClient({
                   <Split stats={data.stats} />
                   <Distribution data={data.stats.distribution} waiting={whyBlank(data.stats)} />
                   <CountryTable rows={data.stats.byCountry} waiting={whyBlank(data.stats)} />
-                  <LateList rows={data.late} total={data.lateTotal} judged={data.stats.judged} />
+                  <LateList
+                    rows={data.late}
+                    total={data.lateTotal}
+                    stillOut={data.stats.lateNow}
+                    judged={data.stats.judged}
+                  />
                   <AwaitingFile rows={data.awaitingFile} total={data.awaitingFileTotal} />
                   <UnlinkedParcels items={data.unlinked} total={data.unlinkedTotal} />
                   <div className="space-y-3">
