@@ -5,6 +5,9 @@ export const MATCH_WINDOW_DAYS = 30
 
 const DAY = 24 * 60 * 60 * 1000
 
+/** How many candidate order numbers a refusal spells out before it says "and others". */
+const CANDIDATES_NAMED = 4
+
 export type MatchOutcome = { orderId: string } | { orderId: null; reason: string }
 
 /**
@@ -43,12 +46,30 @@ export async function matchByEmail(
       },
       voidedAt: null,
     },
-    select: { id: true },
-    take: 2, // one is enough to link, two is enough to refuse
+    select: { id: true, number: true },
+    // One is enough to link and two are enough to refuse, so the extra rows buy
+    // nothing but the refusal's WORDS. They are worth the read: "matched 2
+    // orders" sends the reader back to us to find out which two, and a repeat
+    // customer is the ordinary case here rather than the exception.
+    take: CANDIDATES_NAMED + 1,
+    // Oldest first, which is both the order a person checks them in and what
+    // makes the message stable between runs.
+    orderBy: { placedAt: 'asc' },
   })
 
   if (orders.length === 0) return { orderId: null, reason: `No order for ${email}` }
-  if (orders.length > 1)
-    return { orderId: null, reason: `${email} matched 2 orders in the last ${MATCH_WINDOW_DAYS} days` }
+  if (orders.length > 1) {
+    // Never claims a total it did not actually count. `take` above stops one
+    // past the point we are willing to list, so a longer run is described as
+    // longer rather than reported as exactly the number we happened to fetch.
+    const overflowed = orders.length > CANDIDATES_NAMED
+    const named = orders.slice(0, CANDIDATES_NAMED).map((o) => o.number)
+    const count = overflowed ? `${CANDIDATES_NAMED} or more` : String(orders.length)
+    const list = overflowed ? `${named.join(', ')} and others` : named.join(', ')
+    return {
+      orderId: null,
+      reason: `${email} matched ${count} orders in the last ${MATCH_WINDOW_DAYS} days: ${list}`,
+    }
+  }
   return { orderId: orders[0].id }
 }
