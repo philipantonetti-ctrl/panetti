@@ -63,14 +63,22 @@ describe('resolveConsignments', () => {
     expect(unresolved).toEqual([])
   })
 
+  // The three ways a number can fail to resolve each get their OWN words. A
+  // bare list of numbers was indistinguishable between them, and the operator
+  // reading the delivery page is exactly the person who has to tell "the
+  // warehouse put a number in the file that is not a Bring parcel" apart from
+  // "Bring was down for a moment" — one needs a conversation with the
+  // warehouse, the other needs nothing at all.
   it('reports a number Bring knows nothing about instead of inventing one', async () => {
     fetchTracking.mockResolvedValue([])
     const { consignments, unresolved } = await resolveConsignments(CREDS, ['999999999999999'])
     expect(consignments).toEqual([])
-    expect(unresolved).toEqual(['999999999999999'])
+    expect(unresolved).toEqual([
+      { number: '999999999999999', reason: 'Bring has no parcel with this number' },
+    ])
   })
 
-  it('keeps going when one lookup throws, and reports that number as unresolved', async () => {
+  it('keeps going when one lookup throws, and says Bring is what failed', async () => {
     fetchTracking
       .mockRejectedValueOnce(new Error('Bring responded 503: nope'))
       .mockResolvedValueOnce([
@@ -82,11 +90,13 @@ describe('resolveConsignments', () => {
       '111111111111111',
       '373325386490923366',
     ])
-    expect(unresolved).toEqual(['111111111111111'])
+    expect(unresolved).toHaveLength(1)
+    expect(unresolved[0].number).toBe('111111111111111')
+    expect(unresolved[0].reason).toMatch(/Bring responded 503/)
     expect(consignments).toHaveLength(1)
   })
 
-  it('stops starting new lookups once the deadline has passed', async () => {
+  it('stops starting new lookups once the deadline has passed, and says so', async () => {
     fetchTracking.mockResolvedValue([])
     const { unresolved } = await resolveConsignments(
       CREDS,
@@ -95,6 +105,10 @@ describe('resolveConsignments', () => {
     )
     expect(fetchTracking).not.toHaveBeenCalled()
     expect(unresolved).toHaveLength(2)
+    // Distinct from "Bring has no parcel": this file was cut short, and the
+    // parcel is fine. Reading the first message here would send someone to ask
+    // the warehouse about a number that was never even looked up.
+    for (const u of unresolved) expect(u.reason).toMatch(/ran out of time/i)
   })
 
   it('records a consignment with no email so the caller can say why it did not link', async () => {

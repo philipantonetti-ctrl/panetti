@@ -768,8 +768,17 @@ function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: num
 
 const SOURCE_LABEL: Record<string, string> = { UPLOAD: 'Upload', EMAIL: 'Email' }
 
-/** How many refusals are spelled out before the rest are only counted. */
-const REFUSALS_SHOWN = 5
+/**
+ * How many refusals are spelled out before the rest are only counted.
+ *
+ * Was 5, which was one short of useless: the 2026-08-18 file had exactly five
+ * and would have filled the list to the brim, so the next slightly worse day
+ * would have hidden the very line somebody was looking for. The whole question
+ * this list answers is "which ones, and why", and a normal day's handful now
+ * fits with room to spare. The cap stays because a genuinely broken file can
+ * produce hundreds, and burying the rest of the page under them helps nobody.
+ */
+const REFUSALS_SHOWN = 12
 
 type Refusal = { trackingNumber: string | null; reason: string }
 

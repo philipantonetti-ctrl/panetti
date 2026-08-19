@@ -159,7 +159,7 @@ describe('importWarehouseFile', () => {
           recipientName: 'Stranger',
         },
       ],
-      unresolved: ['888888888888888'],
+      unresolved: [{ number: '888888888888888', reason: 'Bring has no parcel with this number' }],
     })
     const result = await importWarehouseFile(
       book(['373325386490923366']), 'eod.xlsx', 'EMAIL',
@@ -168,6 +168,53 @@ describe('importWarehouseFile', () => {
     expect(result.unmatched.some((u) => /stranger@example.test/.test(u.reason))).toBe(true)
     expect(result.unaccounted).toBeGreaterThan(0)
     expect(result.parsed).toBe(result.linked + result.unaccounted)
+  })
+
+  /**
+   * The 2026-08-18 warehouse file, reported by the client: 51 parsed, 46
+   * linked, 5 unmatched — and only TWO of the five said anything about
+   * themselves. The other three were numbers Bring did not resolve, and this
+   * function counted them into `rowsUnmatched` while writing only the refusals
+   * into `unmatched`. So three parcels went missing with the count as the sole
+   * evidence they ever existed, and nobody could find out which numbers they
+   * were, because the numbers were never stored anywhere.
+   *
+   * Every entry behind the count now names itself. The number is the whole
+   * point: without it there is nothing to take back to the warehouse.
+   */
+  it('stores the unresolved numbers themselves, not just a count of them', async () => {
+    resolveConsignments.mockResolvedValue({
+      consignments: [],
+      unresolved: [
+        { number: '888888888888888', reason: 'Bring has no parcel with this number' },
+        { number: '777777777777777', reason: 'Ran out of time before Bring could be asked' },
+      ],
+    })
+    const result = await importWarehouseFile(
+      book(['373325386490923366']), 'eod.xlsx', 'EMAIL',
+    )
+
+    expect(result.unaccounted).toBe(2)
+    // Every unaccounted entry is described, so the two totals can never drift
+    // apart again the way they did on the 18th.
+    expect(result.unmatched).toHaveLength(result.unaccounted)
+
+    const row = await db.trackingImport.findFirst({
+      where: { filename: 'eod.xlsx' },
+      orderBy: { receivedAt: 'desc' },
+    })
+    expect(row?.rowsUnmatched).toBe(2)
+    const stored = JSON.parse(row?.unmatched ?? '[]') as { trackingNumber: string; reason: string }[]
+    expect(stored.map((s) => s.trackingNumber).sort()).toEqual([
+      '777777777777777',
+      '888888888888888',
+    ])
+    expect(stored.find((s) => s.trackingNumber === '888888888888888')?.reason).toMatch(
+      /no parcel with this number/i,
+    )
+    expect(stored.find((s) => s.trackingNumber === '777777777777777')?.reason).toMatch(
+      /ran out of time/i,
+    )
   })
 
   it('records a file it cannot read at all, then throws for the uploader', async () => {

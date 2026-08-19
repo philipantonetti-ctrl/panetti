@@ -1,7 +1,11 @@
 import { db } from '../db'
 import { parseTrackingFile, parseTrackingNumbers } from './parse'
 import { knownOrderNumbers, linkRows, type UnmatchedRow } from './link'
-import { resolveConsignments, type ResolvedConsignment } from './consignments'
+import {
+  resolveConsignments,
+  type ResolvedConsignment,
+  type UnresolvedNumber,
+} from './consignments'
 import { matchByEmail } from './match'
 // Note the directory: config.ts lives under delivery/, not bring/.
 import { getDeliveryConfig } from '../delivery/config'
@@ -238,7 +242,19 @@ export async function importWarehouseFile(
   // is one guarded block, and whatever is known when it fails is recorded
   // before rethrowing — same shape as the linkRows guard above.
   let consignments: ResolvedConsignment[] = []
-  let unresolved: string[] = []
+  /**
+   * Numbers Bring gave nothing for, each carrying WHY.
+   *
+   * These used to be counted into `rowsUnmatched` and then thrown away, and
+   * the 2026-08-18 file is what that cost: 51 parsed, 46 linked, 5 unmatched,
+   * and only the two email refusals could say anything about themselves. The
+   * other three were numbers out of this list. Nobody could find out which
+   * ones, because the numbers were never written down — the count was the only
+   * surviving evidence they had ever been in the file.
+   *
+   * They join `unmatched` below, so every entry behind the count names itself.
+   */
+  let unresolved: UnresolvedNumber[] = []
   let linked = 0
   const unmatched: UnmatchedRow[] = []
 
@@ -283,11 +299,26 @@ export async function importWarehouseFile(
       linked++
     }
 
+    // A number Bring never resolved is a refusal like any other, and is listed
+    // beside them rather than merely counted. `orderNumber` is what we would
+    // have called it, and for these we genuinely never learned: Bring is the
+    // only thing that turns a number into a name, and Bring is what failed.
+    for (const u of unresolved) {
+      unmatched.push({
+        orderNumber: '(not identified)',
+        trackingNumber: u.number,
+        reason: u.reason,
+      })
+    }
+
     // Consignments and the numbers Bring never resolved — not raw long
     // numbers, which run two per parcel (a shipment reference and a package
     // number) and would show a flawless import as parcels vanishing.
     const parsed = consignments.length + unresolved.length
-    const unaccounted = unresolved.length + unmatched.length
+    // Now simply the length of the list, because the list is now complete.
+    // Written as two addends it drifted the moment either half changed, and
+    // "5 unmatched, 2 explained" is the shape of that drift.
+    const unaccounted = unmatched.length
 
     const record = await db.trackingImport.create({
       data: {

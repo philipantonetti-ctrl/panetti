@@ -75,6 +75,27 @@ describe('matchByEmail', () => {
     expect((out as { reason: string }).reason).toMatch(/2 orders/)
   })
 
+  /**
+   * A refusal that names nothing is a dead end. This is the message the client
+   * actually saw on the 2026-08-18 file — "matched 2 orders in the last 30
+   * days" — and having read it he still had no way to learn WHICH two, so the
+   * only route to an answer was to ask us. Repeat customers are the ordinary
+   * case here, not the exception, so this message gets read often.
+   *
+   * The orders are named oldest-first, which is also the order a human would
+   * check them in.
+   */
+  it('names the orders it could not choose between', async () => {
+    await order(trackedShopId, 'M9a', 'named@example.test', '2026-08-09T09:00:00Z')
+    await order(trackedShopId, 'M9b', 'named@example.test', '2026-08-10T09:00:00Z')
+    const out = await matchByEmail('named@example.test', RECEIVED)
+    expect(out.orderId).toBeNull()
+    const { reason } = out as { reason: string }
+    expect(reason).toMatch(/M9a/)
+    expect(reason).toMatch(/M9b/)
+    expect(reason.indexOf('M9a')).toBeLessThan(reason.indexOf('M9b'))
+  })
+
   it('says so when no order has that email', async () => {
     const out = await matchByEmail('nobody@example.test', RECEIVED)
     expect(out.orderId).toBeNull()

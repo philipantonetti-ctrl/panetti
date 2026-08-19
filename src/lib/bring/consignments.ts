@@ -9,10 +9,26 @@ export type ResolvedConsignment = {
   recipientName: string | null
 }
 
+/**
+ * A number from the file that Bring gave us nothing usable for.
+ *
+ * The reason travels WITH the number because these three failures need three
+ * different responses and are indistinguishable once flattened to a count: a
+ * number Bring does not know is a conversation with the warehouse, a Bring
+ * error is a shrug, and a run that expired is a capacity problem on our side.
+ * The 2026-08-18 file lost three parcels to this — see the docstring on
+ * `unresolved` in import.ts.
+ */
+export type UnresolvedNumber = {
+  number: string
+  /** Written for the delivery page, so it can be shown to a person unedited. */
+  reason: string
+}
+
 export type ResolveResult = {
   consignments: ResolvedConsignment[]
   /** Input numbers Bring returned nothing for, or that failed. Reported, never guessed. */
-  unresolved: string[]
+  unresolved: UnresolvedNumber[]
 }
 
 const str = (v: unknown): string | null =>
@@ -40,7 +56,7 @@ export async function resolveConsignments(
   opts: { deadline?: number } = {},
 ): Promise<ResolveResult> {
   const consignments: ResolvedConsignment[] = []
-  const unresolved: string[] = []
+  const unresolved: UnresolvedNumber[] = []
   const accounted = new Set<string>()
 
   for (const number of numbers) {
@@ -49,17 +65,28 @@ export async function resolveConsignments(
     // Checked before the request, not after: starting a lookup we have no time
     // to finish spends the budget for nothing. Same rule as sync.ts:120.
     if (opts.deadline !== undefined && Date.now() >= opts.deadline) {
-      unresolved.push(number)
+      // Says nothing about the parcel, which is almost certainly fine — only
+      // that this run stopped before reaching it. Sending someone to ask the
+      // warehouse about a number nobody ever looked up wastes their morning.
+      unresolved.push({
+        number,
+        reason: 'Ran out of time before Bring could be asked about this number',
+      })
       continue
     }
 
     let raw: unknown[]
     try {
       raw = await fetchTracking(creds, [number], { deadline: opts.deadline })
-    } catch {
+    } catch (e) {
       // One dead lookup must not stop the file. The number is reported so a
-      // half-read import is visible rather than silently short.
-      unresolved.push(number)
+      // half-read import is visible rather than silently short. Bring's own
+      // words are carried through — client.ts has already truncated the body,
+      // so a gateway's HTML error page cannot arrive here whole.
+      unresolved.push({
+        number,
+        reason: e instanceof Error ? e.message : 'Bring could not be asked about this number',
+      })
       continue
     }
 
@@ -82,7 +109,12 @@ export async function resolveConsignments(
     }
 
     if (!consignmentId || packageNumbers.length === 0) {
-      unresolved.push(number)
+      // Bring answered, and had nothing. Either the warehouse booked this
+      // parcel with another carrier, or the number is not a parcel number at
+      // all — parse.ts takes every run of 15+ digits it finds, so an invoice
+      // or customer number in the file reaches this exact line. Both are the
+      // warehouse's to answer, which is why the number is kept.
+      unresolved.push({ number, reason: 'Bring has no parcel with this number' })
       continue
     }
 
