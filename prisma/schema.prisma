@@ -893,3 +893,84 @@ model CarrierCost {
 
   @@unique([carrier, month])
 }
+
+/// One row per invoice line.
+///
+/// Not a column on `Shipment`. A parcel can appear on more than one invoice: a
+/// surcharge, a re-weigh, a correction, a credit note. Collapsing that into one
+/// column loses the second of them and makes a credit note impossible to express.
+/// This is the reason `ShipmentEvent` is its own table, and the same reason
+/// applies.
+///
+/// **No unique constraint, and that is the finding, not an oversight.**
+///
+/// The report was downloaded and measured on 2026-08-20 (invoice 4710001522,
+/// customer 20020467369, 144 lines). It carries **no line identifier**.
+/// `TRX_NUMBER`, the only candidate, is the invoice number repeated on all 144
+/// rows. And content cannot substitute for one: the composite
+/// `WAYBILL_NUMBER + ITEM_NUMBER + ITEM_DESCRIPTION + AMOUNT` yields **135
+/// distinct keys for 144 lines**. Waybill 73325383643994654 alone carries three
+/// identical charge sets:
+///
+/// | lines | item | description | amount |
+/// |---|---|---|---|
+/// | ×3 | 105489 | 3123 Home Delivery Curbside | 1 140.84 |
+/// | ×3 | 105633 | 3123 Toll road | 35.94 |
+/// | ×3 | 105492 | 3123 Notification before planning | 46.07 |
+/// | ×3 | 105491 | 3123 Fuel Surcharge | 136.90 |
+/// | ×2 | 105490 | 3123 Attempted Delivery | 0.00 |
+///
+/// Deduplicating by content would drop nine of that parcel's fourteen lines and
+/// under-report its freight by roughly two thirds. This is not a rare edge case
+/// to guard against later; it is present on one parcel in twenty-nine of the very
+/// first invoice read.
+///
+/// **So idempotency comes from replacing an invoice wholesale, not from a
+/// per-line key.** Ingesting invoice N deletes every `ShipmentCost` for that
+/// invoice number and inserts the report's lines in one transaction. Re-reading
+/// is then naturally a no-op, a corrected re-issue replaces cleanly, and no line
+/// is ever silently merged with its twin.
+model ShipmentCost {
+  id             String   @id @default(cuid())
+  trackingNumber String   // WAYBILL_NUMBER, joins Shipment.trackingNumber
+  customerNumber String   // ACCOUNT_NUMBER, which Bring account was billed
+  invoiceNumber  String
+  amount         Int      // minor units of `currency`, from AMOUNT (ex tax)
+  currency       String   // INVOICE_CURRENCY_CODE, per line
+  chargedAt      DateTime // TRX_DATE
+  itemNumber     String   // ITEM_NUMBER, e.g. 105633
+  description    String   // ITEM_DESCRIPTION, e.g. "3123 Toll road"
+  readAt         DateTime @updatedAt
+
+  @@index([invoiceNumber])
+  @@index([trackingNumber])
+}
+
+/// The job for fetching and storing one invoice's lines.
+///
+/// Keyed on the invoice, not on a month, because that is the only thing the
+/// report accepts. Measured: `MASTER-SPECIFIED_INVOICE` takes one parameter,
+/// `invoiceNumber`. A date range returns `400 Invalid input parameters`.
+///
+/// `NO_SPEC` is a real terminal state, not a failure. Invoice 4070009812
+/// (6 240.00 SEK, `batchSource: MANUAL_ORDER_OM`) came back
+/// `invoiceSpecificationAvailable: false`. Such an invoice can never be broken
+/// down, and recording that plainly is what stops it being retried forever and
+/// what lets the page say how much money it cannot attribute.
+model BringReportRun {
+  id             String   @id @default(cuid())
+  customerNumber String
+  invoiceNumber  String   // the report's only parameter
+  invoiceDate    DateTime
+  reportId       String?  // Bring's, parsed out of statusUrl
+  statusUrl      String?
+  state          String   // PENDING | REQUESTED | STORED | FAILED | NO_SPEC
+  requestedAt    DateTime?
+  collectedAt    DateTime?
+  rowsStored     Int      @default(0)
+  rowsUnmatched  Int      @default(0)
+  error          String?
+
+  @@unique([invoiceNumber])
+  @@index([state])
+}
