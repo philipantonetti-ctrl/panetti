@@ -39,12 +39,19 @@ export type LateOrder = {
    */
   waitingDays: number
   /**
-   * The calendar date the order was placed, YYYY-MM-DD, in the SHOP's own
-   * timezone — the same clock waitingDays is counted on, so the two columns
-   * can never disagree by a day about the same order. A plain date rather
-   * than an instant, which also makes it sort correctly as a string.
+   * When the order was placed, on the SHOP's own clock, as
+   * 'YYYY-MM-DDTHH:mm:ss'.
+   *
+   * Local rather than a UTC instant, for two reasons. It is the same clock
+   * waitingDays is counted on, so the two columns can never disagree by a day
+   * about one order. And it is the clock the noon cutoff is written in, so the
+   * time on screen is the one that decides which warehouse file the order
+   * belongs to — a date alone cannot answer that.
+   *
+   * Fixed-width, so lexical comparison IS chronological comparison, down to
+   * the minute.
    */
-  placedOn: string
+  placedAtLocal: string
   promiseDays: number | null
   state: DeliveryState
   parcels: Parcel[]
@@ -613,13 +620,16 @@ function CountryTable({ rows, waiting }: { rows: CountryStat[]; waiting: string 
  * UTC — that round-trips the exact day rather than shifting it by a timezone
  * it was never expressed in.
  */
-const orderedOn = (day: string) =>
-  new Date(`${day}T00:00:00Z`).toLocaleDateString('en-GB', {
+const orderedOn = (local: string) =>
+  new Date(`${local.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
     timeZone: 'UTC',
   })
+
+/** 'HH:mm' off the shop's own clock. Already local; nothing to convert. */
+const orderedAt = (local: string) => local.slice(11, 16)
 
 export function NoTracking({
   rows,
@@ -645,7 +655,11 @@ export function NoTracking({
     if (sort === null) return rows
     // Plain YYYY-MM-DD, so string comparison IS date comparison.
     return [...rows].sort((a, b) =>
-      a.placedOn === b.placedOn ? 0 : (a.placedOn < b.placedOn) === sort.ascending ? -1 : 1,
+      a.placedAtLocal === b.placedAtLocal
+        ? 0
+        : (a.placedAtLocal < b.placedAtLocal) === sort.ascending
+          ? -1
+          : 1,
     )
   }, [rows, sort])
 
@@ -744,7 +758,14 @@ export function NoTracking({
                   <td className="px-4 py-2.5 text-ink">
                     {r.country ? r.country.toUpperCase() : DASH}
                   </td>
-                  <td className="px-4 py-2.5 text-ink">{orderedOn(r.placedOn)}</td>
+                  <td className="px-4 py-2.5 text-ink">
+                    {orderedOn(r.placedAtLocal)}{' '}
+                    {/* The time the cutoff is judged against, quiet enough not
+                        to compete with the date but there when it matters. */}
+                    <span className="num text-[12px] text-faint">
+                      ({orderedAt(r.placedAtLocal)})
+                    </span>
+                  </td>
                   {/* Muted, not text-loss. The red on the Late table means "this
                       is going wrong"; here the number is only how long we have
                       been in the dark, which is not the same accusation.
