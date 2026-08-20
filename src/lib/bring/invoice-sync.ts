@@ -1,6 +1,7 @@
 import { db } from '../db'
 import type { BringCredentials, BringFilter } from './client'
-import { generateSpecReport, listCustomerNumbers, listInvoices } from './invoices'
+import { linesReconcile, parseSpecifiedInvoice } from './invoice-lines'
+import { downloadReport, generateSpecReport, listCustomerNumbers, listInvoices, reportStatus } from './invoices'
 
 /**
  * Turn every invoice we have not seen into a job.
@@ -80,4 +81,90 @@ export async function requestNextReport(
     })
   }
   return true
+}
+
+/**
+ * Collect one requested report.
+ *
+ * Null means nothing was collected — nothing requested, or not ready yet —
+ * which is a normal tick, not a problem.
+ *
+ * The invoice header is re-read here rather than remembered from discovery, so
+ * a re-issued invoice reconciles against what it says today.
+ */
+export async function collectNextReport(
+  creds: BringCredentials,
+  opts: BringFilter = {},
+): Promise<{ stored: number; unmatched: number } | null> {
+  const job = await db.bringReportRun.findFirst({
+    where: { state: 'REQUESTED', statusUrl: { not: null } },
+    orderBy: { invoiceDate: 'asc' },
+  })
+  if (!job) return null
+
+  const fail = async (message: string) => {
+    await db.bringReportRun.update({
+      where: { id: job.id },
+      data: { state: 'FAILED', error: message },
+    })
+    return null
+  }
+
+  try {
+    const status = await reportStatus(creds, job.statusUrl!, opts)
+    if (!status.done) return null
+    if (!status.xmlUrl) return fail('Bring built no report for this invoice')
+
+    const parsed = parseSpecifiedInvoice(await downloadReport(creds, status.xmlUrl, opts))
+    if (!parsed) return fail('The report could not be read as a specified invoice')
+
+    const header = (await listInvoices(creds, job.customerNumber, opts)).find(
+      (i) => i.invoiceNumber === job.invoiceNumber,
+    )
+    if (!header) return fail('The invoice is no longer in the archive')
+    if (!linesReconcile(parsed, header)) {
+      // Storing a half-read invoice is indistinguishable from a cheap month.
+      return fail(
+        `The report's lines do not reconcile with the invoice total (${header.amountMinor} minor units)`,
+      )
+    }
+
+    // Wholesale replace. The report carries no line identifier, so this — not a
+    // unique constraint — is what makes re-reading safe.
+    const { count } = await db.$transaction(async (tx) => {
+      await tx.shipmentCost.deleteMany({ where: { invoiceNumber: job.invoiceNumber } })
+      return tx.shipmentCost.createMany({
+        data: parsed.lines.map((l) => ({
+          trackingNumber: l.waybillNumber,
+          customerNumber: job.customerNumber,
+          invoiceNumber: job.invoiceNumber,
+          amount: l.amountMinor,
+          currency: l.currency,
+          chargedAt: l.chargedAt,
+          itemNumber: l.itemNumber,
+          description: l.description,
+        })),
+      })
+    })
+
+    // How much of this invoice we could not attach to a parcel we hold. Counted
+    // rather than hidden: it is the number that says whether the join works.
+    const known = await db.shipment.findMany({
+      where: { trackingNumber: { in: [...new Set(parsed.lines.map((l) => l.waybillNumber))] } },
+      select: { trackingNumber: true },
+    })
+    const have = new Set(known.map((s) => s.trackingNumber))
+    const unmatched = parsed.lines.filter((l) => !have.has(l.waybillNumber)).length
+
+    await db.bringReportRun.update({
+      where: { id: job.id },
+      data: {
+        state: 'STORED', collectedAt: new Date(),
+        rowsStored: count, rowsUnmatched: unmatched, error: null,
+      },
+    })
+    return { stored: count, unmatched }
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e))
+  }
 }

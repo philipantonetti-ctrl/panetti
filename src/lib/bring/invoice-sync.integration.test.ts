@@ -1,6 +1,8 @@
 import { describe, expect, it, beforeEach, afterAll, vi, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { db } from '@/lib/db'
-import { discoverInvoices, requestNextReport } from './invoice-sync'
+import { collectNextReport, discoverInvoices, requestNextReport } from './invoice-sync'
 
 // Unique to THIS file — see "Test data convention" in the Global Constraints.
 const CUST = 'ZZDISC'
@@ -41,6 +43,48 @@ const invoice = (n: string, spec: boolean) => ({
   amount: '100.00', taxAmount: '0.00', totalAmount: '100.00', currency: 'NOK',
   type: 'Invoice', invoiceSpecificationAvailable: spec,
 })
+
+// Task 7's fixture: a real (redacted) specified-invoice report. Six lines,
+// four on one waybill and two identical ones on another.
+const specifiedInvoiceXml = readFileSync(join(__dirname, 'fixtures/specified-invoice.xml'), 'utf8')
+
+/** The fixture's true total across all six lines, in major units. */
+const FIXTURE_TOTAL = '2500.00'
+
+/** The waybill billed twice, identically, in the fixture. */
+export const DUPLICATE_WAYBILL = '73325383643994654'
+
+/**
+ * Stubs the three calls collectNextReport makes for one job: the status
+ * poll, the XML download, and the invoice-archive re-read used for
+ * reconciliation. `over.headerAmount` lets a test make the header disagree
+ * with the lines, to exercise the reconciliation gate.
+ */
+function stubCollect(invoiceNumber: string, over?: { headerAmount?: string }) {
+  const xmlUrl = 'https://www.mybring.com/s/1/report.xml'
+  const xml = specifiedInvoiceXml.replace(
+    /<InvoiceNumber>[^<]*<\/InvoiceNumber>/,
+    `<InvoiceNumber>${invoiceNumber}</InvoiceNumber>`,
+  )
+  const amount = over?.headerAmount ?? FIXTURE_TOTAL
+
+  vi.stubGlobal('fetch', vi.fn<(u: string | URL | Request, i?: RequestInit) => Promise<Response>>(
+    async (u) => {
+      const url = String(u)
+      if (url.includes('/invoicearchive/api/invoices/')) {
+        return new Response(JSON.stringify({
+          invoices: [{ ...invoice(invoiceNumber, true), amount, totalAmount: amount }],
+        }), { status: 200 })
+      }
+      if (url === xmlUrl) {
+        return new Response(xml, { status: 200 })
+      }
+      // Every job in this describe block is created with the same hardcoded
+      // statusUrl, so anything left unmatched above is that status poll.
+      return new Response(JSON.stringify({ status: 'DONE', xmlUrl }), { status: 200 })
+    },
+  ))
+}
 
 describe('discoverInvoices', () => {
   it('queues an invoice that has a specification', async () => {
@@ -117,5 +161,83 @@ describe('requestNextReport', () => {
     const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-BAD` } })
     expect(row?.state).toBe('FAILED')
     expect(row?.error).toContain('500')
+  })
+})
+
+describe('collectNextReport', () => {
+  it('replaces an invoice\'s lines wholesale, so a re-read is a no-op not a duplicate', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-R`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+      },
+    })
+    stubCollect(`${CUST}-R`)
+
+    await collectNextReport(creds)
+    const first = await db.shipmentCost.count({ where: { invoiceNumber: `${CUST}-R` } })
+
+    await db.bringReportRun.update({
+      where: { invoiceNumber: `${CUST}-R` },
+      data: { state: 'REQUESTED' },
+    })
+    stubCollect(`${CUST}-R`)
+    await collectNextReport(creds)
+
+    const second = await db.shipmentCost.count({ where: { invoiceNumber: `${CUST}-R` } })
+    expect(second).toBe(first)
+  })
+
+  it('keeps both of two identical lines, because both were really charged', async () => {
+    // The fixture bills one waybill twice at the same amount for the same item.
+    // 135 distinct keys for 144 real lines is why this must not be deduplicated.
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-D`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+      },
+    })
+    stubCollect(`${CUST}-D`)
+    await collectNextReport(creds)
+
+    const rows = await db.shipmentCost.findMany({ where: { invoiceNumber: `${CUST}-D` } })
+    const dupes = rows.filter((r) => r.trackingNumber === DUPLICATE_WAYBILL)
+    expect(dupes).toHaveLength(2)
+  })
+
+  it('refuses a report whose lines do not sum to the invoice, storing nothing', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-S`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+      },
+    })
+    stubCollect(`${CUST}-S`, { headerAmount: '999999.00' })
+
+    await collectNextReport(creds)
+    expect(await db.shipmentCost.count({ where: { invoiceNumber: `${CUST}-S` } })).toBe(0)
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-S` } })
+    expect(row?.state).toBe('FAILED')
+    expect(row?.error).toMatch(/reconcile/i)
+  })
+
+  it('leaves a report that is not ready for the next tick', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-W`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+      },
+    })
+    vi.stubGlobal('fetch', vi.fn<(u: string | URL | Request, i?: RequestInit) => Promise<Response>>(
+      async () => new Response(JSON.stringify({ status: 'NOT_DONE' }), { status: 200 }),
+    ))
+
+    expect(await collectNextReport(creds)).toBeNull()
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-W` } })
+    expect(row?.state).toBe('REQUESTED')
   })
 })
