@@ -435,3 +435,73 @@ describe('a store that answers with an error page', () => {
     expect(err.message).not.toMatch(/[<>]/)
   })
 })
+
+/**
+ * Panetti Denmark, live on 2026-08-20: "Sync failed / Unexpected end of JSON
+ * input". That is V8's message for JSON.parse(''), and it reached the owner's
+ * settings page verbatim: no store, no endpoint, nothing to act on.
+ *
+ * Probed against this Node before fixing anything — ONLY an empty or
+ * whitespace-only body produces that exact string. Truncated JSON says
+ * "Expected ',' or '}'"; an HTML page says "Unexpected token '<'". So the
+ * store answered with a genuinely empty body, and every res.json() in this
+ * file sat outside its guard.
+ */
+describe('a store that answers with nothing', () => {
+  const answers = (body: string) =>
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status: 200 })))
+
+  const rejection = async () =>
+    fetchOrders(CREDS, {}).then(
+      () => {
+        throw new Error('expected the empty body to reject')
+      },
+      (e: Error) => e,
+    )
+
+  it('does not hand the owner a JSON parser message', async () => {
+    answers('')
+    expect((await rejection()).message).not.toMatch(/JSON/i)
+  })
+
+  it('says what the store actually did', async () => {
+    answers('')
+    await expect(fetchOrders(CREDS, {})).rejects.toThrow(/empty response/i)
+  })
+
+  /**
+   * An empty body is not an empty shop. fetchOrderStatuses falls back to []
+   * for exactly this case and is right to — statuses are optional. Doing it
+   * here would advance the watermark past orders nobody read and report a
+   * healthy sync, which is the one failure worse than a bad error message.
+   */
+  it('refuses rather than reporting a store with no orders', async () => {
+    answers('')
+    await expect(fetchOrders(CREDS, {})).rejects.toThrow()
+  })
+
+  it('treats a body of only whitespace the same way', async () => {
+    answers('  \n\t ')
+    await expect(fetchOrders(CREDS, {})).rejects.toThrow(/empty response/i)
+  })
+
+  /**
+   * The same failure wearing different clothes: a broken store that answers
+   * 200 with its error page. "Unexpected token '<'" is no better to read than
+   * the parser's other complaint, and the page says why.
+   */
+  it('reads the page out when a 200 carries HTML instead of orders', async () => {
+    answers('<!DOCTYPE html><html><body><p>There has been a critical error.</p></body></html>')
+    const err = await rejection()
+    expect(err.message).not.toMatch(/Unexpected token/i)
+    expect(err.message).toMatch(/critical error/i)
+  })
+
+  // The status is meaningful on the error path and this is not it: the store
+  // said 200. A bare three-digit number here would be read as an HTTP status
+  // by anything downstream that scans for one, the Advisor included.
+  it('quotes no status code, because the store reported success', async () => {
+    answers('')
+    expect((await rejection()).message).not.toMatch(/\b\d{3}\b/)
+  })
+})
