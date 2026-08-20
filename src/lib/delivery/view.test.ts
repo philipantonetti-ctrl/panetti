@@ -265,3 +265,59 @@ describe('deliveryFor', () => {
     expect(a.deadline).toEqual(b.deadline)
   })
 })
+
+/**
+ * "Available" meant two things at once: a parcel waiting at a Nordic pickup
+ * point, and one already in the customer's hands. AVAILABLE is
+ * ['READY_FOR_PICKUP', 'DELIVERED'] in milestones.ts, and DHL maps only ever
+ * to DELIVERED — so every DHL row on the Delivery page badged "Available"
+ * while DHL's own tracking page said "Delivered". A client read that as the
+ * system contradicting the carrier.
+ *
+ * Both facts were already stored. Only the state failed to tell them apart.
+ */
+describe('collected versus waiting at a pickup point', () => {
+  const journey = { handedInAt: new Date('2026-08-04T16:00:00Z'), availableAt: new Date('2026-08-06T09:00:00Z') }
+
+  it('says delivered once the customer has it', () => {
+    const v = deliveryFor(
+      order({ shipments: [parcel({ ...journey, collectedAt: new Date('2026-08-06T09:00:00Z') })] }),
+      promises, OSLO, NOW,
+    )
+    expect(v.state).toBe('DELIVERED')
+  })
+
+  it('keeps a parcel still waiting at the pickup point apart from a delivered one', () => {
+    const v = deliveryFor(order({ shipments: [parcel({ ...journey })] }), promises, OSLO, NOW)
+    expect(v.state).toBe('AVAILABLE')
+  })
+
+  // A customer holding one of two boxes has not received their order — the
+  // same rule the availableAt roll-up already applies.
+  it('waits for the last parcel before calling an order delivered', () => {
+    const v = deliveryFor(
+      order({
+        shipments: [
+          parcel({ trackingNumber: 'T1', ...journey, collectedAt: new Date('2026-08-06T09:00:00Z') }),
+          parcel({ trackingNumber: 'T2', ...journey }),
+        ],
+      }),
+      promises, OSLO, NOW,
+    )
+    expect(v.state).toBe('AVAILABLE')
+  })
+
+  /**
+   * The split must not move the clock. Judging against collection would raise
+   * alerts about customers who took a week to walk to the shop, which is the
+   * reason READY_FOR_PICKUP stops the clock in the first place.
+   */
+  it('still stops the delivery clock at the pickup point, not at collection', () => {
+    const v = deliveryFor(
+      order({ shipments: [parcel({ ...journey, collectedAt: new Date('2026-08-13T09:00:00Z') })] }),
+      promises, OSLO, NOW,
+    )
+    expect(v.totalDays).toBe(3)
+    expect(v.late).toBe(false)
+  })
+})

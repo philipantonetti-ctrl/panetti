@@ -161,6 +161,9 @@ function Money({ minor, currency, strong }: { minor: number | null | undefined; 
  */
 function DeliveryCell({ d, placedAt, timezone, now }: { d: Delivery; placedAt: string; timezone: string; now: Date }) {
   switch (d.state) {
+    // Both endings report the same thing here: how long the customer waited.
+    // The clock stops at the pickup point for both, so they share a cell.
+    case 'DELIVERED':
     case 'AVAILABLE':
       return <span className={d.late ? 'text-loss' : undefined}>{d.totalDays} days</span>
     case 'IN_TRANSIT':

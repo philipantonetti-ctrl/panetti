@@ -75,10 +75,10 @@ describe('GET /api/delivery', () => {
     })
     const body = await (await GET(new Request(url))).json()
     expect(body.stats.noTracking).toBe(1)
-    // Still reported, and still past its promise — but in awaitingFile rather
+    // Still reported, and still past its promise — but in noTracking rather
     // than late, because we hold no parcel for it. See the split below.
-    expect(body.awaitingFile[0].number).toBe('RTE1001')
-    expect(body.awaitingFile[0].state).toBe('NO_TRACKING')
+    expect(body.noTracking[0].number).toBe('RTE1001')
+    expect(body.noTracking[0].state).toBe('NO_TRACKING')
     expect(body.late).toEqual([])
   })
 
@@ -115,8 +115,8 @@ describe('GET /api/delivery', () => {
     expect(body.lateTotal).toBe(1)
     expect(body.late[0].parcels[0].carrier).toBe('DHL')
 
-    expect(body.awaitingFile.map((l: { number: string }) => l.number)).toEqual(['RTE2002'])
-    expect(body.awaitingFileTotal).toBe(1)
+    expect(body.noTracking.map((l: { number: string }) => l.number)).toEqual(['RTE2002'])
+    expect(body.noTrackingTotal).toBe(1)
   })
 
   /**
@@ -152,7 +152,7 @@ describe('GET /api/delivery', () => {
     expect(body.late).toHaveLength(1)
 
     // And the other three are still fully accounted for, just not as "late".
-    expect(body.awaitingFileTotal).toBe(3)
+    expect(body.noTrackingTotal).toBe(3)
     expect(body.stats.noTracking).toBe(3)
   })
 
@@ -197,7 +197,7 @@ describe('GET /api/delivery', () => {
 
     // The two unfilable orders are gone...
     expect(after.stats.noTracking).toBe(0)
-    expect(after.awaitingFileTotal).toBe(0)
+    expect(after.noTrackingTotal).toBe(0)
     // ...and the one we have real evidence for is untouched. Before this fix
     // it read delivered 0, medianDays null, onTimeRate null.
     expect(after.stats.delivered).toBe(1)
@@ -230,7 +230,7 @@ describe('GET /api/delivery', () => {
     const body = await (await GET(new Request(url))).json()
 
     expect(body.late[0].customerName).toBe('Kristian Coster')
-    expect(body.awaitingFile[0].customerName).toBe('Louise Nielsen')
+    expect(body.noTracking[0].customerName).toBe('Louise Nielsen')
   })
 
   /**
@@ -250,7 +250,7 @@ describe('GET /api/delivery', () => {
 
     const body = await (await GET(new Request(url))).json()
 
-    expect(body.awaitingFile[0].customerName).toBeNull()
+    expect(body.noTracking[0].customerName).toBeNull()
   })
 
   it('lists parcels no order claimed, so they are visible rather than lost', async () => {
@@ -310,7 +310,7 @@ describe('GET /api/delivery', () => {
     // stays cheap. Same shape as 'reports the orders that are late right now'
     // above, just 201 of them in one createMany.
     //
-    // These carry no shipment, so they land in awaitingFile — which is the
+    // These carry no shipment, so they land in noTracking — which is the
     // list that actually runs to hundreds in production, and so the one whose
     // cap most needs proving. Both lists are capped by the same LATE_LIMIT and
     // both report a true total beside it; asserting here covers the mechanism.
@@ -324,10 +324,68 @@ describe('GET /api/delivery', () => {
       })),
     })
     const body = await (await GET(new Request(url))).json()
-    expect(body.awaitingFile.length).toBe(200)
+    expect(body.noTracking.length).toBe(200)
     // Exact, unlike unlinkedTotal above: late orders ARE scoped to this test's
     // one tagged (and tracked) shop — the 11 seeded shops are all UNTRACKED
     // and never contribute — so the true count is fully known here.
-    expect(body.awaitingFileTotal).toBe(count)
+    expect(body.noTrackingTotal).toBe(count)
+  })
+})
+
+/**
+ * The NO TRACKING tile counted every order with no parcel; this list held only
+ * the ones ALSO past their promise. Two sizes for one idea, and the rows in
+ * between were reachable from nowhere on the page — the client's words were
+ * "there is no way for me to press the no tracking to actually see which
+ * orders are missing tracking".
+ */
+describe('the no-tracking list', () => {
+  const base = () => ({
+    shopId, status: 'completed', currency: 'NOK', shippingCountry: 'NO',
+    grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+  })
+
+  // One long past its promise, one placed today. Neither has a parcel, so both
+  // are NO_TRACKING and the tile counts both.
+  const twoBare = async () => {
+    await db.order.create({
+      data: { ...base(), externalId: 'E-OLD', number: 'RTE3001', placedAt: new Date('2026-08-03T08:00:00Z') },
+    })
+    await db.order.create({
+      data: { ...base(), externalId: 'E-NEW', number: 'RTE3002', placedAt: new Date() },
+    })
+    return (await (await GET(new Request(url))).json()) as {
+      noTracking: { number: string; waitingDays: number; daysOver: number }[]
+      noTrackingTotal: number
+      stats: { noTracking: number }
+    }
+  }
+
+  it('holds orders that are not past their promise either', async () => {
+    const body = await twoBare()
+    const numbers = body.noTracking.map((r) => r.number)
+    expect(numbers).toContain('RTE3001')
+    expect(numbers).toContain('RTE3002')
+  })
+
+  // The invariant the change exists to restore: the tile IS this list.
+  it('reports exactly as many rows as the tile counts', async () => {
+    const body = await twoBare()
+    expect(body.noTrackingTotal).toBe(body.stats.noTracking)
+    expect(body.noTrackingTotal).toBe(2)
+  })
+
+  it('ranks the longest wait first, because most of the list is inside its promise', async () => {
+    const body = await twoBare()
+    expect(body.noTracking[0].number).toBe('RTE3001')
+  })
+
+  it('says how long each order has been waiting, not only how far past a promise', async () => {
+    const body = await twoBare()
+    const fresh = body.noTracking.find((r) => r.number === 'RTE3002')
+    expect(fresh?.waitingDays).toBe(0)
+    // Nothing has missed anything: the days-over column would rank these
+    // identically at zero, which is what made it the wrong figure here.
+    expect(fresh?.daysOver).toBe(0)
   })
 })

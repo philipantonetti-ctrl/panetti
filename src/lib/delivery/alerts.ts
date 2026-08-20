@@ -43,7 +43,10 @@ const SAYS: Record<DeliveryState, string> = {
   IN_TRANSIT: 'In transit',
   RETURNED: 'Returned to sender',
   CANCELLED: 'Delivery cancelled',
-  AVAILABLE: 'Delivered',
+  // Was one line saying 'Delivered' for both. A Slack alert that calls an
+  // uncollected parcel delivered sends somebody to close a case nobody has.
+  AVAILABLE: 'Ready for collection',
+  DELIVERED: 'Delivered',
   VOIDED: 'Refunded',
   UNTRACKED: 'Not tracked',
   BEFORE_TRACKING: 'Before tracking started',
