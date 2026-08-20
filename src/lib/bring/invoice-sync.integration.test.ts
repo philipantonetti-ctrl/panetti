@@ -9,13 +9,17 @@ const CUST = 'ZZDISC'
 const mine = { customerNumber: { startsWith: CUST } }
 const creds = { uid: 'u', key: 'k', clientUrl: 'https://panetti.vercel.app' }
 
-// Deletes from BOTH tables this file (and Tasks 6/7's later additions to it)
+// Deletes from every table this file (and Tasks 6/7's later additions to it)
 // can write. ShipmentCost has no customerNumber prefix of its own to scope
 // by, but every invoiceNumber this file creates starts with CUST, so scoping
 // there keeps a future test's rows from leaking into the shared database.
+// Shipment can't be prefixed at all — trackingNumber has to be a real fixture
+// waybill for the join to have anything to match — so it is scoped instead to
+// the one literal value (KNOWN_WAYBILL) this file ever creates one for.
 const cleanup = async () => {
   await db.bringReportRun.deleteMany({ where: mine })
   await db.shipmentCost.deleteMany({ where: { invoiceNumber: { startsWith: CUST } } })
+  await db.shipment.deleteMany({ where: { trackingNumber: KNOWN_WAYBILL } })
 }
 beforeEach(cleanup)
 afterAll(cleanup)
@@ -53,6 +57,15 @@ const FIXTURE_TOTAL = '2500.00'
 
 /** The waybill billed twice, identically, in the fixture. */
 export const DUPLICATE_WAYBILL = '73325383643994654'
+
+/**
+ * The fixture's other waybill, billed on the four lines that are not
+ * DUPLICATE_WAYBILL. Holding a Shipment for only this one, never for
+ * DUPLICATE_WAYBILL, gives the unmatched-count test a specific, non-symmetric
+ * split (4 matched, 2 not) that a distinct-waybill count or an inverted
+ * `have.has()` would get wrong.
+ */
+const KNOWN_WAYBILL = '73325383635034405'
 
 /**
  * Stubs the three calls collectNextReport makes for one job: the status
@@ -239,5 +252,28 @@ describe('collectNextReport', () => {
     expect(await collectNextReport(creds)).toBeNull()
     const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-W` } })
     expect(row?.state).toBe('REQUESTED')
+  })
+
+  it('counts lines matched to a Shipment we hold apart from lines that are not', async () => {
+    // KNOWN_WAYBILL carries 4 of the fixture's 6 lines; DUPLICATE_WAYBILL,
+    // billed on the other 2, has no Shipment here. A distinct-waybill count
+    // would say 1 matched / 1 unmatched; an inverted have.has() would say 2
+    // matched / 4 unmatched. Only counting lines the right way round gives 4/2.
+    await db.shipment.create({ data: { trackingNumber: KNOWN_WAYBILL } })
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-M`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+      },
+    })
+    stubCollect(`${CUST}-M`)
+
+    const result = await collectNextReport(creds)
+    expect(result).toEqual({ stored: 6, unmatched: 2 })
+
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-M` } })
+    expect(row?.rowsStored).toBe(6)
+    expect(row?.rowsUnmatched).toBe(2)
   })
 })

@@ -129,11 +129,15 @@ export async function collectNextReport(
       )
     }
 
-    // Wholesale replace. The report carries no line identifier, so this — not a
-    // unique constraint — is what makes re-reading safe.
-    const { count } = await db.$transaction(async (tx) => {
+    // Wholesale replace, and the unmatched count and the STORED update ride in
+    // the same transaction as the replace itself. The report carries no line
+    // identifier, so delete-then-recreate — not a unique constraint — is what
+    // makes re-reading safe; folding the rest in here means a failure after
+    // the lines are written can never leave them committed while the row that
+    // describes them says FAILED, which nothing would ever retry.
+    const { stored, unmatched } = await db.$transaction(async (tx) => {
       await tx.shipmentCost.deleteMany({ where: { invoiceNumber: job.invoiceNumber } })
-      return tx.shipmentCost.createMany({
+      const { count } = await tx.shipmentCost.createMany({
         data: parsed.lines.map((l) => ({
           trackingNumber: l.waybillNumber,
           customerNumber: job.customerNumber,
@@ -145,25 +149,27 @@ export async function collectNextReport(
           description: l.description,
         })),
       })
-    })
 
-    // How much of this invoice we could not attach to a parcel we hold. Counted
-    // rather than hidden: it is the number that says whether the join works.
-    const known = await db.shipment.findMany({
-      where: { trackingNumber: { in: [...new Set(parsed.lines.map((l) => l.waybillNumber))] } },
-      select: { trackingNumber: true },
-    })
-    const have = new Set(known.map((s) => s.trackingNumber))
-    const unmatched = parsed.lines.filter((l) => !have.has(l.waybillNumber)).length
+      // How much of this invoice we could not attach to a parcel we hold.
+      // Counted rather than hidden: it is the number that says whether the
+      // join works.
+      const known = await tx.shipment.findMany({
+        where: { trackingNumber: { in: [...new Set(parsed.lines.map((l) => l.waybillNumber))] } },
+        select: { trackingNumber: true },
+      })
+      const have = new Set(known.map((s) => s.trackingNumber))
+      const unmatched = parsed.lines.filter((l) => !have.has(l.waybillNumber)).length
 
-    await db.bringReportRun.update({
-      where: { id: job.id },
-      data: {
-        state: 'STORED', collectedAt: new Date(),
-        rowsStored: count, rowsUnmatched: unmatched, error: null,
-      },
+      await tx.bringReportRun.update({
+        where: { id: job.id },
+        data: {
+          state: 'STORED', collectedAt: new Date(),
+          rowsStored: count, rowsUnmatched: unmatched, error: null,
+        },
+      })
+      return { stored: count, unmatched }
     })
-    return { stored: count, unmatched }
+    return { stored, unmatched }
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e))
   }
