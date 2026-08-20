@@ -385,3 +385,53 @@ describe('fetchCatalog', () => {
     spy.mockRestore()
   })
 })
+
+/**
+ * A WordPress fatal error answers with a whole HTML page, not JSON. Truncating
+ * that to 300 characters keeps only the <head> — doctype, three metas and the
+ * opening of <title> — so the error we stored and put on the owner's dashboard
+ * was markup, and the one sentence explaining the failure never survived.
+ */
+describe('a store that answers with an error page', () => {
+  const WP_ERROR_PAGE = [
+    '<!DOCTYPE html>',
+    '<html lang="nb-NO">',
+    '<head>',
+    '\t<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />',
+    '\t<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    "\t<meta name='robots' content='max-image-preview:large, noindex, follow' />",
+    '\t<title>WordPress &rsaquo; Feil</title>',
+    '\t<style type="text/css">html { background: #f1f1f1; }</style>',
+    '</head>',
+    '<body id="error-page">',
+    '\t<div class="wp-die-message"><p>There has been a critical error on this website.</p></div>',
+    '</body>',
+    '</html>',
+  ].join('\n')
+
+  const brokenStore = () =>
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(WP_ERROR_PAGE, { status: 500 })))
+
+  it('reports what the page says rather than how it is marked up', async () => {
+    brokenStore()
+    await expect(fetchOrders(CREDS, {})).rejects.toThrow(/critical error on this website/)
+  })
+
+  // The status is the half of the message that says which failure this is:
+  // 500 is the store breaking, 401 is our key. Extraction must not lose it.
+  it('still names the status', async () => {
+    brokenStore()
+    await expect(fetchOrders(CREDS, {})).rejects.toThrow(/500/)
+  })
+
+  it('carries no markup, because this string is shown to the owner', async () => {
+    brokenStore()
+    const err = await fetchOrders(CREDS, {}).then(
+      () => {
+        throw new Error('expected a 500 to reject')
+      },
+      (e: Error) => e,
+    )
+    expect(err.message).not.toMatch(/[<>]/)
+  })
+})

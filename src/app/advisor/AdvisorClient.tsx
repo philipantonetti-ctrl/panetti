@@ -195,10 +195,57 @@ function trustSentence(fact: Fact): string {
     if (status === '403' || status === '401') {
       return `${shop} refused our connection, so its figures are stale. Its WooCommerce API key needs Read permission.`
     }
+    // A 5xx is their site answering badly, not a site we failed to find. Told
+    // "could not be reached", the owner goes and checks his own connection;
+    // what actually needs looking at is the shop's WordPress.
+    if (status?.startsWith('5')) {
+      return `${shop}'s website returned an error, so its figures are stale. The shop itself needs looking at, not our connection to it.`
+    }
     return `${shop} could not be reached, so its figures are stale.`
   }
 
   return `No exchange rate for ${fact.subject ?? 'a currency'}, so figures in it could not be converted.`
+}
+
+/**
+ * Every trust warning, in words, above everything it casts doubt on.
+ *
+ * This band used to live inside Report — which renders ONLY when the model
+ * wrote no items. So on any ordinary day it was absent, and a broken sync
+ * reached the page only if the model happened to cite it, where FactLine
+ * printed the raw WooCommerce error beside two empty columns. collect.ts takes
+ * care never to rank a trust warning away ("never cap away a trust warning");
+ * this is the render half of that promise, and it was missing.
+ */
+function TrustBand({ facts }: { facts: Fact[] }) {
+  const quality = facts.filter(isQuality)
+  if (quality.length === 0) return null
+
+  return (
+    <section className="rounded-[12px] border border-line bg-warn-soft px-4 py-3">
+      <h2 className="text-[13px] font-semibold text-ink">
+        Check {quality.length === 1 ? 'this' : 'these'} before trusting the figures
+      </h2>
+      <ul className="mt-1.5 flex flex-col gap-1">
+        {quality.map((fact) => {
+          const fix = FIX[fact.kind]
+          return (
+            <li key={fact.id} className="text-[13px] text-ink">
+              {trustSentence(fact)}{' '}
+              {fix && (
+                <Link
+                  href={fix.href}
+                  className="font-medium text-accent underline-offset-2 hover:underline"
+                >
+                  {fix.label}
+                </Link>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
 }
 
 /**
@@ -250,8 +297,12 @@ function FactLine({
 function Card({ item, facts }: { item: BriefItem; facts: Fact[] }) {
   // Worst first, so the figure that earned the headline is the one read first.
   // The facts arrive in whatever order the model happened to cite them.
+  // Quality facts belong in the item's reasoning and the model is right to
+  // cite them — but not in this column layout. They have no from, no to and no
+  // percentage, so FactLine draws them as a movement from nothing to nothing
+  // and prints the raw WooCommerce error as the label. TrustBand states them.
   const cited = facts
-    .filter((f) => item.factIds.includes(f.id))
+    .filter((f) => item.factIds.includes(f.id) && !isQuality(f))
     .sort((a, b) => b.severity - a.severity || a.id.localeCompare(b.id))
 
   // The shop belongs on a line only when it is what tells one line from the
@@ -336,31 +387,9 @@ function Report({ facts }: { facts: Fact[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {quality.length > 0 && (
-        <section className="rounded-[12px] border border-line bg-warn-soft px-4 py-3">
-          <h2 className="text-[13px] font-semibold text-ink">
-            Check {quality.length === 1 ? 'this' : 'these'} before trusting the figures
-          </h2>
-          <ul className="mt-1.5 flex flex-col gap-1">
-            {quality.map((fact) => {
-              const fix = FIX[fact.kind]
-              return (
-                <li key={fact.id} className="text-[13px] text-ink">
-                  {trustSentence(fact)}{' '}
-                  {fix && (
-                    <Link
-                      href={fix.href}
-                      className="font-medium text-accent underline-offset-2 hover:underline"
-                    >
-                      {fix.label}
-                    </Link>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
+      {/* The trust band is drawn by the page, above every section it casts
+          doubt on, and no longer here — this component is one of two branches,
+          so a band inside it was a band the reader saw only sometimes. */}
 
       {/* Counts only. Naming the biggest mover here would repeat what the
           ordering already says: the shop in most trouble is the first section. */}
@@ -549,6 +578,11 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
                 </p>
               </div>
             )}
+
+            {/* Above the cards, and outside the items/report choice below:
+                "check these before trusting the figures" is only any use
+                before the figures, and on every day rather than some. */}
+            <TrustBand facts={briefing.facts} />
 
             {briefing.items?.map((item, i) => (
               <Card key={`${item.headline}-${i}`} item={item} facts={briefing.facts} />

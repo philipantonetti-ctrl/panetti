@@ -360,4 +360,86 @@ describe('AdvisorClient', () => {
       expect(screen.queryByRole('link')).not.toBeInTheDocument()
     })
   })
+
+  /**
+   * Live on 2026-08-20 a client read this off his own dashboard:
+   *
+   *   Sync failing · Mazzetti Norway · WooCommerce responded 500: <!DOCTYPE html>
+   *
+   * Two failures met on that line. The trust band — the only thing that states
+   * these in words and links to the page that fixes them — lived inside
+   * Report, which renders ONLY when the model wrote no items, so on any normal
+   * day it was absent. And a quality fact the model happened to cite fell
+   * through to FactLine, which prints fact.subject verbatim beside two empty
+   * columns, because a broken sync has no from-and-to to show.
+   *
+   * collect.ts goes out of its way to keep trust warnings ("never cap away a
+   * trust warning"). The page dropped them at the last step.
+   */
+  describe('a failing sync on a day the model wrote items', () => {
+    const failing = quality(
+      'SHOP_SYNC_FAILING',
+      'WooCommerce responded 500: <!DOCTYPE html> <html lang="nb-NO"> <head> <meta name="viewport"',
+    )
+
+    // Deliberately free of both "figures are stale" and "Sync failing": the
+    // assertions below must catch the band and the card, not this prose.
+    const withItems = briefing({
+      facts: [fact, failing],
+      items: [
+        {
+          headline: 'Norway has stopped reporting',
+          why: 'The store stopped answering, so what is below is old.',
+          factIds: ['revenue:shop_se', failing.id],
+          severity: 'high',
+          action: null,
+        },
+      ],
+    })
+
+    it('states the warning even on a day the report section is not shown', () => {
+      render(<AdvisorClient initial={withItems} />)
+      expect(screen.getByText(/figures are stale/i)).toBeInTheDocument()
+    })
+
+    /**
+     * 401 and 403 are our key; 500 is their site. "Could not be reached" sends
+     * the owner to check his internet when what needs looking at is WordPress.
+     */
+    it('says a 500 is the store erroring, not us failing to reach it', () => {
+      render(<AdvisorClient initial={withItems} />)
+      expect(screen.getByText(/returned an error/i)).toBeInTheDocument()
+    })
+
+    it('offers the link that fixes it, which only the band carries', () => {
+      render(<AdvisorClient initial={withItems} />)
+      expect(screen.getByRole('link', { name: /check the connection/i })).toHaveAttribute(
+        'href',
+        '/settings/shops',
+      )
+    })
+
+    it('puts no raw error text anywhere on the page', () => {
+      const { container } = render(<AdvisorClient initial={withItems} />)
+      expect(container.textContent).not.toContain('DOCTYPE')
+      expect(container.textContent).not.toContain('<html')
+    })
+
+    /**
+     * A trust fact in a card reads as a movement that went from nothing to
+     * nothing. The band above already states it as a sentence, so the card
+     * keeps the figures and lets the band keep the warning.
+     */
+    it('keeps the warning out of the card, where it reads as a movement', () => {
+      const { container } = render(<AdvisorClient initial={withItems} />)
+      expect(container.querySelector('article')?.textContent).not.toMatch(/Sync failing/)
+    })
+
+    // Guards the hoist: the band moved above the cards, so Report must no
+    // longer draw its own, or a quiet day would state every warning twice.
+    it('states each warning once, not once per section', () => {
+      render(<AdvisorClient initial={briefing({ items: [], facts: [failing] })} />)
+      expect(screen.getAllByText(/figures are stale/i)).toHaveLength(1)
+    })
+  })
 })
