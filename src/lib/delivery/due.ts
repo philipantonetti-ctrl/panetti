@@ -1,5 +1,5 @@
 import { wallClock, zoneTimeUtc } from '../tz'
-import { addCalendarDays, isBusinessDay } from './days'
+import { addCalendarDays } from './days'
 
 /**
  * When a warehouse file should first have carried an order's tracking number.
@@ -42,14 +42,17 @@ export function trackingDueAt(placedAt: Date, tz: string): Date {
 
   // Noon itself is not "before 12:00". An off-by-one here moves a whole day of
   // orders into the wrong file without anything looking broken.
-  let dispatchDay = hour < ORDER_CUTOFF_HOUR ? placedDay : addCalendarDays(placedDay, 1)
-
-  // No End-of-Day export comes off the warehouse at a weekend, so rolling into
-  // one would flag a whole weekend of orders that nothing is wrong with. Same
-  // reasoning as the delivery promise, which days.ts already counts in business
-  // days for exactly this reason. Public holidays are not modelled there and
-  // are not modelled here either.
-  while (!isBusinessDay(dispatchDay)) dispatchDay = addCalendarDays(dispatchDay, 1)
+  //
+  // CALENDAR days, not business days, and deliberately so. This first rolled
+  // weekends forward to Monday on the assumption that no End-of-Day export
+  // comes off the warehouse on a Saturday; the client confirmed on 2026-08-20
+  // that it packs and files seven days a week. His six tabled rows are all
+  // Wednesday to Friday, so none of them caught the wrong assumption.
+  //
+  // Note this is NOT the rule deadlineFor uses. The delivery promise counts
+  // business days because a carrier does not deliver on a Sunday; the warehouse
+  // does work one. Two different questions, correctly answered differently.
+  const dispatchDay = hour < ORDER_CUTOFF_HOUR ? placedDay : addCalendarDays(placedDay, 1)
 
   return zoneTimeUtc(dispatchDay, FILE_TIME, tz)
 }
