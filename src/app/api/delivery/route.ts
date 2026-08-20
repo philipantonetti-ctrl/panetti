@@ -4,7 +4,7 @@ import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { getSetting } from '@/lib/settings'
-import { zoneDayEndUtc, zoneDayStartUtc, zonedDayStr } from '@/lib/tz'
+import { wallClock, zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
 import { daysBetween } from '@/lib/delivery/days'
 import { loadDelivery, type LoadedDelivery } from '@/lib/delivery/load'
@@ -102,11 +102,12 @@ export async function GET(req: Request) {
       id: r.order.id,
       number: r.order.number,
       waitingDays: waitingDays(r),
-      // The shop's own calendar date, not a UTC instant: an order placed at
-      // 23:30 in Oslo would otherwise print one date while counting its
-      // waiting days from the next, and the two columns would contradict each
-      // other in public about the same row.
-      placedOn: zonedDayStr(r.order.placedAt, r.order.shopTimezone ?? timezone),
+      // The shop's own clock, date AND time, not a UTC instant. An order
+      // placed at 23:30 in Oslo would otherwise print one date while counting
+      // its waiting days from the next. The time is carried because the
+      // warehouse cutoff is noon local, so it is what decides which file the
+      // order belongs in — see lib/delivery/due.ts.
+      placedAtLocal: wallClock(r.order.placedAt, r.order.shopTimezone ?? timezone),
       // Null stays null rather than becoming ''. The page decides how to print
       // an order we hold no name for, and it cannot if the two are flattened.
       customerName: r.customerName,
