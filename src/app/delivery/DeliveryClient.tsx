@@ -24,6 +24,12 @@ export type LateOrder = {
   shop: string
   country: string | null
   daysOver: number
+  /**
+   * Days since the order was placed. The No-tracking list is mostly orders
+   * still INSIDE their promise, for which `daysOver` is zero and says nothing
+   * — how long we have been in the dark is the figure that ranks them.
+   */
+  waitingDays: number
   promiseDays: number | null
   state: DeliveryState
   parcels: Parcel[]
@@ -54,9 +60,13 @@ type Payload = {
   stats: DeliveryStats
   late: LateOrder[]
   lateTotal: number
-  /** Past their promise with no parcel at all — see the AwaitingFile section. */
-  awaitingFile: LateOrder[]
-  awaitingFileTotal: number
+  /**
+   * Every order with no parcel at all — see the NoTracking section. This is
+   * the same set stats.noTracking counts, so the tile and the list agree by
+   * construction; it used to hold only the ones also past their promise.
+   */
+  noTracking: LateOrder[]
+  noTrackingTotal: number
   unlinked: UnlinkedParcel[]
   unlinkedTotal: number
   imports: ImportRow[]
@@ -119,7 +129,12 @@ const STATE_LABEL: Record<DeliveryState, string> = {
   NO_TRACKING: 'No tracking',
   BOOKED: 'Booked',
   IN_TRANSIT: 'In transit',
-  AVAILABLE: 'Available',
+  // "Available" was one word for two situations, and the carrier that only
+  // ever reports the second contradicted it by name. DHL says "Delivered", so
+  // this says "Delivered"; the pickup-point case gets the words that tell a
+  // customer what is left to do.
+  AVAILABLE: 'Ready for collection',
+  DELIVERED: 'Delivered',
   RETURNED: 'Returned',
   CANCELLED: 'Cancelled',
 }
@@ -134,7 +149,12 @@ const STATE_TONE: Record<DeliveryState, string> = {
   NO_TRACKING: 'bg-warn-soft text-warn',
   BOOKED: 'bg-panel text-muted',
   IN_TRANSIT: 'bg-panel text-muted',
+  // Both endings keep the tone the single AVAILABLE state had. These badges
+  // are only drawn inside the Late and No-tracking lists, where an order that
+  // arrived did so past its promise — the colour is about that, not about the
+  // arrival, so splitting the state must not quietly recolour it.
   AVAILABLE: 'bg-warn-soft text-loss',
+  DELIVERED: 'bg-warn-soft text-loss',
   RETURNED: 'bg-warn-soft text-loss',
   CANCELLED: 'bg-warn-soft text-loss',
 }
@@ -187,19 +207,39 @@ function Tile({
   tone,
   hint,
   note,
+  onClick,
 }: {
   label: string
   value: string
   tone?: string
   hint: string
   note?: React.ReactNode
+  /**
+   * Present only where the figure has a list behind it. A tile without one
+   * stays a plain div: a button that opens nothing is a dead end dressed up
+   * as an action, which is worse than no affordance at all.
+   */
+  onClick?: () => void
 }) {
-  return (
-    <div className="px-5 py-4" title={hint}>
+  const inner = (
+    <>
       <p className="text-[11px] font-semibold tracking-wide text-faint">{label}</p>
       <p className={`num mt-1 text-[22px] font-semibold ${tone ?? 'text-ink'}`}>{value}</p>
       {note && <p className="mt-1 text-[11px] text-muted">{note}</p>}
-    </div>
+    </>
+  )
+
+  if (!onClick) return <div className="px-5 py-4" title={hint}>{inner}</div>
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={hint}
+      className="w-full px-5 py-4 text-left hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {inner}
+    </button>
   )
 }
 
@@ -209,7 +249,13 @@ function Tile({
  * promise (including ones that arrived late); "late right now" is the
  * narrower live queue — the two must not be swapped.
  */
-function Tiles({ stats }: { stats: DeliveryStats }) {
+export function Tiles({
+  stats,
+  onShowNoTracking,
+}: {
+  stats: DeliveryStats
+  onShowNoTracking: () => void
+}) {
   return (
     <section className="grid grid-cols-2 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface lg:grid-cols-4">
       <div className="border-b border-line lg:border-b-0 lg:border-r">
@@ -251,10 +297,26 @@ function Tiles({ stats }: { stats: DeliveryStats }) {
         value={stats.noTracking.toLocaleString('en-US')}
         tone={stats.noTracking > 0 ? 'text-warn' : undefined}
         hint="Expected a parcel for this order; the warehouse has not booked one."
+        // A number with no way to reach what it counts is an accusation you
+        // cannot answer — the client's words were "there is no way for me to
+        // press the no tracking to actually see which orders are missing".
+        onClick={stats.noTracking > 0 ? onShowNoTracking : undefined}
         // The largest, loudest figure on the page on any young workspace, and
         // the one most easily read as a fault. It is not: it counts orders no
         // warehouse file has covered yet, and it falls with every file read.
-        note={stats.noTracking > 0 ? 'falls as each warehouse file is read' : undefined}
+        note={
+          stats.noTracking > 0 ? (
+            <>
+              falls as each warehouse file is read
+              {/* Spelled out rather than left to a hover state: a tile that
+                  only looks pressable once the mouse is already on it is not
+                  discoverable by anyone who has not guessed already. */}
+              <span className="mt-0.5 block font-medium text-accent underline underline-offset-2">
+                Show these orders
+              </span>
+            </>
+          ) : undefined
+        }
       />
     </section>
   )
@@ -286,7 +348,7 @@ function since(iso: string | null): string {
  * single bar. Colour never carries the meaning alone: every segment is also
  * named and counted underneath.
  */
-function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastCheckedAt: string | null }) {
+export function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastCheckedAt: string | null }) {
   const stages = [
     { label: 'Not shipped', count: stats.noTracking, color: 'var(--color-warn)' },
     // Was var(--ink-muted), which is not a token this theme publishes under any
@@ -294,7 +356,17 @@ function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastCheckedA
     // quieter state than the carrier moving it.
     { label: 'At the warehouse', count: stats.booked, color: 'var(--color-muted)' },
     { label: 'In transit', count: stats.inTransit, color: 'var(--color-accent)' },
-    { label: 'Delivered', count: stats.delivered, color: 'var(--color-ink)' },
+    // Two positions, not one. This segment counted `delivered` — every order
+    // whose clock had stopped — so a parcel sitting uncollected at a pickup
+    // point was reported as delivered, directly above a badge now saying it is
+    // not. Waiting at the pickup point is a real position on the journey and
+    // gets its own; the two sum to `delivered`, so nothing is counted twice.
+    {
+      label: 'Ready for collection',
+      count: stats.readyForCollection,
+      color: 'var(--color-muted)',
+    },
+    { label: 'Delivered', count: stats.collected, color: 'var(--color-ink)' },
   ]
   const total = stages.reduce((n, s) => n + s.count, 0)
   // Nothing to place. The tile strip's own emptiness already says it, and an
@@ -482,7 +554,7 @@ function CountryTable({ rows, waiting }: { rows: CountryStat[]; waiting: string 
 }
 
 /**
- * Orders past their promised date that no warehouse file has mentioned yet.
+ * Every order we hold no parcel for. The list behind the NO TRACKING tile.
  *
  * These used to sit in the Late list, and on 2026-08-18 that meant roughly 120
  * rows of which SIX had a parcel. Two separate harms in one section: the six
@@ -491,38 +563,63 @@ function CountryTable({ rows, waiting }: { rows: CountryStat[]; waiting: string 
  * evidence of a late delivery. Several of these have very likely arrived; we
  * simply never heard.
  *
- * So this section is careful never to use the word "late", and it is collapsed:
- * the number belongs on screen because it is the size of the blind spot, but
- * the rows themselves are not a to-do list. The thing to act on is the import,
- * not the orders — which is why it points at that instead.
+ * Splitting them out fixed that and left a smaller version of the same fault:
+ * this section held only the ones ALSO past their promise, while the tile above
+ * counted every order with no parcel. Two numbers over overlapping sets, and no
+ * route at all to the rows the tile counted but this did not — which is what a
+ * client hit: "there is no way for me to press the no tracking to actually see
+ * which orders are missing tracking". It now holds exactly what the tile
+ * counts, so the two cannot disagree.
  *
- * Collapsed-with-a-real-count follows UnlinkedParcels directly below.
+ * Still careful never to call the set late, and still collapsed: the number
+ * belongs on screen because it is the size of the blind spot, but the rows are
+ * not a to-do list. The thing to act on is the import, not the orders.
+ *
+ * Open state is the PAGE's, not this component's, because the tile above opens
+ * it. Two owners of one boolean is how a tile ends up unable to open a section
+ * sitting six inches below it.
  */
-export function AwaitingFile({ rows, total }: { rows: LateOrder[]; total: number }) {
-  const [open, setOpen] = useState(false)
+export function NoTracking({
+  rows,
+  total,
+  open,
+  onToggle,
+}: {
+  rows: LateOrder[]
+  total: number
+  open: boolean
+  onToggle: () => void
+}) {
   // The route caps what it sends. This count is the size of the blind spot, so
   // understating it is the one thing it must not do.
   const capped = total > rows.length
   if (total === 0) return null
 
   return (
-    <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+    <section
+      id="no-tracking"
+      className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface"
+    >
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={onToggle}
         aria-expanded={open}
         className="flex w-full items-center justify-between px-5 py-3.5 text-left"
       >
         <span>
           <span className="text-[13px] font-semibold text-ink">
-            Past their promise, but no warehouse file yet{' '}
+            No tracking yet{' '}
             <span className="num font-normal text-muted">
               ({total.toLocaleString('en-US')})
             </span>
           </span>
+          {/* Says the CAUSE, not just the symptom. "No tracking" on its own is
+              what the client could not interpret; the answer to "what are
+              these?" is that no warehouse file has named them yet. */}
           <span className="mt-0.5 block text-[12px] text-muted">
-            We hold no parcel for these, so we cannot say what happened to them. Many will have
-            arrived. Importing the warehouse file for this period is what answers it.
+            No warehouse file has mentioned these orders yet, so we hold no parcel for them and
+            cannot say what happened. Many will have arrived. Importing the file for this period is
+            what answers it.
           </span>
         </span>
         <span aria-hidden="true" className="text-faint">
@@ -534,7 +631,7 @@ export function AwaitingFile({ rows, total }: { rows: LateOrder[]; total: number
         <div className="overflow-x-auto border-t border-line">
           {capped && (
             <p className="num px-5 pt-3 text-[12px] text-warn">
-              Showing the {rows.length.toLocaleString('en-US')} furthest past their promise, of{' '}
+              Showing the {rows.length.toLocaleString('en-US')} that have waited longest, of{' '}
               {total.toLocaleString('en-US')}.
             </p>
           )}
@@ -547,7 +644,11 @@ export function AwaitingFile({ rows, total }: { rows: LateOrder[]; total: number
                 <th className="px-4 py-2 text-left">Country</th>
                 {/* No State or Tracking column: every row here is the same on
                     both counts, and a column of identical values is furniture. */}
-                <th className="px-4 py-2 text-right">Days over</th>
+                {/* Waiting, not "days over": most of this list is inside its
+                    promise, where days-over is zero for every row and ranks
+                    nothing. How long we have been in the dark is the figure
+                    that orders them. */}
+                <th className="px-4 py-2 text-right">Waiting</th>
                 <th className="px-5 py-2 text-right">Promise</th>
               </tr>
             </thead>
@@ -569,8 +670,16 @@ export function AwaitingFile({ rows, total }: { rows: LateOrder[]; total: number
                   </td>
                   {/* Muted, not text-loss. The red on the Late table means "this
                       is going wrong"; here the number is only how long we have
-                      been in the dark, which is not the same accusation. */}
-                  <td className="num px-4 py-2.5 text-right text-muted">{r.daysOver}</td>
+                      been in the dark, which is not the same accusation.
+                      The overdue ones are marked in WORDS beside it — colour
+                      alone would say nothing to a colour-blind reader, and this
+                      table is read to decide who to chase first. */}
+                  <td className="px-4 py-2.5 text-right text-muted">
+                    <span className="num">{r.waitingDays}d</span>
+                    {r.daysOver > 0 && (
+                      <span className="ml-1.5 text-[11px] text-warn">past promise</span>
+                    )}
+                  </td>
                   <td className="num px-5 py-2.5 text-right text-muted">
                     {r.promiseDays === null ? DASH : `${r.promiseDays}d`}
                   </td>
@@ -973,6 +1082,19 @@ export function DeliveryClient({
   // Bumped by `reload()` below to force the same effect to refetch outside of
   // a filter change or the live tick — the only other two things that do.
   const [reloadKey, setReloadKey] = useState(0)
+  /**
+   * Owned here rather than inside the section, because the NO TRACKING tile
+   * opens it from the top of the page. Pressing the tile opens the list AND
+   * moves to it: opening something below the fold, silently, is the same
+   * complaint as not opening it at all.
+   */
+  const [noTrackingOpen, setNoTrackingOpen] = useState(false)
+  const showNoTracking = () => {
+    setNoTrackingOpen(true)
+    // Optional call: jsdom implements no scrollIntoView, and a test should not
+    // have to stub a browser API to assert that a button opens a section.
+    document.getElementById('no-tracking')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  }
 
   const tick = useLiveTick()
 
@@ -1058,7 +1180,7 @@ export function DeliveryClient({
                   aria-busy={loading}
                   className={`space-y-4 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}
                 >
-                  <Tiles stats={data.stats} />
+                  <Tiles stats={data.stats} onShowNoTracking={showNoTracking} />
                   <Pipeline stats={data.stats} lastCheckedAt={data.lastCheckedAt} />
                   <Split stats={data.stats} />
                   <Distribution data={data.stats.distribution} waiting={whyBlank(data.stats)} />
@@ -1069,7 +1191,12 @@ export function DeliveryClient({
                     stillOut={data.stats.lateNow}
                     judged={data.stats.judged}
                   />
-                  <AwaitingFile rows={data.awaitingFile} total={data.awaitingFileTotal} />
+                  <NoTracking
+                    rows={data.noTracking}
+                    total={data.noTrackingTotal}
+                    open={noTrackingOpen}
+                    onToggle={() => setNoTrackingOpen((o) => !o)}
+                  />
                   <UnlinkedParcels items={data.unlinked} total={data.unlinkedTotal} />
                   <div className="space-y-3">
                     <UploadBox onImported={reload} />

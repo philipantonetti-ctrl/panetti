@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { AwaitingFile, LateList, Split, type LateOrder } from './DeliveryClient'
+import { LateList, NoTracking, Pipeline, Split, Tiles, type LateOrder } from './DeliveryClient'
 import type { DeliveryStats } from '@/lib/delivery/stats'
 
 const order = (over: Partial<LateOrder> = {}): LateOrder => ({
   id: 'o1', number: '15749', customerName: null, shop: 'Panetti Germany', country: 'DE',
-  daysOver: 4, promiseDays: 5, state: 'IN_TRANSIT',
+  daysOver: 4, waitingDays: 9, promiseDays: 5, state: 'IN_TRANSIT',
   parcels: [{
     number: '9597256404', carrier: 'DHL',
     url: 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=9597256404',
@@ -18,7 +18,8 @@ const order = (over: Partial<LateOrder> = {}): LateOrder => ({
 const stats = (over: Partial<DeliveryStats> = {}): DeliveryStats => ({
   delivered: 24, medianDays: 3, medianWarehouseDays: null, medianTransitDays: null,
   onTimeRate: 0.96, judged: 24, unjudged: 0, lateNow: 115, noTracking: 638,
-  booked: 3, inTransit: 21, distribution: [], byCountry: [],
+  booked: 3, inTransit: 21, collected: 20, readyForCollection: 4,
+  distribution: [], byCountry: [],
   ...over,
 })
 
@@ -52,6 +53,27 @@ describe('LateList', () => {
   })
 
   /**
+   * "Available" said both "waiting at a pickup point" and "in the customer's
+   * hands". DHL only ever reports the second, so a DHL row badged "Available"
+   * beside a DHL tracking page that said "Delivered".
+   */
+  it('says delivered when the customer has the parcel', () => {
+    const { container } = render(
+      <LateList rows={[order({ state: 'DELIVERED' })]} total={1} judged={24} />,
+    )
+    expect(container.textContent).toMatch(/Delivered/)
+  })
+
+  it('says ready for collection while a parcel waits at a pickup point', () => {
+    const { container } = render(
+      <LateList rows={[order({ state: 'AVAILABLE' })]} total={1} judged={24} />,
+    )
+    expect(container.textContent).toMatch(/Ready for collection/i)
+    // The word on its own is the ambiguity being removed.
+    expect(container.textContent).not.toMatch(/\bAvailable\b/)
+  })
+
+  /**
    * The tile above counts the live queue — still not with the customer — while
    * this list deliberately keeps orders that have since arrived, so the two
    * legitimately differ. Left unexplained that is the same complaint that
@@ -74,48 +96,103 @@ describe('LateList', () => {
 
 /**
  * Live on 2026-08-18 the Late list ran to ~120 rows, SIX of which had a parcel.
- * The rest were orders no warehouse file had mentioned yet. Two problems in
- * one: the six actionable rows were invisible, and the other ~114 were filed
- * under "missed its promise" when the truth is only that we never heard about
- * them.
+ * The rest were orders no warehouse file had mentioned yet.
+ *
+ * That split gave those rows their own section, but the section only ever held
+ * the ones ALSO past their promise, while the tile above counted every order
+ * with no parcel. Two numbers over overlapping sets — the same shape as the
+ * 155-against-8 bug — and no way at all to see the other rows. The section now
+ * holds the whole set the tile counts, and the tile opens it.
  */
-describe('AwaitingFile', () => {
+describe('NoTracking', () => {
   const bare = order({ id: 'o2', number: '27345', shop: 'Panetti Norway', country: 'NO',
-    daysOver: 5, promiseDays: 4, state: 'NO_TRACKING', parcels: [] })
+    daysOver: 5, waitingDays: 9, promiseDays: 4, state: 'NO_TRACKING', parcels: [] })
+
+  const shut = (props: Partial<Parameters<typeof NoTracking>[0]> = {}) => (
+    <NoTracking rows={[bare]} total={109} open={false} onToggle={() => {}} {...props} />
+  )
 
   it('states the count without being opened, so the size is never hidden', () => {
-    const { container } = render(<AwaitingFile rows={[bare]} total={109} />)
+    const { container } = render(shut())
     expect(container.textContent).toMatch(/109/)
   })
 
   it('stays shut by default, so it cannot bury the orders that can be chased', () => {
-    render(<AwaitingFile rows={[bare]} total={109} />)
+    render(shut())
     expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('27345')).not.toBeInTheDocument()
   })
 
   it('shows the orders once opened', () => {
-    render(<AwaitingFile rows={[bare]} total={1} />)
-    fireEvent.click(screen.getByRole('button'))
+    render(shut({ total: 1, open: true }))
     expect(screen.getByText('27345')).toBeInTheDocument()
   })
 
   // These are the rows most likely to need a phone call — nobody can even say
   // whether the parcel exists — so the name matters here at least as much.
   it('names the customer once opened', () => {
-    render(<AwaitingFile rows={[{ ...bare, customerName: 'Louise Nielsen' }]} total={1} />)
-    fireEvent.click(screen.getByRole('button'))
+    render(shut({ rows: [{ ...bare, customerName: 'Louise Nielsen' }], total: 1, open: true }))
     expect(screen.getByText('Louise Nielsen')).toBeInTheDocument()
   })
 
   /**
-   * The whole point of the split. A missing file is not evidence of a missed
-   * promise, so this section must not use the word for one.
+   * A missing file is not evidence of a missed promise, so this section must
+   * not use the word for one about the set as a whole.
    */
   it('does not call these orders late, because nothing has said that they are', () => {
-    const { container } = render(<AwaitingFile rows={[bare]} total={109} />)
+    const { container } = render(shut())
     expect(container.textContent).not.toMatch(/\blate\b/i)
     expect(container.textContent).toMatch(/no warehouse file/i)
+  })
+
+  /**
+   * The widening. "Days over" is meaningless for an order still inside its
+   * promise, and those orders are most of this list — so the column has to be
+   * how long we have been in the dark, not how far past a deadline.
+   */
+  it('holds orders that are not past their promise at all', () => {
+    const fresh = { ...bare, id: 'o3', number: '27346', daysOver: 0, waitingDays: 1 }
+    render(shut({ rows: [fresh], total: 1, open: true }))
+    expect(screen.getByText('27346')).toBeInTheDocument()
+  })
+
+  it('says how long each order has been waiting', () => {
+    const { container } = render(shut({ total: 1, open: true }))
+    expect(container.textContent).toMatch(/Waiting/)
+    expect(container.textContent).toMatch(/9d/)
+  })
+
+  // In words, not by colour: this table is read by someone deciding who to
+  // chase first, and red on its own says nothing to a colour-blind reader.
+  it('marks in words the ones that are past their promise', () => {
+    const { container } = render(shut({ total: 1, open: true }))
+    expect(container.textContent).toMatch(/past promise/i)
+  })
+
+  it('says nothing of the sort for an order still inside its promise', () => {
+    const fresh = { ...bare, id: 'o3', daysOver: 0, waitingDays: 1 }
+    const { container } = render(shut({ rows: [fresh], total: 1, open: true }))
+    expect(container.textContent).not.toMatch(/past promise/i)
+  })
+})
+
+/**
+ * The client's words: "there is no way for me to press the no tracking to
+ * actually see which orders are missing tracking".
+ */
+describe('Tiles', () => {
+  it('makes the no-tracking count something you can press', () => {
+    const onShow = vi.fn()
+    render(<Tiles stats={stats({ noTracking: 45 })} onShowNoTracking={onShow} />)
+    fireEvent.click(screen.getByRole('button', { name: /no tracking/i }))
+    expect(onShow).toHaveBeenCalled()
+  })
+
+  // Nothing to show, nothing to press: a button opening an empty section is a
+  // dead end dressed up as an action.
+  it('leaves it as plain text when there is nothing to show', () => {
+    render(<Tiles stats={stats({ noTracking: 0 })} onShowNoTracking={() => {}} />)
+    expect(screen.queryByRole('button', { name: /no tracking/i })).not.toBeInTheDocument()
   })
 })
 
@@ -147,5 +224,46 @@ describe('Split', () => {
     expect(container.textContent).toMatch(/1 day/)
     expect(container.textContent).toMatch(/2 days/)
     expect(container.textContent).not.toMatch(/handover time/i)
+  })
+})
+
+/**
+ * The strip is four positions along one journey. Its last one said "Delivered"
+ * and counted every order whose clock had stopped, so a parcel still sitting
+ * at a Nordic pickup point was reported as delivered — the same conflation the
+ * badges had, one level up the page. Fixing the badge alone would have left
+ * the two contradicting each other on one screen.
+ */
+describe('Pipeline', () => {
+  it('gives the parcels waiting at a pickup point their own position', () => {
+    const { container } = render(
+      <Pipeline
+        stats={stats({ delivered: 5, collected: 3, readyForCollection: 2 })}
+        lastCheckedAt={null}
+      />,
+    )
+    expect(container.textContent).toMatch(/Ready for collection2/)
+  })
+
+  it('counts only collected parcels under Delivered', () => {
+    const { container } = render(
+      <Pipeline
+        stats={stats({ delivered: 5, collected: 3, readyForCollection: 2 })}
+        lastCheckedAt={null}
+      />,
+    )
+    expect(container.textContent).toMatch(/Delivered3/)
+  })
+
+  // The bar is still one journey, so the stages have to add up to the orders
+  // in it and not double-count the ones that arrived.
+  it('does not count an arrived order twice', () => {
+    const { container } = render(
+      <Pipeline
+        stats={stats({ noTracking: 0, booked: 0, inTransit: 0, delivered: 5, collected: 3, readyForCollection: 2 })}
+        lastCheckedAt={null}
+      />,
+    )
+    expect(container.textContent).not.toMatch(/Delivered5/)
   })
 })

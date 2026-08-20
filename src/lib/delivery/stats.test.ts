@@ -201,3 +201,36 @@ describe('deliveryStats', () => {
     expect(s.delivered).toBe(0)
   })
 })
+
+/**
+ * The strip's last segment was called "Delivered" and counted `delivered`,
+ * which is every order whose clock has stopped — pickup-point arrivals
+ * included. So a parcel sitting uncollected at a Posten point was counted as
+ * delivered six inches above a badge that (now) says it is not.
+ *
+ * These are counts BESIDE `delivered`, never a redefinition of it: the median
+ * and the on-time rate must keep measuring to the pickup point, or a customer
+ * who takes a week to collect becomes a late delivery.
+ */
+describe('the two endings', () => {
+  const collected = v({ state: 'DELIVERED', collectedAt: new Date() })
+  const waiting = v({ state: 'AVAILABLE', collectedAt: null })
+
+  it('counts a collected parcel apart from one still waiting at the pickup point', () => {
+    const s = deliveryStats([collected, waiting], ['NO', 'NO'])
+    expect(s.collected).toBe(1)
+    expect(s.readyForCollection).toBe(1)
+  })
+
+  it('keeps both inside the delivered figure the medians are built from', () => {
+    const s = deliveryStats([collected, waiting], ['NO', 'NO'])
+    expect(s.delivered).toBe(2)
+    expect(s.medianDays).toBe(3)
+  })
+
+  it('counts neither until a parcel has actually arrived', () => {
+    const s = deliveryStats([v({ state: 'IN_TRANSIT', availableAt: null, totalDays: null })], ['NO'])
+    expect(s.collected).toBe(0)
+    expect(s.readyForCollection).toBe(0)
+  })
+})

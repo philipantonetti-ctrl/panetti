@@ -6,6 +6,7 @@ import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { getSetting } from '@/lib/settings'
 import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
+import { daysBetween } from '@/lib/delivery/days'
 import { loadDelivery, type LoadedDelivery } from '@/lib/delivery/load'
 import { deliveryStats } from '@/lib/delivery/stats'
 import { carrierName, trackingUrl } from '@/lib/delivery/tracking-url'
@@ -41,10 +42,16 @@ export async function GET(req: Request) {
       select: { id: true, deliveryTrackingFrom: true },
     })
 
+    // One `now` for the whole response. loadDelivery would default its own,
+    // and a row's "waiting 9 days" computed a few milliseconds later than the
+    // state it belongs to is a disagreement waiting for a midnight boundary.
+    const now = new Date()
+
     const { rows } = await loadDelivery(
       shops.map((s) => s.id),
       zoneDayStartUtc(utcDay(from).toISOString().slice(0, 10), timezone),
       zoneDayEndUtc(utcDay(to).toISOString().slice(0, 10), timezone),
+      now,
     )
 
     const stats = deliveryStats(
@@ -79,9 +86,22 @@ export async function GET(req: Request) {
     const byUrgency = (a: LoadedDelivery, b: LoadedDelivery) =>
       (b.view.daysOver ?? 0) - (a.view.daysOver ?? 0)
 
+    /**
+     * How long we have been in the dark about an order, in the SHOP's timezone
+     * — the same clock deliveryFor judges its promise against, so a row can
+     * never report a day more or less than the state beside it.
+     */
+    const waitingDays = (r: LoadedDelivery) =>
+      daysBetween(r.order.placedAt, now, r.order.shopTimezone ?? timezone)
+
+    // Longest wait first. daysOver ranks nothing here: most of this list is
+    // still inside its promise, so it is zero for row after row.
+    const byWaiting = (a: LoadedDelivery, b: LoadedDelivery) => waitingDays(b) - waitingDays(a)
+
     const toRow = (r: LoadedDelivery) => ({
       id: r.order.id,
       number: r.order.number,
+      waitingDays: waitingDays(r),
       // Null stays null rather than becoming ''. The page decides how to print
       // an order we hold no name for, and it cannot if the two are flattened.
       customerName: r.customerName,
@@ -94,12 +114,23 @@ export async function GET(req: Request) {
     })
 
     const chasable = lateMatching.filter((r) => r.view.parcels.length > 0)
-    const unfiled = lateMatching.filter((r) => r.view.parcels.length === 0)
+
+    /**
+     * EVERY order with no parcel, not only the ones also past their promise.
+     *
+     * Splitting the late list fixed one fault and left a smaller copy of it:
+     * this list held the overdue subset while the tile above counted the whole
+     * NO_TRACKING set, so the two reported different sizes for the same idea
+     * and the rows in the gap were reachable from nowhere on the page. Keyed
+     * on the same `state` deliveryStats counts, the tile and the list are now
+     * the same set by construction rather than by agreement.
+     */
+    const unfiled = rows.filter((r) => r.view.state === 'NO_TRACKING')
 
     const lateTotal = chasable.length
     const late = chasable.sort(byUrgency).slice(0, LATE_LIMIT).map(toRow)
-    const awaitingFileTotal = unfiled.length
-    const awaitingFile = unfiled.sort(byUrgency).slice(0, LATE_LIMIT).map(toRow)
+    const noTrackingTotal = unfiled.length
+    const noTracking = unfiled.sort(byWaiting).slice(0, LATE_LIMIT).map(toRow)
 
     const [unlinked, unlinkedTotal, imports, config] = await Promise.all([
       db.shipment.findMany({
@@ -141,8 +172,8 @@ export async function GET(req: Request) {
         stats,
         late,
         lateTotal,
-        awaitingFile,
-        awaitingFileTotal,
+        noTracking,
+        noTrackingTotal,
         // The link is built here, beside every other one, so the page never
         // has to know which carrier's site a number belongs to.
         unlinked: unlinked.map((s) => ({

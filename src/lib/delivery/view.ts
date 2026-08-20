@@ -10,7 +10,13 @@ export type DeliveryState =
   | 'NO_TRACKING' // expected a parcel, have none
   | 'BOOKED' // label made, still in the warehouse
   | 'IN_TRANSIT'
-  | 'AVAILABLE' // with the customer, or waiting at their pickup point
+  // These two were one state called AVAILABLE, which said "with the customer,
+  // OR waiting at their pickup point". Both are true endings and the clock
+  // stops at the same moment for each, but they are not the same news: DHL
+  // reports only the second kind, so every DHL order read "Available" beside a
+  // DHL page reading "Delivered". Both timestamps were already stored.
+  | 'AVAILABLE' // arrived at the pickup point, not yet collected
+  | 'DELIVERED' // in the customer's hands
   | 'RETURNED'
   | 'CANCELLED'
 
@@ -171,17 +177,24 @@ export function deliveryFor(
 
   const handedInAt = minDate(order.shipments.map((s) => s.handedInAt))
 
+  // collectedAt before availableAt: a collected parcel is also an available
+  // one, so the more specific fact has to be asked about first or it can never
+  // be reported. Everything below this line is unchanged — in particular the
+  // clock still stops at availableAt, so a customer who takes a week to walk
+  // to the pickup point still does not make the delivery late.
   const state: DeliveryState = returned
     ? 'RETURNED'
     : cancelled
       ? 'CANCELLED'
-      : availableAt
-        ? 'AVAILABLE'
-        : order.shipments.length === 0
-          ? 'NO_TRACKING'
-          : handedInAt
-            ? 'IN_TRANSIT'
-            : 'BOOKED'
+      : collectedAt
+        ? 'DELIVERED'
+        : availableAt
+          ? 'AVAILABLE'
+          : order.shipments.length === 0
+            ? 'NO_TRACKING'
+            : handedInAt
+              ? 'IN_TRANSIT'
+              : 'BOOKED'
 
   // Late = past the promise, judged at the moment the order actually became
   // available — or right now, if it never has. Gating on `!availableAt` alone

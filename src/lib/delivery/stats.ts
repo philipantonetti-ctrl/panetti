@@ -31,6 +31,21 @@ export type DeliveryStats = {
    */
   booked: number
   inTransit: number
+  /**
+   * The two ways an order ends, counted apart — collected splits off from
+   * `delivered`, it does not replace it.
+   *
+   * `delivered` is every order whose clock has stopped, and stays the
+   * denominator for the median and the on-time rate: the clock stops when the
+   * parcel reaches the pickup point, not when the customer walks to it.
+   * "Where everything is now" asks a different question, and answering it with
+   * `delivered` reported an uncollected parcel as delivered.
+   *
+   * They sum to `delivered` by construction, so the strip cannot count one
+   * arrived order in two places.
+   */
+  collected: number
+  readyForCollection: number
   distribution: { days: number; count: number }[]
   byCountry: CountryStat[]
 }
@@ -79,6 +94,9 @@ export function deliveryStats(
   countries: (string | null)[],
 ): DeliveryStats {
   const delivered = views.filter((v) => v.totalDays !== null)
+  // Split out of `delivered` rather than filtered from `views` independently,
+  // so the two can never drift from the total they are a split of.
+  const collected = delivered.filter((v) => v.collectedAt !== null)
 
   const counts = new Map<number, number>()
   for (const v of delivered) counts.set(v.totalDays!, (counts.get(v.totalDays!) ?? 0) + 1)
@@ -126,6 +144,8 @@ export function deliveryStats(
     // column already badge, so the strip can never disagree with the rows.
     booked: views.filter((v) => v.state === 'BOOKED').length,
     inTransit: views.filter((v) => v.state === 'IN_TRANSIT').length,
+    collected: collected.length,
+    readyForCollection: delivered.length - collected.length,
     distribution: [...counts.entries()]
       .map(([days, count]) => ({ days, count }))
       .sort((a, b) => a.days - b.days),
