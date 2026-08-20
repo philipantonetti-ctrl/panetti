@@ -71,10 +71,38 @@ money is therefore never attributable to a parcel, and a design that assumes
 otherwise will quietly under-count freight.
 
 **The specification carries the parcel number.** Every one of the four accounts
-offers the `MASTER-SPECIFIED_INVOICE` report, whose lines include
-`WAYBILL_NUMBER`, `GrossPrice` and `AMOUNT` — documented as "Invoiced shipping
-costs". `WAYBILL_NUMBER` is the tracking number, which is `Shipment`'s unique
-key. That join is the whole feature.
+offers `MASTER-SPECIFIED_INVOICE`. One was downloaded and measured on
+2026-08-20 — invoice 4710001522, customer 20020467369:
+
+| | |
+|---|---|
+| lines | 144 |
+| distinct `WAYBILL_NUMBER` | 29 |
+| lines per parcel | ~5 |
+| blank waybills | 0 |
+| currencies | NOK only, per line in `INVOICE_CURRENCY_CODE` |
+
+`WAYBILL_NUMBER` is 17 digits, equals `RECEIVER_REFERENCE` on every line, and
+passes `looksLikeTracking` unchanged. It is `Shipment`'s unique key. **That
+join is the whole feature.**
+
+**A parcel is never one line.** Each of the 29 carries a base service plus its
+surcharges, billed separately:
+
+```
+3123 Home Delivery Curbside     3123 Fuel Surcharge
+3123 Toll road                  3123 Depot Time
+3123 Notification before planning   3123 Attempted Delivery
+```
+
+So a parcel's cost is the **sum** of its lines, which is the second reason
+`ShipmentCost` is rows rather than a column on `Shipment`.
+
+Two fields worth knowing and not using. `ORDER_NUMBER` is Bring's own order id,
+not a shop order number. `SENDER_REFERENCE` is a six-digit warehouse reference
+(`024426`, `024917`) in the same shape as the `Order` column of the warehouse's
+daily file — a possible second join, deliberately not relied on until someone
+confirms what it refers to.
 
 Also offered on all four, unused for now and recorded so nobody re-discovers
 them: `COMPLETE_STATUS_INCLUDING_FREIGHT_COST`,
@@ -102,37 +130,69 @@ applies.
 model ShipmentCost {
   id             String   @id @default(cuid())
   trackingNumber String   // WAYBILL_NUMBER, joins Shipment.trackingNumber
-  customerNumber String   // which Bring account was billed
+  customerNumber String   // ACCOUNT_NUMBER, which Bring account was billed
   invoiceNumber  String
-  lineRef        String   // distinguishes two lines on one invoice for one parcel
-  amount         Int      // minor units of `currency`
-  currency       String
+  amount         Int      // minor units of `currency`, from AMOUNT (ex tax)
+  currency       String   // INVOICE_CURRENCY_CODE, per line
   chargedAt      DateTime // TRX_DATE
-  description    String?  // ITEM_DESCRIPTION, so a surcharge is legible
-  weightGrams    Int?     // FREIGHT_CALC_WEIGHT, recorded because we have it
+  itemNumber     String   // ITEM_NUMBER, e.g. 105633
+  description    String   // ITEM_DESCRIPTION, e.g. "3123 Toll road"
   readAt         DateTime @updatedAt
 
-  @@unique([invoiceNumber, lineRef])
+  @@index([invoiceNumber])
   @@index([trackingNumber])
 }
 ```
 
-Unique on the invoice line rather than the parcel, which is what makes
-re-reading a report a no-op instead of a duplicate — the same seam
-`ShipmentEvent` and `PurchaseOrder.externalId` already use.
+**No unique constraint, and that is the finding, not an oversight.**
 
-**`lineRef` is not a documented field and slice 1 must settle it.** The
-specified invoice report's published fields are `PICK_UP_POSTAL_CODE`,
-`RECEIVER_NAME`, `DELIVERY_POSTAL_CODE`, `WAYBILL_NUMBER`, `FREIGHT_PAYER`,
-`ITEM_DESCRIPTION`, `DESCRIPTION`, `FREIGHT_CALC_WEIGHT`, `TRX_DATE`,
-`NUMBER_OF_PACKAGES`, `GrossPrice` and `AMOUNT`. **None of them is a line
-number.** If a real downloaded report carries one, use it. If it does not, the
-key is the composite `invoiceNumber + WAYBILL_NUMBER + ITEM_DESCRIPTION +
-AMOUNT`, and the consequence must be stated rather than discovered: two
-genuinely identical charges on one parcel would collapse into one row. That is
-the safer failure — under-counting a duplicate beats double-charging freight on
-every re-read — but it is a real limit and the ingest should count collapsed
-rows so it is visible.
+The report was downloaded and measured on 2026-08-20 (invoice 4710001522,
+customer 20020467369, 144 lines). It carries **no line identifier**.
+`TRX_NUMBER`, the only candidate, is the invoice number repeated on all 144
+rows. And content cannot substitute for one: the composite
+`WAYBILL_NUMBER + ITEM_NUMBER + ITEM_DESCRIPTION + AMOUNT` yields **135
+distinct keys for 144 lines**. Waybill 73325383643994654 alone carries three
+identical charge sets:
+
+| lines | item | description | amount |
+|---|---|---|---|
+| ×3 | 105489 | 3123 Home Delivery Curbside | 1 140.84 |
+| ×3 | 105633 | 3123 Toll road | 35.94 |
+| ×3 | 105492 | 3123 Notification before planning | 46.07 |
+| ×3 | 105491 | 3123 Fuel Surcharge | 136.90 |
+| ×2 | 105490 | 3123 Attempted Delivery | 0.00 |
+
+Deduplicating by content would drop nine of that parcel's fourteen lines and
+under-report its freight by roughly two thirds. This is not a rare edge case
+to guard against later; it is present on one parcel in twenty-nine of the very
+first invoice read.
+
+**So idempotency comes from replacing an invoice wholesale, not from a
+per-line key.** Ingesting invoice N deletes every `ShipmentCost` for that
+invoice number and inserts the report's lines in one transaction. Re-reading is
+then naturally a no-op, a corrected re-issue replaces cleanly, and no line is
+ever silently merged with its twin.
+
+### The reconciliation gate
+
+The line amounts reconcile exactly to the invoice header, measured:
+
+| | lines sum to | header says |
+|---|---|---|
+| `AMOUNT` | 84 786.85 | `amount` 84 786.85 |
+| `TOTAL_INCL_TAX` | 105 983.87 | `totalAmount` 105 983.87 |
+| `TAX_AMOUNT` | 21 197.02 | `taxAmount` 21 197.02 |
+
+**An ingest whose lines do not sum to the invoice header is rejected, not
+stored.** It is the cheapest possible proof that a whole invoice arrived and
+parsed, and without it a truncated download looks exactly like a cheap month.
+
+`AMOUNT` is the money, **not `GrossPrice`**. The documentation names
+`GrossPrice`; in the real report it is `0.00` on all 144 lines. Where the docs
+and the data disagree, the data wins.
+
+Amounts are ex tax on purpose. Every other cost in this product excludes VAT,
+because VAT was never our money.
 
 A parcel billed in two different currencies across two entities is **refused,
 not summed**, and flagged. It is the same rule `carrierAverages` already
@@ -153,19 +213,31 @@ rows are the truth, the column is for speed.
 model BringReportRun {
   id             String   @id @default(cuid())
   customerNumber String
-  period         String   // 'YYYY-MM'
-  reportId       String?  // Bring's, once generated
+  invoiceNumber  String   // the report's only parameter
+  invoiceDate    DateTime
+  reportId       String?  // Bring's, parsed out of statusUrl
   statusUrl      String?
-  state          String   // REQUESTED | READY | STORED | FAILED
-  requestedAt    DateTime
+  state          String   // PENDING | REQUESTED | STORED | FAILED | NO_SPEC
+  requestedAt    DateTime?
   collectedAt    DateTime?
   rowsStored     Int      @default(0)
   rowsUnmatched  Int      @default(0)
   error          String?
 
-  @@unique([customerNumber, period])
+  @@unique([invoiceNumber])
+  @@index([state])
 }
 ```
+
+**Keyed on the invoice, not on a month**, because that is the only thing the
+report accepts. Measured: `MASTER-SPECIFIED_INVOICE` takes one parameter,
+`invoiceNumber`. A date range returns `400 Invalid input parameters`.
+
+`NO_SPEC` is a real terminal state, not a failure. Invoice 4070009812
+(6 240.00 SEK, `batchSource: MANUAL_ORDER_OM`) came back
+`invoiceSpecificationAvailable: false`. Such an invoice can never be broken
+down, and recording that plainly is what stops it being retried forever and
+what lets the page say how much money it cannot attribute.
 
 ## How a report is fetched without blocking a run
 
@@ -183,17 +255,34 @@ never thrown, like every other stage after the shops.
 This is the watermark culture the codebase already runs on: bounded cost per
 tick, nothing lost, retry free.
 
-Reports are requested per customer number per calendar month. A closed month is
-requested once and never again unless its row is cleared. The current month is
-re-requested, because Bring keeps adding to it.
+The whole cycle, per tick:
 
-**A first backfill is therefore slow, and that is acceptable.** Four customer
-numbers over twelve months is 48 reports at one generate per tick, so roughly
-half a day of cron ticks before the history is complete. Nothing is waiting on
-it: the page shows what has landed and names the months it has not read yet,
-the same way the Cost per parcel card already names months with no invoice. The
-alternative — several reports per tick — spends the budget the parcel poll and
-the delivery alert are holding, and freight history arriving by tomorrow is
+1. **Discover.** List invoices for each of the four customer numbers
+   (`invoicearchive`, cheap, one call each). Every invoice not already known
+   becomes a `BringReportRun` row: `PENDING`, or `NO_SPEC` where
+   `invoiceSpecificationAvailable` is false.
+2. **Request.** Take the oldest `PENDING` row, generate its report, store the
+   `statusUrl`, mark it `REQUESTED`.
+3. **Collect.** Take the oldest `REQUESTED` row, check its status. `DONE`
+   means download, reconcile against the invoice header, replace that
+   invoice's lines, mark `STORED`. Anything else is left for the next tick.
+
+Oldest-first is the same fairness rule `syncAllShops` and `syncShipments`
+already use: without it a run that cannot reach everything starves the same
+rows forever.
+
+Measured, the report generated fast enough to be `DONE` on the first status
+check, so most invoices will land in a single tick. The design does not depend
+on that — it simply means the backlog usually clears faster than the worst case
+below.
+
+**A first backfill is therefore slow, and that is acceptable.** Roughly six
+invoices a month across four customer numbers is about seventy invoices for a
+year, so at one request and one collect per tick the history fills over several
+hours of cron. Nothing waits on it: the page shows what has landed and names
+what it has not read, the same way the Cost per parcel card already names
+months with no invoice. Spending more of the tick would take budget from the
+parcel poll and the delivery alert, and freight history arriving by tomorrow is
 worth nothing against an alert that failed to send tonight.
 
 ## Where the number lands
@@ -274,12 +363,16 @@ Following the existing split exactly:
 
 ## The four slices
 
-1. **Reports client and line mapper.** `src/lib/bring/reports.ts` — generate,
-   status, download, and a pure mapper from report lines to typed rows. No
-   database. Shipped with tests and visible nowhere.
-2. **Ingest.** `ShipmentCost`, `BringReportRun`, the two-phase collector, wired
-   into `/api/cron/sync` after the existing Visma stages and before the parcel
-   poll. Still visible nowhere.
+1. **Clients and mappers, all pure.** `src/lib/bring/invoices.ts` (list
+   invoices for a customer number) and `src/lib/bring/reports.ts` (generate,
+   status, download). Plus the two mappers: invoice JSON to typed rows, and
+   report XML to typed lines, including the reconciliation check that lines
+   must sum to the invoice header. No database, tested against the recorded
+   real report, visible nowhere.
+2. **Ingest.** `ShipmentCost`, `BringReportRun`, the discover/request/collect
+   cycle, and the wholesale per-invoice replace. Wired into `/api/cron/sync`
+   after the existing Visma stages and before the parcel poll. Still visible
+   nowhere.
 3. **Delivery page.** Real cost per parcel, per order and in the Cost per parcel
    card; Bring's monthly figure becomes derived; unmatched invoice lines get
    counted and named the way unmatched parcels are.
@@ -310,3 +403,12 @@ Nothing blocks slice 1. Two operational facts are worth confirming before slice
 - Whether the 6 240.00 SEK manual-order invoice with no specification is a
   freight cost at all, or something else booked to the same account. It is the
   only measured example of money we can see and cannot attribute.
+
+- **Whether waybill 73325383643994654 was really billed three times.** Its
+  Home Delivery Curbside, Toll road, Notification and Fuel Surcharge lines each
+  appear three times on invoice 4710001522, at 1 140.84 NOK a time for the
+  service alone. Three deliveries to one address, three packages under one
+  waybill, and a billing error all look identical from here. This is not a
+  blocker — the design stores what the invoice says either way — but it is the
+  first thing this feature will surface, and it is worth knowing which it is
+  before the client sees it.
