@@ -77,15 +77,16 @@ export function CarrierCosts({
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface px-5 py-4">
       <h2 className="text-[15px] font-semibold text-ink">Cost per parcel</h2>
+      {/* Two short lines, both answering a question the reader will otherwise
+          ask: why am I typing this in, and why does the shop filter not change
+          it. Longer explanations were tried and read as an essay above a
+          four-column table. */}
       <p className="mt-1 text-[12px] text-muted">
-        Each carrier&rsquo;s invoice divided by the parcels it carried. The invoice is entered by
-        hand: neither Bring nor DHL will tell us what a shipment cost, only where it is.
+        Enter each carrier&rsquo;s monthly invoice below and we divide it by the parcels they
+        carried. Bring and DHL only tell us where a parcel is, never what it cost.
       </p>
-      {/* Said always, not only when a filter is on. A carrier bills for
-          everything it carried, so dividing one whole invoice by one shop's
-          parcels would report several times the real cost per parcel. */}
       <p className="mt-0.5 text-[12px] text-muted">
-        Across every shop, whatever the shop filter above says &mdash; one invoice covers them all.
+        Covers all shops, even if you filter by one shop above. One invoice covers them all.
       </p>
 
       <div className="mt-4 flex flex-col gap-5">
@@ -151,28 +152,30 @@ function Carrier({
   )
 }
 
-/** The sentence under the headline, which is never just a number. */
+/**
+ * The line under each carrier's figure, in the plainest words that are still
+ * true. It always says which months the figure covers, because a cost per
+ * parcel with no period attached is not a fact anyone can check.
+ */
 function why(a: CarrierAverage): string {
   if (a.mixedCurrency) {
-    return `Invoiced in more than one currency, so these cannot be added up. Enter them in one currency to see a figure.`
-  }
-  if (a.averageMinor === null) {
-    return a.parcelsInRange === 0
-      ? 'No parcels in this period.'
-      : `${a.parcelsInRange.toLocaleString('en-GB')} parcels, and no invoice entered yet.`
+    return 'Invoices are in different currencies, so they cannot be added together.'
   }
 
-  const counted = `across ${a.shipments.toLocaleString('en-GB')} parcels in ${a.monthsCounted
+  if (a.averageMinor === null) {
+    if (a.parcelsInRange === 0) return 'No parcels in this period.'
+    return `${a.parcelsInRange.toLocaleString('en-GB')} parcels. Enter an invoice below to see the cost.`
+  }
+
+  const counted = `${a.shipments.toLocaleString('en-GB')} parcels in ${a.monthsCounted
     .map(monthName)
     .join(' and ')}`
 
-  if (a.monthsMissingCost.length === 0) return `${counted}.`
+  if (a.monthsMissingCost.length === 0) return counted
 
-  // The gap, stated. Without it a reader divides the invoice by every parcel
-  // on screen and gets a lower number than the one above.
-  return `${counted}. ${a.monthsMissingCost.map(monthName).join(' and ')} ${
-    a.monthsMissingCost.length === 1 ? 'is' : 'are'
-  } left out, having no invoice yet.`
+  // The gap, said out loud. Without it the reader divides the invoice by every
+  // parcel on screen and gets a lower number than the one above.
+  return `${counted}. ${a.monthsMissingCost.map(monthName).join(' and ')} not counted, no invoice yet.`
 }
 
 function MonthRow({
