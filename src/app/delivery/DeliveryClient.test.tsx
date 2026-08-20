@@ -7,7 +7,7 @@ import type { DeliveryStats } from '@/lib/delivery/stats'
 
 const order = (over: Partial<LateOrder> = {}): LateOrder => ({
   id: 'o1', number: '15749', customerName: null, shop: 'Panetti Germany', country: 'DE',
-  daysOver: 4, waitingDays: 9, placedOn: '2026-08-11', promiseDays: 5, state: 'IN_TRANSIT',
+  daysOver: 4, waitingDays: 9, placedAtLocal: '2026-08-11T14:30:00', promiseDays: 5, state: 'IN_TRANSIT',
   parcels: [{
     number: '9597256404', carrier: 'DHL',
     url: 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=9597256404',
@@ -181,8 +181,8 @@ describe('NoTracking', () => {
    * to read the list from either end.
    */
   describe('order date', () => {
-    const older = { ...bare, id: 'a', number: 'OLD', placedOn: '2026-08-01', waitingDays: 19 }
-    const newer = { ...bare, id: 'b', number: 'NEW', placedOn: '2026-08-15', waitingDays: 5 }
+    const older = { ...bare, id: 'a', number: 'OLD', placedAtLocal: '2026-08-01T09:00:00', waitingDays: 19 }
+    const newer = { ...bare, id: 'b', number: 'NEW', placedAtLocal: '2026-08-15T09:00:00', waitingDays: 5 }
 
     const numbers = (c: HTMLElement) =>
       [...c.querySelectorAll('tbody tr td:first-child')].map((td) => td.textContent?.trim())
@@ -196,6 +196,25 @@ describe('NoTracking', () => {
 
     // Newest first on the first press: the list already opens oldest-first, so
     // opening it that way again would look like the press did nothing.
+    /**
+     * The time is what decides which warehouse file an order belongs in: the
+     * cutoff is noon. A date alone cannot answer "was this before or after
+     * twelve", which is the question the No-tracking rule turns on.
+     */
+    it('shows the time the order came in beside the date', () => {
+      const { container } = render(shut({ total: 1, open: true }))
+      expect(container.textContent).toMatch(/11 Aug 2026/)
+      expect(container.textContent).toMatch(/14:30/)
+    })
+
+    it('sorts two orders from the same day by their time', () => {
+      const morning = { ...bare, id: 'm', number: 'AM', placedAtLocal: '2026-08-11T09:00:00' }
+      const evening = { ...bare, id: 'e', number: 'PM', placedAtLocal: '2026-08-11T17:00:00' }
+      const { container } = render(shut({ rows: [morning, evening], total: 2, open: true }))
+      fireEvent.click(screen.getByRole('button', { name: /ordered/i }))
+      expect(numbers(container)).toEqual(['PM', 'AM'])
+    })
+
     it('sorts newest first on the first press', () => {
       const { container } = render(both())
       fireEvent.click(screen.getByRole('button', { name: /ordered/i }))

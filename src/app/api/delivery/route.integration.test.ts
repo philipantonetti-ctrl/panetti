@@ -41,6 +41,7 @@ beforeEach(async () => {
   shopId = (await db.shop.create({
     data: {
       name: `Panetti ${TAG}`, currency: 'NOK', active: true,
+      timezone: 'Europe/Oslo',
       deliveryTrackingFrom: new Date('2026-01-01'),
     },
   })).id
@@ -365,7 +366,7 @@ describe('the no-tracking list', () => {
       data: { ...base(), externalId: 'E-NEW', number: 'RTE3003', placedAt: new Date() },
     })
     return (await (await GET(new Request(url))).json()) as {
-      noTracking: { number: string; waitingDays: number; daysOver: number; placedOn: string }[]
+      noTracking: { number: string; waitingDays: number; daysOver: number; placedAtLocal: string }[]
       noTrackingTotal: number
       stats: { noTracking: number; notDue: number }
     }
@@ -403,13 +404,25 @@ describe('the no-tracking list', () => {
   })
 
   /**
-   * The date the order was placed, as its OWN shop reckons the day. Sent as a
-   * plain calendar date so it prints and sorts as one, and so it can never
-   * disagree with waitingDays, which is counted on the same clock.
+   * The date AND time, on the shop's own clock rather than in UTC.
+   *
+   * 2026-08-03T08:00:00Z is 10:00 in Oslo. Sent local because that is the
+   * clock the noon warehouse cutoff is written in, so the time on screen is
+   * the one that decides which file the order belongs in — and because it is
+   * the same clock waitingDays counts on, so the two cannot disagree.
    */
-  it('gives each row the order date', async () => {
+  it('gives each row the order date and time on the shop clock', async () => {
     const body = await threeBare()
-    expect(body.noTracking.find((r) => r.number === 'RTE3001')?.placedOn).toBe('2026-08-03')
+    expect(body.noTracking.find((r) => r.number === 'RTE3001')?.placedAtLocal).toBe(
+      '2026-08-03T10:00:00',
+    )
+  })
+
+  // A UTC instant would read 08:00 here, which is the wrong side of nothing
+  // today but the wrong side of the noon cutoff for any order near it.
+  it('does not report the UTC time', async () => {
+    const body = await threeBare()
+    expect(body.noTracking.find((r) => r.number === 'RTE3001')?.placedAtLocal).not.toContain('08:00')
   })
 
   it('says how long each order has been waiting, not only how far past a promise', async () => {
