@@ -345,38 +345,60 @@ describe('the no-tracking list', () => {
     grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
   })
 
-  // One long past its promise, one placed today. Neither has a parcel, so both
-  // are NO_TRACKING and the tile counts both.
-  const twoBare = async () => {
+  /**
+   * Three shapes, because the list now has two ways of excluding an order.
+   *
+   *   RTE3001  placed 2026-08-03      file long overdue, promise long gone
+   *   RTE3002  placed 2026-08-19 09:00Z (11:00 CET, before the noon cutoff)
+   *            so its file was due that evening, and a 3-business-day promise
+   *            has not run out
+   *   RTE3003  placed just now        no file is due yet, so nothing is missing
+   */
+  const threeBare = async () => {
     await db.order.create({
       data: { ...base(), externalId: 'E-OLD', number: 'RTE3001', placedAt: new Date('2026-08-03T08:00:00Z') },
     })
     await db.order.create({
-      data: { ...base(), externalId: 'E-NEW', number: 'RTE3002', placedAt: new Date() },
+      data: { ...base(), externalId: 'E-DUE', number: 'RTE3002', placedAt: new Date('2026-08-19T09:00:00Z') },
+    })
+    await db.order.create({
+      data: { ...base(), externalId: 'E-NEW', number: 'RTE3003', placedAt: new Date() },
     })
     return (await (await GET(new Request(url))).json()) as {
       noTracking: { number: string; waitingDays: number; daysOver: number; placedOn: string }[]
       noTrackingTotal: number
-      stats: { noTracking: number }
+      stats: { noTracking: number; notDue: number }
     }
   }
 
+
+
   it('holds orders that are not past their promise either', async () => {
-    const body = await twoBare()
+    const body = await threeBare()
     const numbers = body.noTracking.map((r) => r.number)
     expect(numbers).toContain('RTE3001')
     expect(numbers).toContain('RTE3002')
   })
 
-  // The invariant the change exists to restore: the tile IS this list.
+  /**
+   * The warehouse exports once a day at 18:00 and promises same-day dispatch
+   * only before noon, so an order placed minutes ago has no file to have been
+   * missing from. Counting it here reported the system working as a fault.
+   */
+  it('leaves out an order whose first warehouse file is not due yet', async () => {
+    const body = await threeBare()
+    expect(body.noTracking.map((r) => r.number)).not.toContain('RTE3003')
+    expect(body.stats.notDue).toBe(1)
+  })
+
   it('reports exactly as many rows as the tile counts', async () => {
-    const body = await twoBare()
+    const body = await threeBare()
     expect(body.noTrackingTotal).toBe(body.stats.noTracking)
     expect(body.noTrackingTotal).toBe(2)
   })
 
   it('ranks the longest wait first, because most of the list is inside its promise', async () => {
-    const body = await twoBare()
+    const body = await threeBare()
     expect(body.noTracking[0].number).toBe('RTE3001')
   })
 
@@ -386,16 +408,16 @@ describe('the no-tracking list', () => {
    * disagree with waitingDays, which is counted on the same clock.
    */
   it('gives each row the order date', async () => {
-    const body = await twoBare()
+    const body = await threeBare()
     expect(body.noTracking.find((r) => r.number === 'RTE3001')?.placedOn).toBe('2026-08-03')
   })
 
   it('says how long each order has been waiting, not only how far past a promise', async () => {
-    const body = await twoBare()
-    const fresh = body.noTracking.find((r) => r.number === 'RTE3002')
-    expect(fresh?.waitingDays).toBe(0)
-    // Nothing has missed anything: the days-over column would rank these
-    // identically at zero, which is what made it the wrong figure here.
-    expect(fresh?.daysOver).toBe(0)
+    const body = await threeBare()
+    const due = body.noTracking.find((r) => r.number === 'RTE3002')
+    expect(due?.waitingDays).toBe(1)
+    // Nothing has missed anything yet: the days-over column would rank this
+    // one at zero, which is what made it the wrong figure for this list.
+    expect(due?.daysOver).toBe(0)
   })
 })

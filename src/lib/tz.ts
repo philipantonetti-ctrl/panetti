@@ -35,22 +35,35 @@ export function zonedDayStr(d: Date, tz: string): string {
 }
 
 /** The instant's full wall clock in `tz`, as 'yyyy-mm-ddTHH:mm:ss'. */
-function wallClock(d: Date, tz: string): string {
+export function wallClock(d: Date, tz: string): string {
   const s = fmt(tz).format(d) // 'yyyy-mm-dd, HH:mm:ss'
   return `${s.slice(0, 10)}T${s.slice(12)}`
 }
 
-/** The UTC instant when calendar day `day` ('yyyy-mm-dd') begins in `tz`. */
-export function zoneDayStartUtc(day: string, tz: string): Date {
-  // Guess UTC midnight, then correct by the observed wall-clock difference —
-  // twice, because the first correction can cross a DST switch.
-  let t = Date.parse(`${day}T00:00:00Z`)
+/**
+ * The UTC instant at which the clock in `tz` reads `day` at `time`.
+ *
+ * Guess, then correct by the observed wall-clock difference — repeatedly,
+ * because the first correction can itself cross a DST switch. This is the same
+ * convergence zoneDayStartUtc has always used; it is stated once here so that
+ * asking for 18:00 is no more approximate than asking for midnight. Adding
+ * hours to a midnight instant would be, and would be wrong by an hour on two
+ * days a year.
+ */
+export function zoneTimeUtc(day: string, time: string, tz: string): Date {
+  const target = Date.parse(`${day}T${time}Z`)
+  let t = target
   for (let i = 0; i < 3; i++) {
-    const diff = Date.parse(`${day}T00:00:00Z`) - Date.parse(`${wallClock(new Date(t), tz)}Z`)
+    const diff = target - Date.parse(`${wallClock(new Date(t), tz)}Z`)
     if (diff === 0) break
     t += diff
   }
   return new Date(t)
+}
+
+/** The UTC instant when calendar day `day` ('yyyy-mm-dd') begins in `tz`. */
+export function zoneDayStartUtc(day: string, tz: string): Date {
+  return zoneTimeUtc(day, '00:00:00', tz)
 }
 
 /** The last millisecond of calendar day `day` in `tz`. */

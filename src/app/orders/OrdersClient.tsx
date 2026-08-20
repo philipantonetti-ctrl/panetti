@@ -172,6 +172,15 @@ function DeliveryCell({ d, placedAt, timezone, now }: { d: Delivery; placedAt: s
       return <span>At the warehouse, day {daysBetween(new Date(placedAt), now, timezone)}</span>
     case 'NO_TRACKING':
       return <span className={d.late ? 'text-loss' : undefined}>Not shipped yet</span>
+    // Distinct from the line above on purpose. "Not shipped yet" reads as a
+    // fact about the warehouse; this one is a fact about the clock, and the
+    // warehouse has done nothing wrong.
+    case 'NOT_DUE':
+      return (
+        <span className="text-faint" title="The warehouse file that would carry this has not been sent yet">
+          Awaiting tonight&rsquo;s file
+        </span>
+      )
     case 'RETURNED':
       return <span>Returned</span>
     case 'CANCELLED':

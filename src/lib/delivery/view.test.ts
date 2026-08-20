@@ -321,3 +321,66 @@ describe('collected versus waiting at a pickup point', () => {
     expect(v.late).toBe(false)
   })
 })
+
+/**
+ * NO_TRACKING counted an order from the second it was placed, so every order
+ * of the last day and a half sat under a heading reading "no warehouse file
+ * has mentioned these orders yet" — true of them, and true of nothing being
+ * wrong. The warehouse exports once daily at 18:00 and promises same-day
+ * dispatch only before 12:00, so until that file exists there is nothing to
+ * have been missing from.
+ *
+ * NOW here is 2026-08-20T12:00:00Z, which is Thursday 14:00 in Oslo.
+ */
+describe('orders too new for a warehouse file to exist', () => {
+  it('does not call a this-morning order missing before tonight file', () => {
+    // Thu 10:00 CEST, before the cutoff, so due in Thursday's 18:00 file.
+    const v = deliveryFor(order({ placedAt: new Date('2026-08-20T08:00:00Z') }), promises, OSLO, NOW)
+    expect(v.state).toBe('NOT_DUE')
+  })
+
+  it('gives an after-noon order until the NEXT evening', () => {
+    // Wed 16:00 CEST, past the cutoff, so due in Thursday's file, not last
+    // night's. This is the row the client called out.
+    const v = deliveryFor(order({ placedAt: new Date('2026-08-19T14:00:00Z') }), promises, OSLO, NOW)
+    expect(v.state).toBe('NOT_DUE')
+  })
+
+  it('does call it missing once its file has been and gone', () => {
+    // Wed 09:00 CEST, due in Wednesday's 18:00 file, which is yesterday.
+    const v = deliveryFor(order({ placedAt: new Date('2026-08-19T07:00:00Z') }), promises, OSLO, NOW)
+    expect(v.state).toBe('NO_TRACKING')
+  })
+
+  // The cutoff decides which file, and an off-by-one moves a whole day of
+  // orders into the wrong one.
+  it('separates 11:59 from 12:01 on the same morning', () => {
+    const before = deliveryFor(order({ placedAt: new Date('2026-08-19T09:59:00Z') }), promises, OSLO, NOW)
+    const after = deliveryFor(order({ placedAt: new Date('2026-08-19T10:01:00Z') }), promises, OSLO, NOW)
+    expect(before.state).toBe('NO_TRACKING')
+    expect(after.state).toBe('NOT_DUE')
+  })
+
+  // Having a parcel settles it: the file did mention this order, so none of
+  // the above applies.
+  it('says nothing about it once a parcel exists', () => {
+    const v = deliveryFor(
+      order({
+        placedAt: new Date('2026-08-20T08:00:00Z'),
+        shipments: [parcel({ bookedAt: new Date('2026-08-20T09:00:00Z') })],
+      }),
+      promises, OSLO, NOW,
+    )
+    expect(v.state).toBe('BOOKED')
+  })
+
+  // A shop that is not tracked at all, or an order from before tracking began,
+  // was never going to be in a file. Those answers still come first.
+  it('leaves the earlier states alone', () => {
+    const untracked = deliveryFor(
+      order({ placedAt: new Date('2026-08-20T08:00:00Z'), shopTrackingFrom: null }),
+      promises, OSLO, NOW,
+    )
+    expect(untracked.state).toBe('UNTRACKED')
+  })
+})

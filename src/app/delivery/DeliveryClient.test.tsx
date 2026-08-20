@@ -18,7 +18,7 @@ const order = (over: Partial<LateOrder> = {}): LateOrder => ({
 const stats = (over: Partial<DeliveryStats> = {}): DeliveryStats => ({
   delivered: 24, medianDays: 3, medianWarehouseDays: null, medianTransitDays: null,
   onTimeRate: 0.96, judged: 24, unjudged: 0, lateNow: 115, noTracking: 638,
-  booked: 3, inTransit: 21, collected: 20, readyForCollection: 4,
+  booked: 3, inTransit: 21, collected: 20, readyForCollection: 4, notDue: 6,
   distribution: [], byCountry: [],
   ...over,
 })

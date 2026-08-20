@@ -21,6 +21,16 @@ export type DeliveryStats = {
   lateNow: number
   noTracking: number
   /**
+   * Orders with no parcel whose first warehouse file is not due yet.
+   *
+   * Counted apart from `noTracking`, never inside it: the warehouse exports
+   * once a day at 18:00, so an order placed this morning having no tracking
+   * number is the system working, not failing. Kept as its own figure rather
+   * than dropped, because "Where everything is now" has to be able to account
+   * for every order it was given.
+   */
+  notDue: number
+  /**
    * Where the orders that have NOT arrived are sitting right now.
    *
    * Every other figure above describes deliveries that finished. On a workspace
@@ -139,6 +149,7 @@ export function deliveryStats(
     // own count; what they lose is a claim on this one.
     lateNow: views.filter((v) => v.late && v.availableAt === null && v.parcels.length > 0).length,
     noTracking: views.filter((v) => v.state === 'NO_TRACKING').length,
+    notDue: views.filter((v) => v.state === 'NOT_DUE').length,
     // Booked is the warehouse still holding it; in transit is the carrier
     // moving it. Counted from the same `state` the Late list and the Orders
     // column already badge, so the strip can never disagree with the rows.

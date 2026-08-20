@@ -1,5 +1,6 @@
 import { VOIDED_STATUSES } from '../metrics/types'
 import { daysBetween, deadlineFor } from './days'
+import { trackingDueAt } from './due'
 import { promiseOn, type PromisePoint } from './promise'
 import { carrierName, trackingUrl } from './tracking-url'
 
@@ -17,6 +18,14 @@ export type DeliveryState =
   // DHL page reading "Delivered". Both timestamps were already stored.
   | 'AVAILABLE' // arrived at the pickup point, not yet collected
   | 'DELIVERED' // in the customer's hands
+  /**
+   * No parcel yet, and none expected yet: the warehouse file that would first
+   * have carried its number has not been produced. Split out of NO_TRACKING,
+   * which counted an order from the second it was placed and so filed a day
+   * and a half of perfectly normal orders under "no warehouse file has
+   * mentioned these". See due.ts for the cutoff and the file hour.
+   */
+  | 'NOT_DUE'
   | 'RETURNED'
   | 'CANCELLED'
 
@@ -191,7 +200,13 @@ export function deliveryFor(
         : availableAt
           ? 'AVAILABLE'
           : order.shipments.length === 0
-            ? 'NO_TRACKING'
+            ? // Too new to be missing. An order placed after noon is not
+              // expected in a file until tomorrow evening, and calling it "no
+              // tracking" before then reports the warehouse working normally
+              // as a fault.
+              now < trackingDueAt(order.placedAt, tz)
+              ? 'NOT_DUE'
+              : 'NO_TRACKING'
             : handedInAt
               ? 'IN_TRANSIT'
               : 'BOOKED'
