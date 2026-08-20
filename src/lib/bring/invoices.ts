@@ -51,7 +51,7 @@ export async function listCustomerNumbers(
   opts: BringFilter = {},
 ): Promise<string[]> {
   const res = await get(creds, `${BASE}/reports/api/generate`, opts)
-  const body = (await res.json()) as { customer?: unknown[] }
+  const body = (await res.json()) as { customer?: ({ id?: unknown } | null)[] }
   return (body.customer ?? [])
     .map((c) => (c != null && typeof c.id === 'string' ? c.id : ''))
     .filter((id) => id !== '')
