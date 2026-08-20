@@ -56,5 +56,6 @@ describe('mapInvoices', () => {
     expect(mapInvoices(null)).toEqual([])
     expect(mapInvoices({})).toEqual([])
     expect(mapInvoices({ invoices: 'no' })).toEqual([])
+    expect(mapInvoices({ invoices: [null] })).toEqual([])
   })
 })

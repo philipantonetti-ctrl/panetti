@@ -36,6 +36,7 @@ export function mapInvoices(raw: unknown): BringInvoice[] {
 
   const out: BringInvoice[] = []
   for (const row of rows as Record<string, unknown>[]) {
+    if (row === null || typeof row !== 'object') continue
     const invoiceNumber = str(row.invoiceNumber)
     const invoiceDate = ddmmyyyy(str(row.invoiceDate))
     const currency = str(row.currency)
