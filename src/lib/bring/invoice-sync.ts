@@ -1,6 +1,6 @@
 import { db } from '../db'
 import type { BringCredentials, BringFilter } from './client'
-import { listCustomerNumbers, listInvoices } from './invoices'
+import { generateSpecReport, listCustomerNumbers, listInvoices } from './invoices'
 
 /**
  * Turn every invoice we have not seen into a job.
@@ -43,4 +43,41 @@ export async function discoverInvoices(
   }
 
   return { found, queued, noSpec }
+}
+
+/**
+ * Ask Bring to build one report.
+ *
+ * Oldest first, the same fairness rule syncAllShops and syncShipments follow:
+ * without it a run that cannot reach everything starves the same rows every
+ * time, forever.
+ *
+ * Returns whether a row was worked on at all — a failure still counts, because
+ * the tick did its one unit of work and the row now says why.
+ */
+export async function requestNextReport(
+  creds: BringCredentials,
+  opts: BringFilter = {},
+): Promise<boolean> {
+  const next = await db.bringReportRun.findFirst({
+    where: { state: 'PENDING' },
+    orderBy: { invoiceDate: 'asc' },
+  })
+  if (!next) return false
+
+  try {
+    const statusUrl = await generateSpecReport(creds, next.customerNumber, next.invoiceNumber, opts)
+    await db.bringReportRun.update({
+      where: { id: next.id },
+      data: { state: 'REQUESTED', statusUrl, requestedAt: new Date(), error: null },
+    })
+  } catch (e) {
+    // Stored, never thrown. One dead invoice must not stop the rest — the same
+    // rule delivery/sync.ts follows for one dead parcel.
+    await db.bringReportRun.update({
+      where: { id: next.id },
+      data: { state: 'FAILED', error: e instanceof Error ? e.message : String(e) },
+    })
+  }
+  return true
 }

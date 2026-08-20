@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterAll, vi, afterEach } from 'vitest'
 import { db } from '@/lib/db'
-import { discoverInvoices } from './invoice-sync'
+import { discoverInvoices, requestNextReport } from './invoice-sync'
 
 // Unique to THIS file — see "Test data convention" in the Global Constraints.
 const CUST = 'ZZDISC'
@@ -25,6 +25,11 @@ function stubApi(invoices: unknown[]) {
       const url = String(u)
       if (url.endsWith('/reports/api/generate')) {
         return new Response(JSON.stringify({ customer: [{ id: `${CUST}1` }] }), { status: 200 })
+      }
+      // generateSpecReport's URL, longer than the bare listCustomerNumbers one
+      // matched above: .../reports/api/generate/{customerNumber}/MASTER-SPECIFIED_INVOICE/?invoiceNumber=...
+      if (url.includes('/reports/api/generate/')) {
+        return new Response(JSON.stringify({ statusUrl: 'https://www.mybring.com/s/9/status/' }), { status: 202 })
       }
       return new Response(JSON.stringify({ invoices }), { status: 200 })
     },
@@ -65,5 +70,52 @@ describe('discoverInvoices', () => {
     expect(second.queued).toBe(0)
     const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-C` } })
     expect(row?.state).toBe('STORED')
+  })
+})
+
+describe('requestNextReport', () => {
+  it('requests the oldest pending invoice first, so nothing starves', async () => {
+    const older = new Date('2026-06-30T00:00:00Z')
+    const newer = new Date('2026-07-31T00:00:00Z')
+    await db.bringReportRun.createMany({
+      data: [
+        { customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-NEW`, invoiceDate: newer, state: 'PENDING' },
+        { customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-OLD`, invoiceDate: older, state: 'PENDING' },
+      ],
+    })
+    vi.stubGlobal('fetch', vi.fn<(u: string | URL | Request, i?: RequestInit) => Promise<Response>>(
+      async () => new Response(JSON.stringify({ statusUrl: 'https://www.mybring.com/s/9/status/' }), { status: 202 }),
+    ))
+
+    expect(await requestNextReport(creds)).toBe(true)
+    const old = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-OLD` } })
+    expect(old?.state).toBe('REQUESTED')
+    expect(old?.statusUrl).toBe('https://www.mybring.com/s/9/status/')
+    const fresh = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-NEW` } })
+    expect(fresh?.state).toBe('PENDING')
+  })
+
+  it('answers false when there is nothing pending, without calling Bring', async () => {
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+    expect(await requestNextReport(creds)).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('stores the failure on the row rather than throwing, so one bad invoice does not stop the run', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-BAD`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'PENDING',
+      },
+    })
+    vi.stubGlobal('fetch', vi.fn<(u: string | URL | Request, i?: RequestInit) => Promise<Response>>(
+      async () => new Response('nope', { status: 500 }),
+    ))
+
+    await expect(requestNextReport(creds)).resolves.toBe(true)
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-BAD` } })
+    expect(row?.state).toBe('FAILED')
+    expect(row?.error).toContain('500')
   })
 })
