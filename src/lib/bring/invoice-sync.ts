@@ -10,16 +10,37 @@ import { downloadReport, generateSpecReport, listCustomerNumbers, listInvoices, 
  * Cheap: one call to enumerate customers, one per customer to list invoices.
  * It writes nothing but rows, so a tick that discovers and then runs out of
  * time has still moved the work forward.
+ *
+ * Checked before the first request and before each customer after it,
+ * because listCustomerNumbers and listInvoices are Bring requests like any
+ * other: past the deadline, requestBudgetMs clamps the next one to 1ms and it
+ * aborts almost immediately, which is a throw a caller has no way to tell
+ * apart from a genuine failure. `partial` reports that this stopped early for
+ * that reason instead — still true, never an error, and never a reason to
+ * discard what it already found.
  */
 export async function discoverInvoices(
   creds: BringCredentials,
   opts: BringFilter = {},
-): Promise<{ found: number; queued: number; noSpec: number }> {
+): Promise<{ found: number; queued: number; noSpec: number; partial: boolean }> {
   let found = 0
   let queued = 0
   let noSpec = 0
 
+  // Before the very first request too, not just inside the loop below:
+  // listCustomerNumbers is a Bring request in its own right, not a local
+  // read, so a tick that starts already past its deadline must not even
+  // attempt it.
+  if (opts.deadline !== undefined && Date.now() >= opts.deadline) {
+    return { found, queued, noSpec, partial: true }
+  }
+
   for (const customerNumber of await listCustomerNumbers(creds, opts)) {
+    // Checked before each customer: its invoice list is one more request, and
+    // starting one we cannot finish burns the run's last seconds for nothing.
+    if (opts.deadline !== undefined && Date.now() >= opts.deadline) {
+      return { found, queued, noSpec, partial: true }
+    }
     for (const invoice of await listInvoices(creds, customerNumber, opts)) {
       found += 1
       // A row we already hold is left exactly as it is: it may be STORED, and
@@ -44,7 +65,7 @@ export async function discoverInvoices(
     }
   }
 
-  return { found, queued, noSpec }
+  return { found, queued, noSpec, partial: false }
 }
 
 /**
@@ -181,6 +202,11 @@ export type BringInvoiceSyncResult = {
   found: number
   queued: number
   noSpec: number
+  // Discovery stopped early because the deadline had already passed, not
+  // because there was nothing left to find. Distinct from `error`: a partial
+  // tick did its share of the work honestly and picks up where it left off
+  // next tick, exactly like a store cut off by SHOPS_DEADLINE_MS.
+  partial: boolean
   requested: boolean
   stored: number
   unmatched: number
@@ -188,7 +214,7 @@ export type BringInvoiceSyncResult = {
 }
 
 const nothing = (over: Partial<BringInvoiceSyncResult> = {}): BringInvoiceSyncResult => ({
-  configured: true, found: 0, queued: 0, noSpec: 0,
+  configured: true, found: 0, queued: 0, noSpec: 0, partial: false,
   requested: false, stored: 0, unmatched: 0, error: null, ...over,
 })
 
@@ -204,15 +230,22 @@ const nothing = (over: Partial<BringInvoiceSyncResult> = {}): BringInvoiceSyncRe
 export async function syncBringInvoices(
   opts: BringFilter = {},
 ): Promise<BringInvoiceSyncResult> {
-  const { creds } = await getDeliveryConfig()
-  if (!creds) return nothing({ configured: false })
-
   try {
+    // getDeliveryConfig's own docstring promises it never throws, but it does
+    // a findUnique, so it is guarded here like every other caller of it (see
+    // src/lib/bring/import.ts) rather than trusted on faith. Inside the try,
+    // not before it: outside, a genuine database failure would be reported
+    // identically to Bring simply not being connected, and the message that
+    // would have said otherwise is lost.
+    const { creds } = await getDeliveryConfig()
+    if (!creds) return nothing({ configured: false })
+
     const found = await discoverInvoices(creds, opts)
     const requested = await requestNextReport(creds, opts)
     const collected = await collectNextReport(creds, opts)
     return nothing({
       found: found.found, queued: found.queued, noSpec: found.noSpec,
+      partial: found.partial,
       requested,
       stored: collected?.stored ?? 0,
       unmatched: collected?.unmatched ?? 0,

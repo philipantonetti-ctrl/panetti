@@ -151,6 +151,17 @@ describe('discoverInvoices', () => {
     const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-C` } })
     expect(row?.state).toBe('STORED')
   })
+
+  it('stops discovering once the deadline has passed, and says so', async () => {
+    // Shape matches consignments.test.ts's "stops starting new lookups once
+    // the deadline has passed" test: proves no request is even attempted,
+    // not merely that one happens to fail.
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+    const result = await discoverInvoices(creds, { deadline: Date.now() - 1 })
+    expect(fn).not.toHaveBeenCalled()
+    expect(result).toEqual({ found: 0, queued: 0, noSpec: 0, partial: true })
+  })
 })
 
 describe('requestNextReport', () => {

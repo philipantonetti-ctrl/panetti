@@ -94,8 +94,10 @@ const B2B_SALES_DEADLINE_MS = 265_000
  *
  * Before the parcel poll, because freight history is money and a parcel checked
  * twenty minutes late costs nobody anything. Bounded well short of the poll's
- * own deadline because this stage makes at most three requests and a tick that
- * overran would take the poll and the delivery alert with it.
+ * own deadline because even a full tick is roughly nine requests, not a number
+ * that benefits from a wider margin: discovery is one plus one per customer
+ * (five today), a report request is at most one, and a collect is at most
+ * three. A tick that overran would take the poll and the delivery alert with it.
  */
 const BRING_INVOICES_DEADLINE_MS = 270_000
 
@@ -243,7 +245,7 @@ export async function GET(req: Request) {
   // unreachable must never fail the store sync, and "not connected" is
   // reported rather than treated as an error.
   let bringInvoices: BringInvoiceSyncResult = {
-    configured: false, found: 0, queued: 0, noSpec: 0,
+    configured: false, found: 0, queued: 0, noSpec: 0, partial: false,
     requested: false, stored: 0, unmatched: 0, error: null,
   }
   try {
@@ -329,6 +331,7 @@ export async function GET(req: Request) {
     bringInvoicesConfigured: bringInvoices.configured,
     bringInvoicesQueued: bringInvoices.queued,
     bringInvoicesNoSpec: bringInvoices.noSpec,
+    bringInvoicesPartial: bringInvoices.partial,
     bringCostsStored: bringInvoices.stored,
     // The number that says whether the waybill join actually works. A stored count
     // that climbs while this climbs with it means we are reading invoices for
