@@ -82,6 +82,43 @@ async function wooError(res: Response): Promise<Error> {
 }
 
 /**
+ * A response's JSON, or an error saying what came back instead.
+ *
+ * `res.json()` was called raw at six sites in this file, every one of them
+ * just past an `res.ok` guard that a broken store sails straight through.
+ * Panetti Denmark answered 200 with an empty body on 2026-08-20 and the
+ * owner's shops page read "Sync failed — Unexpected end of JSON input": V8's
+ * words for JSON.parse(''), naming no store, no request, and nothing to do.
+ *
+ * `what` is what we asked the store for, so the sentence says which request
+ * died rather than leaving six candidates.
+ *
+ * Deliberately quotes NO status code in either message. The store reported
+ * success, and a bare three-digit number here would be read as an HTTP
+ * failure by anything scanning for one — the Advisor's trustSentence, which
+ * greps `\b(\d{3})\b` off exactly this string, included.
+ */
+async function readJson<T>(res: Response, what: string): Promise<T> {
+  const body = await res.text()
+
+  // Its own case, and the one that actually happened: a PHP fatal with error
+  // display off ends the response having written nothing. "Sent nothing back"
+  // is a fact an owner can hand to whoever runs the site. A parser's complaint
+  // about column 1 is not.
+  if (body.trim() === '') {
+    throw new Error(`WooCommerce answered with an empty response when asked for ${what}.`)
+  }
+
+  try {
+    return JSON.parse(body) as T
+  } catch {
+    // Same extraction the error path uses, for the same reason: a 200 can
+    // carry a WordPress error page just as easily as a 500 can.
+    throw new Error(`WooCommerce sent something other than ${what}: ${readableErrorBody(body)}`)
+  }
+}
+
+/**
  * True for the error AbortSignal.timeout produces when it fires. Node/undici
  * raise it directly; some wrappers surface it one level down as `cause`.
  */
@@ -159,7 +196,7 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
 
     if (!res.ok) throw await wooError(res)
 
-    const batch = (await res.json()) as WooOrder[]
+    const batch = await readJson<WooOrder[]>(res, 'orders')
     all.push(...batch)
 
     // Verify the ordering we asked for actually happened. Advancing a watermark
@@ -222,7 +259,7 @@ export async function fetchOrderStatuses(
       },
     )
     if (!res.ok) return []
-    const rows = (await res.json()) as { slug?: string }[]
+    const rows = await readJson<{ slug?: string }[]>(res, 'order statuses')
     if (!Array.isArray(rows)) return []
     return rows.map((r) => r.slug).filter((s): s is string => typeof s === 'string' && s.length > 0)
   } catch {
@@ -253,7 +290,7 @@ export async function fetchOrdersByIds(creds: WooCredentials, ids: string[]): Pr
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
     if (!res.ok) throw await wooError(res)
-    all.push(...((await res.json()) as WooOrder[]))
+    all.push(...(await readJson<WooOrder[]>(res, 'orders')))
   }
 
   return all
@@ -274,7 +311,7 @@ export async function fetchWebhooks(creds: WooCredentials): Promise<WooWebhook[]
     { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
   )
   if (!res.ok) throw await wooError(res)
-  return (await res.json()) as WooWebhook[]
+  return readJson<WooWebhook[]>(res, 'the webhook list')
 }
 
 /** Register one webhook: this topic, delivered there, signed with that secret. */
@@ -330,7 +367,7 @@ export async function fetchCoupons(creds: WooCredentials): Promise<string[]> {
     })
     if (!res.ok) throw await wooError(res)
 
-    const batch = (await res.json()) as { code?: string }[]
+    const batch = await readJson<{ code?: string }[]>(res, 'coupons')
     for (const c of batch) if (c.code) codes.add(c.code.toUpperCase())
     if (batch.length < 100) break
   }
@@ -368,12 +405,9 @@ export async function fetchCatalog(creds: WooCredentials): Promise<Map<string, C
     })
     if (!res.ok) throw await wooError(res)
 
-    const batch = (await res.json()) as {
-      id: number
-      price?: string
-      manage_stock?: boolean
-      stock_quantity?: number | null
-    }[]
+    const batch = await readJson<
+      { id: number; price?: string; manage_stock?: boolean; stock_quantity?: number | null }[]
+    >(res, 'the product catalogue')
     for (const p of batch) {
       const value = p.price ? parseFloat(p.price) : NaN
       catalog.set(String(p.id), {
