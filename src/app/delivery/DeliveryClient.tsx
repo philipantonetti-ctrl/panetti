@@ -11,6 +11,14 @@ import type { Preset } from '@/lib/dates'
 import { trackingUrl } from '@/lib/delivery/tracking-url'
 import type { DeliveryStats, CountryStat } from '@/lib/delivery/stats'
 import type { DeliveryState, Parcel } from '@/lib/delivery/view'
+import type { CarrierAverage } from '@/lib/delivery/carrier-cost'
+import { CarrierCosts, type CarrierCostSave, type CarrierMonth } from './CarrierCosts'
+
+type CarrierCostPayload = {
+  carriers: CarrierAverage[]
+  months: CarrierMonth[]
+  defaultCurrency: string
+}
 
 export type LateOrder = {
   id: string
@@ -1157,6 +1165,43 @@ export function DeliveryClient({
 
   const tick = useLiveTick()
 
+  /**
+   * Deliberately NOT filtered by shop, and on its own key. A carrier bills for
+   * everything it carried, so dividing one whole invoice by one shop's parcels
+   * would report several times the real cost. `costKey` reloads it after a
+   * figure is entered without refetching the whole page underneath the reader.
+   */
+  const [costs, setCosts] = useState<CarrierCostPayload | null>(null)
+  const [costKey, setCostKey] = useState(0)
+
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (preset === 'custom' && from && to) {
+      params.set('from', from)
+      params.set('to', to)
+    } else if (preset !== 'custom') {
+      params.set('preset', preset)
+    }
+
+    const ctrl = new AbortController()
+    fetch(`/api/delivery/carrier-cost?${params}`, { signal: ctrl.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: CarrierCostPayload | null) => json && setCosts(json))
+      // Silent: this panel is an extra, and a failure here must not replace the
+      // delivery figures with an error banner about shipping invoices.
+      .catch(() => {})
+    return () => ctrl.abort()
+  }, [preset, from, to, tick, costKey])
+
+  async function saveCarrierCost(save: CarrierCostSave) {
+    await fetch('/api/delivery/carrier-cost', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(save),
+    })
+    setCostKey((k) => k + 1)
+  }
+
   useEffect(() => {
     const params = new URLSearchParams()
     if (preset === 'custom' && from && to) {
@@ -1242,6 +1287,14 @@ export function DeliveryClient({
                   <Tiles stats={data.stats} onShowNoTracking={showNoTracking} />
                   <Pipeline stats={data.stats} lastCheckedAt={data.lastCheckedAt} />
                   <Split stats={data.stats} />
+                  {costs && (
+                    <CarrierCosts
+                      carriers={costs.carriers}
+                      months={costs.months}
+                      defaultCurrency={costs.defaultCurrency}
+                      onSave={saveCarrierCost}
+                    />
+                  )}
                   <Distribution data={data.stats.distribution} waiting={whyBlank(data.stats)} />
                   <CountryTable rows={data.stats.byCountry} waiting={whyBlank(data.stats)} />
                   <LateList
