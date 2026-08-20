@@ -867,3 +867,29 @@ model PurchaseOrder {
 
   @@index([supplyItemId, receivedAt])
 }
+
+/// One carrier invoice, for one calendar month.
+///
+/// Deliberately NOT an OperationalExpense. An expense belongs to exactly one
+/// shop, and a carrier bills for whatever it carried across all of them — split
+/// by hand that becomes a guess, kept whole it divides exactly by the shipments
+/// we already count.
+///
+/// The money is entered rather than fetched because no carrier API we can reach
+/// returns it: the tracking endpoints report where a parcel is, and the rating
+/// endpoints would answer with a quote computed from weight and dimensions we
+/// do not store. See src/lib/delivery/carrier-cost.ts.
+model CarrierCost {
+  id       String @id @default(cuid())
+  carrier  String // BRING | DHL
+  /// The calendar month it covers, as YYYY-MM. A string, so comparing and
+  /// grouping never has to ask which timezone a month started in.
+  month    String
+  amount   Int // minor units of `currency`
+  currency String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([carrier, month])
+}
