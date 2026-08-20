@@ -56,6 +56,19 @@ describe('CarrierCosts', () => {
     expect(container.textContent).toMatch(/entered|invoice/i)
   })
 
+  /**
+   * The explanatory text is read by the client, who reads English as a second
+   * language. A long dash mid-sentence makes a sentence harder to parse, and
+   * he has asked twice for them to go. The em dash the number columns use for
+   * "no value" is a different thing and is left alone.
+   */
+  it('explains itself without long dashes', () => {
+    const { container } = render(<CarrierCosts {...props()} />)
+    const intro = [...container.querySelectorAll('section > p')].map((p) => p.textContent ?? '')
+    expect(intro.length).toBeGreaterThan(0)
+    for (const line of intro) expect(line).not.toMatch(/—/)
+  })
+
   it('shows the parcels it counted, so the division can be checked', () => {
     const { container } = render(<CarrierCosts {...props()} />)
     expect(container.textContent).toMatch(/400/)
