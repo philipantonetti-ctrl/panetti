@@ -1,3 +1,4 @@
+import { readableErrorBody } from '../error-body'
 import { toMinor } from '../money'
 import type { WooOrder } from './map'
 
@@ -62,13 +63,22 @@ export function requestBudgetMs(filter: FetchFilter, now = Date.now()): number {
 }
 
 /**
- * A readable error from a Woo response. The body is truncated hard: a broken
- * WordPress answers with a whole HTML error page, and that belongs in nobody's
- * toast, log line or error report.
+ * A readable error from a Woo response.
+ *
+ * A broken WordPress answers with a whole HTML error page, and that belongs in
+ * nobody's toast, log line or error report — least of all the owner's, which
+ * is where this string ends up by way of Shop.lastError and the Advisor.
+ *
+ * This used to truncate to 300 characters to that end. For that exact page the
+ * first 300 characters are the doctype, three metas and the opening of
+ * <title>, so the cut kept the boilerplate and threw away the sentence.
+ * readableErrorBody extracts instead.
  */
 async function wooError(res: Response): Promise<Error> {
-  const text = (await res.text()).slice(0, 300)
-  return new Error(`WooCommerce responded ${res.status}: ${text}`)
+  const said = readableErrorBody(await res.text())
+  // Status alone when the page had no words in it at all: a trailing colon
+  // with nothing after it reads as a truncation bug of its own.
+  return new Error(`WooCommerce responded ${res.status}${said ? `: ${said}` : ''}`)
 }
 
 /**
