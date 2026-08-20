@@ -1,5 +1,5 @@
 import { wallClock, zoneTimeUtc } from '../tz'
-import { addCalendarDays } from './days'
+import { addCalendarDays, isBusinessDay } from './days'
 
 /**
  * When a warehouse file should first have carried an order's tracking number.
@@ -42,17 +42,24 @@ export function trackingDueAt(placedAt: Date, tz: string): Date {
 
   // Noon itself is not "before 12:00". An off-by-one here moves a whole day of
   // orders into the wrong file without anything looking broken.
-  //
-  // CALENDAR days, not business days, and deliberately so. This first rolled
-  // weekends forward to Monday on the assumption that no End-of-Day export
-  // comes off the warehouse on a Saturday; the client confirmed on 2026-08-20
-  // that it packs and files seven days a week. His six tabled rows are all
-  // Wednesday to Friday, so none of them caught the wrong assumption.
-  //
-  // Note this is NOT the rule deadlineFor uses. The delivery promise counts
-  // business days because a carrier does not deliver on a Sunday; the warehouse
-  // does work one. Two different questions, correctly answered differently.
-  const dispatchDay = hour < ORDER_CUTOFF_HOUR ? placedDay : addCalendarDays(placedDay, 1)
+  let dispatchDay = hour < ORDER_CUTOFF_HOUR ? placedDay : addCalendarDays(placedDay, 1)
+
+  /**
+   * The warehouse is closed at the weekend, so no file is produced and an
+   * order that would dispatch into one waits for Monday's.
+   *
+   * ASKED, not assumed, and both ways round. Shipped first as business days on
+   * my own reasoning, then flipped to calendar days on a misreading, then
+   * settled by the client in his own words on 2026-08-20: "We only get
+   * tracking link week days", "Warehouse is closed saturdays and sundays".
+   * His six tabled rows are all Wednesday to Friday and passed under every one
+   * of those three rules, so the tests could never have decided it.
+   *
+   * Public holidays are not modelled, the same stated limitation days.ts
+   * carries. A closed Constitution Day will produce a handful of orders flagged
+   * a day early.
+   */
+  while (!isBusinessDay(dispatchDay)) dispatchDay = addCalendarDays(dispatchDay, 1)
 
   return zoneTimeUtc(dispatchDay, FILE_TIME, tz)
 }
