@@ -355,7 +355,7 @@ describe('the no-tracking list', () => {
       data: { ...base(), externalId: 'E-NEW', number: 'RTE3002', placedAt: new Date() },
     })
     return (await (await GET(new Request(url))).json()) as {
-      noTracking: { number: string; waitingDays: number; daysOver: number }[]
+      noTracking: { number: string; waitingDays: number; daysOver: number; placedOn: string }[]
       noTrackingTotal: number
       stats: { noTracking: number }
     }
@@ -378,6 +378,16 @@ describe('the no-tracking list', () => {
   it('ranks the longest wait first, because most of the list is inside its promise', async () => {
     const body = await twoBare()
     expect(body.noTracking[0].number).toBe('RTE3001')
+  })
+
+  /**
+   * The date the order was placed, as its OWN shop reckons the day. Sent as a
+   * plain calendar date so it prints and sorts as one, and so it can never
+   * disagree with waitingDays, which is counted on the same clock.
+   */
+  it('gives each row the order date', async () => {
+    const body = await twoBare()
+    expect(body.noTracking.find((r) => r.number === 'RTE3001')?.placedOn).toBe('2026-08-03')
   })
 
   it('says how long each order has been waiting, not only how far past a promise', async () => {

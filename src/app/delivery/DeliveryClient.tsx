@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
@@ -30,6 +30,13 @@ export type LateOrder = {
    * — how long we have been in the dark is the figure that ranks them.
    */
   waitingDays: number
+  /**
+   * The calendar date the order was placed, YYYY-MM-DD, in the SHOP's own
+   * timezone — the same clock waitingDays is counted on, so the two columns
+   * can never disagree by a day about the same order. A plain date rather
+   * than an instant, which also makes it sort correctly as a string.
+   */
+  placedOn: string
   promiseDays: number | null
   state: DeliveryState
   parcels: Parcel[]
@@ -579,6 +586,23 @@ function CountryTable({ rows, waiting }: { rows: CountryStat[]; waiting: string 
  * it. Two owners of one boolean is how a tile ends up unable to open a section
  * sitting six inches below it.
  */
+/**
+ * "11 Aug 2026". Explicitly en-GB rather than the reader's locale: these shops
+ * are Norwegian, Danish and German, and "08/11/2026" means two different days
+ * depending on who is looking at it. A written-out month cannot be misread.
+ *
+ * placedOn is already a plain calendar date, so it is parsed and printed in
+ * UTC — that round-trips the exact day rather than shifting it by a timezone
+ * it was never expressed in.
+ */
+const orderedOn = (day: string) =>
+  new Date(`${day}T00:00:00Z`).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+
 export function NoTracking({
   rows,
   total,
@@ -590,6 +614,23 @@ export function NoTracking({
   open: boolean
   onToggle: () => void
 }) {
+  /**
+   * Null until asked, so the rows keep the order the route sent them in —
+   * longest waiting first, which is the order to work through them in.
+   *
+   * Only the order date sorts. `Waiting` is computed FROM it, so the two are
+   * one axis and a second control would be two ways to ask one question.
+   */
+  const [sort, setSort] = useState<{ ascending: boolean } | null>(null)
+
+  const shown = useMemo(() => {
+    if (sort === null) return rows
+    // Plain YYYY-MM-DD, so string comparison IS date comparison.
+    return [...rows].sort((a, b) =>
+      a.placedOn === b.placedOn ? 0 : (a.placedOn < b.placedOn) === sort.ascending ? -1 : 1,
+    )
+  }, [rows, sort])
+
   // The route caps what it sends. This count is the size of the blind spot, so
   // understating it is the one thing it must not do.
   const capped = total > rows.length
@@ -644,6 +685,23 @@ export function NoTracking({
                 <th className="px-4 py-2 text-left">Country</th>
                 {/* No State or Tracking column: every row here is the same on
                     both counts, and a column of identical values is furniture. */}
+                {/* The only sortable column. "1d" says how long, not when, and
+                    the date is what somebody looks the order up by. First
+                    press gives newest first: the list already opens
+                    oldest-first, so opening it that way again would read as a
+                    press that did nothing. */}
+                <th className="px-4 py-2 text-left">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSort((s) => ({ ascending: s === null ? false : !s.ascending }))
+                    }
+                    className="text-[11px] font-semibold text-faint hover:text-ink"
+                  >
+                    Ordered
+                    {sort && <span aria-hidden="true"> {sort.ascending ? '▲' : '▼'}</span>}
+                  </button>
+                </th>
                 {/* Waiting, not "days over": most of this list is inside its
                     promise, where days-over is zero for every row and ranks
                     nothing. How long we have been in the dark is the figure
@@ -653,7 +711,7 @@ export function NoTracking({
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {shown.map((r) => (
                 <tr key={r.id} className="border-b border-line last:border-b-0 hover:bg-panel">
                   <td className="px-5 py-2.5 font-medium">
                     <Link
@@ -668,6 +726,7 @@ export function NoTracking({
                   <td className="px-4 py-2.5 text-ink">
                     {r.country ? r.country.toUpperCase() : DASH}
                   </td>
+                  <td className="px-4 py-2.5 text-ink">{orderedOn(r.placedOn)}</td>
                   {/* Muted, not text-loss. The red on the Late table means "this
                       is going wrong"; here the number is only how long we have
                       been in the dark, which is not the same accusation.
