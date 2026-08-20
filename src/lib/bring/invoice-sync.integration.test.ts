@@ -1,8 +1,9 @@
-import { describe, expect, it, beforeEach, afterAll, vi, afterEach } from 'vitest'
+import { describe, expect, it, beforeAll, beforeEach, afterAll, vi, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { db } from '@/lib/db'
-import { collectNextReport, discoverInvoices, requestNextReport } from './invoice-sync'
+import { encryptSecret } from '@/lib/secrets'
+import { collectNextReport, discoverInvoices, requestNextReport, syncBringInvoices } from './invoice-sync'
 
 // Unique to THIS file — see "Test data convention" in the Global Constraints.
 const CUST = 'ZZDISC'
@@ -95,6 +96,28 @@ function stubCollect(invoiceNumber: string, over?: { headerAmount?: string }) {
       // Every job in this describe block is created with the same hardcoded
       // statusUrl, so anything left unmatched above is that status poll.
       return new Response(JSON.stringify({ status: 'DONE', xmlUrl }), { status: 200 })
+    },
+  ))
+}
+
+/**
+ * Stubs one whole tick of syncBringInvoices: an empty customer list, so
+ * discoverInvoices finds nothing new and never calls listInvoices; a
+ * successful report request; and a status poll that always answers NOT_DONE.
+ * That last part is what keeps collectNextReport from touching the row this
+ * tick, so the one request the tick made is still sitting there to count.
+ */
+function stubTick() {
+  vi.stubGlobal('fetch', vi.fn<(u: string | URL | Request, i?: RequestInit) => Promise<Response>>(
+    async (u) => {
+      const url = String(u)
+      if (url.endsWith('/reports/api/generate')) {
+        return new Response(JSON.stringify({ customer: [] }), { status: 200 })
+      }
+      if (url.includes('/reports/api/generate/')) {
+        return new Response(JSON.stringify({ statusUrl: 'https://www.mybring.com/s/9/status/' }), { status: 202 })
+      }
+      return new Response(JSON.stringify({ status: 'NOT_DONE' }), { status: 200 })
     },
   ))
 }
@@ -275,5 +298,83 @@ describe('collectNextReport', () => {
     const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-M` } })
     expect(row?.rowsStored).toBe(6)
     expect(row?.rowsUnmatched).toBe(2)
+  })
+})
+
+describe('syncBringInvoices', () => {
+  // DeliveryConfig is a fixed-id singleton shared by the whole `delivery`
+  // project (see the Global Constraints), so a test must never assume it
+  // knows the row's starting state — another file may have left real
+  // credentials on it, or none. Captured once here and restored exactly in
+  // afterAll, via upsert-and-blank rather than delete, so a file running
+  // beside this one (fileParallelism is off for this project, but the row
+  // still must not vanish mid-suite) never finds the singleton missing.
+  let originalBring: {
+    bringApiUid: string | null
+    bringApiKey: string | null
+    bringClientUrl: string | null
+  }
+
+  beforeAll(async () => {
+    const row = await db.deliveryConfig.findUnique({ where: { id: 'singleton' } })
+    originalBring = {
+      bringApiUid: row?.bringApiUid ?? null,
+      bringApiKey: row?.bringApiKey ?? null,
+      bringClientUrl: row?.bringClientUrl ?? null,
+    }
+  })
+
+  afterAll(async () => {
+    await db.deliveryConfig.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton', ...originalBring },
+      update: originalBring,
+    })
+  })
+
+  it('does nothing and says so when Bring is not connected', async () => {
+    // Explicitly cleared, not assumed absent: this is a shared singleton and
+    // another file in the `delivery` project may have left credentials on
+    // it, which would make this test's result depend on run order.
+    await db.deliveryConfig.upsert({
+      where: { id: 'singleton' },
+      create: { id: 'singleton' },
+      update: { bringApiUid: null, bringApiKey: null, bringClientUrl: null },
+    })
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+    const result = await syncBringInvoices()
+    expect(result.configured).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('discovers, requests and collects at most one each per tick', async () => {
+    // getDeliveryConfig() decrypts, so the key must be written encrypted,
+    // exactly as the settings route stores it.
+    await db.deliveryConfig.upsert({
+      where: { id: 'singleton' },
+      create: {
+        id: 'singleton',
+        bringApiUid: creds.uid,
+        bringApiKey: encryptSecret(creds.key),
+        bringClientUrl: creds.clientUrl,
+      },
+      update: {
+        bringApiUid: creds.uid,
+        bringApiKey: encryptSecret(creds.key),
+        bringClientUrl: creds.clientUrl,
+      },
+    })
+    // Proves the run cost is bounded: a hundred pending invoices must not make
+    // one tick a hundred requests long.
+    await db.bringReportRun.createMany({
+      data: [1, 2, 3].map((n) => ({
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-T${n}`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'PENDING',
+      })),
+    })
+    stubTick()
+    await syncBringInvoices()
+    expect(await db.bringReportRun.count({ where: { ...mine, state: 'REQUESTED' } })).toBe(1)
   })
 })

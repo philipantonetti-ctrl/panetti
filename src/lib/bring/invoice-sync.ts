@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { getDeliveryConfig } from '../delivery/config'
 import type { BringCredentials, BringFilter } from './client'
 import { linesReconcile, parseSpecifiedInvoice } from './invoice-lines'
 import { downloadReport, generateSpecReport, listCustomerNumbers, listInvoices, reportStatus } from './invoices'
@@ -172,5 +173,51 @@ export async function collectNextReport(
     return { stored, unmatched }
   } catch (e) {
     return fail(e instanceof Error ? e.message : String(e))
+  }
+}
+
+export type BringInvoiceSyncResult = {
+  configured: boolean
+  found: number
+  queued: number
+  noSpec: number
+  requested: boolean
+  stored: number
+  unmatched: number
+  error: string | null
+}
+
+const nothing = (over: Partial<BringInvoiceSyncResult> = {}): BringInvoiceSyncResult => ({
+  configured: true, found: 0, queued: 0, noSpec: 0,
+  requested: false, stored: 0, unmatched: 0, error: null, ...over,
+})
+
+/**
+ * One tick: discover, request one, collect one.
+ *
+ * Deliberately at most one of each. The report API is asynchronous and this
+ * runs inside a 300-second invocation that the shop sync, four Visma imports,
+ * the parcel poll and the delivery alert also have to fit into. A backlog
+ * clears over several hours of ticks, which costs nobody anything; a tick that
+ * ran the whole backlog would cost the delivery alert its margin.
+ */
+export async function syncBringInvoices(
+  opts: BringFilter = {},
+): Promise<BringInvoiceSyncResult> {
+  const { creds } = await getDeliveryConfig()
+  if (!creds) return nothing({ configured: false })
+
+  try {
+    const found = await discoverInvoices(creds, opts)
+    const requested = await requestNextReport(creds, opts)
+    const collected = await collectNextReport(creds, opts)
+    return nothing({
+      found: found.found, queued: found.queued, noSpec: found.noSpec,
+      requested,
+      stored: collected?.stored ?? 0,
+      unmatched: collected?.unmatched ?? 0,
+    })
+  } catch (e) {
+    return nothing({ error: e instanceof Error ? e.message : String(e) })
   }
 }
