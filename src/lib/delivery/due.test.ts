@@ -62,26 +62,28 @@ describe('trackingDueAt, against the rule as the client wrote it', () => {
 })
 
 /**
- * No End-of-Day export comes off the warehouse on a Saturday, so rolling into
- * one would flag a whole weekend of orders that nothing is wrong with. This is
- * the same reason days.ts counts the delivery promise in business days: "every
- * weekend order late and a Slack channel nobody can act on".
+ * The warehouse packs and files seven days a week, confirmed by the client on
+ * 2026-08-20. So a weekend is not special: Saturday gets its own 18:00 file
+ * like any other day, and a Friday afternoon order is expected in it.
  *
- * None of the client's six rows are affected — they are all Wed to Fri — so
- * this decides only the case his table does not cover.
+ * This was briefly built the other way, rolling weekends forward to Monday on
+ * the assumption that no export comes off a Saturday. It does. None of the
+ * client's six tabled rows touched a weekend, which is why the assumption was
+ * not caught by them.
  */
-describe('weekends, which the warehouse does not work', () => {
-  it('sends a Friday afternoon order to the Monday file', () => {
-    // Fri 2026-08-21 14:00 CEST. Dispatch would be Saturday.
-    expect(due('2026-08-21T12:00:00Z')).toBe('2026-08-24T16:00:00.000Z')
+describe('weekends, which the warehouse also works', () => {
+  it('sends a Friday afternoon order to the Saturday file', () => {
+    // Fri 2026-08-21 14:00 CEST, past the cutoff, so Saturday dispatches it.
+    expect(due('2026-08-21T12:00:00Z')).toBe('2026-08-22T16:00:00.000Z')
   })
 
-  it('sends a Saturday morning order to the Monday file', () => {
-    // Sat 2026-08-22 09:00 CEST, before the cutoff, but nobody is packing.
-    expect(due('2026-08-22T07:00:00Z')).toBe('2026-08-24T16:00:00.000Z')
+  it('keeps a Saturday morning order in the Saturday file', () => {
+    // Sat 2026-08-22 09:00 CEST, before the cutoff, so it goes out that day.
+    expect(due('2026-08-22T07:00:00Z')).toBe('2026-08-22T16:00:00.000Z')
   })
 
   it('sends a Sunday evening order to the Monday file', () => {
+    // Sun 2026-08-23 20:00 CEST, past the cutoff, so Monday dispatches it.
     expect(due('2026-08-23T18:00:00Z')).toBe('2026-08-24T16:00:00.000Z')
   })
 
@@ -105,7 +107,8 @@ describe('across the daylight-saving switch', () => {
   })
 
   it('is still 18:00 local on the day the clocks go back', () => {
-    // Sun 2026-10-25 is the switch; a Sunday order lands on Monday the 26th.
-    expect(due('2026-10-25T09:00:00Z')).toBe('2026-10-26T17:00:00.000Z')
+    // Sun 2026-10-25 is the switch. 09:00Z is 10:00 in Oslo, which has already
+    // moved to CET, so it is before the cutoff and dispatches the same day.
+    expect(due('2026-10-25T09:00:00Z')).toBe('2026-10-25T17:00:00.000Z')
   })
 })
