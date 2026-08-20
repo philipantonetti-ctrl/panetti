@@ -142,6 +142,9 @@ const STATE_LABEL: Record<DeliveryState, string> = {
   BEFORE_TRACKING: 'Before tracking',
   VOIDED: 'Voided',
   NO_TRACKING: 'No tracking',
+  // Not a complaint. The warehouse file that would carry this order's number
+  // has not been produced yet, so there is nothing for it to be missing from.
+  NOT_DUE: 'Too new to say',
   BOOKED: 'Booked',
   IN_TRANSIT: 'In transit',
   // "Available" was one word for two situations, and the carrier that only
@@ -162,6 +165,9 @@ const STATE_TONE: Record<DeliveryState, string> = {
   BEFORE_TRACKING: 'bg-panel text-muted',
   VOIDED: 'bg-panel text-muted',
   NO_TRACKING: 'bg-warn-soft text-warn',
+  // Quiet, not amber. Nothing is wrong with these and colouring them as a
+  // warning is the whole complaint this state was added to answer.
+  NOT_DUE: 'bg-panel text-muted',
   BOOKED: 'bg-panel text-muted',
   IN_TRANSIT: 'bg-panel text-muted',
   // Both endings keep the tone the single AVAILABLE state had. These badges
@@ -365,6 +371,10 @@ function since(iso: string | null): string {
  */
 export function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastCheckedAt: string | null }) {
   const stages = [
+    // First position on the journey, and a quiet one: placed, and the file
+    // that would carry its tracking number is not due yet. Kept in the bar so
+    // the stages still add up to every order in the range.
+    { label: 'Too new to say', count: stats.notDue, color: 'var(--color-line)' },
     { label: 'Not shipped', count: stats.noTracking, color: 'var(--color-warn)' },
     // Was var(--ink-muted), which is not a token this theme publishes under any
     // name. `muted` is the intended weight: the warehouse holding a parcel is a

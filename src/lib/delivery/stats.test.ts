@@ -234,3 +234,33 @@ describe('the two endings', () => {
     expect(s.readyForCollection).toBe(0)
   })
 })
+
+/**
+ * An order placed this morning has no parcel and nothing is wrong: the
+ * warehouse exports once a day at 18:00. Counting it under noTracking put a
+ * day and a half of normal trading in a tile the client reads as a fault, and
+ * dropping it from the strip entirely would leave "Where everything is now"
+ * unable to account for every order it was given.
+ */
+describe('orders too new for a warehouse file', () => {
+  it('counts them apart from the ones a file has actually missed', () => {
+    const s = deliveryStats(
+      [
+        v({ state: 'NOT_DUE', availableAt: null, totalDays: null }),
+        v({ state: 'NO_TRACKING', availableAt: null, totalDays: null }),
+      ],
+      ['NO', 'NO'],
+    )
+    expect(s.notDue).toBe(1)
+    expect(s.noTracking).toBe(1)
+  })
+
+  it('leaves the no-tracking tile counting only real gaps', () => {
+    const s = deliveryStats(
+      [v({ state: 'NOT_DUE', availableAt: null, totalDays: null })],
+      ['NO'],
+    )
+    expect(s.noTracking).toBe(0)
+    expect(s.notDue).toBe(1)
+  })
+})
