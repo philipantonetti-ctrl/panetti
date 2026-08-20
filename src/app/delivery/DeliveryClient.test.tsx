@@ -7,7 +7,7 @@ import type { DeliveryStats } from '@/lib/delivery/stats'
 
 const order = (over: Partial<LateOrder> = {}): LateOrder => ({
   id: 'o1', number: '15749', customerName: null, shop: 'Panetti Germany', country: 'DE',
-  daysOver: 4, waitingDays: 9, promiseDays: 5, state: 'IN_TRANSIT',
+  daysOver: 4, waitingDays: 9, placedOn: '2026-08-11', promiseDays: 5, state: 'IN_TRANSIT',
   parcels: [{
     number: '9597256404', carrier: 'DHL',
     url: 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=9597256404',
@@ -173,6 +173,47 @@ describe('NoTracking', () => {
     const fresh = { ...bare, id: 'o3', daysOver: 0, waitingDays: 1 }
     const { container } = render(shut({ rows: [fresh], total: 1, open: true }))
     expect(container.textContent).not.toMatch(/past promise/i)
+  })
+
+  /**
+   * "1d" says how long, not when. Somebody chasing an order needs the date it
+   * was placed to find it in the warehouse's own system, and needs to be able
+   * to read the list from either end.
+   */
+  describe('order date', () => {
+    const older = { ...bare, id: 'a', number: 'OLD', placedOn: '2026-08-01', waitingDays: 19 }
+    const newer = { ...bare, id: 'b', number: 'NEW', placedOn: '2026-08-15', waitingDays: 5 }
+
+    const numbers = (c: HTMLElement) =>
+      [...c.querySelectorAll('tbody tr td:first-child')].map((td) => td.textContent?.trim())
+
+    const both = () => shut({ rows: [older, newer], total: 2, open: true })
+
+    it('shows the date the order was placed', () => {
+      const { container } = render(shut({ total: 1, open: true }))
+      expect(container.textContent).toMatch(/11 Aug 2026/)
+    })
+
+    // Newest first on the first press: the list already opens oldest-first, so
+    // opening it that way again would look like the press did nothing.
+    it('sorts newest first on the first press', () => {
+      const { container } = render(both())
+      fireEvent.click(screen.getByRole('button', { name: /ordered/i }))
+      expect(numbers(container)).toEqual(['NEW', 'OLD'])
+    })
+
+    it('flips to oldest first on the second press', () => {
+      const { container } = render(both())
+      fireEvent.click(screen.getByRole('button', { name: /ordered/i }))
+      fireEvent.click(screen.getByRole('button', { name: /ordered/i }))
+      expect(numbers(container)).toEqual(['OLD', 'NEW'])
+    })
+
+    // Longest waiting first, which is the order the route sent them in.
+    it('leaves the rows as they arrived until asked', () => {
+      const { container } = render(both())
+      expect(numbers(container)).toEqual(['OLD', 'NEW'])
+    })
   })
 })
 
