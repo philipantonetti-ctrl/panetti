@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { toMinor } from '@/lib/money'
 import type { CarrierAverage } from '@/lib/delivery/carrier-cost'
+import { money } from '@/lib/finance/format'
 
 export type CarrierMonth = {
   carrier: string
@@ -40,6 +41,17 @@ const DASH = '—'
  */
 const carrierName = (c: string) => (c === 'DHL' ? 'DHL' : c.charAt(0) + c.slice(1).toLowerCase())
 
+/**
+ * '2026-09' -> 'October': the month AFTER, name only. The year would appear
+ * twice in one short sentence ("early October 2026, for September 2026") and
+ * the second copy says nothing the first did not.
+ */
+const monthAfterName = (m: string) => {
+  const [y, mo] = m.split('-').map(Number)
+  const next = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`
+  return new Date(`${next}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' })
+}
+
 /** '2026-07' -> 'July 2026'. */
 const monthName = (m: string) =>
   new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -48,12 +60,12 @@ const monthName = (m: string) =>
     timeZone: 'UTC',
   })
 
-const money = (minor: number, currency: string) =>
-  (minor / 100).toLocaleString('en-GB', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-  })
+/**
+ * The finance page's own formatter, on purpose: space-grouped with the code
+ * after the number, because the reader is Norwegian and both comma and dot
+ * mean the decimal separator to him. A figure must not read one way on
+ * /finance and another here.
+ */
 
 /** Minor units as a plain editable number: 2000050 -> "20000.50". */
 const editable = (minor: number | null) => (minor === null ? '' : (minor / 100).toFixed(2))
@@ -99,12 +111,12 @@ export function CarrierCosts({
           it. Longer explanations were tried and read as an essay above a
           four-column table. */}
       <p className="mt-1 text-[12px] text-muted">
-        Both carriers&rsquo; bills fill in by themselves: Bring&rsquo;s read from Bring&rsquo;s
-        own invoices, DHL&rsquo;s from the company&rsquo;s accounting.
+        The bills fill in by themselves: Bring&rsquo;s from Bring, DHL&rsquo;s from your Visma
+        accounting. Nothing to type.
       </p>
       <p className="mt-0.5 text-[12px] text-muted">
-        Each bill is divided by the parcels that carrier moved. Covers all shops, even if you
-        filter by one shop above.
+        Each month&rsquo;s bill divided by that month&rsquo;s parcels. All shops together, whatever
+        the filter above says.
       </p>
 
       <div className="mt-4 flex flex-col gap-5">
@@ -154,19 +166,41 @@ function Carrier({
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <span className="text-[13px] font-semibold text-ink">{carrierName(average.carrier)}</span>
-        <span className="num text-[18px] font-semibold text-ink">
-          {average.averageMinor !== null && average.currency
-            ? money(average.averageMinor, average.currency)
-            : DASH}
-        </span>
+        {/* Money or nothing. The bare dash here was the loudest thing on a
+            pending card and read as broken; the caption below already says
+            when the figure comes. */}
+        {average.averageMinor !== null && average.currency && (
+          <span className="num text-[18px] font-semibold text-ink">
+            {money(average.averageMinor, average.currency)}
+          </span>
+        )}
       </div>
 
       <p className="mt-0.5 text-[12px] text-muted">{why(average, firstMonth)}</p>
       {oldBills.length > 0 && (
-        <p className="mt-0.5 text-[12px] text-muted">
-          What {carrierName(average.carrier)} billed:{' '}
-          {oldBills.map((m) => `${monthName(m.month)} ${money(m.amount!, m.currency!)}`).join(', ')}.
-        </p>
+        // Rows, not a sentence: six months of money in a comma-run was the
+        // exact thing the client pasted back as unreadable. Month left,
+        // amount right, digits aligned - the shape of every money list he
+        // already uses - with one answer at the bottom.
+        <div className="mt-2 max-w-[24rem]">
+          <div className="text-[11px] font-semibold text-faint">
+            What {carrierName(average.carrier)} billed
+          </div>
+          {oldBills.map((m) => (
+            <div key={m.month} className="flex items-baseline justify-between py-px">
+              <span className="text-[12px] text-muted">{monthName(m.month)}</span>
+              <span className="num text-[13px] text-ink">{money(m.amount!, m.currency!)}</span>
+            </div>
+          ))}
+          {oldBills.length > 1 && new Set(oldBills.map((m) => m.currency)).size === 1 && (
+            <div className="mt-0.5 flex items-baseline justify-between border-t border-line pt-1">
+              <span className="text-[12px] text-muted">So far</span>
+              <span className="num text-[13px] font-semibold text-ink">
+                {money(oldBills.reduce((n, m) => n + (m.amount ?? 0), 0), oldBills[0].currency!)}
+              </span>
+            </div>
+          )}
+        </div>
       )}
 
       {rows.length > 0 && (
@@ -213,12 +247,13 @@ function why(a: CarrierAverage, firstMonth: string | null): string {
     // pointed at the boxes below ("enter an invoice") while every box below
     // was for a month that could not be priced - the client quoted that back
     // as the thing he could not understand.
+    // One sentence, identical for both carriers: the sources are named once,
+    // in the card's intro. It says when the figure ARRIVES, not which month
+    // earns it first - "September will be the first month" sent the reader
+    // looking in September for a number that lands with the month's last
+    // bill, in early October.
     if (firstMonth) {
-      const first = monthName(firstMonth)
-      if (a.carrier === 'BRING') {
-        return `${parcels} parcels counted. Bring's bills arrive by themselves. ${first} will be the first month with a cost per parcel.`
-      }
-      return `${parcels} parcels counted. ${carrierName(a.carrier)}'s bills come from the company's accounting. ${first} will be the first month with a cost per parcel.`
+      return `${parcels} parcels counted. The first cost per parcel comes in early ${monthAfterName(firstMonth)}, for ${monthName(firstMonth)}.`
     }
     // No declared start to the record: the pre-tracking wording, unchanged.
     if (a.carrier === 'BRING') {

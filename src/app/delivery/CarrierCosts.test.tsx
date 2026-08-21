@@ -39,24 +39,20 @@ const props = (over = {}) => ({
 
 
 describe('CarrierCosts', () => {
-  it('states the cost of sending one parcel', () => {
+  /**
+   * In the app's own money style: space-grouped, code suffix - the format the
+   * finance page and the Slack warning already use, chosen there because the
+   * reader is Norwegian and both comma and dot mean the decimal separator to
+   * him. One figure must not read one way on /finance and another here.
+   */
+  it('states the cost of sending one parcel, in the same style as the finance page', () => {
     const { container } = render(<CarrierCosts {...props()} />)
-    expect(container.textContent).toMatch(/50\.00/)
+    expect(container.textContent).toContain('50.00 NOK')
   })
 
   it('names the carrier the figure belongs to', () => {
     const { container } = render(<CarrierCosts {...props()} />)
     expect(container.textContent).toMatch(/Bring/i)
-  })
-
-  /**
-   * The figure is entered, not fetched. Saying so is the difference between a
-   * number the reader trusts and one they wonder about — neither carrier's API
-   * returns what a shipment cost, and the page should not imply that it does.
-   */
-  it('says the money was entered by hand rather than read from the carrier', () => {
-    const { container } = render(<CarrierCosts {...props()} />)
-    expect(container.textContent).toMatch(/entered|invoice/i)
   })
 
   /**
@@ -159,7 +155,12 @@ describe('CarrierCosts', () => {
    * instruction he should not follow. He asked for this to be automatic; the
    * page has to stop asking.
    */
-  it('tells Bring its bills arrive by themselves, and names the first priced month', () => {
+  /**
+   * The when matters more than the mechanism: Philip reads "September will be
+   * the first month" and looks in September, but the figure lands when the
+   * month's last bill does, in early October. Say the arrival, not the label.
+   */
+  it('says when the first cost per parcel arrives, and for which month', () => {
     render(
       <CarrierCosts
         {...props({
@@ -168,18 +169,13 @@ describe('CarrierCosts', () => {
         })}
       />,
     )
-    expect(screen.getByText(/bills arrive by themselves/i)).toBeInTheDocument()
-    expect(screen.getByText(/september 2026/i)).toBeInTheDocument()
+    expect(screen.getByText(/comes in early october/i)).toBeInTheDocument()
+    expect(screen.getByText(/for september 2026/i)).toBeInTheDocument()
     expect(screen.queryByText(/enter an invoice below/i)).not.toBeInTheDocument()
   })
 
-  /**
-   * DHL's bills are read from the company's own accounting (Visma holds
-   * every one - measured 2026-08-21), so the caption stopped instructing
-   * anyone to type. It says where the money comes from and when the first
-   * average lands, exactly like Bring's.
-   */
-  it('tells DHL its bills come from the accounting, and names the first priced month', () => {
+  /** DHL reads the same as Bring: the sources live once, in the card's intro. */
+  it('gives DHL the same plain sentence, with nothing to type', () => {
     render(
       <CarrierCosts
         {...props({
@@ -189,9 +185,7 @@ describe('CarrierCosts', () => {
         })}
       />,
     )
-    expect(screen.getByText(/september 2026/i)).toBeInTheDocument()
-    // The caption's phrase, not the intro's - both mention the accounting.
-    expect(screen.getByText(/bills come from the company's accounting/i)).toBeInTheDocument()
+    expect(screen.getByText(/comes in early october, for september 2026/i)).toBeInTheDocument()
     expect(screen.queryByText(/type dhl/i)).not.toBeInTheDocument()
   })
 
@@ -235,7 +229,12 @@ describe('CarrierCosts and a month outside the record', () => {
    * record is one FACT - what Bring billed - so it renders as one sentence
    * that says exactly that, and never as a row.
    */
-  it('turns months from before the record into one plain sentence, not half-empty rows', () => {
+  /**
+   * DHL's six months arrived as one comma-run sentence and the client said he
+   * could not read it. Money reads as rows: month on the left, amount on the
+   * right, digits aligned - the same shape as every other money list he uses.
+   */
+  it('lists the old bills as rows of month and money, not a comma-run sentence', () => {
     render(
       <CarrierCosts
         {...props({
@@ -247,14 +246,15 @@ describe('CarrierCosts and a month outside the record', () => {
         })}
       />,
     )
-    const line = screen.getByText(/what bring billed/i)
-    expect(line).toHaveTextContent(/june 2026.*233,785\.88/i)
-    expect(line).toHaveTextContent(/july 2026.*324,814\.90/i)
-    // No table at all: nothing here is a row.
+    expect(screen.getByText(/what bring billed/i)).toBeInTheDocument()
+    expect(screen.getByText('233 785.88 NOK')).toBeInTheDocument()
+    expect(screen.getByText('324 814.90 NOK')).toBeInTheDocument()
+    // Still no table headers: these are bills, not months to divide.
     expect(screen.queryByText('Month')).not.toBeInTheDocument()
   })
 
-  it('says the old bills oldest first, the order a person reads months in', () => {
+  /** Six months of bills deserve one answer at the bottom. */
+  it('sums the old bills, so nobody adds six figures in their head', () => {
     render(
       <CarrierCosts
         {...props({
@@ -266,7 +266,35 @@ describe('CarrierCosts and a month outside the record', () => {
         })}
       />,
     )
-    const text = screen.getByText(/what bring billed/i).textContent ?? ''
+    expect(screen.getByText(/so far/i)).toBeInTheDocument()
+    expect(screen.getByText('558 600.78 NOK')).toBeInTheDocument()
+  })
+
+  it('offers no sum for a single bill, which is its own total', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          months: [month({ month: '2026-06', counted: false, amount: 233_785_88, source: 'bring' })],
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    expect(screen.queryByText(/so far/i)).not.toBeInTheDocument()
+  })
+
+  it('lists the old bills oldest first, the order a person reads months in', () => {
+    const { container } = render(
+      <CarrierCosts
+        {...props({
+          months: [
+            month({ month: '2026-07', counted: false, amount: 324_814_90, source: 'bring' }),
+            month({ month: '2026-06', counted: false, amount: 233_785_88, source: 'bring' }),
+          ],
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    const text = container.textContent ?? ''
     expect(text.indexOf('June')).toBeLessThan(text.indexOf('July'))
   })
 
@@ -291,7 +319,7 @@ describe('CarrierCosts and a month outside the record', () => {
     render(<CarrierCosts {...props()} />)
     const cells = screen.getAllByRole('cell').map((c) => c.textContent ?? '')
     expect(cells.some((t) => t.includes('400'))).toBe(true)
-    expect(cells.some((t) => t.includes('50.00'))).toBe(true)
+    expect(cells.some((t) => t.includes('50.00 NOK'))).toBe(true)
   })
 })
 
@@ -311,7 +339,7 @@ describe('CarrierCosts and a figure read from Visma', () => {
         })}
       />,
     )
-    expect(screen.getByText(/23,455\.00/)).toBeInTheDocument()
+    expect(screen.getByText('23 455.00 NOK')).toBeInTheDocument()
     expect(screen.getByText('from Visma')).toBeInTheDocument()
     expect(screen.queryByLabelText(/invoice for september 2026/i)).not.toBeInTheDocument()
   })
@@ -357,7 +385,7 @@ describe('CarrierCosts, kept readable', () => {
         })}
       />,
     )
-    expect(screen.getByText(/324,814\.90/)).toBeInTheDocument()
+    expect(screen.getByText('324 814.90 NOK')).toBeInTheDocument()
     // Exact, because the card's intro also contains the words "from Bring".
     expect(screen.getByText('from Bring')).toBeInTheDocument()
     expect(screen.queryByLabelText(/invoice for september 2026/i)).not.toBeInTheDocument()
