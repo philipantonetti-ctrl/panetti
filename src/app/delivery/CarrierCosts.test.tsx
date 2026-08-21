@@ -225,18 +225,63 @@ describe('CarrierCosts and a month outside the record', () => {
    * see invites dividing the whole-month bill by them by hand, and that
    * quotient is exactly the wrong number the flag exists to prevent.
    */
-  it('shows the bill but neither a parcel count nor a per-parcel figure', () => {
+  /**
+   * The client pasted the June and July rows back and asked "why are there 2
+   * months here". A table row that is dashes in three of four columns reads
+   * as broken data, however real the money in it is. A month from before the
+   * record is one FACT - what Bring billed - so it renders as one sentence
+   * that says exactly that, and never as a row.
+   */
+  it('turns months from before the record into one plain sentence, not half-empty rows', () => {
     render(
       <CarrierCosts
         {...props({
-          months: [month({ month: '2026-06', counted: false, source: 'bring' })],
+          months: [
+            month({ month: '2026-07', counted: false, amount: 324_814_90, source: 'bring' }),
+            month({ month: '2026-06', counted: false, amount: 233_785_88, source: 'bring' }),
+          ],
           carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
         })}
       />,
     )
-    expect(screen.getByText(/20,000\.00/)).toBeInTheDocument()
-    const cells = screen.getAllByRole('cell').map((c) => c.textContent ?? '')
-    expect(cells.some((t) => t.includes('400'))).toBe(false)
+    const line = screen.getByText(/what bring billed/i)
+    expect(line).toHaveTextContent(/june 2026.*233,785\.88/i)
+    expect(line).toHaveTextContent(/july 2026.*324,814\.90/i)
+    // No table at all: nothing here is a row.
+    expect(screen.queryByText('Month')).not.toBeInTheDocument()
+  })
+
+  it('says the old bills oldest first, the order a person reads months in', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          months: [
+            month({ month: '2026-07', counted: false, amount: 324_814_90, source: 'bring' }),
+            month({ month: '2026-06', counted: false, amount: 233_785_88, source: 'bring' }),
+          ],
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    const text = screen.getByText(/what bring billed/i).textContent ?? ''
+    expect(text.indexOf('June')).toBeLessThan(text.indexOf('July'))
+  })
+
+  it('shows the table for real months and the sentence for old bills side by side', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          months: [
+            month({ carrier: 'BRING', month: '2026-09', counted: true, amount: null, source: null }),
+            month({ month: '2026-06', counted: false, amount: 233_785_88, source: 'bring' }),
+          ],
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    expect(screen.getByText('Month')).toBeInTheDocument()
+    expect(screen.getByText(/september 2026/i)).toBeInTheDocument()
+    expect(screen.getByText(/what bring billed/i)).toBeInTheDocument()
   })
 
   it('shows the count and the division for a month inside the record', () => {
@@ -283,11 +328,12 @@ describe('CarrierCosts, kept readable', () => {
    * with its label, never as a bare figure in an input. "324814.90" in a box
    * was the exact thing the client said he could not understand.
    */
-  it('shows a Bring bill as formatted money with its label, not as an editable box', () => {
+  /** From October: September's row, its bill read from Bring, inside the table. */
+  it('shows a Bring bill in a real month as formatted money with its label, not an editable box', () => {
     render(
       <CarrierCosts
         {...props({
-          months: [month({ month: '2026-07', counted: false, amount: 324_814_90, source: 'bring' })],
+          months: [month({ month: '2026-09', counted: true, amount: 324_814_90, source: 'bring' })],
           carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
         })}
       />,
@@ -295,7 +341,7 @@ describe('CarrierCosts, kept readable', () => {
     expect(screen.getByText(/324,814\.90/)).toBeInTheDocument()
     // Exact, because the card's intro also contains the words "from Bring".
     expect(screen.getByText('from Bring')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/invoice for july 2026/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/invoice for september 2026/i)).not.toBeInTheDocument()
   })
 
   it('keeps the typing box for a month a person is meant to fill in', () => {
