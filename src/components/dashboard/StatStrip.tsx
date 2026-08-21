@@ -1,6 +1,6 @@
 'use client'
 
-import { formatMoney } from '@/lib/money'
+import { formatMoneyWhole } from '@/lib/money'
 import { deltaPct } from '@/lib/metrics/trend'
 import type { Figures } from '@/lib/metrics/types'
 
@@ -9,6 +9,14 @@ import type { Figures } from '@/lib/metrics/types'
  *
  * One surface split by hairlines — not a grid of identical cards. Profit is the hero
  * because it is the question the owner actually opens this page to answer.
+ *
+ * Every money figure here is whole kroner. These are period sums consolidated
+ * from four currencies at each order's own rate, so their last two digits are
+ * arithmetic rather than money anyone can look up — and at 32px they were wide
+ * enough to carry the hero figure out of its card and over the one beside it.
+ * All four rather than only the hero: one figure without øre standing beside
+ * three with them reads as a bug in the row, not a decision about it. Orders is
+ * a count and the margin is a percentage; neither is money and neither changed.
  */
 
 /** Which way did it move, against the same length of time before it? */
@@ -90,7 +98,7 @@ export function StatStrip({
             profitPositive ? 'text-ink' : 'text-loss'
           }`}
         >
-          {formatMoney(total.netProfit, currency)}
+          {formatMoneyWhole(total.netProfit, currency)}
         </p>
 
         <div className="mt-2 flex items-center gap-3">
@@ -104,7 +112,7 @@ export function StatStrip({
       <div className="border-b border-line lg:border-b-0 lg:border-r">
         <Stat
           label="NET REVENUE"
-          value={formatMoney(total.netRevenue, currency)}
+          value={formatMoneyWhole(total.netRevenue, currency)}
           delta={<Delta current={total.netRevenue} previous={previous.netRevenue} hint={hint} />}
         />
       </div>
@@ -120,14 +128,14 @@ export function StatStrip({
       <div className="border-b border-line lg:border-b-0 lg:border-r">
         <Stat
           label="AVG ORDER VALUE"
-          value={formatMoney(total.avgOrderValue, currency)}
+          value={formatMoneyWhole(total.avgOrderValue, currency)}
           delta={<Delta current={total.avgOrderValue} previous={previous.avgOrderValue} hint={hint} />}
         />
       </div>
 
       <Stat
         label="AMBASSADOR SALES"
-        value={formatMoney(total.ambassadorSales, currency)}
+        value={formatMoneyWhole(total.ambassadorSales, currency)}
         delta={
           <Delta current={total.ambassadorSales} previous={previous.ambassadorSales} hint={hint} />
         }
