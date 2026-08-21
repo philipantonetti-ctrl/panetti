@@ -31,6 +31,30 @@ describe('deliveryStats', () => {
     expect(s.medianDays).toBe(3)
   })
 
+  /**
+   * An arrival the warehouse file reported and the carrier has not yet dated.
+   *
+   * It has to leave the moving counts — the parcel is with the customer, and
+   * "In transit" is the word this whole fix exists to stop saying — without
+   * joining `delivered`, which is a population of dates and has none to give
+   * it. That leaves it in no bucket at all unless it gets its own, and "Where
+   * everything is now" has to be able to account for every order it was given.
+   */
+  it('counts an arrival that carries no date on its own', () => {
+    const s = deliveryStats(
+      [
+        v({ state: 'DELIVERED_UNDATED', totalDays: null, availableAt: null, collectedAt: null }),
+        v({ state: 'IN_TRANSIT', totalDays: null, availableAt: null }),
+      ],
+      ['DE', 'DE'],
+    )
+    expect(s.deliveredUndated).toBe(1)
+    expect(s.inTransit).toBe(1)
+    // No date, so nothing for the median or the on-time rate to be made of.
+    expect(s.delivered).toBe(0)
+    expect(s.medianDays).toBeNull()
+  })
+
   it('counts what is still on the way, so a page with no deliveries can still say what is happening', () => {
     // The case this exists for: a workspace switched on last week. Every
     // finished-delivery figure below is legitimately null, and without these

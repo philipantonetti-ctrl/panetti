@@ -17,6 +17,7 @@ const stats = (over: Partial<DeliveryStats>): DeliveryStats => ({
   readyForCollection: 0,
   booked: 0,
   inTransit: 0,
+  deliveredUndated: 0,
   distribution: [],
   byCountry: [],
   ...over,

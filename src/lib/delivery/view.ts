@@ -19,6 +19,15 @@ export type DeliveryState =
   | 'AVAILABLE' // arrived at the pickup point, not yet collected
   | 'DELIVERED' // in the customer's hands
   /**
+   * Arrived, on the word of the warehouse file, which never says when.
+   *
+   * Separate from DELIVERED rather than folded into it because the two carry
+   * different evidence: DELIVERED has a timestamp from the carrier and belongs
+   * in the delivery median, this one has none and must stay out of it. Folding
+   * them together would put an order with no date into a figure made of dates.
+   */
+  | 'DELIVERED_UNDATED'
+  /**
    * No parcel yet, and none expected yet: the warehouse file that would first
    * have carried its number has not been produced. Split out of NO_TRACKING,
    * which counted an order from the second it was placed and so filed a day
@@ -186,6 +195,33 @@ export function deliveryFor(
 
   const handedInAt = minDate(order.shipments.map((s) => s.handedInAt))
 
+  /**
+   * Every parcel has arrived, and not one of them carries a date.
+   *
+   * The warehouse file says THAT a parcel was delivered — DHL's export carries
+   * its own status word, which linkDhlShipments stores as `outcome` — and it
+   * never says WHEN. `availableAt` is written by the poller and by nothing
+   * else, so until the poller reaches a parcel the two facts arrive from
+   * different places and only the first of them exists.
+   *
+   * Read here so that the fact is not thrown away while waiting for the
+   * moment. It was: live on 2026-08-21 three orders DHL had delivered on the
+   * 13th sat in the Late list reading "In transit, 7 days over", one of them a
+   * day inside its promise, because `outcome` was consulted for RETURNED and
+   * CANCELLED and never for DELIVERED.
+   *
+   * `availableAt === null` keeps this branch exclusive to the undated case. A
+   * parcel the poller HAS dated also carries outcome DELIVERED, and letting
+   * that fall in here would excuse an order that genuinely arrived late from
+   * the on-time rate — the opposite mistake, and a worse one.
+   */
+  const arrivedUndated =
+    !returned &&
+    !cancelled &&
+    availableAt === null &&
+    order.shipments.length > 0 &&
+    order.shipments.every((s) => s.outcome === 'DELIVERED')
+
   // collectedAt before availableAt: a collected parcel is also an available
   // one, so the more specific fact has to be asked about first or it can never
   // be reported. Everything below this line is unchanged — in particular the
@@ -199,17 +235,19 @@ export function deliveryFor(
         ? 'DELIVERED'
         : availableAt
           ? 'AVAILABLE'
-          : order.shipments.length === 0
-            ? // Too new to be missing. An order placed after noon is not
-              // expected in a file until tomorrow evening, and calling it "no
-              // tracking" before then reports the warehouse working normally
-              // as a fault.
-              now < trackingDueAt(order.placedAt, tz)
-              ? 'NOT_DUE'
-              : 'NO_TRACKING'
-            : handedInAt
-              ? 'IN_TRANSIT'
-              : 'BOOKED'
+          : arrivedUndated
+            ? 'DELIVERED_UNDATED'
+            : order.shipments.length === 0
+              ? // Too new to be missing. An order placed after noon is not
+                // expected in a file until tomorrow evening, and calling it "no
+                // tracking" before then reports the warehouse working normally
+                // as a fault.
+                now < trackingDueAt(order.placedAt, tz)
+                ? 'NOT_DUE'
+                : 'NO_TRACKING'
+              : handedInAt
+                ? 'IN_TRANSIT'
+                : 'BOOKED'
 
   // Late = past the promise, judged at the moment the order actually became
   // available — or right now, if it never has. Gating on `!availableAt` alone
@@ -219,8 +257,14 @@ export function deliveryFor(
   // shapes: a parcel that arrived but took too long, one still crawling
   // through Bring past its deadline, and an order the warehouse never booked
   // at all — there being no shipment for a shipment-driven rule to see.
+  //
+  // `arrivedUndated` is the one case that falls back to neither. The parcel
+  // has arrived, so measuring it against `now` is not a late delivery being
+  // reported — it is the app counting the days since it last managed to ask.
+  // Those are different things, and only the first belongs on a page a person
+  // reads as a to-do list.
   const referenceAt = availableAt ?? now
-  const late = deadline !== null && referenceAt > deadline
+  const late = deadline !== null && !arrivedUndated && referenceAt > deadline
   const daysOver = late ? daysBetween(deadline!, referenceAt, tz) : null
 
   return {

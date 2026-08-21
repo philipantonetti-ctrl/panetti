@@ -384,3 +384,88 @@ describe('orders too new for a warehouse file to exist', () => {
     expect(untracked.state).toBe('UNTRACKED')
   })
 })
+
+/**
+ * The warehouse file says THAT a parcel arrived. Only the carrier says WHEN.
+ *
+ * Live on 2026-08-21: orders 15749, 15745 and 15752 sat in the Late list
+ * reading "In transit, 7 days over" while DHL's own API reported all three
+ * delivered on 2026-08-13 — 15749 a full day INSIDE its promise. `availableAt`
+ * is written by the poller and by nothing else, so a parcel the poller has not
+ * reached carries no date, and `late` falls back to `now` when there is none.
+ * The overdue count therefore grew by a day every day, forever, and took the
+ * late tile, the late list and the on-time rate with it.
+ *
+ * The arrival was in the database the whole time. DHL's export carries its own
+ * status word (dhl/parse.ts) and linkDhlShipments stores it as `outcome`
+ * (dhl/link.ts) — which nothing read except the RETURNED and CANCELLED
+ * branches below it.
+ *
+ * So the file is believed about the fact and never about the moment: the state
+ * stops claiming the parcel is still moving and the order stops accruing days
+ * over, while `totalDays` stays null so no guessed date can reach the median.
+ * Stamping one is the exact bug dhl/link.ts already carries a comment about.
+ */
+describe('a parcel the file says arrived, with no date yet', () => {
+  const undated = (over = {}) =>
+    deliveryFor(
+      order({
+        shipments: [
+          parcel({
+            carrier: 'DHL',
+            handedInAt: new Date('2026-08-04T16:00:00Z'),
+            availableAt: null, // the poller has never reached it
+            outcome: 'DELIVERED', // the file said it arrived
+            ...over,
+          }),
+        ],
+      }),
+      promises,
+      OSLO,
+      NOW,
+    )
+
+  it('does not read as still moving', () => {
+    expect(undated().state).toBe('DELIVERED_UNDATED')
+  })
+
+  it('stops counting days over against a parcel that has arrived', () => {
+    const v = undated()
+    expect(v.late).toBe(false)
+    expect(v.daysOver).toBe(null)
+  })
+
+  it('stays out of the delivery median, having no date to contribute', () => {
+    expect(undated().totalDays).toBe(null)
+  })
+
+  // An undated arrival is still an arrival, so the returned/cancelled guard
+  // has to reach it too — otherwise a parcel going back would read as arrived.
+  it('never outranks a return', () => {
+    expect(undated({ outcome: 'RETURNED' }).state).toBe('RETURNED')
+  })
+
+  it('waits for every parcel, not just the first', () => {
+    const v = deliveryFor(
+      order({
+        shipments: [
+          parcel({ trackingNumber: 'T1', carrier: 'DHL', handedInAt: new Date('2026-08-04T16:00:00Z'), outcome: 'DELIVERED' }),
+          parcel({ trackingNumber: 'T2', carrier: 'DHL', handedInAt: new Date('2026-08-04T16:00:00Z'), outcome: null }),
+        ],
+      }),
+      promises,
+      OSLO,
+      NOW,
+    )
+    expect(v.state).toBe('IN_TRANSIT')
+    expect(v.late).toBe(true)
+  })
+
+  // The poller remains the authority. Once it supplies a real date the order
+  // rejoins the median and is judged against its promise like any other.
+  it('gives way to a real date from the poller', () => {
+    const v = undated({ availableAt: new Date('2026-08-06T09:00:00Z') })
+    expect(v.state).toBe('AVAILABLE')
+    expect(v.totalDays).toBe(3)
+  })
+})
