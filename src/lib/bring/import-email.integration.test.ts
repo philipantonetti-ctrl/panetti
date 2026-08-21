@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest'
+import { describe, expect, it, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
 
 const resolveConsignments = vi.fn()
@@ -22,6 +22,10 @@ async function cleanup() {
     where: { shipment: { trackingNumber: { startsWith: PREFIX } } },
   })
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: PREFIX } } })
+  // Real-shaped Bring numbers, cleaned by exact value: the too-early-parcel
+  // fix keys on the number's SHAPE (373 + 15 digits), so these cannot carry
+  // the test prefix. 3739999... is a range Bring will never issue.
+  await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: '373999999' } } })
   await db.orderItem.deleteMany({ where: { order: scoped } })
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
@@ -243,5 +247,96 @@ describe('importWarehouseFile', () => {
     })
     expect(row).not.toBeNull()
     expect(row?.source).toBe('EMAIL')
+  })
+})
+
+/**
+ * Parcels the warehouse file names BEFORE Bring's own system has heard of
+ * them. Measured in production on 2026-08-21: six real 373-numbers across the
+ * 19th and 20th's files were refused as "Bring has no parcel with this
+ * number", and every one of them was KNOWN to Bring by the next day - the
+ * midnight import races Bring's data feed and was treating a lost race as a
+ * verdict. Refused meant never stored and never retried, so those parcels'
+ * orders would have sat "no tracking" until someone alerted on them.
+ */
+describe('a parcel Bring does not know yet', () => {
+  // Each test owns the mock and the shaped rows outright: an earlier test's
+  // persistent rejection would otherwise bleed in, and a parcel stored by one
+  // test would trigger the retry stage in the next and eat its one-shot mock.
+  beforeEach(async () => {
+    resolveConsignments.mockReset()
+    await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: '373999999' } } })
+  })
+
+  const EARLY = '373999999000000001'
+  const EARLY2 = '373999999000000002'
+  const FOREIGN = '28144019968359654386' // 20 digits: another carrier's number
+
+  it('is stored anyway when its number is Bring-shaped, so it can be retried', async () => {
+    resolveConsignments.mockResolvedValueOnce({
+      consignments: [],
+      unresolved: [{ number: EARLY, reason: 'Bring has no parcel with this number' }],
+    })
+
+    const result = await importWarehouseFile(book([EARLY]), 'eod.xlsx', 'EMAIL')
+
+    const parcel = await db.shipment.findUnique({ where: { trackingNumber: EARLY } })
+    expect(parcel).not.toBeNull()
+    expect(parcel?.orderId).toBeNull()
+    expect(parcel?.nextPollAt).not.toBeNull()
+    // The yellow line stops reading as a fault and says what will happen.
+    expect(result.unmatched[0]?.reason).toMatch(/not.*heard of|does not know/i)
+    expect(result.unmatched[0]?.reason).toMatch(/stored/i)
+  })
+
+  it('does not store a number that is not Bring-shaped, because those are other carriers', async () => {
+    resolveConsignments.mockResolvedValueOnce({
+      consignments: [],
+      unresolved: [{ number: FOREIGN, reason: 'Bring has no parcel with this number' }],
+    })
+
+    const result = await importWarehouseFile(book([FOREIGN]), 'eod.xlsx', 'EMAIL')
+
+    expect(await db.shipment.findUnique({ where: { trackingNumber: FOREIGN } })).toBeNull()
+    expect(result.unmatched[0]?.reason).toBe('Bring has no parcel with this number')
+  })
+
+  it('gets linked to its order by the next file, once Bring knows it', async () => {
+    await db.shipment.create({ data: { trackingNumber: EARLY2, nextPollAt: new Date() } })
+    const order = await db.order.create({
+      data: {
+        shopId, externalId: 'E-EARLY', number: `${PREFIX}9001`,
+        placedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        status: 'completed', currency: 'NOK',
+        customerEmail: 'early.bird@example.test',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      },
+    })
+
+    // First call is the retry batch (yesterday's stray), second is the file's
+    // own numbers. Bring knows the stray now and hands back its recipient.
+    resolveConsignments.mockImplementation(async (_creds: unknown, numbers: unknown) => {
+      const list = numbers as string[]
+      if (list.includes(EARLY2)) {
+        return {
+          consignments: [{
+            consignmentId: '373999999000000999',
+            packageNumbers: [EARLY2],
+            recipientEmail: 'early.bird@example.test',
+            recipientName: 'Early Bird',
+          }],
+          unresolved: [],
+        }
+      }
+      return { consignments: [], unresolved: [] }
+    })
+
+    const result = await importWarehouseFile(book(['999888777666555']), 'eod.xlsx', 'EMAIL')
+
+    const parcel = await db.shipment.findUnique({ where: { trackingNumber: EARLY2 } })
+    expect(parcel?.orderId).toBe(order.id)
+    // The retry is housekeeping, not part of the file: tonight's file linked
+    // nothing of its own and its record must say so.
+    expect(result.linked).toBe(0)
   })
 })
