@@ -174,11 +174,12 @@ describe('CarrierCosts', () => {
   })
 
   /**
-   * DHL has no invoice service, so a person types it - but pointing him at a
-   * box for a month that cannot be priced is an instruction into a dead end.
-   * The caption names the FIRST month typing will actually do something.
+   * DHL's bills are read from the company's own accounting (Visma holds
+   * every one - measured 2026-08-21), so the caption stopped instructing
+   * anyone to type. It says where the money comes from and when the first
+   * average lands, exactly like Bring's.
    */
-  it('tells DHL which invoice to type, instead of pointing at a dead box', () => {
+  it('tells DHL its bills come from the accounting, and names the first priced month', () => {
     render(
       <CarrierCosts
         {...props({
@@ -189,7 +190,9 @@ describe('CarrierCosts', () => {
       />,
     )
     expect(screen.getByText(/september 2026/i)).toBeInTheDocument()
-    expect(screen.getByText(/type dhl/i)).toBeInTheDocument()
+    // The caption's phrase, not the intro's - both mention the accounting.
+    expect(screen.getByText(/bills come from the company's accounting/i)).toBeInTheDocument()
+    expect(screen.queryByText(/type dhl/i)).not.toBeInTheDocument()
   })
 
   /**
@@ -200,10 +203,10 @@ describe('CarrierCosts', () => {
    * second now plainly false for Bring. The client pasted these exact lines
    * back and asked what they meant.
    */
-  it('opens by saying Bring is automatic and DHL is typed', () => {
+  it('opens by saying both carriers fill in by themselves', () => {
     render(<CarrierCosts {...props()} />)
-    expect(screen.getByText(/fills in by itself/i)).toBeInTheDocument()
-    expect(screen.getByText(/DHL.+typed/i)).toBeInTheDocument()
+    expect(screen.getByText(/fill in by themselves/i)).toBeInTheDocument()
+    expect(screen.queryByText(/typed in/i)).not.toBeInTheDocument()
   })
 
   it('no longer instructs him to enter each invoice, nor claims costs cannot be read', () => {
@@ -298,6 +301,22 @@ describe('CarrierCosts and a month outside the record', () => {
  * nowhere useful to type, and a bare 324814.90 in a box with nothing saying
  * what it was. Every change here answers that message.
  */
+describe('CarrierCosts and a figure read from Visma', () => {
+  it('shows a DHL bill from the accounting as money with its label, not an editable box', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          carriers: [average({ carrier: 'DHL', averageMinor: null, cost: null, monthsCounted: [] })],
+          months: [month({ carrier: 'DHL', month: '2026-09', counted: true, amount: 23_455_00, source: 'visma' })],
+        })}
+      />,
+    )
+    expect(screen.getByText(/23,455\.00/)).toBeInTheDocument()
+    expect(screen.getByText('from Visma')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/invoice for september 2026/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('CarrierCosts, kept readable', () => {
   it('does not show a month that can neither show money nor accept any', () => {
     render(

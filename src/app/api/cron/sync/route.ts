@@ -8,10 +8,12 @@ import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
 import {
   importVismaB2bSales,
   importVismaPurchaseOrders,
+  importVismaDhlCosts,
   importVismaReceivables,
   importVismaStock,
   type VismaB2bSalesResult,
   type VismaImportResult,
+  type VismaDhlCostsResult,
   type VismaReceivablesResult,
   type VismaStockResult,
 } from '@/lib/visma/import'
@@ -207,6 +209,16 @@ export async function GET(req: Request) {
     // It does not throw either. Same belt and braces as the others.
   }
 
+  // DHL's monthly freight bill, read out of the company's own accounting -
+  // the one carrier figure that would otherwise be typed by hand. One Visma
+  // call; the month rules live in writeCarrierCosts with Bring's.
+  let dhlCosts: VismaDhlCostsResult = { configured: false, read: 0, written: 0, error: null }
+  try {
+    dhlCosts = await importVismaDhlCosts()
+  } catch {
+    // Belt and braces, as above.
+  }
+
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
   // skips accounts synced in the last six hours, so most runs cost nothing.
   // Best-effort like the rates: a broken token must never fail the shop sync.
@@ -313,6 +325,9 @@ export async function GET(req: Request) {
     receivablesExcluded: receivables.excluded,
     receivablesPartial: receivables.partial,
     receivablesError: receivables.error,
+    dhlCostsRead: dhlCosts.read,
+    dhlCostsWritten: dhlCosts.written,
+    dhlCostsError: dhlCosts.error,
     // Reported per reason, like the purchase-order import: 'not a linked
     // customer' is the count of invoices the allowlist held back, and a
     // collapse in it would be the first sign of a leak in the guard against

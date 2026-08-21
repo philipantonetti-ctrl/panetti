@@ -1,8 +1,6 @@
 import { db } from '../db'
+import { writeCarrierCosts } from '../delivery/cost-writer'
 import { getDeliveryConfig } from '../delivery/config'
-import { monthlyInvoiceTotals } from '../delivery/invoiced-cost'
-import { buildRateTable } from '../metrics/fx'
-import { loadRates } from '../fx/rates'
 import type { BringCredentials, BringFilter } from './client'
 import { linesReconcile, parseSpecifiedInvoice } from './invoice-lines'
 import type { BringInvoice } from './invoice-map'
@@ -336,64 +334,21 @@ export async function collectNextReport(
   }
 }
 
-/** The workspace currency and today's rates, loaded once per tick. */
-async function displayFrame(): Promise<{ currency: string; rates: Awaited<ReturnType<typeof buildRateTable>> }> {
-  const [{ displayCurrency }, rows] = await Promise.all([
-    (await import('../settings')).getSetting(),
-    loadRates(),
-  ])
-  return { currency: displayCurrency, rates: buildRateTable(rows) }
-}
-
 /**
  * Fill in what Bring billed, per month, so nobody has to type it.
  *
- * Only months that have ENDED. An invoice-dated month still running has only
- * some of its invoices in, while the parcels for it keep arriving, so the
- * division would read low and then creep upwards all month. A figure that
- * moves under the reader is worse than one that arrives a few days late.
- *
- * EVERY ended month, including ones from before parcel counting began. The
- * bill is a true fact about the month either way, and the client asked to SEE
- * what was read. Whether a month may be DIVIDED by its parcels is a different
- * judgement, made where the dividing happens - the Delivery page refuses
- * months from before the record's declared start - so a writer-side boundary
- * only made the automation invisible without making anything safer.
- *
- * Never touches a row a person typed. Someone who
- * corrected a figure knows something this importer does not - a credit note,
- * a month split across two accounts - and silently overwriting that is the
- * one behaviour that would make the whole panel untrustworthy.
+ * The rules - only ended months, never over a row of another source - live in
+ * writeCarrierCosts, shared with the DHL-from-Visma importer, because they are
+ * rules of the month rather than of the carrier. What is Bring's alone is the
+ * shape of the input: measured 2026-08-21, July was twelve invoices across
+ * three Bring legal entities in two currencies, which is why there was never
+ * one figure for a person to type.
  */
 export async function writeBringCosts(
   invoices: BringInvoice[],
   now = new Date(),
 ): Promise<number> {
-  if (invoices.length === 0) return 0
-  const { currency, rates } = await displayFrame()
-  const thisMonth = now.toISOString().slice(0, 7)
-
-  const totals = monthlyInvoiceTotals(invoices, currency, rates).filter((t) => t.month < thisMonth)
-
-  let written = 0
-  for (const total of totals) {
-    const held = await db.carrierCost.findUnique({
-      where: { carrier_month: { carrier: 'BRING', month: total.month } },
-      select: { source: true },
-    })
-    if (held?.source === 'typed') continue
-
-    await db.carrierCost.upsert({
-      where: { carrier_month: { carrier: 'BRING', month: total.month } },
-      create: {
-        carrier: 'BRING', month: total.month,
-        amount: total.amountMinor, currency: total.currency, source: 'bring',
-      },
-      update: { amount: total.amountMinor, currency: total.currency, source: 'bring' },
-    })
-    written += 1
-  }
-  return written
+  return writeCarrierCosts('BRING', 'bring', invoices, now)
 }
 
 export type BringInvoiceSyncResult = {
