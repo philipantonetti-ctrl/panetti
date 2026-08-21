@@ -634,8 +634,6 @@ describe('syncBringInvoices', () => {
  */
 describe('writeBringCosts', () => {
   const CUR = async () => (await getSetting()).displayCurrency
-  /** Parcel counting began before every month these fixtures use. */
-  const COUNTED_FROM = new Date('1999-01-01T00:00:00Z')
   const invoice = (date: string, amountMinor: number, currency: string) => ({
     customerNumber: `${CUST}1`,
     invoiceNumber: `${CUST}-${date}`,
@@ -653,7 +651,6 @@ describe('writeBringCosts', () => {
     const cur = await CUR()
     const written = await writeBringCosts(
       [invoice('1999-03-31', 100_00, cur), invoice('1999-03-15', 50_00, cur)],
-      COUNTED_FROM,
       new Date('1999-05-01T00:00:00Z'),
     )
 
@@ -674,7 +671,6 @@ describe('writeBringCosts', () => {
     const cur = await CUR()
     const written = await writeBringCosts(
       [invoice('1999-05-10', 100_00, cur)],
-      COUNTED_FROM,
       new Date('1999-05-20T00:00:00Z'),
     )
 
@@ -696,7 +692,6 @@ describe('writeBringCosts', () => {
 
     const written = await writeBringCosts(
       [invoice('1999-04-30', 100_00, cur)],
-      COUNTED_FROM,
       new Date('1999-06-01T00:00:00Z'),
     )
 
@@ -710,10 +705,9 @@ describe('writeBringCosts', () => {
   it('replaces a figure it wrote itself', async () => {
     const cur = await CUR()
     const when = new Date('1999-06-01T00:00:00Z')
-    await writeBringCosts([invoice('1999-04-30', 100_00, cur)], COUNTED_FROM, when)
+    await writeBringCosts([invoice('1999-04-30', 100_00, cur)], when)
     await writeBringCosts(
       [invoice('1999-04-30', 100_00, cur), invoice('1999-04-15', 25_00, cur)],
-      COUNTED_FROM,
       when,
     )
 
@@ -723,89 +717,36 @@ describe('writeBringCosts', () => {
   })
 
   /**
-   * The month counting began in is the one month whose invoice covers more
-   * days than its parcel count does. Live case: parcels are held from
-   * 12 August 2026, so August's full-month invoice divided by nine days of
-   * parcels reads roughly 1.5x the true cost - and it would have been the
-   * first automatic figure the client ever saw. A month is written only when
-   * we were counting parcels from its first day.
+   * A bill from before parcel counting began is still a true bill, and the
+   * client asked to SEE what was read. It is written and shown; whether it may
+   * be DIVIDED is judged where the dividing happens, on the Delivery page,
+   * which refuses months from before the record. The writer that both wrote
+   * and deleted by a boundary left the card claiming automation with nothing
+   * automatic visible on it.
    */
-  it('skips the month that counting began part-way through', async () => {
+  it('writes a month from before parcel counting began, because the bill is true either way', async () => {
     const cur = await CUR()
     const written = await writeBringCosts(
-      [invoice('1999-03-31', 100_00, cur)],
-      new Date('1999-03-15T00:00:00Z'), // counting began mid-March
-      new Date('1999-05-01T00:00:00Z'),
-    )
-
-    expect(written).toBe(0)
-    expect(await row('1999-03')).toBeNull()
-  })
-
-  it('writes the month counting began on the first day of', async () => {
-    const cur = await CUR()
-    const written = await writeBringCosts(
-      [invoice('1999-03-31', 100_00, cur)],
-      new Date('1999-03-01T00:00:00Z'),
+      [invoice('1999-02-28', 100_00, cur)],
       new Date('1999-05-01T00:00:00Z'),
     )
 
     expect(written).toBe(1)
-    expect((await row('1999-03'))?.amount).toBe(100_00)
+    expect((await row('1999-02'))?.amount).toBe(100_00)
   })
 
-  /**
-   * No parcels at all means no divisor exists for ANY month, so there is
-   * nothing an invoice total could honestly be divided by. Null is the
-   * caller saying exactly that.
-   */
-  it('writes nothing when parcel counting has never begun', async () => {
-    const cur = await CUR()
-    expect(
-      await writeBringCosts([invoice('1999-03-31', 100_00, cur)], null, new Date('1999-05-01T00:00:00Z')),
-    ).toBe(0)
-  })
-
-  /**
-   * Rows this writer created for months before the boundary are REMOVED, not
-   * merely no longer written. Measured in production on 2026-08-21: June and
-   * July totals were auto-written before the boundary rule existed, and July
-   * also holds exactly one stray parcel - so the card stood ready to show
-   * 324 814.90 kr / 1 parcel = 324 814.90 kr each, one date-range click away.
-   * A guard that only stops FUTURE writes leaves that live.
-   */
-  it('removes its own rows for months before counting was complete', async () => {
+  it('leaves its own earlier rows standing, whatever month they are for', async () => {
     const cur = await CUR()
     await db.carrierCost.create({
-      data: { carrier: 'BRING', month: '1999-02', amount: 100_00, currency: cur, source: 'bring' },
+      data: { carrier: 'BRING', month: '1999-02', amount: 999_00, currency: cur, source: 'bring' },
     })
 
-    await writeBringCosts(
-      [invoice('1999-03-31', 100_00, cur)],
-      new Date('1999-03-01T00:00:00Z'), // counting complete from March
-      new Date('1999-05-01T00:00:00Z'),
-    )
+    await writeBringCosts([invoice('1999-03-31', 100_00, cur)], new Date('1999-05-01T00:00:00Z'))
 
-    expect(await row('1999-02')).toBeNull()
-  })
-
-  /** The cleanup obeys the same law as the writes: a typed figure is his. */
-  it('leaves a typed figure alone even when it sits before the boundary', async () => {
-    const cur = await CUR()
-    await db.carrierCost.create({
-      data: { carrier: 'BRING', month: '1999-02', amount: 100_00, currency: cur, source: 'typed' },
-    })
-
-    await writeBringCosts(
-      [invoice('1999-03-31', 100_00, cur)],
-      new Date('1999-03-01T00:00:00Z'),
-      new Date('1999-05-01T00:00:00Z'),
-    )
-
-    expect((await row('1999-02'))?.source).toBe('typed')
+    expect((await row('1999-02'))?.amount).toBe(999_00)
   })
 
   it('writes nothing at all when there are no invoices', async () => {
-    expect(await writeBringCosts([], COUNTED_FROM, new Date('1999-06-01T00:00:00Z'))).toBe(0)
+    expect(await writeBringCosts([], new Date('1999-06-01T00:00:00Z'))).toBe(0)
   })
 })

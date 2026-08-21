@@ -22,6 +22,7 @@ const month = (over = {}) => ({
   carrier: 'BRING',
   month: '2026-07',
   parcels: 400,
+  counted: true,
   amount: 20_000_00 as number | null,
   currency: 'NOK' as string | null,
   ...over,
@@ -205,5 +206,34 @@ describe('CarrierCosts', () => {
   it('says nothing at all when no parcel moved in the range', () => {
     const { container } = render(<CarrierCosts {...props({ carriers: [], months: [] })} />)
     expect(container.textContent).toBe('')
+  })
+})
+
+describe('CarrierCosts and a month outside the record', () => {
+  /**
+   * A month we were not counting parcels for shows its bill and refuses
+   * everything derived from parcels: printing the few parcels we happened to
+   * see invites dividing the whole-month bill by them by hand, and that
+   * quotient is exactly the wrong number the flag exists to prevent.
+   */
+  it('shows the bill but neither a parcel count nor a per-parcel figure', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          months: [month({ month: '2026-06', counted: false, source: 'bring' })],
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    expect(screen.getByLabelText(/invoice for june 2026/i)).toHaveValue('20000.00')
+    const cells = screen.getAllByRole('cell').map((c) => c.textContent ?? '')
+    expect(cells.some((t) => t.includes('400'))).toBe(false)
+  })
+
+  it('shows the count and the division for a month inside the record', () => {
+    render(<CarrierCosts {...props()} />)
+    const cells = screen.getAllByRole('cell').map((c) => c.textContent ?? '')
+    expect(cells.some((t) => t.includes('400'))).toBe(true)
+    expect(cells.some((t) => t.includes('50.00'))).toBe(true)
   })
 })
