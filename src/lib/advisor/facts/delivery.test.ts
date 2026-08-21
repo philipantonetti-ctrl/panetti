@@ -7,6 +7,8 @@ const stats = (over: Partial<DeliveryStats>): DeliveryStats => ({
   medianDays: 3,
   medianWarehouseDays: 1,
   medianTransitDays: 2,
+  splitDelivered: 2,
+  medianSplitDays: 3,
   onTimeRate: 0.95,
   judged: 40,
   unjudged: 0,
