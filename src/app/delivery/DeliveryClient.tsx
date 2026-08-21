@@ -512,6 +512,22 @@ export function Split({ stats }: { stats: DeliveryStats }) {
       <h2 className="text-[13px] font-semibold text-ink">Warehouse vs. transit</h2>
       <p className="mt-0.5 text-[12px] text-muted">
         Median days from order to handover, and from handover to the customer.
+        {/* Whose journeys, said out loud. Only parcels that record a handover
+            event can be split, and live that was 8 of 89 delivered - the slow
+            ones, with an 8-day median under a 3-day headline. Without these
+            numbers the two bars read as an impossible decomposition of the
+            tile above. */}
+        {stats.splitDelivered > 0 && stats.splitDelivered < stats.delivered && (
+          <>
+            {' '}
+            Measured on the {stats.splitDelivered} of the {stats.delivered} delivered that
+            recorded a handover
+            {stats.medianSplitDays !== null && (
+              <>, {stats.medianSplitDays} days start to door</>
+            )}
+            . The rest went too fast to record one.
+          </>
+        )}
       </p>
       {blank ? (
         <p className="mt-4 text-[13px] text-muted">

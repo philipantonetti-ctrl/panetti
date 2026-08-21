@@ -12,6 +12,15 @@ export type DeliveryStats = {
   medianDays: number | null
   medianWarehouseDays: number | null
   medianTransitDays: number | null
+  /**
+   * How many delivered orders recorded BOTH halves of the journey - the only
+   * ones the two medians above are measured over. Measured live 2026-08-21:
+   * 8 of 89, and without this number the panel read "warehouse 2.5 + transit
+   * 6" under a 3-day headline median, which is impossible for any one order.
+   */
+  splitDelivered: number
+  /** Those same orders' own start-to-door median, so the halves add up to something on the page. */
+  medianSplitDays: number | null
   /** Share of judged orders that arrived within their promise. Null if none. */
   onTimeRate: number | null
   /** Delivered orders that HAD a promise to be judged against. */
@@ -122,6 +131,8 @@ export function deliveryStats(
   // so the two can never drift from the total they are a split of.
   const collected = delivered.filter((v) => v.collectedAt !== null)
 
+  const split = delivered.filter((v) => v.warehouseDays !== null && v.transitDays !== null)
+
   const counts = new Map<number, number>()
   for (const v of delivered) counts.set(v.totalDays!, (counts.get(v.totalDays!) ?? 0) + 1)
 
@@ -138,12 +149,13 @@ export function deliveryStats(
   return {
     delivered: delivered.length,
     medianDays: median(delivered.map((v) => v.totalDays!)),
-    medianWarehouseDays: median(
-      delivered.filter((v) => v.warehouseDays !== null).map((v) => v.warehouseDays!),
-    ),
-    medianTransitDays: median(
-      delivered.filter((v) => v.transitDays !== null).map((v) => v.transitDays!),
-    ),
+    // ONE population for both halves: orders that recorded the handover AND
+    // the arrival. An order with only one leg would put half a journey into
+    // one bar and nothing into the other, skewing the pair against itself.
+    medianWarehouseDays: median(split.map((v) => v.warehouseDays!)),
+    medianTransitDays: median(split.map((v) => v.transitDays!)),
+    splitDelivered: split.length,
+    medianSplitDays: median(split.map((v) => v.totalDays!)),
     onTimeRate: rate(delivered),
     judged: delivered.filter((v) => v.promiseDays !== null).length,
     unjudged: delivered.filter((v) => v.promiseDays === null).length,

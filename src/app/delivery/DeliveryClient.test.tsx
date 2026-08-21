@@ -17,11 +17,22 @@ const order = (over: Partial<LateOrder> = {}): LateOrder => ({
 
 const stats = (over: Partial<DeliveryStats> = {}): DeliveryStats => ({
   delivered: 24, medianDays: 3, medianWarehouseDays: null, medianTransitDays: null,
+  splitDelivered: 0, medianSplitDays: null,
   onTimeRate: 0.96, judged: 24, unjudged: 0, lateNow: 115, noTracking: 638,
   booked: 3, inTransit: 21, collected: 20, readyForCollection: 4, notDue: 6,
   deliveredUndated: 0,
   distribution: [], byCountry: [],
   ...over,
+})
+
+describe('the warehouse-vs-transit split', () => {
+  it('says how many journeys the bars describe, and their own total', () => {
+    const { container } = render(
+      <Split stats={stats({ delivered: 89, splitDelivered: 8, medianSplitDays: 8, medianWarehouseDays: 2.5, medianTransitDays: 6 })} />,
+    )
+    expect(container.textContent).toContain('8 of the 89')
+    expect(container.textContent).toContain('8 days start to door')
+  })
 })
 
 describe('the pipeline labels', () => {

@@ -92,6 +92,35 @@ describe('deliveryStats', () => {
     expect(s.medianTransitDays).toBe(2)
   })
 
+  /**
+   * ONE population for the whole panel. Measured live 2026-08-21: 89 orders
+   * delivered at a 3-day median, but only 8 carried a handover event - and
+   * the panel read "warehouse 2.5 + transit 6" under that 3, which is
+   * impossible for any one order's journey. The two bars must describe the
+   * same orders, and the page must say how many that is and what THEIR
+   * start-to-door median was, so the reader can see why the halves do not
+   * sum to the headline.
+   */
+  it('measures both halves over the same orders, and says which ones', () => {
+    const s = deliveryStats(
+      [
+        // Recorded a handover: both halves known. Slow.
+        v({ totalDays: 8, warehouseDays: 2, transitDays: 6 }),
+        // Handover known but arrival leg not: excluded from BOTH bars, not
+        // just one - half a journey in one bar skews the pair.
+        v({ totalDays: 4, warehouseDays: 4, transitDays: null }),
+        // The fast majority: no handover recorded at all.
+        v({ totalDays: 2, warehouseDays: null, transitDays: null }),
+        v({ totalDays: 3, warehouseDays: null, transitDays: null }),
+      ],
+      ['NO', 'NO', 'NO', 'NO'],
+    )
+    expect(s.medianWarehouseDays).toBe(2)
+    expect(s.medianTransitDays).toBe(6)
+    expect(s.splitDelivered).toBe(1)
+    expect(s.medianSplitDays).toBe(8)
+  })
+
   it('rates on time against the promise each order actually had', () => {
     // `late` is stated on each fixture rather than left to default, because it
     // is what the rate now reads. deliveryFor is the only thing entitled to
