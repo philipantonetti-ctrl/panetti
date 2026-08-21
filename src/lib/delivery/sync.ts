@@ -182,7 +182,41 @@ export async function syncShipments(
      * schedule, so no migration or re-import is needed to rescue them.
      */
     where: { terminal: false, OR: [{ nextPollAt: null }, { nextPollAt: { lte: now } }] },
-    orderBy: { nextPollAt: { sort: 'asc', nulls: 'first' } },
+    /**
+     * Parcels we still know nothing about come first. Ones already known to
+     * have arrived come last.
+     *
+     * `outcome` before `nextPollAt`, and the order of these two lines is the
+     * whole fix. Oldest-scheduled-first is a fair rule between equals, and
+     * these are not equals:
+     *
+     * A parcel the warehouse file reports delivered is NOT terminal — only a
+     * poll makes a parcel terminal — so it stays in this rotation holding the
+     * import-time nextPollAt it was created with, which is the oldest value in
+     * the table. Meanwhile nextPollFor hands a parcel near or past its promise
+     * `nextPollAt: now`, the NEWEST value there is, to mean "check this one on
+     * every run". Sorted by nextPollAt alone, that intent inverts exactly: the
+     * parcels the poller most wants to check are reached last, queued behind
+     * every parcel it has never managed to reach at all. Past `take` of them
+     * the moving parcel is not merely last, it is never fetched.
+     *
+     * That is how orders 15749, 15745 and 15752 went eight days without a
+     * lookup while DHL had them delivered on 2026-08-13 the whole time, on a
+     * budget of two calls a run that was being spent on parcels whose answer
+     * nobody was waiting for.
+     *
+     * Sorting known-arrived last costs them only their exact timestamp, and
+     * only for a while. Nothing on screen waits on it: the delivery is already
+     * shown, and the parcel is already out of the late list. The median is the
+     * one figure that wants it, and a median is worth being late and right.
+     *
+     * Carrier-neutral, like the tiers in nextPollFor. Bring is not metered so
+     * it reaches everything either way; this only ever decides who goes first.
+     */
+    orderBy: [
+      { outcome: { sort: 'asc', nulls: 'first' } },
+      { nextPollAt: { sort: 'asc', nulls: 'first' } },
+    ],
     select: {
       id: true,
       trackingNumber: true,

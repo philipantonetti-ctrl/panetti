@@ -260,6 +260,59 @@ describe('syncShipments', () => {
     })
 
     /**
+     * Which two parcels the run spends its DHL budget on.
+     *
+     * Oldest-scheduled-first is a fair rule between equals, and these are not
+     * equals. A parcel the warehouse file already reports delivered is not
+     * terminal — only a poll makes a parcel terminal — so it stays in the
+     * rotation forever holding its ancient import-time nextPollAt, which is the
+     * OLDEST there is. Meanwhile nextPollFor gives a parcel near or past its
+     * promise `nextPollAt: now`, the NEWEST value there is, meaning "check this
+     * one every run". Sorted oldest-first, that intent inverts: the parcels the
+     * poller most wants to check are the ones it reaches last, behind every
+     * parcel it has never managed to reach at all.
+     *
+     * With more than `take` of them the moving parcel is not merely last, it is
+     * never fetched. That is how three German parcels went eight days without a
+     * lookup while DHL had them delivered the whole time.
+     *
+     * We already know the arrived ones arrived. All that is left to collect
+     * from them is the exact timestamp for the median, which no one is waiting
+     * on. They go last.
+     */
+    it('spends the budget on a parcel still moving before one already known to have arrived', async () => {
+      vi.stubEnv('DHL_API_KEY', 'dhl-key')
+      // Three the file has already called delivered, each scheduled long ago.
+      for (const n of [`${TRACK}A`, `${TRACK}B`, `${TRACK}C`]) {
+        await db.shipment.create({
+          data: {
+            trackingNumber: n,
+            carrier: 'DHL',
+            outcome: 'DELIVERED',
+            nextPollAt: new Date('2026-01-01'),
+          },
+        })
+      }
+      // One still moving, scheduled later precisely BECAUSE it was reached
+      // recently — which is what puts it at the back of an oldest-first queue.
+      await db.shipment.create({
+        data: {
+          trackingNumber: `${TRACK}M`,
+          carrier: 'DHL',
+          outcome: null,
+          nextPollAt: new Date('2026-08-04'),
+        },
+      })
+      const fetchMock = stubDhl(200, { shipments: [] })
+
+      await syncShipments({ now, sleep: noSleep })
+
+      const asked = fetchMock.mock.calls.map((c) => String(c[0]))
+      expect(asked.length).toBe(DHL_CALLS_PER_RUN)
+      expect(asked.some((u) => u.includes(`${TRACK}M`))).toBe(true)
+    })
+
+    /**
      * The state this ships in. Nobody has set DHL_API_KEY yet, and a DHL parcel
      * must then sit exactly as it is — not be marked failed, which would paint
      * the Delivery page red for a carrier nobody has connected.
