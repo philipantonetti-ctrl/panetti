@@ -152,7 +152,9 @@ const STATE_LABEL: Record<DeliveryState, string> = {
   NO_TRACKING: 'No tracking',
   // Not a complaint. The warehouse file that would carry this order's number
   // has not been produced yet, so there is nothing for it to be missing from.
-  NOT_DUE: 'Too new to say',
+  // "Too new to say" was accurate and meaningless - the client pasted it back
+  // asking what the words meant. This names the position instead.
+  NOT_DUE: 'Just ordered',
   BOOKED: 'Booked',
   IN_TRANSIT: 'In transit',
   // "Available" was one word for two situations, and the carrier that only
@@ -392,7 +394,7 @@ export function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastC
     // First position on the journey, and a quiet one: placed, and the file
     // that would carry its tracking number is not due yet. Kept in the bar so
     // the stages still add up to every order in the range.
-    { label: 'Too new to say', count: stats.notDue, color: 'var(--color-line)' },
+    { label: 'Just ordered', count: stats.notDue, color: 'var(--color-line)' },
     { label: 'Not shipped', count: stats.noTracking, color: 'var(--color-warn)' },
     // Was var(--ink-muted), which is not a token this theme publishes under any
     // name. `muted` is the intended weight: the warehouse holding a parcel is a
