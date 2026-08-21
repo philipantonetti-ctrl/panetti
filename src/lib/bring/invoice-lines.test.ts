@@ -61,6 +61,24 @@ describe('parseSpecifiedInvoice', () => {
     expect(parseSpecifiedInvoice('')).toBeNull()
     expect(parseSpecifiedInvoice('<html>gateway error</html>')).toBeNull()
   })
+
+  it('reports zero lines skipped when every line has what it needs', () => {
+    const parsed = parseSpecifiedInvoice(xml)!
+    expect(parsed.skipped).toBe(0)
+  })
+
+  // I4: a dropped line and a truncated download both make the kept lines
+  // fall short of the invoice header, and collectNextReport's reconciliation
+  // error can't tell them apart without this count.
+  it('counts a line dropped for missing a required field, apart from the lines it keeps', () => {
+    const broken = xml.replace(
+      '<WAYBILL_NUMBER>73325383643994654</WAYBILL_NUMBER>',
+      '<WAYBILL_NUMBER></WAYBILL_NUMBER>',
+    )
+    const parsed = parseSpecifiedInvoice(broken)!
+    expect(parsed.lines).toHaveLength(5)
+    expect(parsed.skipped).toBe(1)
+  })
 })
 
 describe('linesReconcile', () => {

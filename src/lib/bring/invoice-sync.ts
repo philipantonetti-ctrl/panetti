@@ -4,6 +4,40 @@ import type { BringCredentials, BringFilter } from './client'
 import { linesReconcile, parseSpecifiedInvoice } from './invoice-lines'
 import { downloadReport, generateSpecReport, listCustomerNumbers, listInvoices, reportStatus } from './invoices'
 
+const HOUR = 60 * 60 * 1000
+
+/**
+ * How long a FAILED row sits out before requestNextReport will retry it.
+ *
+ * FAILED is written for causes from a genuine 500 down to a starved tick
+ * aborting at its own deadline (see the deadline guards on requestNextReport
+ * and collectNextReport below) to an invoice that will never reconcile.
+ * Without a backoff, a permanently-broken invoice would be retried on every
+ * fifteen-minute tick forever — one of the tick's few request slots spent on
+ * a hopeless row — and, because selection is oldest-first, would starve every
+ * invoice behind it for as long as it kept winning that ordering. One hour
+ * matches delivery/sync.ts's own backoff for a single dead parcel: long
+ * enough that a broken row costs at most a handful of wasted ticks a day,
+ * short enough that a transient failure — a 500, a timeout, a dropped
+ * connection — clears within the hour rather than sitting for a working day.
+ */
+const RETRY_AFTER_MS = HOUR
+
+/**
+ * How long a REQUESTED row may sit with no resolution before collectNextReport
+ * gives up on it and asks Bring to build a fresh report.
+ *
+ * Measured, the real report was DONE on its very first status check, so six
+ * hours — twenty-four polls at the cron's fifteen-minute cadence — is a wide
+ * margin over the legitimate case, not a tight guess. Below it, a `NOT_DONE`
+ * report gets every reasonable chance to finish. Above it — or if Bring's
+ * status body ever changes shape and simply stops matching DONE or FAILED —
+ * this is what stops the row sitting at the head of the oldest-first queue
+ * forever, promoting nothing behind it: the exact freeze invoices.ts's own
+ * reportStatus comment names.
+ */
+const STALE_REQUESTED_MS = 6 * HOUR
+
 /**
  * Turn every invoice we have not seen into a job.
  *
@@ -82,8 +116,35 @@ export async function requestNextReport(
   creds: BringCredentials,
   opts: BringFilter = {},
 ): Promise<boolean> {
+  // Checked before the row is even read. requestBudgetMs floors an expired
+  // budget at 1ms rather than refusing outright, so past the deadline
+  // generateSpecReport would abort almost immediately and the catch below
+  // would write that abort onto the row as FAILED — burying the oldest
+  // PENDING invoice every fifteen minutes that a tick starves, under a
+  // message no reader could tell apart from a genuine failure. Same shape as
+  // discoverInvoices' guard above.
+  if (opts.deadline !== undefined && Date.now() >= opts.deadline) return false
+
+  const now = new Date()
   const next = await db.bringReportRun.findFirst({
-    where: { state: 'PENDING' },
+    where: {
+      OR: [
+        { state: 'PENDING' },
+        // FAILED is NOT terminal — only NO_SPEC is, and the spec justifies
+        // NO_SPEC precisely as the state that stops something being retried
+        // forever, which only means anything if FAILED is retried. Everything
+        // else writes FAILED: a 500, a dropped connection, a report that never
+        // built, an invoice that did not reconcile. Once the backoff has
+        // elapsed the row comes back round and gets a fresh report generated.
+        //
+        // `nextTryAt: null` counts as due rather than as never. A bare `lte`
+        // would make any FAILED row without one invisible to this query for
+        // good, which is the trap Shipment.nextPollAt already carries a
+        // comment about; a row can only lack one if something outside this
+        // file wrote it, and the safe reading of that is to try it.
+        { state: 'FAILED', OR: [{ nextTryAt: null }, { nextTryAt: { lte: now } }] },
+      ],
+    },
     orderBy: { invoiceDate: 'asc' },
   })
   if (!next) return false
@@ -92,15 +153,32 @@ export async function requestNextReport(
     const statusUrl = await generateSpecReport(creds, next.customerNumber, next.invoiceNumber, opts)
     await db.bringReportRun.update({
       where: { id: next.id },
-      data: { state: 'REQUESTED', statusUrl, requestedAt: new Date(), error: null },
+      // Both the old error and the old backoff are cleared: a stale message
+      // sitting beside a REQUESTED state reads as a live problem, and a stale
+      // nextTryAt would delay the next genuine failure by whatever was left
+      // of the previous hour.
+      data: { state: 'REQUESTED', statusUrl, requestedAt: now, error: null, nextTryAt: null },
     })
   } catch (e) {
     // Stored, never thrown. One dead invoice must not stop the rest — the same
     // rule delivery/sync.ts follows for one dead parcel.
-    await db.bringReportRun.update({
-      where: { id: next.id },
-      data: { state: 'FAILED', error: e instanceof Error ? e.message : String(e) },
-    })
+    //
+    // The recovery write is itself guarded, exactly as delivery/sync.ts guards
+    // its own. Without the .catch a database blip DURING the write would throw
+    // out of here, past the collect stage, and land in syncBringInvoices as a
+    // run-level error — one failure reported as two, and the collect skipped
+    // for a reason unrelated to it. Swallowed, the row simply stays PENDING and
+    // comes round again next tick, which is where it belonged anyway.
+    await db.bringReportRun
+      .update({
+        where: { id: next.id },
+        data: {
+          state: 'FAILED',
+          error: e instanceof Error ? e.message : String(e),
+          nextTryAt: new Date(now.getTime() + RETRY_AFTER_MS),
+        },
+      })
+      .catch(() => {})
   }
   return true
 }
@@ -118,6 +196,11 @@ export async function collectNextReport(
   creds: BringCredentials,
   opts: BringFilter = {},
 ): Promise<{ stored: number; unmatched: number } | null> {
+  // The same guard, for the same reason: reportStatus, downloadReport and
+  // listInvoices are all Bring requests, and past the deadline each would be
+  // clamped to a 1ms budget and abort into fail() below.
+  if (opts.deadline !== undefined && Date.now() >= opts.deadline) return null
+
   const job = await db.bringReportRun.findFirst({
     where: { state: 'REQUESTED', statusUrl: { not: null } },
     orderBy: { invoiceDate: 'asc' },
@@ -125,11 +208,37 @@ export async function collectNextReport(
   if (!job) return null
 
   const fail = async (message: string) => {
-    await db.bringReportRun.update({
-      where: { id: job.id },
-      data: { state: 'FAILED', error: message },
-    })
+    // Guarded like requestNextReport's, and for the same reason: this runs
+    // from inside the catch below, so a throw here escapes the function
+    // entirely and is reported as a run-level failure. Left unwritten, the row
+    // stays REQUESTED and is either collected next tick or aged out by
+    // STALE_REQUESTED_MS — both better than losing the tick.
+    await db.bringReportRun
+      .update({
+        where: { id: job.id },
+        // Carries a backoff, because requestNextReport picks FAILED rows back
+        // up. Without one, a row that fails here would be re-requested on the
+        // very next tick and, being oldest-first, would win that ordering
+        // every time and starve every invoice behind it.
+        data: { state: 'FAILED', error: message, nextTryAt: new Date(Date.now() + RETRY_AFTER_MS) },
+      })
+      .catch(() => {})
     return null
+  }
+
+  // A REQUESTED row this old is not waiting, it is wedged: parked on NOT_DONE
+  // for good, or answering a status shape this code stopped recognising. Aged
+  // out WITHOUT asking Bring first, because a status endpoint that never
+  // resolves is the very thing this guards against, so the fix cannot depend
+  // on calling it. It becomes a FAILED row like any other, which
+  // requestNextReport then asks for again from scratch once the backoff
+  // elapses.
+  //
+  // Only when requestedAt is set. Nothing but requestNextReport writes
+  // REQUESTED and it always stamps one, so a row without it came from
+  // somewhere else and there is no honest age to measure.
+  if (job.requestedAt && Date.now() - job.requestedAt.getTime() > STALE_REQUESTED_MS) {
+    return fail('Bring never finished building this report, so it will be asked for again')
   }
 
   try {
@@ -146,8 +255,18 @@ export async function collectNextReport(
     if (!header) return fail('The invoice is no longer in the archive')
     if (!linesReconcile(parsed, header)) {
       // Storing a half-read invoice is indistinguishable from a cheap month.
+      //
+      // The skip count separates the two causes that produce an identical
+      // shortfall: a truncated download drops trailing lines and leaves it at
+      // 0, while a line the parser could not read — an invoice-level charge
+      // carrying no waybill, say — leaves it non-zero. Those need different
+      // answers from whoever reads this message.
+      const skipped =
+        parsed.skipped > 0
+          ? `; ${parsed.skipped} line${parsed.skipped === 1 ? '' : 's'} could not be read`
+          : ''
       return fail(
-        `The report's lines do not reconcile with the invoice total (${header.amountMinor} minor units)`,
+        `The report's lines do not reconcile with the invoice total (${header.amountMinor} minor units)${skipped}`,
       )
     }
 

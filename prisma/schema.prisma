@@ -970,6 +970,7 @@ model BringReportRun {
   rowsStored     Int      @default(0)
   rowsUnmatched  Int      @default(0)
   error          String?
+  nextTryAt      DateTime? // FAILED only: earliest a starved or broken row may be retried
 
   @@unique([invoiceNumber])
   @@index([state])

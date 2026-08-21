@@ -31,6 +31,23 @@ vi.mock('@/lib/visma/import', () => ({
   importVismaB2bSales: (...args: [{ deadline?: number }?]) => importVismaB2bSales(...args),
 }))
 
+// Nor Bring's invoice archive. Left unmocked, this reaches Bring's real API
+// and writes real rows into the shared local database the moment any
+// developer's local DeliveryConfig singleton happens to hold Bring
+// credentials — it only looks harmless today because that row is usually
+// empty. Same shape as the Visma mock above, and for the same reason.
+const syncBringInvoices = vi.fn(async (opts?: { deadline?: number }) => ({
+  configured: false, found: 0, queued: 0, noSpec: 0,
+  // Honours the deadline the way the real one does, so a route that forgot to
+  // pass a usable one cannot look identical to a route that passed a good
+  // one — same technique as importVismaB2bSales's mock above.
+  partial: opts?.deadline !== undefined && Date.now() > opts.deadline,
+  requested: false, stored: 0, unmatched: 0, error: null,
+}))
+vi.mock('@/lib/bring/invoice-sync', () => ({
+  syncBringInvoices: (...args: [{ deadline?: number }?]) => syncBringInvoices(...args),
+}))
+
 const { GET } = await import('./route')
 
 const call = (auth?: string) =>
@@ -45,6 +62,7 @@ const REAL = process.env.CRON_SECRET
 beforeEach(() => {
   importVismaB2bSales.mockClear()
   importVismaPurchaseOrders.mockClear()
+  syncBringInvoices.mockClear()
   syncAllShops.mockReset()
   syncAllShops.mockResolvedValue([
     { shopId: 's1', shopName: 'Panetti Norway', ok: true, ordersSynced: 3 },
@@ -164,6 +182,24 @@ describe('the scheduled sync endpoint', () => {
     expect(opts.deadline).toBeGreaterThan(before)
     // Comfortably under maxDuration, and before the parcel poll's own budget so
     // the greedy stage after it is not starved.
+    expect(opts.deadline).toBeLessThan(before + 275_000)
+  })
+
+  /**
+   * I3: this is the only thing keeping the Bring invoice stage inside the
+   * platform ceiling ahead of the parcel poll and the delivery alert — see
+   * BRING_INVOICES_DEADLINE_MS's own comment in route.ts. Pinned to the exact
+   * window between it (270_000) and SHIPMENTS_DEADLINE_MS (275_000) that
+   * follows it, so a refactor that drops the deadline, or widens it into the
+   * next stage's margin, fails this test rather than staying silent.
+   */
+  it('bounds the Bring invoice sync inside the function ceiling', async () => {
+    process.env.CRON_SECRET = 'shhh'
+    const before = Date.now()
+    await call('Bearer shhh')
+
+    const [opts] = syncBringInvoices.mock.calls[0] as [{ deadline: number }]
+    expect(opts.deadline).toBeGreaterThanOrEqual(before + 270_000)
     expect(opts.deadline).toBeLessThan(before + 275_000)
   })
 

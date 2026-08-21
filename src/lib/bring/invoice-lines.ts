@@ -15,6 +15,16 @@ export type SpecifiedInvoice = {
   invoiceNumber: string
   customerNumber: string
   lines: SpecifiedLine[]
+  /**
+   * `<Line>` blocks present in the report but missing WAYBILL_NUMBER,
+   * TRX_DATE or INVOICE_CURRENCY_CODE, so not added to `lines`. Surfaced so a
+   * reconciliation failure can say which cause it was: a truncated download
+   * drops trailing lines outright and leaves this at 0, while one unparseable
+   * line — an invoice-level charge carrying no waybill, say — drops a single
+   * line from the middle and leaves this non-zero. The two must not read
+   * identically in an error a person has to act on.
+   */
+  skipped: number
 }
 
 const tag = (body: string, name: string): string => {
@@ -48,12 +58,16 @@ export function parseSpecifiedInvoice(xml: string): SpecifiedInvoice | null {
   if (!invoiceNumber) return null
 
   const lines: SpecifiedLine[] = []
+  let skipped = 0
   for (const m of xml.matchAll(/<Line>([\s\S]*?)<\/Line>/g)) {
     const body = m[1]
     const waybillNumber = tag(body, 'WAYBILL_NUMBER')
     const chargedAt = ddmmyyyy(tag(body, 'TRX_DATE'))
     const currency = tag(body, 'INVOICE_CURRENCY_CODE')
-    if (!waybillNumber || !chargedAt || !currency) continue
+    if (!waybillNumber || !chargedAt || !currency) {
+      skipped += 1
+      continue
+    }
 
     lines.push({
       waybillNumber,
@@ -67,7 +81,7 @@ export function parseSpecifiedInvoice(xml: string): SpecifiedInvoice | null {
     })
   }
 
-  return { invoiceNumber, customerNumber, lines }
+  return { invoiceNumber, customerNumber, lines, skipped }
 }
 
 /**

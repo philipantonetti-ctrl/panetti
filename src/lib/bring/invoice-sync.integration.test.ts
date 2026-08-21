@@ -208,6 +208,76 @@ describe('requestNextReport', () => {
     const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-BAD` } })
     expect(row?.state).toBe('FAILED')
     expect(row?.error).toContain('500')
+    // A FAILED row still has to be retried eventually — see the "retries a
+    // FAILED row" test below — so it must carry a nextTryAt, not just an error.
+    expect(row?.nextTryAt).not.toBeNull()
+  })
+
+  // I1(a): requestBudgetMs floors an expired budget at 1ms rather than
+  // refusing to run at all, so past the deadline generateSpecReport would
+  // abort almost immediately — a throw this function's own catch cannot tell
+  // apart from a genuine failure, which would then bury the oldest PENDING
+  // row as FAILED every time a tick starves. Checked first, before the row is
+  // even read, the same shape discoverInvoices already uses.
+  it('does nothing once the deadline has passed, and does not touch the row', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-DL`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'PENDING',
+      },
+    })
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+
+    expect(await requestNextReport(creds, { deadline: Date.now() - 1 })).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-DL` } })
+    expect(row?.state).toBe('PENDING')
+  })
+
+  // I1(b): FAILED must not be a second terminal state alongside NO_SPEC.
+  // Once its backoff has elapsed, a FAILED row is picked up again exactly
+  // like a PENDING one — generating it a fresh report — and a successful
+  // request clears the old error rather than leaving it to look current.
+  it('retries a FAILED row once its backoff has elapsed, clearing its error', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-RETRY`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'FAILED',
+        error: 'Bring responded 500: nope',
+        nextTryAt: new Date(Date.now() - 1000),
+      },
+    })
+    vi.stubGlobal('fetch', vi.fn<(u: string | URL | Request, i?: RequestInit) => Promise<Response>>(
+      async () => new Response(JSON.stringify({ statusUrl: 'https://www.mybring.com/s/9/status/' }), { status: 202 }),
+    ))
+
+    expect(await requestNextReport(creds)).toBe(true)
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-RETRY` } })
+    expect(row?.state).toBe('REQUESTED')
+    expect(row?.error).toBeNull()
+  })
+
+  // I1(b), the other half: without a backoff a permanently-broken invoice
+  // would be retried every single tick forever, spending one of the tick's
+  // few request slots on a hopeless row and — under oldest-first ordering,
+  // since this row is backdated to look oldest — starving every invoice
+  // behind it. nextTryAt in the future must keep it out of the selection
+  // entirely, not merely deprioritise it.
+  it('leaves a FAILED row alone until its backoff elapses, so a broken invoice does not spin every tick', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-BACKOFF`,
+        invoiceDate: new Date('2020-01-01T00:00:00Z'), state: 'FAILED',
+        error: 'boom',
+        nextTryAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    })
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+
+    expect(await requestNextReport(creds)).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
   })
 })
 
@@ -310,6 +380,98 @@ describe('collectNextReport', () => {
     expect(row?.rowsStored).toBe(6)
     expect(row?.rowsUnmatched).toBe(2)
   })
+
+  // I1(a): the same guard as requestNextReport, for the same reason —
+  // reportStatus/downloadReport/listInvoices are Bring requests too, and past
+  // the deadline requestBudgetMs would clamp each to a 1ms timeout that
+  // aborts almost immediately, a throw the catch below cannot tell apart from
+  // a genuine failure. Checked before the row is even read.
+  it('does nothing once the deadline has passed, and does not touch the row', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-DL2`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+      },
+    })
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+
+    expect(await collectNextReport(creds, { deadline: Date.now() - 1 })).toBeNull()
+    expect(fn).not.toHaveBeenCalled()
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-DL2` } })
+    expect(row?.state).toBe('REQUESTED')
+  })
+
+  // I2: a REQUESTED row this old is not "not ready yet", it is stuck — either
+  // parked NOT_DONE forever or answering a status shape this code no longer
+  // recognises. Measured, the real report was DONE on the very first poll, so
+  // STALE_REQUESTED_MS's many hours is a wide margin, not a tight guess. Aged
+  // out to FAILED (I1(b)'s retry scheme) rather than left in place, because
+  // requestedAt/statusUrl select oldest-first: a wedged row would otherwise
+  // sit at the head of this queue and promote nothing behind it, forever.
+  it('ages out a REQUESTED row that has sat far longer than a report ever legitimately takes', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-STALE`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+        requestedAt: new Date(Date.now() - 7 * 60 * 60 * 1000), // 7h ago
+      },
+    })
+    const fn = vi.fn()
+    vi.stubGlobal('fetch', fn)
+
+    // Aged out without even asking Bring: a wedged status endpoint is exactly
+    // what this guards against, so the fix cannot depend on calling it first.
+    expect(await collectNextReport(creds)).toBeNull()
+    expect(fn).not.toHaveBeenCalled()
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-STALE` } })
+    expect(row?.state).toBe('FAILED')
+    expect(row?.nextTryAt).not.toBeNull()
+  })
+
+  // I4: a dropped line and a truncated download both make the lines fall
+  // short of the header, and until now both produced the identical
+  // reconciliation message — pointing at a truncated download even when the
+  // real cause was one line missing WAYBILL_NUMBER, TRX_DATE or
+  // INVOICE_CURRENCY_CODE. The skip count is what tells them apart.
+  it('says how many lines were skipped when a report fails to reconcile because one line could not be read', async () => {
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-SKIP`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+      },
+    })
+    const xmlUrl = 'https://www.mybring.com/s/1/report.xml'
+    // Blanks exactly one of DUPLICATE_WAYBILL's two <Line> blocks (a plain,
+    // non-global replace hits only the first) so parseSpecifiedInvoice drops
+    // it for missing WAYBILL_NUMBER — one real line gone, not a truncated file.
+    const broken = specifiedInvoiceXml
+      .replace(/<InvoiceNumber>[^<]*<\/InvoiceNumber>/, `<InvoiceNumber>${CUST}-SKIP</InvoiceNumber>`)
+      .replace('<WAYBILL_NUMBER>73325383643994654</WAYBILL_NUMBER>', '<WAYBILL_NUMBER></WAYBILL_NUMBER>')
+
+    vi.stubGlobal('fetch', vi.fn<(u: string | URL | Request, i?: RequestInit) => Promise<Response>>(
+      async (u) => {
+        const url = String(u)
+        if (url.includes('/invoicearchive/api/invoices/')) {
+          return new Response(JSON.stringify({
+            invoices: [{ ...invoice(`${CUST}-SKIP`, true), amount: FIXTURE_TOTAL, totalAmount: FIXTURE_TOTAL }],
+          }), { status: 200 })
+        }
+        if (url === xmlUrl) return new Response(broken, { status: 200 })
+        return new Response(JSON.stringify({ status: 'DONE', xmlUrl }), { status: 200 })
+      },
+    ))
+
+    await collectNextReport(creds)
+    expect(await db.shipmentCost.count({ where: { invoiceNumber: `${CUST}-SKIP` } })).toBe(0)
+    const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-SKIP` } })
+    expect(row?.state).toBe('FAILED')
+    expect(row?.error).toMatch(/reconcile/i)
+    expect(row?.error).toMatch(/1 line/i)
+  })
 })
 
 describe('syncBringInvoices', () => {
@@ -385,7 +547,72 @@ describe('syncBringInvoices', () => {
       })),
     })
     stubTick()
-    await syncBringInvoices()
+    const result = await syncBringInvoices()
+    // The full shape, not just `configured` — this is the object the cron
+    // route's JSON response is built from, and it is otherwise unchecked.
+    expect(result).toEqual({
+      configured: true,
+      found: 0, queued: 0, noSpec: 0, partial: false,
+      requested: true,
+      stored: 0, unmatched: 0,
+      error: null,
+    })
     expect(await db.bringReportRun.count({ where: { ...mine, state: 'REQUESTED' } })).toBe(1)
+  })
+
+  // The field mapping at the end of syncBringInvoices assigns `stored` and
+  // `unmatched` from collectNextReport's result by name. The tick test above
+  // can't catch a swap between them because both are 0 there; this scenario
+  // gives them different, non-zero values so a swap would fail the assertion.
+  it('maps stored and unmatched to the right fields in the result, not swapped', async () => {
+    await db.deliveryConfig.upsert({
+      where: { id: 'singleton' },
+      create: {
+        id: 'singleton',
+        bringApiUid: creds.uid,
+        bringApiKey: encryptSecret(creds.key),
+        bringClientUrl: creds.clientUrl,
+      },
+      update: {
+        bringApiUid: creds.uid,
+        bringApiKey: encryptSecret(creds.key),
+        bringClientUrl: creds.clientUrl,
+      },
+    })
+    await db.shipment.create({ data: { trackingNumber: KNOWN_WAYBILL } })
+    await db.bringReportRun.create({
+      data: {
+        customerNumber: `${CUST}1`, invoiceNumber: `${CUST}-MAP`,
+        invoiceDate: new Date('2026-07-31T00:00:00Z'), state: 'REQUESTED',
+        statusUrl: 'https://www.mybring.com/s/1/status/',
+      },
+    })
+    const xmlUrl = 'https://www.mybring.com/s/1/report.xml'
+    const xml = specifiedInvoiceXml.replace(
+      /<InvoiceNumber>[^<]*<\/InvoiceNumber>/,
+      `<InvoiceNumber>${CUST}-MAP</InvoiceNumber>`,
+    )
+    vi.stubGlobal('fetch', vi.fn<(u: string | URL | Request, i?: RequestInit) => Promise<Response>>(
+      async (u) => {
+        const url = String(u)
+        if (url.endsWith('/reports/api/generate')) {
+          return new Response(JSON.stringify({ customer: [] }), { status: 200 })
+        }
+        if (url.includes('/invoicearchive/api/invoices/')) {
+          return new Response(JSON.stringify({
+            invoices: [{ ...invoice(`${CUST}-MAP`, true), amount: FIXTURE_TOTAL, totalAmount: FIXTURE_TOTAL }],
+          }), { status: 200 })
+        }
+        if (url === xmlUrl) return new Response(xml, { status: 200 })
+        return new Response(JSON.stringify({ status: 'DONE', xmlUrl }), { status: 200 })
+      },
+    ))
+
+    const result = await syncBringInvoices()
+    // 4 of the fixture's 6 lines match KNOWN_WAYBILL; the other 2, on
+    // DUPLICATE_WAYBILL, match no Shipment here — see the matched-lines test
+    // above `collectNextReport` for why that split is 4/2 and not 1/1 or 2/4.
+    expect(result.stored).toBe(6)
+    expect(result.unmatched).toBe(2)
   })
 })
