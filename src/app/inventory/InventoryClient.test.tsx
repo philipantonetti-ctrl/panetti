@@ -11,6 +11,7 @@ const row = (over: Partial<Row> = {}): Row => ({
   burn: 4, trend: null, seasonal: true,
   forecast: {
     runsOutOn: '2026-11-17T00:00:00.000Z', orderBy: '2026-08-25T00:00:00.000Z',
+    gap: null, overdueArrivals: null,
     daysLate: null, quantity: 620, needed: 620, raisedBy: null,
     onOrderWithoutEta: 0, note: null,
   },
@@ -25,6 +26,37 @@ const shows = (ui: ReactElement, pattern: RegExp) =>
   expect(render(ui).container.textContent).toMatch(pattern)
 
 describe('InventoryClient', () => {
+  /**
+   * The MACBE661 case: shelf empty today, arrivals booked that cover the year.
+   * "no risk within a year" is true of the year and false of the fortnight the
+   * reader is standing in, so the gap is said beside it - and the goods past
+   * their date are named instead of being silently counted or dropped.
+   */
+  it('names the out-of-stock gap an arrival will heal', () => {
+    shows(
+      <InventoryClient rows={[row({
+        forecast: { runsOutOn: null, orderBy: null, daysLate: null, quantity: null,
+                    needed: null, raisedBy: null, onOrderWithoutEta: 0,
+                    note: 'no risk within a year',
+                    gap: { from: '2026-08-21T00:00:00.000Z', until: '2026-09-01T00:00:00.000Z' },
+                    overdueArrivals: null },
+      })]} unusable={[]} />,
+      /out of stock until/,
+    )
+  })
+
+  it('names goods on order that are past their date with nothing received', () => {
+    shows(
+      <InventoryClient rows={[row({
+        forecast: { runsOutOn: null, orderBy: null, daysLate: null, quantity: null,
+                    needed: null, raisedBy: null, onOrderWithoutEta: 0,
+                    note: 'no risk within a year', gap: null,
+                    overdueArrivals: { quantity: 15, since: '2026-08-19T00:00:00.000Z' } },
+      })]} unusable={[]} />,
+      /15 on order, overdue since/,
+    )
+  })
+
   it('answers the question the page exists for', () => {
     const { container } = render(<InventoryClient rows={[row()]} unusable={[]} />)
     expect(container.textContent).toMatch(/Pizzetta Pro/)
@@ -36,7 +68,7 @@ describe('InventoryClient', () => {
     // must never mean.
     shows(
       <InventoryClient rows={[row({
-        forecast: { runsOutOn: null, orderBy: null, daysLate: null, quantity: null,
+        forecast: { gap: null, overdueArrivals: null, runsOutOn: null, orderBy: null, daysLate: null, quantity: null,
                     needed: null, raisedBy: null, onOrderWithoutEta: 0, note: 'set lead times' },
       })]} unusable={[]} />,
       /set lead times/,
@@ -55,7 +87,7 @@ describe('InventoryClient', () => {
   it('shows an order that is already late as late, not as a past date', () => {
     shows(
       <InventoryClient rows={[row({
-        forecast: { runsOutOn: '2026-08-20T00:00:00.000Z', orderBy: '2026-06-01T00:00:00.000Z',
+        forecast: { gap: null, overdueArrivals: null, runsOutOn: '2026-08-20T00:00:00.000Z', orderBy: '2026-06-01T00:00:00.000Z',
                     daysLate: 61, quantity: 620, needed: 620, raisedBy: null,
                     onOrderWithoutEta: 0, note: null },
       })]} unusable={[]} />,
@@ -73,6 +105,7 @@ describe('InventoryClient', () => {
     shows(
       <InventoryClient rows={[row({
         forecast: {
+          gap: null, overdueArrivals: null,
           runsOutOn: '2026-11-17T00:00:00.000Z', orderBy: null, daysLate: null,
           quantity: null, needed: null, raisedBy: null,
           onOrderWithoutEta: 0, note: 'set lead times',
@@ -127,6 +160,7 @@ const NOW = '2026-08-14T00:00:00.000Z'
 const noLeadTimes = (over: Partial<Row> = {}) =>
   row({
     forecast: {
+      gap: null, overdueArrivals: null,
       runsOutOn: '2026-11-17T00:00:00.000Z', orderBy: null, daysLate: null,
       quantity: null, needed: null, raisedBy: null,
       onOrderWithoutEta: 0, note: 'set lead times',
@@ -180,7 +214,7 @@ describe('InventoryClient urgency', () => {
       <InventoryClient
         rows={[row({
           stock: { quantity: 0, disagrees: false, byShop: [] },
-          forecast: { runsOutOn: NOW, orderBy: null, daysLate: null, quantity: null,
+          forecast: { gap: null, overdueArrivals: null, runsOutOn: NOW, orderBy: null, daysLate: null, quantity: null,
                       needed: null, raisedBy: null,
                       onOrderWithoutEta: 0, note: 'set lead times' },
         })]}

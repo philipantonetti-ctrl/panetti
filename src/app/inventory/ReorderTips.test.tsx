@@ -17,6 +17,8 @@ const row = (sku: string, over: Partial<Row['forecast']> = {}): Row => ({
   trend: null,
   seasonal: true,
   forecast: {
+    gap: null,
+    overdueArrivals: null,
     runsOutOn: inDays(120),
     orderBy: inDays(5),
     daysLate: null,

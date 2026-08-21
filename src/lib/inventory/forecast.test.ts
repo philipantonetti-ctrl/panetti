@@ -38,10 +38,76 @@ describe('forecast', () => {
     expect(day(with_.runsOutOn!)).toBe(day(inDays(59)))
   })
 
-  it('a container landing after the run-out does not', () => {
-    const without = forecast(input(), TODAY)
-    const with_ = forecast(input({ arrivals: [{ eta: inDays(300), quantity: 500 }] }), TODAY)
-    expect(day(with_.runsOutOn!)).toBe(day(without.runsOutOn!))
+  /**
+   * The premise this replaces - "a container landing after the run-out does
+   * not move the date" - is the exact bug the client reported: MACBE661 stood
+   * at zero stock with 41 chairs on order, and the page said "order 10 now,
+   * 105 days late" because the walk stopped at the first empty day and never
+   * saw the arrivals. An arrival after a stockout RESCUES it; the run-out that
+   * should drive an order is the day stock finally stays gone.
+   */
+  it('an arrival after the first stockout rescues it, and the run-out becomes the day stock stays gone', () => {
+    // 100 at 10 a day empties on day 9. The 500 landing on day 30 first
+    // absorb the 210 units of demand missed during the gap - a stockout's
+    // missed sales press the next container into service, erring on ordering
+    // earlier rather than later - leaving 290 to drain: gone again day 59.
+    const f = forecast(input({ arrivals: [{ eta: inDays(30), quantity: 500 }] }), TODAY)
+    expect(day(f.runsOutOn!)).toBe(day(inDays(59)))
+  })
+
+  it('names the out-of-stock gap the arrival will heal', () => {
+    const f = forecast(input({ arrivals: [{ eta: inDays(30), quantity: 500 }] }), TODAY)
+    expect(day(f.gap!.from)).toBe(day(inDays(9)))
+    expect(day(f.gap!.until)).toBe(day(inDays(30)))
+  })
+
+  it('reports no gap when stock never runs dry before the terminal run-out', () => {
+    const f = forecast(input({ arrivals: [{ eta: inDays(5), quantity: 500 }] }), TODAY)
+    expect(f.gap).toBeNull()
+  })
+
+  /**
+   * MACBE661's real shape: empty shelf today, arrivals booked that cover
+   * demand past the horizon. The old walk said "runs out today, order now,
+   * 105 days late"; the truth is that no new order is needed within a year,
+   * and the only real problem is the gap until the next container lands.
+   */
+  it('says covered when arrivals carry demand past the horizon, and still names the gap', () => {
+    const f = forecast(input({ stock: 0, level: 0.1, arrivals: [{ eta: inDays(11), quantity: 40 }] }), TODAY)
+    expect(f.runsOutOn).toBeNull()
+    expect(f.orderBy).toBeNull()
+    expect(f.daysLate).toBeNull()
+    expect(f.note).toBe('no risk within a year')
+    expect(day(f.gap!.from)).toBe(day(inDays(0)))
+    expect(day(f.gap!.until)).toBe(day(inDays(11)))
+  })
+
+  /**
+   * The suggestion must not re-order what is already on the water. 100 at 10
+   * a day runs out day 9; 50 more land on day 30 - too few to reopen the
+   * shelf, but real units inside the window the order has to cover.
+   */
+  it('nets incoming arrivals off the suggested quantity', () => {
+    const f = forecast(input({ arrivals: [{ eta: inDays(30), quantity: 50 }] }), TODAY)
+    expect(day(f.runsOutOn!)).toBe(day(inDays(9)))
+    // 160 days of cover at 10 a day is 1600, minus the 50 already coming.
+    expect(f.needed).toBe(1550)
+  })
+
+  /**
+   * An arrival whose date has passed but which nobody has received is in
+   * limbo: counting it as stock on a guessed day would fake coverage (one
+   * open order here is two years past its date), and dropping it silently
+   * loses real chairs. It is reported, and a person decides.
+   */
+  it('reports an overdue unreceived arrival instead of counting it', () => {
+    const f = forecast(input({ arrivals: [{ eta: inDays(-2), quantity: 15 }] }), TODAY)
+    expect(day(f.runsOutOn!)).toBe(day(inDays(9))) // unmoved
+    expect(f.overdueArrivals).toEqual({ quantity: 15, since: inDays(-2) })
+  })
+
+  it('reports no overdue arrivals when there are none', () => {
+    expect(forecast(input(), TODAY).overdueArrivals).toBeNull()
   })
 
   it('an order with no ETA never moves the date, and is reported instead', () => {
