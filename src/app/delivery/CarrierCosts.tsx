@@ -166,7 +166,15 @@ function why(a: CarrierAverage): string {
 
   if (a.averageMinor === null) {
     if (a.parcelsInRange === 0) return 'No parcels in this period.'
-    return `${a.parcelsInRange.toLocaleString('en-GB')} parcels. Enter an invoice below to see the cost.`
+    const parcels = a.parcelsInRange.toLocaleString('en-GB')
+    // Bring's bill is read from Bring, so telling him to type one is an
+    // instruction he should not follow. It arrives once the month has ended -
+    // a month still running has only some of its invoices issued. DHL has no
+    // invoice service of any kind, so it keeps the original wording.
+    if (a.carrier === 'BRING') {
+      return `${parcels} parcels. Bring's invoice fills in by itself once the month has ended.`
+    }
+    return `${parcels} parcels. Enter an invoice below to see the cost.`
   }
 
   const counted = `${a.shipments.toLocaleString('en-GB')} parcels in ${a.monthsCounted

@@ -152,6 +152,36 @@ describe('CarrierCosts', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
+  /**
+   * Bring's bill is read from Bring now, so telling him to type one is an
+   * instruction he should not follow. He asked for this to be automatic; the
+   * page has to stop asking.
+   */
+  it('tells Bring it fills in by itself, rather than asking for a figure', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    expect(screen.getByText(/fills in by itself once the month has ended/i)).toBeInTheDocument()
+    expect(screen.queryByText(/enter an invoice below/i)).not.toBeInTheDocument()
+  })
+
+  /** DHL has no invoice service at all, so it still has to be typed. */
+  it('still asks for DHL, which has no invoice service', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          carriers: [average({ carrier: 'DHL', averageMinor: null, cost: null, monthsCounted: [] })],
+          months: [month({ carrier: 'DHL' })],
+        })}
+      />,
+    )
+    expect(screen.getByText(/enter an invoice below/i)).toBeInTheDocument()
+  })
+
   it('says nothing at all when no parcel moved in the range', () => {
     const { container } = render(<CarrierCosts {...props({ carriers: [], months: [] })} />)
     expect(container.textContent).toBe('')
