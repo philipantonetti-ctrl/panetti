@@ -51,7 +51,26 @@ describe('listInvoices', () => {
     stub(403, 'x'.repeat(5000))
     await expect(listInvoices(creds, '20020467369')).rejects.toThrow(/403/)
   })
+
+  /**
+   * This message is shown to the client on the Delivery page, so the markup
+   * has to come out of it here rather than be tidied where it is read.
+   *
+   * Verbatim from Bring on 2026-08-21. Truncating instead kept the XML
+   * declaration and dropped the two words that mattered, which is exactly the
+   * failure src/lib/error-body.ts was written for after a client read
+   * "WooCommerce responded 500: <!DOCTYPE html>" off his own dashboard.
+   */
+  it('says what Bring said, not the XML it wrapped it in', async () => {
+    stub(406, `${XML_ERROR}`)
+    await expect(listInvoices(creds, '20020467369')).rejects.toThrow(
+      'Bring responded 406: Not Acceptable',
+    )
+  })
 })
+
+/** Bring's real 406 body, copied from a live response on 2026-08-21. */
+const XML_ERROR = "<?xml version='1.0' encoding='UTF-8'?><String>Not Acceptable</String>"
 
 describe('generateSpecReport', () => {
   it('passes the invoice number, which is the report\'s only parameter', async () => {

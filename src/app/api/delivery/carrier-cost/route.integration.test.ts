@@ -221,6 +221,24 @@ describe('the Bring invoice reader status', () => {
     expect(body.bringInvoices.lastError).toBe('Bring responded 406: Not Acceptable')
   })
 
+  /**
+   * The 27 rows already in production were stored before the Bring client
+   * learned to strip markup, and the client read this off his own page:
+   * "Bring responded 406: <?xml version='1.0' encoding='UTF-8'?><String>Not
+   * Acceptable</String>". Tidying only at the point of writing would have left
+   * him looking at that until every invoice had been retried.
+   */
+  it('tidies an error that was stored before the markup was stripped', async () => {
+    await run('F4', 'FAILED', {
+      error: `Bring responded 406: <?xml version='1.0' encoding='UTF-8'?><String>Not Acceptable</String>`,
+      nextTryAt: new Date('2099-06-01T00:00:00Z'),
+    })
+    const body = await load()
+
+    expect(body.bringInvoices.lastError).toBe('Bring responded 406: Not Acceptable')
+    expect(body.bringInvoices.lastError).not.toContain('<')
+  })
+
   it('reports no reason when nothing has failed', async () => {
     await run('S2', 'STORED')
     // Not asserting null outright: a sibling checkout's failed row would be a

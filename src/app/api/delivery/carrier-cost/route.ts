@@ -7,6 +7,7 @@ import { getSetting } from '@/lib/settings'
 import { zoneDayEndUtc, zoneDayStartUtc, zonedDayStr } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
 import { carrierAverages, type CarrierShipments } from '@/lib/delivery/carrier-cost'
+import { readableErrorBody } from '@/lib/error-body'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -117,7 +118,12 @@ export async function GET(req: Request) {
           // fault that someone should chase.
           noDetail: count('NO_SPEC'),
           failed: count('FAILED'),
-          lastError: lastFailure?.error ?? null,
+          // Tidied on the way out as well as on the way in. The client is
+          // looking at rows stored BEFORE the Bring client learned to strip
+          // markup, and those heal only as each invoice is retried over the
+          // following hours. Running it twice costs nothing: on text with no
+          // tags it only settles the whitespace.
+          lastError: lastFailure?.error ? readableErrorBody(lastFailure.error) : null,
         },
         carriers: carrierAverages(
           perMonth,
