@@ -99,8 +99,8 @@ export function CarrierCosts({
           it. Longer explanations were tried and read as an essay above a
           four-column table. */}
       <p className="mt-1 text-[12px] text-muted">
-        Bring&rsquo;s monthly bill fills in by itself, read from Bring&rsquo;s own invoices.
-        DHL&rsquo;s is typed in, because DHL offers no way to read theirs.
+        Both carriers&rsquo; bills fill in by themselves: Bring&rsquo;s read from Bring&rsquo;s
+        own invoices, DHL&rsquo;s from the company&rsquo;s accounting.
       </p>
       <p className="mt-0.5 text-[12px] text-muted">
         Each bill is divided by the parcels that carrier moved. Covers all shops, even if you
@@ -218,7 +218,7 @@ function why(a: CarrierAverage, firstMonth: string | null): string {
       if (a.carrier === 'BRING') {
         return `${parcels} parcels counted. Bring's bills arrive by themselves. ${first} will be the first month with a cost per parcel.`
       }
-      return `${parcels} parcels counted. ${first} will be the first month with a cost per parcel. Type ${carrierName(a.carrier)}'s invoice for it here when it arrives.`
+      return `${parcels} parcels counted. ${carrierName(a.carrier)}'s bills come from the company's accounting. ${first} will be the first month with a cost per parcel.`
     }
     // No declared start to the record: the pre-tracking wording, unchanged.
     if (a.carrier === 'BRING') {
@@ -278,7 +278,7 @@ function MonthRow({
         {row.counted === false ? DASH : row.parcels.toLocaleString('en-GB')}
       </td>
       <td className="py-1.5 text-right">
-        {row.source === 'bring' ? (
+        {row.source === 'bring' || row.source === 'visma' ? (
           // A bill Bring sent is a fact to read, not a box to edit: formatted
           // as money with its label. The bare figure in an editable box was
           // the exact thing the client said he could not understand.
@@ -286,7 +286,9 @@ function MonthRow({
             <span className="num text-ink">
               {row.amount !== null && row.currency ? money(row.amount, row.currency) : DASH}
             </span>
-            <span className="ml-2 text-[11px] text-faint">from Bring</span>
+            <span className="ml-2 text-[11px] text-faint">
+              {row.source === 'visma' ? 'from Visma' : 'from Bring'}
+            </span>
           </>
         ) : (
           <input

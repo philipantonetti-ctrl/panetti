@@ -1,4 +1,6 @@
 import { orderTotals } from '../b2b/pricing'
+import { toMinor } from '../money'
+import { writeCarrierCosts } from '../delivery/cost-writer'
 import { db } from '../db'
 import { normaliseSku } from '../inventory/sku'
 import {
@@ -723,5 +725,87 @@ async function readVismaB2bSales(
   } catch (e) {
     // Reported, not thrown. The sync route shows this and the next run retries.
     return noSales({ error: e instanceof Error ? e.message : 'Visma B2B sales import failed' })
+  }
+}
+
+/**
+ * DHL's freight bill, read from the company's own accounting.
+ *
+ * DHL Freight offers no invoice API for these parcels, and their push feed
+ * needs weeks of onboarding. But every DHL invoice is booked in Visma once it
+ * is paid - measured 2026-08-21: supplier 50606 "DHL Freight (sweden) AB"
+ * holds 66 invoices, February through August, July = 23 455 SEK - so the
+ * number the Cost per parcel card wanted a person to type is already in a
+ * system this file reads on every tick.
+ */
+export type VismaDhlCostsResult = {
+  configured: boolean
+  read: number
+  written: number
+  error: string | null
+}
+
+const noDhl = (over: Partial<VismaDhlCostsResult> = {}): VismaDhlCostsResult => ({
+  configured: true, read: 0, written: 0, error: null, ...over,
+})
+
+/** Verified against live data 2026-08-21; the guard below is what keeps it honest. */
+const DHL_SUPPLIER = '50606'
+
+export async function importVismaDhlCosts(now = new Date()): Promise<VismaDhlCostsResult> {
+  const creds = vismaCredentials()
+  if (!creds) return noDhl({ configured: false })
+
+  try {
+    // One page. 66 invoices exist after seven months, so 500 covers years;
+    // a FULL page would mean the ledger outgrew this read, and summing a
+    // possibly-truncated ledger writes a confidently low month - refuse it.
+    const batch = await vismaGet<Record<string, unknown>[]>(
+      creds,
+      `controller/api/v1/supplierinvoice?supplier=${DHL_SUPPLIER}&pageSize=500`,
+    )
+    const rows = Array.isArray(batch) ? batch : []
+    if (rows.length === 500) {
+      return noDhl({ read: rows.length, error: 'DHL supplier ledger filled a whole page; refusing to sum a possibly truncated read' })
+    }
+
+    /**
+     * THE trap this API is known for: an unknown query parameter returns
+     * HTTP 200 with the WRONG rows - customerNumber= once served Kitch'n's
+     * invoices. If supplier= were ever ignored, this would sum the company's
+     * entire purchase ledger into "DHL". One foreign row is proof enough,
+     * and nothing is written.
+     */
+    const supplierOf = (r: Record<string, unknown>) =>
+      String((r?.supplier as { number?: unknown } | undefined)?.number ?? '')
+    const foreign = rows.filter((r) => supplierOf(r) !== DHL_SUPPLIER).length
+    if (foreign > 0) {
+      return noDhl({
+        read: rows.length,
+        error: `Visma ignored the supplier filter: ${foreign} of ${rows.length} rows belong to other suppliers`,
+      })
+    }
+
+    const invoices = []
+    for (const r of rows) {
+      const date = String(r.documentDate ?? '').slice(0, 10)
+      const currency = String(r.currencyId ?? '')
+      const amount = r.detailTotalInCurrency
+      // A row this read cannot date or price is left out rather than guessed
+      // at; the month totals below simply will not include it.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !currency || typeof amount !== 'number') continue
+      invoices.push({
+        invoiceDate: new Date(`${date}T00:00:00Z`),
+        // detailTotal is the ex-VAT figure, the same frame every other cost
+        // in this product uses. VAT was never our money.
+        amountMinor: toMinor(String(amount)),
+        currency,
+      })
+    }
+
+    const written = await writeCarrierCosts('DHL', 'visma', invoices, now)
+    return noDhl({ read: rows.length, written })
+  } catch (e) {
+    return noDhl({ error: e instanceof Error ? e.message : 'Visma DHL cost import failed' })
   }
 }
