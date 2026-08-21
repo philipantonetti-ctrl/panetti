@@ -50,6 +50,32 @@ describe('CarrierCosts', () => {
     expect(container.textContent).toContain('50.00 NOK')
   })
 
+  /**
+   * The client read the bill lists and asked whether those prices were the
+   * "average cost per shipment". They are not - they are the bills - and the
+   * confusion was the card's fault: the one number that IS the average had no
+   * name of its own. The title now carries his word, and the figure labels
+   * itself where it stands, so the two can never be read as each other.
+   */
+  it('is titled with his own word for it: Average cost per parcel', () => {
+    render(<CarrierCosts {...props()} />)
+    expect(screen.getByText('Average cost per parcel')).toBeInTheDocument()
+  })
+
+  it('labels the figure itself, right where it stands', () => {
+    render(<CarrierCosts {...props()} />)
+    expect(screen.getByText('average per parcel')).toBeInTheDocument()
+  })
+
+  it('shows no stray label while the figure is still to come', () => {
+    render(
+      <CarrierCosts
+        {...props({ carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })] })}
+      />,
+    )
+    expect(screen.queryByText('average per parcel')).not.toBeInTheDocument()
+  })
+
   it('names the carrier the figure belongs to', () => {
     const { container } = render(<CarrierCosts {...props()} />)
     expect(container.textContent).toMatch(/Bring/i)
