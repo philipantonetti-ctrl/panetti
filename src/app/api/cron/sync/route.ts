@@ -156,6 +156,24 @@ export async function GET(req: Request) {
   // Best-effort like everything after the shops: the ERP being unreachable must
   // never fail the store sync, and each result carries its own error for the
   // response below.
+  // DHL's monthly freight bill, read out of the company's own accounting -
+  // the one carrier figure that would otherwise be typed by hand.
+  //
+  // FIRST among the Visma stages, deliberately. It is a single call, and it
+  // used to run last - after the stock snapshot, the paged receivables read
+  // and the rest had already spent the shared rate budget, so it was 429'd
+  // inside the burst on every tick while succeeding instantly when run alone
+  // (measured 2026-08-21: solo between ticks 200 with all 66 rows, in-tick
+  // never landed a row). The heavy stages each survive a 429 by design - a
+  // kept snapshot, a partial flag - so they are the right ones to eat it.
+  let dhlCosts: VismaDhlCostsResult = { configured: false, read: 0, written: 0, error: null }
+  try {
+    dhlCosts = await importVismaDhlCosts()
+  } catch {
+    // It does not throw, but a caller that assumes so is one refactor away
+    // from a failed sync.
+  }
+
   let b2bSales: VismaB2bSalesResult = {
     configured: false, linked: 0, read: 0, imported: 0, skipped: [], partial: false, error: null,
   }
@@ -207,16 +225,6 @@ export async function GET(req: Request) {
     receivables = await importVismaReceivables()
   } catch {
     // It does not throw either. Same belt and braces as the others.
-  }
-
-  // DHL's monthly freight bill, read out of the company's own accounting -
-  // the one carrier figure that would otherwise be typed by hand. One Visma
-  // call; the month rules live in writeCarrierCosts with Bring's.
-  let dhlCosts: VismaDhlCostsResult = { configured: false, read: 0, written: 0, error: null }
-  try {
-    dhlCosts = await importVismaDhlCosts()
-  } catch {
-    // Belt and braces, as above.
   }
 
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
