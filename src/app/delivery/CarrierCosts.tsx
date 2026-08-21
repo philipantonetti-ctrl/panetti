@@ -147,7 +147,8 @@ function InvoiceReader({ status }: { status: BringInvoiceStatus }) {
       {status.lastError && (
         <>
           {' '}
-          Bring&rsquo;s last answer: <span className="text-ink">{status.lastError}</span>
+          Bring is not sending the details at the moment.{' '}
+          <span className="text-ink">{status.lastError}</span>
         </>
       )}
     </p>

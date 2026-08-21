@@ -1,3 +1,4 @@
+import { readableErrorBody } from '../error-body'
 import { requestBudgetMs, type BringCredentials, type BringFilter } from './client'
 import { mapInvoices, type BringInvoice } from './invoice-map'
 
@@ -32,8 +33,12 @@ async function get(
     signal: AbortSignal.timeout(requestBudgetMs(opts)),
   })
   if (!res.ok) {
-    const text = (await res.text()).slice(0, 300)
-    throw new Error(`Bring responded ${res.status}: ${text}`)
+    // The words, not the markup. This message is stored on BringReportRun and
+    // shown to the client on the Delivery page, and Bring wraps even a
+    // two-word refusal in an XML document: truncating kept the declaration and
+    // threw away "Not Acceptable". Same instrument, same reason, as the Woo
+    // client one directory over.
+    throw new Error(`Bring responded ${res.status}: ${readableErrorBody(await res.text())}`)
   }
   return res
 }
