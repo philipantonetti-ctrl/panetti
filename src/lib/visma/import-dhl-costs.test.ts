@@ -21,7 +21,7 @@ const invoice = (over: Record<string, unknown> = {}) => ({
   referenceNumber: '205717',
   supplier: { number: '50606', name: 'DHL Freight (sweden) AB' },
   documentType: 'Invoice',
-  documentDate: '1999-07-14T00:00:00',
+  date: '1999-07-14T00:00:00',
   currencyId: 'SEK',
   detailTotalInCurrency: 399,
   ...over,
@@ -94,7 +94,7 @@ describe('importVismaDhlCosts', () => {
 
   it('leaves the month that is still running alone', async () => {
     const cur = await CUR()
-    stub([invoice({ documentDate: '1999-08-14T00:00:00', currencyId: cur })])
+    stub([invoice({ date: '1999-08-14T00:00:00', currencyId: cur })])
 
     const result = await importVismaDhlCosts(NOW)
     expect(result.written).toBe(0)
