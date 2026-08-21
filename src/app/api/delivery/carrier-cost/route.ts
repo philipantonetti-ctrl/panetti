@@ -144,6 +144,10 @@ export async function GET(req: Request) {
             parcels: s.count,
             amount: byKey.get(`${s.carrier}|${s.month}`)?.amount ?? null,
             currency: byKey.get(`${s.carrier}|${s.month}`)?.currency ?? null,
+            // 'bring' means nobody typed this - it was read from the invoice
+            // archive. The page says so, because a figure that appeared by
+            // itself needs to explain where it came from.
+            source: byKey.get(`${s.carrier}|${s.month}`)?.source ?? null,
           })),
         defaultCurrency: displayCurrency,
       },
@@ -199,8 +203,11 @@ export async function PUT(req: Request) {
 
     await db.carrierCost.upsert({
       where: { carrier_month: { carrier, month } },
-      create: { carrier, month, amount, currency },
-      update: { amount, currency },
+      // 'typed' is what stops the Bring importer overwriting this on the next
+      // tick. A person who corrects a figure knows something the archive does
+      // not, and it has to survive.
+      create: { carrier, month, amount, currency, source: 'typed' },
+      update: { amount, currency, source: 'typed' },
     })
 
     return NextResponse.json({ ok: true }, { headers: NO_STORE })

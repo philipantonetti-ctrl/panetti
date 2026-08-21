@@ -12,6 +12,8 @@ export type CarrierMonth = {
   /** Minor units, or null when no invoice has been entered for this month. */
   amount: number | null
   currency: string | null
+  /** 'bring' when nobody typed it: it was read from Bring's invoice archive. */
+  source?: string | null
 }
 
 /** How far the scheduled Bring invoice reader has got. */
@@ -273,6 +275,12 @@ function MonthRow({
           placeholder={currency}
           className="num w-28 rounded-[var(--radius-control)] border border-line bg-panel px-2 py-1 text-right text-[13px] text-ink"
         />
+        {/* A figure nobody typed has to say where it came from, or it reads as
+            something the reader forgot doing. Still editable: typing over it
+            marks the month as his and the importer stops touching it. */}
+        {row.source === 'bring' && (
+          <span className="ml-2 text-[11px] text-faint">from Bring</span>
+        )}
       </td>
       <td className="num py-1.5 text-right text-muted">
         {perParcel === null ? DASH : money(perParcel, currency)}

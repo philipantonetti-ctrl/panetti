@@ -1,7 +1,11 @@
 import { db } from '../db'
 import { getDeliveryConfig } from '../delivery/config'
+import { monthlyInvoiceTotals } from '../delivery/invoiced-cost'
+import { buildRateTable } from '../metrics/fx'
+import { loadRates } from '../fx/rates'
 import type { BringCredentials, BringFilter } from './client'
 import { linesReconcile, parseSpecifiedInvoice } from './invoice-lines'
+import type { BringInvoice } from './invoice-map'
 import { downloadReport, generateSpecReport, listCustomerNumbers, listInvoices, reportStatus } from './invoices'
 
 const HOUR = 60 * 60 * 1000
@@ -56,27 +60,43 @@ const STALE_REQUESTED_MS = 6 * HOUR
 export async function discoverInvoices(
   creds: BringCredentials,
   opts: BringFilter = {},
-): Promise<{ found: number; queued: number; noSpec: number; partial: boolean }> {
+): Promise<{
+  found: number
+  queued: number
+  noSpec: number
+  partial: boolean
+  /**
+   * Every invoice seen this pass, whether or not it was new.
+   *
+   * Carried out rather than counted because the monthly totals are built from
+   * ALL of a month's invoices, not just the ones we had not seen before. This
+   * is already in hand: listing them is what this function does, so handing
+   * them back costs nothing and saves a second pass over the same API.
+   */
+  invoices: BringInvoice[]
+}> {
   let found = 0
   let queued = 0
   let noSpec = 0
+  const seen: BringInvoice[] = []
 
   // Before the very first request too, not just inside the loop below:
   // listCustomerNumbers is a Bring request in its own right, not a local
   // read, so a tick that starts already past its deadline must not even
   // attempt it.
   if (opts.deadline !== undefined && Date.now() >= opts.deadline) {
-    return { found, queued, noSpec, partial: true }
+    return { found, queued, noSpec, partial: true, invoices: seen }
   }
 
   for (const customerNumber of await listCustomerNumbers(creds, opts)) {
     // Checked before each customer: its invoice list is one more request, and
     // starting one we cannot finish burns the run's last seconds for nothing.
     if (opts.deadline !== undefined && Date.now() >= opts.deadline) {
-      return { found, queued, noSpec, partial: true }
+      return { found, queued, noSpec, partial: true, invoices: seen }
     }
     for (const invoice of await listInvoices(creds, customerNumber, opts)) {
       found += 1
+      seen.push(invoice)
       // A row we already hold is left exactly as it is: it may be STORED, and
       // rediscovering an invoice must never send it round the loop again.
       const held = await db.bringReportRun.findUnique({
@@ -99,7 +119,7 @@ export async function discoverInvoices(
     }
   }
 
-  return { found, queued, noSpec, partial: false }
+  return { found, queued, noSpec, partial: false, invoices: seen }
 }
 
 /**
@@ -316,6 +336,59 @@ export async function collectNextReport(
   }
 }
 
+/** The workspace currency and today's rates, loaded once per tick. */
+async function displayFrame(): Promise<{ currency: string; rates: Awaited<ReturnType<typeof buildRateTable>> }> {
+  const [{ displayCurrency }, rows] = await Promise.all([
+    (await import('../settings')).getSetting(),
+    loadRates(),
+  ])
+  return { currency: displayCurrency, rates: buildRateTable(rows) }
+}
+
+/**
+ * Fill in what Bring billed, per month, so nobody has to type it.
+ *
+ * Only months that have ENDED. An invoice-dated month still running has only
+ * some of its invoices in, while the parcels for it keep arriving, so the
+ * division would read low and then creep upwards all month. A figure that
+ * moves under the reader is worse than one that arrives a few days late.
+ *
+ * Never touches a row a person typed. Someone who corrected a figure knows
+ * something this importer does not - a credit note, a month split across two
+ * accounts - and silently overwriting that is the one behaviour that would
+ * make the whole panel untrustworthy.
+ */
+export async function writeBringCosts(
+  invoices: BringInvoice[],
+  now = new Date(),
+): Promise<number> {
+  if (invoices.length === 0) return 0
+  const { currency, rates } = await displayFrame()
+  const thisMonth = now.toISOString().slice(0, 7)
+
+  const totals = monthlyInvoiceTotals(invoices, currency, rates).filter((t) => t.month < thisMonth)
+
+  let written = 0
+  for (const total of totals) {
+    const held = await db.carrierCost.findUnique({
+      where: { carrier_month: { carrier: 'BRING', month: total.month } },
+      select: { source: true },
+    })
+    if (held?.source === 'typed') continue
+
+    await db.carrierCost.upsert({
+      where: { carrier_month: { carrier: 'BRING', month: total.month } },
+      create: {
+        carrier: 'BRING', month: total.month,
+        amount: total.amountMinor, currency: total.currency, source: 'bring',
+      },
+      update: { amount: total.amountMinor, currency: total.currency, source: 'bring' },
+    })
+    written += 1
+  }
+  return written
+}
+
 export type BringInvoiceSyncResult = {
   configured: boolean
   found: number
@@ -329,12 +402,14 @@ export type BringInvoiceSyncResult = {
   requested: boolean
   stored: number
   unmatched: number
+  /** Months whose Bring invoice total was filled in from the archive. */
+  costMonths: number
   error: string | null
 }
 
 const nothing = (over: Partial<BringInvoiceSyncResult> = {}): BringInvoiceSyncResult => ({
   configured: true, found: 0, queued: 0, noSpec: 0, partial: false,
-  requested: false, stored: 0, unmatched: 0, error: null, ...over,
+  requested: false, stored: 0, unmatched: 0, costMonths: 0, error: null, ...over,
 })
 
 /**
@@ -360,6 +435,10 @@ export async function syncBringInvoices(
     if (!creds) return nothing({ configured: false })
 
     const found = await discoverInvoices(creds, opts)
+    // Only on a complete pass. A discovery cut short by the deadline has seen
+    // some customers and not others, and a month totalled from half its
+    // invoices would be written as though it were the whole thing.
+    const costMonths = found.partial ? 0 : await writeBringCosts(found.invoices)
     const requested = await requestNextReport(creds, opts)
     const collected = await collectNextReport(creds, opts)
     return nothing({
@@ -368,6 +447,7 @@ export async function syncBringInvoices(
       requested,
       stored: collected?.stored ?? 0,
       unmatched: collected?.unmatched ?? 0,
+      costMonths,
     })
   } catch (e) {
     return nothing({ error: e instanceof Error ? e.message : String(e) })

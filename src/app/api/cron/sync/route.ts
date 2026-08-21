@@ -246,7 +246,7 @@ export async function GET(req: Request) {
   // reported rather than treated as an error.
   let bringInvoices: BringInvoiceSyncResult = {
     configured: false, found: 0, queued: 0, noSpec: 0, partial: false,
-    requested: false, stored: 0, unmatched: 0, error: null,
+    requested: false, stored: 0, unmatched: 0, costMonths: 0, error: null,
   }
   try {
     bringInvoices = await syncBringInvoices({ deadline: runStartedAt + BRING_INVOICES_DEADLINE_MS })
@@ -337,6 +337,10 @@ export async function GET(req: Request) {
     // that climbs while this climbs with it means we are reading invoices for
     // parcels we do not hold.
     bringCostsUnmatched: bringInvoices.unmatched,
+    // Months whose Bring bill was filled in from the archive, so nobody had
+    // to type it. The one number that says this stage is doing its job even
+    // while the per-parcel breakdown stays blocked.
+    bringCostMonths: bringInvoices.costMonths,
     bringInvoicesError: bringInvoices.error,
   })
 }
