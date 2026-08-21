@@ -105,7 +105,10 @@ export function CarrierCosts({
 
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface px-5 py-4">
-      <h2 className="text-[15px] font-semibold text-ink">Cost per parcel</h2>
+      {/* "Average" is the client's own word for this - he asked for "average
+          cost per shipment" from the first message - and without it he read
+          the bill lists below as the averages. */}
+      <h2 className="text-[15px] font-semibold text-ink">Average cost per parcel</h2>
       {/* Two short lines, both answering a question the reader will otherwise
           ask: why am I typing this in, and why does the shop filter not change
           it. Longer explanations were tried and read as an essay above a
@@ -175,8 +178,13 @@ function Carrier({
             pending card and read as broken; the caption below already says
             when the figure comes. */}
         {average.averageMinor !== null && average.currency && (
-          <span className="num text-[18px] font-semibold text-ink">
-            {money(average.averageMinor, average.currency)}
+          <span className="text-right">
+            <span className="num block text-[18px] font-semibold leading-tight text-ink">
+              {money(average.averageMinor, average.currency)}
+            </span>
+            {/* The figure names itself where it stands, so it can never be
+                read as one of the bills listed under it. */}
+            <span className="block text-[11px] text-faint">average per parcel</span>
           </span>
         )}
       </div>
