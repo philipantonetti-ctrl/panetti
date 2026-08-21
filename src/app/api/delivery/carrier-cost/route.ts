@@ -7,7 +7,6 @@ import { getSetting } from '@/lib/settings'
 import { zoneDayEndUtc, zoneDayStartUtc, zonedDayStr } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
 import { carrierAverages, type CarrierShipments } from '@/lib/delivery/carrier-cost'
-import { readableErrorBody } from '@/lib/error-body'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -75,56 +74,8 @@ export async function GET(req: Request) {
 
     const byKey = new Map(costs.map((c) => [`${c.carrier}|${c.month}`, c]))
 
-    /**
-     * How far the Bring invoice reader has got, and why it has stopped if it
-     * has.
-     *
-     * Deliberately a WHOLE-TABLE count, not scoped to the range above. The
-     * reader works through every invoice Bring holds, oldest first, on its own
-     * schedule; scoping it to whatever fortnight is on screen would report
-     * "0 found" during a backfill that is running perfectly.
-     *
-     * It sits on this endpoint rather than one of its own because it belongs
-     * beside the figure it will eventually replace. Until it existed, a reader
-     * that had failed on every one of 27 invoices looked exactly like one that
-     * had never been switched on.
-     */
-    const runs = await db.bringReportRun.groupBy({ by: ['state'], _count: { _all: true } })
-    const count = (state: string) => runs.find((r) => r.state === state)?._count._all ?? 0
-    // The row that failed MOST RECENTLY, which is the one worth reporting.
-    // Ordered by nextTryAt because every failure stamps one at the moment it
-    // happens, so it is the only field that dates a failure.
-    const lastFailure = await db.bringReportRun.findFirst({
-      where: { state: 'FAILED', error: { not: null } },
-      // `nulls: 'last'` is load-bearing, not tidiness: Postgres defaults a DESC
-      // order to NULLS FIRST, so a FAILED row without a nextTryAt would beat
-      // every dated one and pin an error nobody can date to the top of the
-      // panel permanently. Reproduced as a test before this line existed.
-      orderBy: { nextTryAt: { sort: 'desc', nulls: 'last' } },
-      select: { error: true },
-    })
-
     return NextResponse.json(
       {
-        bringInvoices: {
-          found: runs.reduce((t, r) => t + r._count._all, 0),
-          read: count('STORED'),
-          // PENDING and REQUESTED are one idea to a reader: asked for, not here
-          // yet. The difference between them matters to the job, not to anyone
-          // looking at this panel.
-          waiting: count('PENDING') + count('REQUESTED'),
-          // Bring itself says these can never be broken down. Counted apart
-          // from failures so a permanent, blameless fact does not read as a
-          // fault that someone should chase.
-          noDetail: count('NO_SPEC'),
-          failed: count('FAILED'),
-          // Tidied on the way out as well as on the way in. The client is
-          // looking at rows stored BEFORE the Bring client learned to strip
-          // markup, and those heal only as each invoice is retried over the
-          // following hours. Running it twice costs nothing: on text with no
-          // tags it only settles the whitespace.
-          lastError: lastFailure?.error ? readableErrorBody(lastFailure.error) : null,
-        },
         carriers: carrierAverages(
           perMonth,
           costs.map((c) => ({
