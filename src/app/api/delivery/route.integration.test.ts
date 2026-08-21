@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterAll, vi } from 'vitest'
+import { describe, expect, it, beforeEach, afterAll, afterEach, vi } from 'vitest'
 import { db } from '@/lib/db'
 
 vi.mock('@/lib/auth/current-user', () => ({
@@ -347,6 +347,40 @@ describe('the no-tracking list', () => {
   })
 
   /**
+   * THE CLOCK IS FROZEN HERE, and it has to be.
+   *
+   * Every assertion below is day arithmetic between a hard-coded placedAt and
+   * `now`: waitingDays counts calendar days to today, daysOver counts past a
+   * three-business-day promise, and notDue asks whether 18:00 has come round
+   * yet. Written against the real clock those answers change overnight. This
+   * file was green on 2026-08-20 and red on 2026-08-21 with waitingDays 2
+   * where it says 1 — nothing had been touched, the day had simply moved.
+   *
+   * The range in `url` is a second, slower fuse: RTE3003 is placed at `now`,
+   * and once the real date left August it would fall outside from/to and
+   * notDue would quietly drop to 0.
+   *
+   * 2026-08-20T08:00:00Z is 10:00 on a Thursday in Oslo, chosen so no
+   * assertion sits on a boundary — mid-morning is well clear of the noon
+   * order cutoff and hours before the 18:00 file, and Thursday keeps the
+   * business-day promise off a weekend.
+   *
+   *   RTE3001  placed 2026-08-03   17 days ago, promise long gone
+   *   RTE3002  placed 2026-08-19   1 day ago; its file was due 19th 18:00 so
+   *                                it is missing, but 3 business days run to
+   *                                Monday the 24th so it is not yet late
+   *   RTE3003  placed now          this evening's file has not run
+   *
+   * Only Date is faked. Faking timers as well would hang Prisma's pool.
+   */
+  const NOW = new Date('2026-08-20T08:00:00Z')
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+  })
+  afterEach(() => vi.useRealTimers())
+
+  /**
    * Three shapes, because the list now has two ways of excluding an order.
    *
    *   RTE3001  placed 2026-08-03      file long overdue, promise long gone
@@ -354,6 +388,9 @@ describe('the no-tracking list', () => {
    *            so its file was due that evening, and a 3-business-day promise
    *            has not run out
    *   RTE3003  placed just now        no file is due yet, so nothing is missing
+   *
+   * "Just now" is the frozen NOW above, not the wall clock — see the note
+   * on it for why these three dates only hold still against a fixed today.
    */
   const threeBare = async () => {
     await db.order.create({
