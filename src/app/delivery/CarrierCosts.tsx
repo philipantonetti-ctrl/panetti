@@ -136,11 +136,19 @@ function Carrier({
   firstMonth: string | null
   onSave: (save: CarrierCostSave) => void
 }) {
-  // A row earns its place by showing money or accepting some. A month outside
-  // the record with no bill does neither - all it could display is dashes and
-  // a box that cannot produce a cost, which is the exact row the client
-  // pasted back as unreadable.
-  const visible = months.filter((m) => m.counted !== false || m.amount !== null)
+  // Only complete months are table material: every cell of their row can hold
+  // a real value. A month from BEFORE the record holds exactly one fact - what
+  // the carrier billed - and a row that is dashes in three of four columns
+  // reads as broken data however real its money is; the client pasted June and
+  // July back and asked "why are there 2 months here". One fact gets one
+  // sentence instead. A pre-record month with no bill has nothing at all to
+  // say and is not shown.
+  const rows = months.filter((m) => m.counted !== false)
+  const oldBills = months
+    .filter((m) => m.counted === false && m.amount !== null && m.currency !== null)
+    // Oldest first: a sentence reads through time forwards, unlike the table,
+    // which puts the newest month nearest the reader.
+    .sort((a, b) => a.month.localeCompare(b.month))
 
   return (
     <div>
@@ -154,8 +162,14 @@ function Carrier({
       </div>
 
       <p className="mt-0.5 text-[12px] text-muted">{why(average, firstMonth)}</p>
+      {oldBills.length > 0 && (
+        <p className="mt-0.5 text-[12px] text-muted">
+          What {carrierName(average.carrier)} billed:{' '}
+          {oldBills.map((m) => `${monthName(m.month)} ${money(m.amount!, m.currency!)}`).join(', ')}.
+        </p>
+      )}
 
-      {visible.length > 0 && (
+      {rows.length > 0 && (
         <table className="mt-2 w-full border-collapse text-[13px]">
           <thead>
             <tr className="border-b border-line text-[11px] font-semibold text-faint">
@@ -166,7 +180,7 @@ function Carrier({
             </tr>
           </thead>
           <tbody>
-            {visible.map((m) => (
+            {rows.map((m) => (
               <MonthRow
                 key={m.month}
                 row={m}
