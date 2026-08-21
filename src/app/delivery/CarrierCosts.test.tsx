@@ -182,6 +182,26 @@ describe('CarrierCosts', () => {
     expect(screen.getByText(/enter an invoice below/i)).toBeInTheDocument()
   })
 
+  /**
+   * The card's own opening lines, which outlived the world they described.
+   * After Bring became automatic they still read "Enter each carrier's
+   * monthly invoice below" and "Bring and DHL only tell us where a parcel
+   * is, never what it cost" - the first an instruction not to follow, the
+   * second now plainly false for Bring. The client pasted these exact lines
+   * back and asked what they meant.
+   */
+  it('opens by saying Bring is automatic and DHL is typed', () => {
+    render(<CarrierCosts {...props()} />)
+    expect(screen.getByText(/fills in by itself/i)).toBeInTheDocument()
+    expect(screen.getByText(/DHL.+typed/i)).toBeInTheDocument()
+  })
+
+  it('no longer instructs him to enter each invoice, nor claims costs cannot be read', () => {
+    render(<CarrierCosts {...props()} />)
+    expect(screen.queryByText(/enter each carrier/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/never what it cost/i)).not.toBeInTheDocument()
+  })
+
   it('says nothing at all when no parcel moved in the range', () => {
     const { container } = render(<CarrierCosts {...props({ carriers: [], months: [] })} />)
     expect(container.textContent).toBe('')
