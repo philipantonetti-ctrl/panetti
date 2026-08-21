@@ -56,6 +56,20 @@ export type DeliveryStats = {
    */
   collected: number
   readyForCollection: number
+  /**
+   * Arrived on the warehouse file's word, with no date from the carrier yet.
+   *
+   * Its own figure rather than a share of `delivered`, because `delivered` is
+   * the population the median and the on-time rate are computed from and these
+   * orders have no date to contribute to either. Counted all the same: the
+   * parcel is with the customer, so leaving it out of the strip entirely would
+   * lose an order that "Where everything is now" promised to account for.
+   *
+   * A number that stays high is worth reading as a fault — it means the poller
+   * is not reaching those parcels, and the delivery median is being computed
+   * from whatever it did reach.
+   */
+  deliveredUndated: number
   distribution: { days: number; count: number }[]
   byCountry: CountryStat[]
 }
@@ -157,6 +171,7 @@ export function deliveryStats(
     inTransit: views.filter((v) => v.state === 'IN_TRANSIT').length,
     collected: collected.length,
     readyForCollection: delivered.length - collected.length,
+    deliveredUndated: views.filter((v) => v.state === 'DELIVERED_UNDATED').length,
     distribution: [...counts.entries()]
       .map(([days, count]) => ({ days, count }))
       .sort((a, b) => a.days - b.days),

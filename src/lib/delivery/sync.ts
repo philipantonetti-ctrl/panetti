@@ -19,6 +19,15 @@ export type ShipmentSyncResult = {
   failed: number
   /** DHL calls this run spent. The budget is small enough to be worth seeing. */
   dhlCalls?: number
+  /**
+   * DHL parcels that were due and went unasked for want of a key.
+   *
+   * Counted because skipping them is silent by design — no error on the parcel
+   * and no change to its schedule — and DHL's credentials are an environment
+   * variable with no settings row, no status line and no way to notice. Every
+   * other integration here says whether it is connected; this is how DHL does.
+   */
+  dhlSkippedNoKey?: number
   error?: string
 }
 
@@ -201,6 +210,7 @@ export async function syncShipments(
   let updated = 0
   let failed = 0
   let dhlCalls = 0
+  let dhlSkippedNoKey = 0
 
   for (const s of due) {
     // Checked before the request, not after: starting a lookup we have no time
@@ -212,7 +222,14 @@ export async function syncShipments(
     // the parcel, no change to nextPollAt — so that connecting it later picks
     // these up exactly where they were. Recording a failure here would fill the
     // delivery page with red for a carrier nobody has connected yet.
-    if (!track) continue
+    //
+    // Counted on the way past, though. Silent on the PARCEL is right; silent
+    // for the whole RUN is what let every DHL parcel go unchecked behind a
+    // page reporting a healthy sync.
+    if (!track) {
+      if (s.carrier === 'DHL') dhlSkippedNoKey++
+      continue
+    }
 
     if (s.carrier === 'DHL') {
       // The run's share of the daily allowance is spent. These parcels keep
@@ -346,17 +363,48 @@ export async function syncShipments(
   // A partial failure still counts as a sync — parcels that did poll are
   // genuinely fresh, and their own lastError carries the detail. Only a run
   // that reached nothing at all is a failed run.
+  //
+  // A carrier we were never able to ASK is the third case, and it used to fall
+  // through here as a success. DHL's key is an environment variable: no
+  // settings row, no status line, nothing to notice — so with it unset the
+  // poller skipped every DHL parcel, wrote nothing anywhere, and stamped the
+  // sync healthy. That is how three parcels DHL had delivered on 2026-08-13
+  // were still being reported as in transit and a week overdue on the 21st.
+  //
+  // Said alongside a stamped lastSyncAt rather than instead of it: the run did
+  // happen and Bring's half of it worked, so calling the whole thing failed
+  // would trade one wrong story for another. The words are the ones the DHL
+  // test button already uses, because it is the same fix in both places.
+  //
+  // And the fourth: parcels were due and the run got no clock at all. This
+  // poll is last in the cron behind a shop sync allowed 240s of a 275s budget
+  // and three Visma imports carrying no deadline, so the loop's first deadline
+  // check can break before one parcel is asked about. polled and failed are
+  // then both zero — which is also exactly what a run with nothing due looks
+  // like, and why it was read as healthy. The number of parcels that WERE due
+  // is the only thing separating the two, so it is what decides.
   const reachedNothing = polled === 0 && failed > 0
+  const ranDry = polled === 0 && failed === 0 && dhlSkippedNoKey === 0 && due.length > 0
+  const problem = reachedNothing
+    ? `Could not reach the carrier for any parcel (${failed} failed).`
+    : dhlSkippedNoKey > 0
+      ? `DHL is not connected, so ${dhlSkippedNoKey} DHL ${
+          dhlSkippedNoKey === 1 ? 'parcel was' : 'parcels were'
+        } not checked. Add DHL_API_KEY in Vercel, then redeploy.`
+      : ranDry
+        ? `No time left in this run to check any of the ${due.length} ${
+            due.length === 1 ? 'parcel' : 'parcels'
+          } due. The stages before parcel tracking are using the whole run.`
+        : null
+
   await db.deliveryConfig
     .update({
       where: { id: 'singleton' },
-      data: reachedNothing
-        ? { lastError: `Could not reach the carrier for any parcel (${failed} failed).` }
-        : { lastSyncAt: new Date(), lastError: null },
+      data: reachedNothing ? { lastError: problem } : { lastSyncAt: new Date(), lastError: problem },
     })
     .catch(() => {})
 
-  return { polled, updated, failed, dhlCalls }
+  return { polled, updated, failed, dhlCalls, dhlSkippedNoKey }
 }
 
 /** The daily allowance this poller is written against. Exported for the docs. */

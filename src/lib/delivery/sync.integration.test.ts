@@ -495,6 +495,72 @@ describe('syncShipments', () => {
     expect(await db.shipmentEvent.count({ where: { shipmentId: okShipment.id } })).toBe(1)
   })
 
+  /**
+   * The blind spot behind the client's "it says In transit, but DHL says
+   * delivered".
+   *
+   * With no DHL_API_KEY every DHL parcel is skipped BY DESIGN — no error on
+   * the parcel and no change to its schedule, so that connecting DHL later
+   * picks them all up exactly where they were. That part is right and stays.
+   *
+   * What was wrong is that the RUN then stamped lastSyncAt and cleared
+   * lastError, and DeliveryConfig.lastError is the only carrier health any
+   * screen shows. So a workspace tracking NONE of its DHL parcels read exactly
+   * like one tracking all of them, and did for eight days. The parcels' own
+   * lastError would not have helped either: nothing renders it.
+   */
+  it('says so when DHL parcels are due and DHL is not connected', async () => {
+    // Bring is configured and answers, so by every measure the old rule had,
+    // this run is a clean success.
+    await db.shipment.create({
+      data: { trackingNumber: T1, carrier: 'DHL', nextPollAt: new Date('2026-01-01') },
+    })
+    await db.shipment.create({
+      data: { trackingNumber: T2, nextPollAt: new Date('2026-01-01') },
+    })
+    stubBring([consignment(T2, [{ status: 'IN_TRANSIT', dateIso: '2026-08-02T06:00:00Z' }])])
+
+    const r = await syncShipments({ now, sleep: async () => {} })
+
+    expect(r.polled).toBe(1)
+    expect(r.dhlSkippedNoKey).toBe(1)
+
+    const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
+    expect(cfg.lastError).toMatch(/DHL is not connected/i)
+    // The sync DID run and Bring's half of it worked. Reporting the whole run
+    // as failed would trade one wrong story for another.
+    expect(cfg.lastSyncAt).not.toBeNull()
+  })
+
+  /**
+   * The other way this run reaches nothing and calls it a success.
+   *
+   * syncShipments is LAST in the cron and its deadline is absolute — run start
+   * plus 275s — while the shop sync ahead of it is allowed 240s and three of
+   * the four Visma imports between them carry no deadline at all. When those
+   * stages use the run up, the poll's first deadline check breaks the loop
+   * before a single parcel is asked about. polled and failed are then both
+   * zero, which the old rule read as "nothing was due" and stamped healthy.
+   *
+   * Nothing due is a real and quiet state, so the count of parcels that WERE
+   * due is what separates the two.
+   */
+  it('says so when parcels were due and the run had no time left for any', async () => {
+    await db.shipment.create({
+      data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') },
+    })
+    stubBring([consignment(T1, [{ status: 'IN_TRANSIT', dateIso: '2026-08-02T06:00:00Z' }])])
+
+    // Already spent, exactly as it is when the stages ahead have eaten the run.
+    const r = await syncShipments({ now, deadline: Date.now() - 1 })
+
+    expect(r.polled).toBe(0)
+    expect(r.failed).toBe(0)
+
+    const cfg = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
+    expect(cfg.lastError).toMatch(/no time left/i)
+  })
+
   it('does not claim a successful sync when it reached no parcel at all', async () => {
     // A revoked Mybring key fails every request. Before this, the run still
     // stamped lastSyncAt and cleared lastError — and since this is the only

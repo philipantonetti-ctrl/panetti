@@ -166,6 +166,16 @@ function DeliveryCell({ d, placedAt, timezone, now }: { d: Delivery; placedAt: s
     case 'DELIVERED':
     case 'AVAILABLE':
       return <span className={d.late ? 'text-loss' : undefined}>{d.totalDays} days</span>
+    // Arrived, with no date to measure the wait against. This cell reports the
+    // delivery and says plainly that the count is missing, rather than
+    // printing "null days" or the day-N line above, which would describe a
+    // parcel that is still moving.
+    case 'DELIVERED_UNDATED':
+      return (
+        <span title="The warehouse file reports this delivered. The carrier has not supplied the date yet, so the days it took are not counted.">
+          Delivered
+        </span>
+      )
     case 'IN_TRANSIT':
       return <span>In transit, day {daysBetween(new Date(placedAt), now, timezone)}</span>
     case 'BOOKED':

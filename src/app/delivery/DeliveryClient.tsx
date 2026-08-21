@@ -168,6 +168,11 @@ const STATE_LABEL: Record<DeliveryState, string> = {
   // customer what is left to do.
   AVAILABLE: 'Ready for collection',
   DELIVERED: 'Delivered',
+  // The same word the carrier's own page shows, because that is the page the
+  // client checks this one against. What we are missing is the date, not the
+  // delivery, and the date's absence is said where a date would have been
+  // rather than by hedging the word for the thing we do know.
+  DELIVERED_UNDATED: 'Delivered',
   RETURNED: 'Returned',
   CANCELLED: 'Cancelled',
 }
@@ -191,6 +196,11 @@ const STATE_TONE: Record<DeliveryState, string> = {
   // arrival, so splitting the state must not quietly recolour it.
   AVAILABLE: 'bg-warn-soft text-loss',
   DELIVERED: 'bg-warn-soft text-loss',
+  // Quiet, unlike the two above. Those are drawn in the Late list, where an
+  // order that arrived arrived late. This state is never late by construction
+  // — the parcel is with the customer and we simply hold no date for it — so
+  // the amber that means "past its promise" would be saying something untrue.
+  DELIVERED_UNDATED: 'bg-panel text-muted',
   RETURNED: 'bg-warn-soft text-loss',
   CANCELLED: 'bg-warn-soft text-loss',
 }
@@ -407,6 +417,17 @@ export function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastC
       color: 'var(--color-muted)',
     },
     { label: 'Delivered', count: stats.collected, color: 'var(--color-ink)' },
+    // Arrived, on the warehouse file's word, with no date from the carrier to
+    // measure the wait by. Its own position for the same reason the two above
+    // are two: it cannot join `collected`, which is the population the median
+    // and the on-time rate are made of, and folding it in would put orders
+    // with no date inside a figure built from dates. Kept in the bar so the
+    // stages still add up to every order in the range.
+    {
+      label: 'Delivered, no date yet',
+      count: stats.deliveredUndated,
+      color: 'var(--color-muted)',
+    },
   ]
   const total = stages.reduce((n, s) => n + s.count, 0)
   // Nothing to place. The tile strip's own emptiness already says it, and an

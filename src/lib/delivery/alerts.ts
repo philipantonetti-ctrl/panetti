@@ -51,6 +51,11 @@ const SAYS: Record<DeliveryState, string> = {
   // uncollected parcel delivered sends somebody to close a case nobody has.
   AVAILABLE: 'Ready for collection',
   DELIVERED: 'Delivered',
+  // Unreachable in practice, like NOT_DUE above: flushDeliveryAlerts only
+  // considers orders that are late, and an order whose every parcel has
+  // arrived is not. Spelled out rather than left to a fallback so the Record
+  // stays exhaustive.
+  DELIVERED_UNDATED: 'Delivered',
   VOIDED: 'Refunded',
   UNTRACKED: 'Not tracked',
   BEFORE_TRACKING: 'Before tracking started',

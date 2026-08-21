@@ -19,6 +19,7 @@ const stats = (over: Partial<DeliveryStats> = {}): DeliveryStats => ({
   delivered: 24, medianDays: 3, medianWarehouseDays: null, medianTransitDays: null,
   onTimeRate: 0.96, judged: 24, unjudged: 0, lateNow: 115, noTracking: 638,
   booked: 3, inTransit: 21, collected: 20, readyForCollection: 4, notDue: 6,
+  deliveredUndated: 0,
   distribution: [], byCountry: [],
   ...over,
 })
@@ -313,6 +314,23 @@ describe('Pipeline', () => {
       />,
     )
     expect(container.textContent).toMatch(/Delivered3/)
+  })
+
+  /**
+   * An order the warehouse file reports delivered, which the carrier has not
+   * yet dated, is a real position on this journey. Without a stage of its own
+   * it belongs to none of the others — it is not in transit, and it cannot
+   * join `collected`, which is a population of dates — so the bar would
+   * quietly stop adding up to the orders it was given.
+   */
+  it('gives an arrival with no date yet its own position', () => {
+    const { container } = render(
+      <Pipeline
+        stats={stats({ delivered: 5, collected: 3, readyForCollection: 2, deliveredUndated: 4 })}
+        lastCheckedAt={null}
+      />,
+    )
+    expect(container.textContent).toMatch(/Delivered, no date yet4/)
   })
 
   // The bar is still one journey, so the stages have to add up to the orders
