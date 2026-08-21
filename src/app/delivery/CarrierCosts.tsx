@@ -119,7 +119,12 @@ export function CarrierCosts({
         the filter above says.
       </p>
 
-      <div className="mt-4 flex flex-col gap-5">
+      {/* Two carriers of identical shape sit side by side on a wide screen:
+          the card's content is narrow money lists, and stacking them left a
+          full-width card two-thirds empty. Side by side also puts the two
+          figures in one eye-line once October's averages land. Stacks again
+          below md, where the width that caused the gap does not exist. */}
+      <div className="mt-4 grid gap-x-12 gap-y-6 md:grid-cols-2">
         {carriers.map((c) => (
           <Carrier
             key={c.carrier}
