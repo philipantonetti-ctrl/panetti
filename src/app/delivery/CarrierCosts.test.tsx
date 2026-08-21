@@ -173,6 +173,30 @@ describe('CarrierCosts', () => {
  * schedule with no surface at all, so a working one and a broken one looked
  * identical from the page where its number is supposed to land.
  */
+describe('CarrierCosts and a figure read from Bring', () => {
+  it('says a figure came from Bring, so it does not read as something forgotten', () => {
+    render(<CarrierCosts {...props({ months: [month({ source: 'bring' })] })} />)
+    expect(screen.getByText(/from bring/i)).toBeInTheDocument()
+  })
+
+  it('leaves a typed figure unlabelled', () => {
+    render(<CarrierCosts {...props({ months: [month({ source: 'typed' })] })} />)
+    expect(screen.queryByText(/from bring/i)).not.toBeInTheDocument()
+  })
+
+  /** Still his to correct. The importer steps aside once he does. */
+  it('keeps the box editable, so he can still overrule Bring', () => {
+    const onSave = vi.fn()
+    render(<CarrierCosts {...props({ months: [month({ source: 'bring' })], onSave })} />)
+    const box = screen.getByLabelText(/invoice for july 2026/i)
+    fireEvent.change(box, { target: { value: '123.45' } })
+    fireEvent.blur(box)
+    expect(onSave).toHaveBeenCalledWith({
+      carrier: 'BRING', month: '2026-07', amount: 12345, currency: 'NOK',
+    })
+  })
+})
+
 describe('CarrierCosts, the Bring invoice reader line', () => {
   it('says how many invoices it has found and how many it has read', () => {
     render(<CarrierCosts {...props({ bringInvoices: invoices() })} />)

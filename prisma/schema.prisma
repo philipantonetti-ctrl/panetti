@@ -887,6 +887,10 @@ model CarrierCost {
   month    String
   amount   Int // minor units of `currency`
   currency String
+  /// Where the figure came from: "typed" by a person, or "bring" read from
+  /// Bring's invoice archive. The reader NEVER overwrites a typed row - a
+  /// person who corrected a figure has said something the importer has not.
+  source   String @default("typed")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/secrets'
-import { collectNextReport, discoverInvoices, requestNextReport, syncBringInvoices } from './invoice-sync'
+import { collectNextReport, discoverInvoices, requestNextReport, syncBringInvoices, writeBringCosts } from './invoice-sync'
+import { getSetting } from '@/lib/settings'
 
 // Unique to THIS file — see "Test data convention" in the Global Constraints.
 const CUST = 'ZZDISC'
@@ -21,6 +22,9 @@ const cleanup = async () => {
   await db.bringReportRun.deleteMany({ where: mine })
   await db.shipmentCost.deleteMany({ where: { invoiceNumber: { startsWith: CUST } } })
   await db.shipment.deleteMany({ where: { trackingNumber: KNOWN_WAYBILL } })
+  // writeBringCosts writes the REAL carrier name, so the only safe tag is the
+  // month. 1999 is a year Bring will never invoice and nothing else touches.
+  await db.carrierCost.deleteMany({ where: { month: { startsWith: '1999-' } } })
 }
 beforeEach(cleanup)
 afterAll(cleanup)
@@ -160,7 +164,10 @@ describe('discoverInvoices', () => {
     vi.stubGlobal('fetch', fn)
     const result = await discoverInvoices(creds, { deadline: Date.now() - 1 })
     expect(fn).not.toHaveBeenCalled()
-    expect(result).toEqual({ found: 0, queued: 0, noSpec: 0, partial: true })
+    // `invoices: []` matters as much as the counts: a partial pass must hand
+    // back nothing to total, or writeBringCosts would write a month up from
+    // half its invoices.
+    expect(result).toEqual({ found: 0, queued: 0, noSpec: 0, partial: true, invoices: [] })
   })
 })
 
@@ -554,7 +561,7 @@ describe('syncBringInvoices', () => {
       configured: true,
       found: 0, queued: 0, noSpec: 0, partial: false,
       requested: true,
-      stored: 0, unmatched: 0,
+      stored: 0, unmatched: 0, costMonths: 0,
       error: null,
     })
     expect(await db.bringReportRun.count({ where: { ...mine, state: 'REQUESTED' } })).toBe(1)
@@ -614,5 +621,102 @@ describe('syncBringInvoices', () => {
     // above `collectNextReport` for why that split is 4/2 and not 1/1 or 2/4.
     expect(result.stored).toBe(6)
     expect(result.unmatched).toBe(2)
+  })
+})
+
+/**
+ * Filling in what Bring billed, so nobody types it.
+ *
+ * The invoices are built in the WORKSPACE currency so no exchange rate is
+ * involved and the arithmetic is exact - conversion has its own tests in
+ * src/lib/delivery/invoiced-cost.test.ts. What is under test here is which
+ * months get written and, above all, which rows are left alone.
+ */
+describe('writeBringCosts', () => {
+  const CUR = async () => (await getSetting()).displayCurrency
+  const invoice = (date: string, amountMinor: number, currency: string) => ({
+    customerNumber: `${CUST}1`,
+    invoiceNumber: `${CUST}-${date}`,
+    invoiceDate: new Date(`${date}T00:00:00Z`),
+    amountMinor,
+    taxMinor: 0,
+    totalMinor: amountMinor,
+    currency,
+    specificationAvailable: true,
+  })
+  const row = (month: string) =>
+    db.carrierCost.findUnique({ where: { carrier_month: { carrier: 'BRING', month } } })
+
+  it('adds a finished month up and writes it, so the box fills itself', async () => {
+    const cur = await CUR()
+    const written = await writeBringCosts(
+      [invoice('1999-03-31', 100_00, cur), invoice('1999-03-15', 50_00, cur)],
+      new Date('1999-05-01T00:00:00Z'),
+    )
+
+    expect(written).toBe(1)
+    const march = await row('1999-03')
+    expect(march?.amount).toBe(150_00)
+    expect(march?.currency).toBe(cur)
+    expect(march?.source).toBe('bring')
+  })
+
+  /**
+   * A month still running has only some of its invoices in while its parcels
+   * keep arriving, so the cost per parcel would read low and creep up all
+   * month. A figure that moves under the reader is worse than one that lands a
+   * few days late.
+   */
+  it('leaves the month that is still running alone', async () => {
+    const cur = await CUR()
+    const written = await writeBringCosts(
+      [invoice('1999-05-10', 100_00, cur)],
+      new Date('1999-05-20T00:00:00Z'),
+    )
+
+    expect(written).toBe(0)
+    expect(await row('1999-05')).toBeNull()
+  })
+
+  /**
+   * THE important one. A person who corrected a figure knows something the
+   * archive does not - a credit note, a month split across two accounts - and
+   * silently overwriting that on the next tick is the single behaviour that
+   * would make this panel untrustworthy.
+   */
+  it('never overwrites a figure a person typed', async () => {
+    const cur = await CUR()
+    await db.carrierCost.create({
+      data: { carrier: 'BRING', month: '1999-04', amount: 999_00, currency: cur, source: 'typed' },
+    })
+
+    const written = await writeBringCosts(
+      [invoice('1999-04-30', 100_00, cur)],
+      new Date('1999-06-01T00:00:00Z'),
+    )
+
+    expect(written).toBe(0)
+    const april = await row('1999-04')
+    expect(april?.amount).toBe(999_00)
+    expect(april?.source).toBe('typed')
+  })
+
+  /** Its own earlier figure IS replaced: a re-issued invoice must land. */
+  it('replaces a figure it wrote itself', async () => {
+    const cur = await CUR()
+    const when = new Date('1999-06-01T00:00:00Z')
+    await writeBringCosts([invoice('1999-04-30', 100_00, cur)], when)
+    await writeBringCosts(
+      [invoice('1999-04-30', 100_00, cur), invoice('1999-04-15', 25_00, cur)],
+      when,
+    )
+
+    const april = await row('1999-04')
+    expect(april?.amount).toBe(125_00)
+    expect(april?.source).toBe('bring')
+  })
+
+  it('writes nothing at all when there are no invoices', async () => {
+    expect(await writeBringCosts([], new Date('1999-06-01T00:00:00Z'))).toBe(0)
   })
 })
