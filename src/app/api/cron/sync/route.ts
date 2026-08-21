@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { syncAllShops } from '@/lib/woo/sync'
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
+import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
 import {
@@ -87,6 +88,18 @@ const ALERT_START_BY_MS = 280_000
  * arrives on the next run, while an alert never sent is simply silent.
  */
 const B2B_SALES_DEADLINE_MS = 265_000
+
+/**
+ * Bring's invoices are finished by this point in the run.
+ *
+ * Before the parcel poll, because freight history is money and a parcel checked
+ * twenty minutes late costs nobody anything. Bounded well short of the poll's
+ * own deadline because even a full tick is roughly nine requests, not a number
+ * that benefits from a wider margin: discovery is one plus one per customer
+ * (five today), a report request is at most one, and a collect is at most
+ * three. A tick that overran would take the poll and the delivery alert with it.
+ */
+const BRING_INVOICES_DEADLINE_MS = 270_000
 
 /**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
@@ -224,6 +237,24 @@ export async function GET(req: Request) {
     // Rates stay as they were; convert() falls back to the nearest earlier rate.
   }
 
+  // Bring's own invoices, read directly so nobody has to type the monthly
+  // carrier bill in by hand. Here, after the ad sync and the rate top-up and
+  // before the parcel poll: freight history is money, so it goes ahead of the
+  // poll, but BRING_INVOICES_DEADLINE_MS keeps it from eating the poll's own
+  // margin. Best-effort like everything after the shops: Bring being
+  // unreachable must never fail the store sync, and "not connected" is
+  // reported rather than treated as an error.
+  let bringInvoices: BringInvoiceSyncResult = {
+    configured: false, found: 0, queued: 0, noSpec: 0, partial: false,
+    requested: false, stored: 0, unmatched: 0, error: null,
+  }
+  try {
+    bringInvoices = await syncBringInvoices({ deadline: runStartedAt + BRING_INVOICES_DEADLINE_MS })
+  } catch {
+    // syncBringInvoices does not throw, but a caller that assumes so is one
+    // refactor away from a failed sync.
+  }
+
   // Parcel tracking, last of the data pulls. Best-effort like the rest: Bring
   // being down must never fail the shop sync, and every parcel keeps its own
   // lastError.
@@ -297,5 +328,15 @@ export async function GET(req: Request) {
     b2bSalesSkipped: b2bSales.skipped,
     b2bSalesPartial: b2bSales.partial,
     b2bSalesError: b2bSales.error,
+    bringInvoicesConfigured: bringInvoices.configured,
+    bringInvoicesQueued: bringInvoices.queued,
+    bringInvoicesNoSpec: bringInvoices.noSpec,
+    bringInvoicesPartial: bringInvoices.partial,
+    bringCostsStored: bringInvoices.stored,
+    // The number that says whether the waybill join actually works. A stored count
+    // that climbs while this climbs with it means we are reading invoices for
+    // parcels we do not hold.
+    bringCostsUnmatched: bringInvoices.unmatched,
+    bringInvoicesError: bringInvoices.error,
   })
 }
