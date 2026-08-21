@@ -109,6 +109,77 @@ them: `COMPLETE_STATUS_INCLUDING_FREIGHT_COST`,
 `PARCELS-FREIGHT_STATISTICS_SUMMED`, `PARCELS-FREIGHT_STATISTICS_DETAILED`,
 `PARCELS-ECONOMY_AND_STATISTICS`.
 
+## The download is refusing API credentials — measured 2026-08-21
+
+**This section overrules the reachability claim above.** Everything below was
+measured at 02:00 GMT on 2026-08-21 against the same credentials, from the same
+machine, that produced the fixture in `src/lib/bring/fixtures/specified-invoice.xml`
+at 15:30 CEST the day before.
+
+Bring still builds the report. It will not hand over the file.
+
+| endpoint | with `X-Mybring-API-Uid` + `X-Mybring-API-Key` |
+|---|---|
+| `api.bring.com/tracking/api/v2/tracking.json` | **200** |
+| `invoicearchive/api/invoices/{customer}.json` | **200**, 27 invoices across 4 accounts |
+| `reports/api/generate` (customer list) | **200**, the same four numbers |
+| `reports/api/generate/{customer}/MASTER-SPECIFIED_INVOICE/?invoiceNumber=` | **200**, returns a `statusUrl` |
+| `reports/api/report/{id}/status/` | **200**, `DONE`, hands back `xmlUrl` and `xlsUrl` |
+| **`reports/api/report/{id}.xml`** | **406 Not Acceptable** |
+| **`reports/api/report/{id}.xlsx`** | **406 Not Acceptable** |
+| **`reports/api/generate/{customer}/`** (report list) | **406 Not Acceptable** |
+
+So the credentials are good, the reports subsystem answers, the report reaches
+`DONE` — and the two endpoints that return report CONTENT refuse. Both of those
+two worked on 2026-08-20: the fixture is a real download stamped
+`FinishedAt 2026-08-20T15:30:35.752+02:00`, and the list of report types this
+document quotes further up came from the endpoint that now 406s.
+
+**It is not the Accept header, and not our code.** Ruled out by measurement,
+each on a freshly generated report:
+
+- `application/xml`, `text/xml`, `application/json`, `*/*`, and no Accept at
+  all: 406 every time. A correct 406 is impossible against `*/*`, so this is a
+  canned refusal, not content negotiation.
+- Chrome, curl and Node user agents: 406 every time.
+- Carrying the `AUTHGATEWAY_ROUTE` cookie forward from the generate and status
+  calls, in case the file was pinned to one backend: 406.
+- Three retries spaced six seconds apart: 406.
+- Invoices 4710001522, 4710001374 and 4040281196, across two customer numbers,
+  including the exact invoice that downloaded yesterday: 406.
+
+**The one informative variant.** Sent with NO credentials, the same URL returns
+**200 and a 3 881-byte HTML login page**. So the gateway serves that path to a
+browser session and refuses it to an API key. Whether that is a deliberate
+change, a permission that has come off this Mybring user, or a fault, cannot be
+told from outside — and this is the point at which the honest answer is to ask
+Bring rather than to guess again.
+
+### What this does and does not change
+
+**The ingest still ships, and it is not wasted.** Discovery and request are real
+work and both succeed: production will hold a `BringReportRun` row for all 27
+invoices, correctly split into the 25 with a specification and the 2 without.
+Only `collect` fails, and the fix wave committed on 2026-08-21 is exactly what
+makes that survivable rather than destructive: the failure is written to the row
+with Bring's own message, backed off an hour, and retried — so the first tick
+after Bring serves a file again completes the collect with nothing lost and
+nothing to re-run by hand.
+
+**Nothing on screen changes and no figure moves**, because slices 3 and 4 were
+already deferred. A client looking at the Delivery page today sees exactly what
+he saw yesterday.
+
+**`bringCostsUnmatched` stays 0 until a collect succeeds**, so the number slices
+3 and 4 wait on is still unknown, for a new reason. The waybill join is untested
+against production, and now cannot be tested from here at all: the report is the
+only place `WAYBILL_NUMBER` appears.
+
+**The next action is a question to Bring**, not a code change: ask why
+`reports/api/report/{id}.xml` answers 406 to an API key that their own generate
+and status endpoints accept, when it served the same report the previous
+afternoon. Until that is answered, this feature is built, tested and dormant.
+
 ### DHL cannot do this
 
 No billing, invoice, eBilling or MyBill endpoint exists anywhere in DHL's
