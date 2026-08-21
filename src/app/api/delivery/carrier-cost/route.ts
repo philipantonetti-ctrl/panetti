@@ -102,6 +102,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json(
       {
+        // The first month whose parcel count covers the whole month, so the
+        // page can say out loud when a cost per parcel will first exist
+        // instead of pointing at boxes that cannot produce one yet.
+        firstMonth,
         carriers: carrierAverages(
           perMonth,
           costs.map((c) => ({

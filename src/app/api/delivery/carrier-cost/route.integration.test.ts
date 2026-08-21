@@ -40,6 +40,7 @@ const put = (body: unknown) =>
 type Body = {
   carriers: { carrier: string; shipments: number; parcelsInRange: number; cost: number | null; averageMinor: number | null; monthsMissingCost: string[] }[]
   months: { carrier: string; month: string; parcels: number; counted: boolean; amount: number | null }[]
+  firstMonth: string | null
 }
 
 const load = async () => (await (await GET(new Request(url))).json()) as Body
@@ -202,5 +203,15 @@ describe('months from before the record began', () => {
     const body = await load()
 
     expect(of(body, BRINGISH)?.averageMinor).toBe(100_00)
+    expect(body.firstMonth).toBeNull()
+  })
+
+  /** The page needs the name of the first priced month to say it out loud. */
+  it('names the first month that can be priced', async () => {
+    await era('2026-08-15T00:00:00Z')
+    await parcel('E6', BRINGISH, new Date('2026-08-20T09:00:00Z'))
+    const body = await load()
+
+    expect(body.firstMonth).toBe('2026-09')
   })
 })

@@ -32,6 +32,7 @@ const props = (over = {}) => ({
   carriers: [average()],
   months: [month()],
   defaultCurrency: 'NOK',
+  firstMonth: null as string | null,
   onSave: vi.fn(),
   ...over,
 })
@@ -158,29 +159,37 @@ describe('CarrierCosts', () => {
    * instruction he should not follow. He asked for this to be automatic; the
    * page has to stop asking.
    */
-  it('tells Bring it fills in by itself, rather than asking for a figure', () => {
+  it('tells Bring its bills arrive by themselves, and names the first priced month', () => {
     render(
       <CarrierCosts
         {...props({
+          firstMonth: '2026-09',
           carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
         })}
       />,
     )
-    expect(screen.getByText(/fills in by itself once the month has ended/i)).toBeInTheDocument()
+    expect(screen.getByText(/bills arrive by themselves/i)).toBeInTheDocument()
+    expect(screen.getByText(/september 2026/i)).toBeInTheDocument()
     expect(screen.queryByText(/enter an invoice below/i)).not.toBeInTheDocument()
   })
 
-  /** DHL has no invoice service at all, so it still has to be typed. */
-  it('still asks for DHL, which has no invoice service', () => {
+  /**
+   * DHL has no invoice service, so a person types it - but pointing him at a
+   * box for a month that cannot be priced is an instruction into a dead end.
+   * The caption names the FIRST month typing will actually do something.
+   */
+  it('tells DHL which invoice to type, instead of pointing at a dead box', () => {
     render(
       <CarrierCosts
         {...props({
+          firstMonth: '2026-09',
           carriers: [average({ carrier: 'DHL', averageMinor: null, cost: null, monthsCounted: [] })],
-          months: [month({ carrier: 'DHL' })],
+          months: [month({ carrier: 'DHL', month: '2026-08', counted: false, amount: null })],
         })}
       />,
     )
-    expect(screen.getByText(/enter an invoice below/i)).toBeInTheDocument()
+    expect(screen.getByText(/september 2026/i)).toBeInTheDocument()
+    expect(screen.getByText(/type dhl/i)).toBeInTheDocument()
   })
 
   /**
@@ -225,7 +234,7 @@ describe('CarrierCosts and a month outside the record', () => {
         })}
       />,
     )
-    expect(screen.getByLabelText(/invoice for june 2026/i)).toHaveValue('20000.00')
+    expect(screen.getByText(/20,000\.00/)).toBeInTheDocument()
     const cells = screen.getAllByRole('cell').map((c) => c.textContent ?? '')
     expect(cells.some((t) => t.includes('400'))).toBe(false)
   })
@@ -235,5 +244,69 @@ describe('CarrierCosts and a month outside the record', () => {
     const cells = screen.getAllByRole('cell').map((c) => c.textContent ?? '')
     expect(cells.some((t) => t.includes('400'))).toBe(true)
     expect(cells.some((t) => t.includes('50.00'))).toBe(true)
+  })
+})
+
+/**
+ * The card the client quoted back because he could not read it: "DHL - 28
+ * parcels. Enter an invoice below to see the cost." above a row of dashes with
+ * nowhere useful to type, and a bare 324814.90 in a box with nothing saying
+ * what it was. Every change here answers that message.
+ */
+describe('CarrierCosts, kept readable', () => {
+  it('does not show a month that can neither show money nor accept any', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          months: [month({ month: '2026-08', counted: false, amount: null, source: null })],
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    expect(screen.queryByText(/august 2026/i)).not.toBeInTheDocument()
+  })
+
+  it('drops the whole table when every month is hidden, rather than showing headers over nothing', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          months: [month({ month: '2026-08', counted: false, amount: null, source: null })],
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    expect(screen.queryByText('Month')).not.toBeInTheDocument()
+  })
+
+  /**
+   * A bill Bring sent is a fact to read, not a box to edit: shown as money,
+   * with its label, never as a bare figure in an input. "324814.90" in a box
+   * was the exact thing the client said he could not understand.
+   */
+  it('shows a Bring bill as formatted money with its label, not as an editable box', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          months: [month({ month: '2026-07', counted: false, amount: 324_814_90, source: 'bring' })],
+          carriers: [average({ averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    expect(screen.getByText(/324,814\.90/)).toBeInTheDocument()
+    // Exact, because the card's intro also contains the words "from Bring".
+    expect(screen.getByText('from Bring')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/invoice for july 2026/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps the typing box for a month a person is meant to fill in', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          months: [month({ carrier: 'DHL', month: '2026-09', counted: true, amount: null, source: null })],
+          carriers: [average({ carrier: 'DHL', averageMinor: null, cost: null, monthsCounted: [] })],
+        })}
+      />,
+    )
+    expect(screen.getByLabelText(/invoice for september 2026/i)).toBeInTheDocument()
   })
 })

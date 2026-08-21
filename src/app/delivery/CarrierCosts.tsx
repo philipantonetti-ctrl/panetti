@@ -33,8 +33,12 @@ export type CarrierCostSave = {
 
 const DASH = '—'
 
-/** 'BRING' -> 'Bring'. The carrier shouts in the database, not on the page. */
-const carrierName = (c: string) => c.charAt(0) + c.slice(1).toLowerCase()
+/**
+ * 'BRING' -> 'Bring'. The carrier shouts in the database, not on the page —
+ * except an acronym, which is capitals or it reads as a typo: the client's own
+ * paste of this card said "Dhl".
+ */
+const carrierName = (c: string) => (c === 'DHL' ? 'DHL' : c.charAt(0) + c.slice(1).toLowerCase())
 
 /** '2026-07' -> 'July 2026'. */
 const monthName = (m: string) =>
@@ -75,11 +79,14 @@ export function CarrierCosts({
   carriers,
   months,
   defaultCurrency,
+  firstMonth = null,
   onSave,
 }: {
   carriers: CarrierAverage[]
   months: CarrierMonth[]
   defaultCurrency: string
+  /** First month whose parcel count covers the whole month, or null. */
+  firstMonth?: string | null
   onSave: (save: CarrierCostSave) => void
 }) {
   if (carriers.length === 0) return null
@@ -107,6 +114,7 @@ export function CarrierCosts({
             average={c}
             months={months.filter((m) => m.carrier === c.carrier)}
             defaultCurrency={defaultCurrency}
+            firstMonth={firstMonth}
             onSave={onSave}
           />
         ))}
@@ -119,13 +127,21 @@ function Carrier({
   average,
   months,
   defaultCurrency,
+  firstMonth,
   onSave,
 }: {
   average: CarrierAverage
   months: CarrierMonth[]
   defaultCurrency: string
+  firstMonth: string | null
   onSave: (save: CarrierCostSave) => void
 }) {
+  // A row earns its place by showing money or accepting some. A month outside
+  // the record with no bill does neither - all it could display is dashes and
+  // a box that cannot produce a cost, which is the exact row the client
+  // pasted back as unreadable.
+  const visible = months.filter((m) => m.counted !== false || m.amount !== null)
+
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -137,28 +153,30 @@ function Carrier({
         </span>
       </div>
 
-      <p className="mt-0.5 text-[12px] text-muted">{why(average)}</p>
+      <p className="mt-0.5 text-[12px] text-muted">{why(average, firstMonth)}</p>
 
-      <table className="mt-2 w-full border-collapse text-[13px]">
-        <thead>
-          <tr className="border-b border-line text-[11px] font-semibold text-faint">
-            <th className="py-1.5 text-left">Month</th>
-            <th className="py-1.5 text-right">Parcels</th>
-            <th className="py-1.5 text-right">Invoiced</th>
-            <th className="py-1.5 text-right">Per parcel</th>
-          </tr>
-        </thead>
-        <tbody>
-          {months.map((m) => (
-            <MonthRow
-              key={m.month}
-              row={m}
-              defaultCurrency={defaultCurrency}
-              onSave={onSave}
-            />
-          ))}
-        </tbody>
-      </table>
+      {visible.length > 0 && (
+        <table className="mt-2 w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="border-b border-line text-[11px] font-semibold text-faint">
+              <th className="py-1.5 text-left">Month</th>
+              <th className="py-1.5 text-right">Parcels</th>
+              <th className="py-1.5 text-right">Invoiced</th>
+              <th className="py-1.5 text-right">Per parcel</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((m) => (
+              <MonthRow
+                key={m.month}
+                row={m}
+                defaultCurrency={defaultCurrency}
+                onSave={onSave}
+              />
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
@@ -168,7 +186,7 @@ function Carrier({
  * true. It always says which months the figure covers, because a cost per
  * parcel with no period attached is not a fact anyone can check.
  */
-function why(a: CarrierAverage): string {
+function why(a: CarrierAverage, firstMonth: string | null): string {
   if (a.mixedCurrency) {
     return 'Invoices are in different currencies, so they cannot be added together.'
   }
@@ -176,10 +194,19 @@ function why(a: CarrierAverage): string {
   if (a.averageMinor === null) {
     if (a.parcelsInRange === 0) return 'No parcels in this period.'
     const parcels = a.parcelsInRange.toLocaleString('en-GB')
-    // Bring's bill is read from Bring, so telling him to type one is an
-    // instruction he should not follow. It arrives once the month has ended -
-    // a month still running has only some of its invoices issued. DHL has no
-    // invoice service of any kind, so it keeps the original wording.
+    // Before the first fully-counted month has a bill, the one thing worth
+    // saying is WHEN a cost per parcel will first exist. The old captions
+    // pointed at the boxes below ("enter an invoice") while every box below
+    // was for a month that could not be priced - the client quoted that back
+    // as the thing he could not understand.
+    if (firstMonth) {
+      const first = monthName(firstMonth)
+      if (a.carrier === 'BRING') {
+        return `${parcels} parcels counted. Bring's bills arrive by themselves. ${first} will be the first month with a cost per parcel.`
+      }
+      return `${parcels} parcels counted. ${first} will be the first month with a cost per parcel. Type ${carrierName(a.carrier)}'s invoice for it here when it arrives.`
+    }
+    // No declared start to the record: the pre-tracking wording, unchanged.
     if (a.carrier === 'BRING') {
       return `${parcels} parcels. Bring's invoice fills in by itself once the month has ended.`
     }
@@ -237,21 +264,27 @@ function MonthRow({
         {row.counted === false ? DASH : row.parcels.toLocaleString('en-GB')}
       </td>
       <td className="py-1.5 text-right">
-        <input
-          type="text"
-          inputMode="decimal"
-          aria-label={`Invoice for ${monthName(row.month)}`}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={commit}
-          placeholder={currency}
-          className="num w-28 rounded-[var(--radius-control)] border border-line bg-panel px-2 py-1 text-right text-[13px] text-ink"
-        />
-        {/* A figure nobody typed has to say where it came from, or it reads as
-            something the reader forgot doing. Still editable: typing over it
-            marks the month as his and the importer stops touching it. */}
-        {row.source === 'bring' && (
-          <span className="ml-2 text-[11px] text-faint">from Bring</span>
+        {row.source === 'bring' ? (
+          // A bill Bring sent is a fact to read, not a box to edit: formatted
+          // as money with its label. The bare figure in an editable box was
+          // the exact thing the client said he could not understand.
+          <>
+            <span className="num text-ink">
+              {row.amount !== null && row.currency ? money(row.amount, row.currency) : DASH}
+            </span>
+            <span className="ml-2 text-[11px] text-faint">from Bring</span>
+          </>
+        ) : (
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label={`Invoice for ${monthName(row.month)}`}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={commit}
+            placeholder={currency}
+            className="num w-28 rounded-[var(--radius-control)] border border-line bg-panel px-2 py-1 text-right text-[13px] text-ink"
+          />
         )}
       </td>
       <td className="num py-1.5 text-right text-muted">

@@ -17,6 +17,7 @@ import { CarrierCosts, type CarrierCostSave, type CarrierMonth } from './Carrier
 type CarrierCostPayload = {
   carriers: CarrierAverage[]
   months: CarrierMonth[]
+  firstMonth?: string | null
   defaultCurrency: string
 }
 
@@ -1344,6 +1345,7 @@ export function DeliveryClient({
                       carriers={costs.carriers}
                       months={costs.months}
                       defaultCurrency={costs.defaultCurrency}
+                      firstMonth={costs.firstMonth ?? null}
                       onSave={saveCarrierCost}
                     />
                   )}
