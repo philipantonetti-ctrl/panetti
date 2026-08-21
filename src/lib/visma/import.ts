@@ -788,7 +788,12 @@ export async function importVismaDhlCosts(now = new Date()): Promise<VismaDhlCos
 
     const invoices = []
     for (const r of rows) {
-      const date = String(r.documentDate ?? '').slice(0, 10)
+      // The field is `date` on THIS endpoint - documentDate does not exist
+      // here, though it does on customerdocument, which is what invited the
+      // assumption. Measured on a live row 2026-08-21 after every one of 66
+      // invoices was silently skipped by the wrong name: read 66, written 0,
+      // error null, in production and locally alike.
+      const date = String(r.date ?? '').slice(0, 10)
       const currency = String(r.currencyId ?? '')
       const amount = r.detailTotalInCurrency
       // A row this read cannot date or price is left out rather than guessed
