@@ -38,9 +38,12 @@ test('an admin creates an ambassador, who claims a login and sees only their own
   // A code belongs to a store: choose one, which unlocks the code field.
   await form.getByLabel('Store').selectOption({ index: 1 })
   await form.getByPlaceholder('Discount code').fill(CODE)
-  // A product is required now, and the list is that store's own products.
+  // A product is required now, and the list is that store's own products — which
+  // only exist here once /api/ambassador-products has answered. Until then the same
+  // box reads "no products found for this store yet", so the wait is for that fetch,
+  // not for a render: the default 5s loses to a cold dev route compile.
   const ticks = page.getByTestId('product-ticks')
-  await expect(ticks).toBeVisible()
+  await expect(ticks).toBeVisible({ timeout: 20_000 })
   await ticks.getByRole('checkbox').first().check()
   await form.getByRole('button', { name: 'Add ambassador' }).click()
 
@@ -74,10 +77,11 @@ test('an admin creates an ambassador, who claims a login and sees only their own
   await page.goto('/dashboard')
   await expect(page).toHaveURL(/\/portal/) // bounced by the guard
 
-  // --- The link is single use ---
+  // --- The link is single use, and says so in the words an ambassador needs ---
   await context.clearCookies()
   await page.goto(inviteUrl)
-  await expect(page.getByText(/already have a login/i)).toBeVisible()
+  await expect(page.getByText(/already been used/i)).toBeVisible()
+  await expect(page.getByRole('link', { name: /login page/i })).toBeVisible()
 
   // --- And the password they chose actually works ---
   await context.clearCookies()
