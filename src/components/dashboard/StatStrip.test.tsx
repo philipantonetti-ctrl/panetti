@@ -47,24 +47,27 @@ describe('StatStrip', () => {
     expect(hero.textContent).not.toContain('.25')
   })
 
-  // All of them, not just the hero. One figure without øre beside three with
-  // them reads as a bug in the row rather than a decision about it.
-  it('drops the øre on every money figure in the row', () => {
+  /**
+   * The hero, and only the hero.
+   *
+   * It was briefly all four. The client looked at it and asked for the other
+   * four tiles back, which is his call to make: he reads these beside BeProfit,
+   * and a figure that has quietly moved by up to a krone is worse for that than
+   * an inconsistent row. Only the hero is set at 32px, and only the hero was
+   * running out of its card, so only the hero needed the three characters.
+   *
+   * Pinned rather than left implicit, because "drop the decimals" is exactly
+   * the change that spreads along a row on its own.
+   */
+  it('keeps the øre on the four figures beside it', () => {
     strip()
-    for (const [id, whole, dropped] of [
-      ['stat-net-revenue', '3,709,137', '.17'],
-      ['stat-ambassador-sales', '223,197', '.11'],
+    for (const [id, exact] of [
+      ['stat-net-revenue', '3,709,137.17'],
+      ['stat-avg-order-value', '4,630.63'],
+      ['stat-ambassador-sales', '223,197.11'],
     ] as const) {
-      expect(screen.getByTestId(id).textContent).toContain(whole)
-      expect(screen.getByTestId(id).textContent).not.toContain(dropped)
+      expect(screen.getByTestId(id).textContent).toContain(exact)
     }
-  })
-
-  // Rounds, never truncates. Truncating would make every figure on the strip
-  // quietly smaller than the truth.
-  it('rounds a figure up rather than cutting its øre off', () => {
-    strip()
-    expect(screen.getByTestId('stat-avg-order-value').textContent).toContain('4,631')
   })
 
   // Orders is a count, not money. It was never formatted by formatMoney and
