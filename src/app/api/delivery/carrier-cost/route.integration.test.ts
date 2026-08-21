@@ -19,7 +19,6 @@ async function cleanup() {
   await db.shipmentEvent.deleteMany({ where: { shipment: { trackingNumber: { startsWith: TRACK } } } })
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: TRACK } } })
   await db.carrierCost.deleteMany({ where: { carrier: { in: [BRINGISH, DHLISH] } } })
-  await db.bringReportRun.deleteMany({ where: { invoiceNumber: { startsWith: TRACK } } })
 }
 
 afterAll(cleanup)
@@ -40,10 +39,6 @@ const put = (body: unknown) =>
 type Body = {
   carriers: { carrier: string; shipments: number; parcelsInRange: number; cost: number | null; averageMinor: number | null; monthsMissingCost: string[] }[]
   months: { carrier: string; month: string; parcels: number; amount: number | null }[]
-  bringInvoices: {
-    found: number; read: number; waiting: number; noDetail: number; failed: number
-    lastError: string | null
-  }
 }
 
 const load = async () => (await (await GET(new Request(url))).json()) as Body
@@ -146,105 +141,5 @@ describe('PUT /api/delivery/carrier-cost', () => {
 
   it('refuses a currency that is not a three-letter code', async () => {
     expect((await put({ carrier: BRINGISH, month: '2026-07', amount: 10, currency: 'kroner' })).status).toBe(400)
-  })
-})
-
-/**
- * Whether the Bring invoice reader is getting anywhere, on the page where its
- * answer will appear.
- *
- * Until this existed the reader ran every fifteen minutes, failed every time,
- * and said so nowhere — a working integration and a broken one looked exactly
- * alike from the outside. That is the same blind spot every credential-only
- * integration here has had, and the client asked the question that exposes it:
- * "where do I see on the website if it is finished".
- *
- * Counted as DELTAS against a reading taken first, never as absolutes. The
- * production query cannot be scoped to a test prefix — it is a whole-table
- * count by design — so a stray row from a sibling checkout would break an
- * absolute assertion while telling us nothing. The delta is exact either way.
- */
-describe('the Bring invoice reader status', () => {
-  const run = (n: string, state: string, over: Record<string, unknown> = {}) =>
-    db.bringReportRun.create({
-      data: {
-        customerNumber: `${TRACK}C`,
-        invoiceNumber: `${TRACK}${n}`,
-        invoiceDate: new Date('2026-07-31T00:00:00Z'),
-        state,
-        ...over,
-      },
-    })
-
-  it('counts what it has found, read, and is still waiting on', async () => {
-    const before = (await load()).bringInvoices
-    await run('S1', 'STORED', { rowsStored: 6 })
-    await run('P1', 'PENDING')
-    await run('R1', 'REQUESTED')
-    await run('N1', 'NO_SPEC')
-    const after = (await load()).bringInvoices
-
-    expect(after.found - before.found).toBe(4)
-    expect(after.read - before.read).toBe(1)
-    // Pending and requested are one idea to the reader: asked for, not here yet.
-    expect(after.waiting - before.waiting).toBe(2)
-    expect(after.noDetail - before.noDetail).toBe(1)
-  })
-
-  /**
-   * The whole point of the panel. A count of 27 found and 0 read is a mystery;
-   * the same count beside Bring's own words is something a person can act on,
-   * and in this case forward to Bring support verbatim.
-   */
-  it('carries the reason the last attempt failed', async () => {
-    // Latest nextTryAt wins, which is the row that failed most recently: every
-    // failure writes one at the moment it happens. Dated forward so this row
-    // beats any stray a sibling checkout may have left behind.
-    await run('F1', 'FAILED', {
-      error: 'Bring responded 406: Not Acceptable',
-      nextTryAt: new Date('2099-01-01T00:00:00Z'),
-    })
-    const body = await load()
-
-    expect(body.bringInvoices.failed).toBeGreaterThanOrEqual(1)
-    expect(body.bringInvoices.lastError).toBe('Bring responded 406: Not Acceptable')
-  })
-
-  it('does not let an undated failure outrank the one that actually happened last', async () => {
-    await run('F2', 'FAILED', { error: 'undated, from somewhere else', nextTryAt: null })
-    await run('F3', 'FAILED', {
-      error: 'Bring responded 406: Not Acceptable',
-      nextTryAt: new Date('2099-01-01T00:00:00Z'),
-    })
-    const body = await load()
-
-    expect(body.bringInvoices.lastError).toBe('Bring responded 406: Not Acceptable')
-  })
-
-  /**
-   * The 27 rows already in production were stored before the Bring client
-   * learned to strip markup, and the client read this off his own page:
-   * "Bring responded 406: <?xml version='1.0' encoding='UTF-8'?><String>Not
-   * Acceptable</String>". Tidying only at the point of writing would have left
-   * him looking at that until every invoice had been retried.
-   */
-  it('tidies an error that was stored before the markup was stripped', async () => {
-    await run('F4', 'FAILED', {
-      error: `Bring responded 406: <?xml version='1.0' encoding='UTF-8'?><String>Not Acceptable</String>`,
-      nextTryAt: new Date('2099-06-01T00:00:00Z'),
-    })
-    const body = await load()
-
-    expect(body.bringInvoices.lastError).toBe('Bring responded 406: Not Acceptable')
-    expect(body.bringInvoices.lastError).not.toContain('<')
-  })
-
-  it('reports no reason when nothing has failed', async () => {
-    await run('S2', 'STORED')
-    // Not asserting null outright: a sibling checkout's failed row would be a
-    // real answer, not a defect. What must never happen is a STORED row
-    // inventing one.
-    const body = await load()
-    expect(body.bringInvoices.lastError).not.toBe('')
   })
 })

@@ -16,21 +16,6 @@ export type CarrierMonth = {
   source?: string | null
 }
 
-/** How far the scheduled Bring invoice reader has got. */
-export type BringInvoiceStatus = {
-  /** Invoices Bring holds that we know about. */
-  found: number
-  /** Invoices broken down to the parcel. */
-  read: number
-  /** Asked for, not here yet. */
-  waiting: number
-  /** Invoices Bring says have no breakdown at all. */
-  noDetail: number
-  failed: number
-  /** Bring's own words from the most recent failure, verbatim. */
-  lastError: string | null
-}
-
 export type CarrierCostSave = {
   carrier: string
   month: string
@@ -83,13 +68,11 @@ export function CarrierCosts({
   months,
   defaultCurrency,
   onSave,
-  bringInvoices,
 }: {
   carriers: CarrierAverage[]
   months: CarrierMonth[]
   defaultCurrency: string
   onSave: (save: CarrierCostSave) => void
-  bringInvoices?: BringInvoiceStatus | null
 }) {
   if (carriers.length === 0) return null
 
@@ -116,44 +99,10 @@ export function CarrierCosts({
             months={months.filter((m) => m.carrier === c.carrier)}
             defaultCurrency={defaultCurrency}
             onSave={onSave}
-            // Only Bring. DHL exposes no invoice service of any kind, so a
-            // line about invoice reading under DHL would describe something
-            // that is never going to happen.
-            invoices={c.carrier === 'BRING' ? bringInvoices : null}
           />
         ))}
       </div>
     </section>
-  )
-}
-
-/**
- * One line saying whether the scheduled Bring invoice reader is getting
- * anywhere.
- *
- * Numbers first, because "27 found, 0 read" is the whole story at a glance,
- * and Bring's own words after it, unedited. Unedited on purpose: the person
- * reading this cannot act on "something went wrong", but they can forward
- * "Bring responded 406" to Bring support, which is exactly what the first
- * real failure needed.
- */
-function InvoiceReader({ status }: { status: BringInvoiceStatus }) {
-  // Nothing found yet is not a state worth a line. Before the reader's first
-  // run there is no news, and a row of zeroes reads like a fault.
-  if (status.found === 0) return null
-
-  return (
-    <p className="mt-1 text-[12px] text-muted">
-      Read straight from Bring: {status.found} invoices found, {status.read} read
-      {status.noDetail > 0 && `, ${status.noDetail} with no breakdown from Bring`}.
-      {status.lastError && (
-        <>
-          {' '}
-          Bring is not sending the details at the moment.{' '}
-          <span className="text-ink">{status.lastError}</span>
-        </>
-      )}
-    </p>
   )
 }
 
@@ -162,13 +111,11 @@ function Carrier({
   months,
   defaultCurrency,
   onSave,
-  invoices,
 }: {
   average: CarrierAverage
   months: CarrierMonth[]
   defaultCurrency: string
   onSave: (save: CarrierCostSave) => void
-  invoices?: BringInvoiceStatus | null
 }) {
   return (
     <div>
@@ -182,7 +129,6 @@ function Carrier({
       </div>
 
       <p className="mt-0.5 text-[12px] text-muted">{why(average)}</p>
-      {invoices && <InvoiceReader status={invoices} />}
 
       <table className="mt-2 w-full border-collapse text-[13px]">
         <thead>
