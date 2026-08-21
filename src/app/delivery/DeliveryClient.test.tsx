@@ -24,6 +24,21 @@ const stats = (over: Partial<DeliveryStats> = {}): DeliveryStats => ({
   ...over,
 })
 
+describe('the pipeline labels', () => {
+  /**
+   * "Too new to say" was accurate and meaningless: the client pasted it back
+   * and asked what the words meant. The orders it counted were simply just
+   * placed - the warehouse's evening file that would carry their tracking
+   * number has not been produced yet. The label now names the journey
+   * position, like every other stage in the bar.
+   */
+  it('calls a brand-new order "Just ordered", not "Too new to say"', () => {
+    const { container } = render(<Pipeline stats={stats({ notDue: 16 })} lastCheckedAt={null} />)
+    expect(container.textContent).toContain('Just ordered')
+    expect(container.textContent).not.toContain('Too new to say')
+  })
+})
+
 describe('LateList', () => {
   it('lists an order that has a parcel to chase', () => {
     const { container } = render(<LateList rows={[order()]} total={1} judged={24} />)

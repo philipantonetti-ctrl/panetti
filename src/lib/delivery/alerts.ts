@@ -42,7 +42,7 @@ const SAYS: Record<DeliveryState, string> = {
   // Reachable only in theory: an order cannot be past a multi-day promise
   // before its first warehouse file is even due. Spelled out rather than left
   // to a fallback, so the Record stays exhaustive.
-  NOT_DUE: 'Too new to say',
+  NOT_DUE: 'Just ordered',
   BOOKED: 'Still at the warehouse',
   IN_TRANSIT: 'In transit',
   RETURNED: 'Returned to sender',
