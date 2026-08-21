@@ -1,6 +1,6 @@
 'use client'
 
-import { formatMoneyWhole } from '@/lib/money'
+import { formatMoney, formatMoneyWhole } from '@/lib/money'
 import { deltaPct } from '@/lib/metrics/trend'
 import type { Figures } from '@/lib/metrics/types'
 
@@ -10,13 +10,23 @@ import type { Figures } from '@/lib/metrics/types'
  * One surface split by hairlines — not a grid of identical cards. Profit is the hero
  * because it is the question the owner actually opens this page to answer.
  *
- * Every money figure here is whole kroner. These are period sums consolidated
- * from four currencies at each order's own rate, so their last two digits are
- * arithmetic rather than money anyone can look up — and at 32px they were wide
- * enough to carry the hero figure out of its card and over the one beside it.
- * All four rather than only the hero: one figure without øre standing beside
- * three with them reads as a bug in the row, not a decision about it. Orders is
- * a count and the margin is a percentage; neither is money and neither changed.
+ * THE HERO IS WHOLE KRONER. The four figures beside it keep their øre.
+ *
+ * At 32px "NOK 1,006,370.25" was wide enough to leave its card and paint over
+ * the figure next to it, and those last two digits are the cheapest three
+ * characters on the row to give up: this is a period sum consolidated from four
+ * currencies at each order's own rate, so its øre are arithmetic rather than
+ * money anyone can look up.
+ *
+ * Briefly all four, then asked back to one. The client reads these beside
+ * BeProfit, and a figure quietly moved by up to a krone costs him more there
+ * than an inconsistent row does — AVG ORDER VALUE rounding 4,630.63 to 4,631
+ * is the case that decided it. The other four are set at 17px and none of them
+ * was overflowing anything, so they were paying that price for nothing.
+ *
+ * ORDERS is a count and the margin is a percentage. Neither is money, neither
+ * changed, and both are held there by a test — "drop the decimals" is exactly
+ * the change that spreads along a row on its own.
  */
 
 /** Which way did it move, against the same length of time before it? */
@@ -112,7 +122,7 @@ export function StatStrip({
       <div className="border-b border-line lg:border-b-0 lg:border-r">
         <Stat
           label="NET REVENUE"
-          value={formatMoneyWhole(total.netRevenue, currency)}
+          value={formatMoney(total.netRevenue, currency)}
           delta={<Delta current={total.netRevenue} previous={previous.netRevenue} hint={hint} />}
         />
       </div>
@@ -128,14 +138,14 @@ export function StatStrip({
       <div className="border-b border-line lg:border-b-0 lg:border-r">
         <Stat
           label="AVG ORDER VALUE"
-          value={formatMoneyWhole(total.avgOrderValue, currency)}
+          value={formatMoney(total.avgOrderValue, currency)}
           delta={<Delta current={total.avgOrderValue} previous={previous.avgOrderValue} hint={hint} />}
         />
       </div>
 
       <Stat
         label="AMBASSADOR SALES"
-        value={formatMoneyWhole(total.ambassadorSales, currency)}
+        value={formatMoney(total.ambassadorSales, currency)}
         delta={
           <Delta current={total.ambassadorSales} previous={previous.ambassadorSales} hint={hint} />
         }
