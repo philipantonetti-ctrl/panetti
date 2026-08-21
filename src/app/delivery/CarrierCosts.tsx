@@ -50,12 +50,13 @@ const editable = (minor: number | null) => (minor === null ? '' : (minor / 100).
 /**
  * What one parcel costs to send, per carrier.
  *
- * The money is TYPED IN, and the panel says so out loud. Neither carrier API we
- * can reach returns it: the tracking endpoints report where a parcel is, and
- * the rating endpoints would answer with a quote computed from weight and
- * dimensions we do not store — a quote that drifts from the invoice on every
- * fuel surcharge and remote-area fee. So the invoice is the input and the
- * parcels, which we do count exactly, are the divisor.
+ * Bring's monthly bill is READ FROM BRING — writeBringCosts totals the invoice
+ * archive each sync and fills the month in, marked source 'bring'. DHL's is
+ * TYPED, because DHL has no invoice API at all; its rating endpoints would
+ * answer with a quote computed from weight and dimensions we do not store,
+ * which drifts from the invoice on every fuel surcharge and remote-area fee.
+ * Either way the invoice is the input and the parcels, which we count exactly,
+ * are the divisor. A figure he types wins over a read one, always.
  *
  * A month with parcels but no invoice is left out of the average and NAMED.
  * Silently including its parcels would divide one month's invoice by two
@@ -84,11 +85,12 @@ export function CarrierCosts({
           it. Longer explanations were tried and read as an essay above a
           four-column table. */}
       <p className="mt-1 text-[12px] text-muted">
-        Enter each carrier&rsquo;s monthly invoice below and we divide it by the parcels they
-        carried. Bring and DHL only tell us where a parcel is, never what it cost.
+        Bring&rsquo;s monthly bill fills in by itself, read from Bring&rsquo;s own invoices.
+        DHL&rsquo;s is typed in, because DHL offers no way to read theirs.
       </p>
       <p className="mt-0.5 text-[12px] text-muted">
-        Covers all shops, even if you filter by one shop above. One invoice covers them all.
+        Each bill is divided by the parcels that carrier moved. Covers all shops, even if you
+        filter by one shop above.
       </p>
 
       <div className="mt-4 flex flex-col gap-5">
