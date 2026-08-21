@@ -345,12 +345,6 @@ async function displayFrame(): Promise<{ currency: string; rates: Awaited<Return
   return { currency: displayCurrency, rates: buildRateTable(rows) }
 }
 
-/** The month after the one `day` falls in, both as 'YYYY-MM'. */
-function monthAfter(month: string): string {
-  const [y, m] = month.split('-').map(Number)
-  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
-}
-
 /**
  * Fill in what Bring billed, per month, so nobody has to type it.
  *
@@ -359,46 +353,27 @@ function monthAfter(month: string): string {
  * division would read low and then creep upwards all month. A figure that
  * moves under the reader is worse than one that arrives a few days late.
  *
- * Only months COUNTED FROM THEIR FIRST DAY. `countingFrom` is when the parcel
- * record became complete; the card divides a month's bill by that month's
- * parcels, and for the month counting began part-way through, the bill covers
- * the whole month while the parcels do not. Measured on 2026-08-21: parcels
- * held from 12 August, so August's figure would have read roughly 1.5x the
- * true cost — as the first automatic number the client ever saw. Months from
- * before the boundary that this writer created earlier are DELETED, not just
- * skipped: July held one stray parcel, so its auto-written 324 814.90 kr
- * total stood ready to display as 324 814.90 kr PER PARCEL.
+ * EVERY ended month, including ones from before parcel counting began. The
+ * bill is a true fact about the month either way, and the client asked to SEE
+ * what was read. Whether a month may be DIVIDED by its parcels is a different
+ * judgement, made where the dividing happens - the Delivery page refuses
+ * months from before the record's declared start - so a writer-side boundary
+ * only made the automation invisible without making anything safer.
  *
- * Never touches a row a person typed — written or deleted. Someone who
+ * Never touches a row a person typed. Someone who
  * corrected a figure knows something this importer does not - a credit note,
  * a month split across two accounts - and silently overwriting that is the
  * one behaviour that would make the whole panel untrustworthy.
  */
 export async function writeBringCosts(
   invoices: BringInvoice[],
-  countingFrom: Date | null,
   now = new Date(),
 ): Promise<number> {
   if (invoices.length === 0) return 0
-  // No parcels counted yet means no divisor exists for any month, so there is
-  // nothing an invoice total could honestly be divided by.
-  if (!countingFrom) return 0
   const { currency, rates } = await displayFrame()
   const thisMonth = now.toISOString().slice(0, 7)
 
-  const fromDay = countingFrom.toISOString().slice(0, 10)
-  const firstMonth = fromDay.endsWith('-01') ? fromDay.slice(0, 7) : monthAfter(fromDay.slice(0, 7))
-
-  // Self-healing, not one-off migration: rows written before the boundary rule
-  // existed disappear on the next tick, and keep disappearing if the boundary
-  // ever moves later. Scoped to source 'bring' — a typed figure is his.
-  await db.carrierCost.deleteMany({
-    where: { carrier: 'BRING', source: 'bring', month: { lt: firstMonth } },
-  })
-
-  const totals = monthlyInvoiceTotals(invoices, currency, rates).filter(
-    (t) => t.month < thisMonth && t.month >= firstMonth,
-  )
+  const totals = monthlyInvoiceTotals(invoices, currency, rates).filter((t) => t.month < thisMonth)
 
   let written = 0
   for (const total of totals) {
@@ -419,27 +394,6 @@ export async function writeBringCosts(
     written += 1
   }
   return written
-}
-
-/**
- * When the parcel record became complete: the earliest deliveryTrackingFrom
- * any active shop declares.
- *
- * The system's own declared boundary, NOT min(Shipment date) — deliberately.
- * Production holds one stray parcel with a July billable date among a record
- * that otherwise starts 12 August (measured 2026-08-21), so a data-derived
- * boundary lands in July and admits August as a fully-counted month when
- * eleven days of it were never recorded. deliveryTrackingFrom already means
- * "judge nothing older than this" everywhere else on the Delivery page; a
- * month's cost average is a judgement like any other. Null — no shop declares
- * one — means the record has no stated start, and nothing is written.
- */
-async function trackingEraStart(): Promise<Date | null> {
-  const m = await db.shop.aggregate({
-    where: { active: true, deliveryTrackingFrom: { not: null } },
-    _min: { deliveryTrackingFrom: true },
-  })
-  return m._min.deliveryTrackingFrom
 }
 
 export type BringInvoiceSyncResult = {
@@ -491,7 +445,7 @@ export async function syncBringInvoices(
     // Only on a complete pass. A discovery cut short by the deadline has seen
     // some customers and not others, and a month totalled from half its
     // invoices would be written as though it were the whole thing.
-    const costMonths = found.partial ? 0 : await writeBringCosts(found.invoices, await trackingEraStart())
+    const costMonths = found.partial ? 0 : await writeBringCosts(found.invoices)
     const requested = await requestNextReport(creds, opts)
     const collected = await collectNextReport(creds, opts)
     return nothing({

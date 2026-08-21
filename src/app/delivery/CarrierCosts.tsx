@@ -9,6 +9,13 @@ export type CarrierMonth = {
   /** 'YYYY-MM'. */
   month: string
   parcels: number
+  /**
+   * False when the month's parcel count is not the month — counting began
+   * part-way through it, or never reached it at all. The bill still shows;
+   * the count and the division do not. Absent means true, so a cached older
+   * payload renders as it always did.
+   */
+  counted?: boolean
   /** Minor units, or null when no invoice has been entered for this month. */
   amount: number | null
   currency: string | null
@@ -213,13 +220,22 @@ function MonthRow({
     onSave({ carrier: row.carrier, month: row.month, amount, currency })
   }
 
+  // Never for a month outside the record: its bill covers the whole month and
+  // its parcel count does not, so the quotient is the one confidently wrong
+  // number this card could produce.
   const perParcel =
-    row.amount !== null && row.parcels > 0 ? Math.round(row.amount / row.parcels) : null
+    row.counted !== false && row.amount !== null && row.parcels > 0
+      ? Math.round(row.amount / row.parcels)
+      : null
 
   return (
     <tr className="border-b border-line last:border-b-0">
       <td className="py-1.5 text-ink">{monthName(row.month)}</td>
-      <td className="num py-1.5 text-right text-muted">{row.parcels.toLocaleString('en-GB')}</td>
+      {/* A dash, not the few parcels we happened to see: printing 201 beside a
+          whole-month bill invites dividing them by hand. */}
+      <td className="num py-1.5 text-right text-muted">
+        {row.counted === false ? DASH : row.parcels.toLocaleString('en-GB')}
+      </td>
       <td className="py-1.5 text-right">
         <input
           type="text"

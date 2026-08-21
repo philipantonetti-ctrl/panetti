@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { carrierAverages } from './carrier-cost'
+import { carrierAverages, firstFullMonth } from './carrier-cost'
 
 const ship = (carrier: string, month: string, count: number) => ({ carrier, month, count })
 const cost = (carrier: string, month: string, amount: number, currency = 'NOK') => ({
@@ -108,5 +108,73 @@ describe('carrierAverages', () => {
       [],
     )
     expect(rows.map((r) => r.carrier)).toEqual(['BRING', 'DHL'])
+  })
+})
+
+/**
+ * A month can hold parcels AND an invoice and still not be divisible, because
+ * WE were not counting parcels for all of it. Live case, measured 2026-08-21:
+ * production holds exactly one stray Bring parcel dated July beside July's
+ * auto-read 324 814.90 kr bill DASH divided, that is 324 814.90 kr PER PARCEL,
+ * one date-range click from the screen. The month's own numbers cannot reveal
+ * this; only the flag can.
+ */
+describe('carrierAverages and a month whose parcel count is incomplete', () => {
+  it('refuses to divide an incomplete month, even with parcels and an invoice', () => {
+    const [bring] = carrierAverages(
+      [
+        { carrier: 'BRING', month: '2026-07', count: 1, complete: false },
+        { carrier: 'BRING', month: '2026-09', count: 400 },
+      ],
+      [
+        { carrier: 'BRING', month: '2026-07', amount: 324_814_90, currency: 'NOK' },
+        { carrier: 'BRING', month: '2026-09', amount: 20_000_00, currency: 'NOK' },
+      ],
+    )
+
+    // September alone: 20 000.00 over 400 parcels. Including July would make
+    // it 344 814.90 over 401 and read 859.89 instead of 50.00.
+    expect(bring.shipments).toBe(400)
+    expect(bring.averageMinor).toBe(50_00)
+    expect(bring.monthsCounted).toEqual(['2026-09'])
+  })
+
+  it('does not nag for an invoice for a month it would refuse to divide anyway', () => {
+    const [bring] = carrierAverages(
+      [{ carrier: 'BRING', month: '2026-08', count: 201, complete: false }],
+      [],
+    )
+
+    expect(bring.monthsMissingCost).toEqual([])
+  })
+
+  it('still reports incomplete months\' parcels in the range total, because they moved', () => {
+    const [bring] = carrierAverages(
+      [
+        { carrier: 'BRING', month: '2026-08', count: 201, complete: false },
+        { carrier: 'BRING', month: '2026-09', count: 400 },
+      ],
+      [],
+    )
+
+    expect(bring.parcelsInRange).toBe(601)
+  })
+})
+
+/**
+ * 'YYYY-MM-01' of the first month wholly inside the record: the month itself
+ * when counting began on the 1st, otherwise the next one.
+ */
+describe('firstFullMonth', () => {
+  it('is the month itself when counting began on its first day', () => {
+    expect(firstFullMonth(new Date('2026-08-01T00:00:00Z'))).toBe('2026-08')
+  })
+
+  it('is the next month when counting began part-way through', () => {
+    expect(firstFullMonth(new Date('2026-08-21T00:00:00Z'))).toBe('2026-09')
+  })
+
+  it('rolls over a year end', () => {
+    expect(firstFullMonth(new Date('2026-12-05T00:00:00Z'))).toBe('2027-01')
   })
 })

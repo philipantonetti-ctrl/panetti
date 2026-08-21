@@ -6,7 +6,7 @@ import { rangeFromQuery } from '@/lib/api/range'
 import { getSetting } from '@/lib/settings'
 import { zoneDayEndUtc, zoneDayStartUtc, zonedDayStr } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
-import { carrierAverages, type CarrierShipments } from '@/lib/delivery/carrier-cost'
+import { carrierAverages, firstFullMonth, type CarrierShipments } from '@/lib/delivery/carrier-cost'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -63,14 +63,40 @@ export async function GET(req: Request) {
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
 
+    /**
+     * When the parcel record began, by the system's own declaration: the
+     * earliest deliveryTrackingFrom any active shop carries — the same "judge
+     * nothing older than this" the rest of the Delivery page obeys. NOT
+     * min(Shipment date), deliberately: production holds one stray parcel
+     * dated July in a record that otherwise starts 12 August, so a
+     * data-derived start would call August fully counted when eleven days of
+     * it were never recorded. Months from before the first full month show
+     * their bill but are never divided. No declared start means no boundary,
+     * which is the pre-tracking behaviour unchanged.
+     */
+    const era = await db.shop.aggregate({
+      where: { active: true, deliveryTrackingFrom: { not: null } },
+      _min: { deliveryTrackingFrom: true },
+    })
+    const firstMonth = era._min.deliveryTrackingFrom
+      ? firstFullMonth(era._min.deliveryTrackingFrom)
+      : null
+    const complete = (month: string) => firstMonth === null || month >= firstMonth
+
     const perMonth: CarrierShipments[] = [...counts].map(([key, count]) => {
       const [carrier, month] = key.split('|')
-      return { carrier, month, count }
+      return { carrier, month, count, complete: complete(month) }
     })
 
-    const months = [...new Set(perMonth.map((r) => r.month))]
-    const costs =
-      months.length === 0 ? [] : await db.carrierCost.findMany({ where: { month: { in: months } } })
+    /**
+     * Every stored bill, not just the on-screen months' — the whole point of
+     * reading Bring's invoices automatically is that the money is VISIBLE, and
+     * a bill for a month with no counted parcels (June and July hold real
+     * totals and no parcels at all) has no shipment row to earn it a place.
+     * The table is a handful of rows per carrier per year, so unbounded is a
+     * dozen rows, not a scan.
+     */
+    const costs = await db.carrierCost.findMany()
 
     const byKey = new Map(costs.map((c) => [`${c.carrier}|${c.month}`, c]))
 
@@ -85,14 +111,17 @@ export async function GET(req: Request) {
             currency: c.currency,
           })),
         ),
-        // One row per carrier per month, which is what the invoice covers and
-        // therefore what the form asks for.
-        months: perMonth
-          .sort((a, b) => a.carrier.localeCompare(b.carrier) || b.month.localeCompare(a.month))
-          .map((s) => ({
+        // One row per carrier per month: every month that moved parcels, plus
+        // every month holding a bill — read or typed — even where no parcel
+        // was counted. `counted: false` marks a month whose parcel figures
+        // must not be shown or divided: its bill covers the whole month and
+        // its count does not.
+        months: [
+          ...perMonth.map((s) => ({
             carrier: s.carrier,
             month: s.month,
             parcels: s.count,
+            counted: s.complete !== false,
             amount: byKey.get(`${s.carrier}|${s.month}`)?.amount ?? null,
             currency: byKey.get(`${s.carrier}|${s.month}`)?.currency ?? null,
             // 'bring' means nobody typed this - it was read from the invoice
@@ -100,6 +129,18 @@ export async function GET(req: Request) {
             // itself needs to explain where it came from.
             source: byKey.get(`${s.carrier}|${s.month}`)?.source ?? null,
           })),
+          ...costs
+            .filter((c) => !counts.has(`${c.carrier}|${c.month}`))
+            .map((c) => ({
+              carrier: c.carrier,
+              month: c.month,
+              parcels: 0,
+              counted: false,
+              amount: c.amount,
+              currency: c.currency,
+              source: c.source,
+            })),
+        ].sort((a, b) => a.carrier.localeCompare(b.carrier) || b.month.localeCompare(a.month)),
         defaultCurrency: displayCurrency,
       },
       { headers: NO_STORE },

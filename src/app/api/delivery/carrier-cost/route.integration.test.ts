@@ -19,6 +19,7 @@ async function cleanup() {
   await db.shipmentEvent.deleteMany({ where: { shipment: { trackingNumber: { startsWith: TRACK } } } })
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: TRACK } } })
   await db.carrierCost.deleteMany({ where: { carrier: { in: [BRINGISH, DHLISH] } } })
+  await db.shop.deleteMany({ where: { name: { contains: '[carrier-cost-test]' } } })
 }
 
 afterAll(cleanup)
@@ -38,7 +39,7 @@ const put = (body: unknown) =>
 
 type Body = {
   carriers: { carrier: string; shipments: number; parcelsInRange: number; cost: number | null; averageMinor: number | null; monthsMissingCost: string[] }[]
-  months: { carrier: string; month: string; parcels: number; amount: number | null }[]
+  months: { carrier: string; month: string; parcels: number; counted: boolean; amount: number | null }[]
 }
 
 const load = async () => (await (await GET(new Request(url))).json()) as Body
@@ -141,5 +142,65 @@ describe('PUT /api/delivery/carrier-cost', () => {
 
   it('refuses a currency that is not a three-letter code', async () => {
     expect((await put({ carrier: BRINGISH, month: '2026-07', amount: 10, currency: 'kroner' })).status).toBe(400)
+  })
+})
+
+/**
+ * The record has a declared start DASH the earliest deliveryTrackingFrom any
+ * active shop carries, the same "judge nothing older than this" the rest of
+ * the Delivery page obeys. Months from before it can show their bill but must
+ * never be divided: their parcel count is not the month, it is however much of
+ * the month we happened to see.
+ */
+describe('months from before the record began', () => {
+  const era = (from: string) =>
+    db.shop.create({
+      data: {
+        name: 'Panetti [carrier-cost-test]', currency: 'NOK', active: true,
+        deliveryTrackingFrom: new Date(from),
+      },
+    })
+
+  it('marks them, and leaves months inside the record alone', async () => {
+    await era('2026-08-15T00:00:00Z') // first full month: September
+    await parcel('E1', BRINGISH, new Date('2026-08-20T09:00:00Z'))
+    const body = await load()
+
+    const august = body.months.find((m) => m.carrier === BRINGISH && m.month === '2026-08')
+    expect(august?.counted).toBe(false)
+  })
+
+  it('keeps them out of the average even when they hold parcels and an invoice', async () => {
+    await era('2026-08-01T00:00:00Z') // August itself is the first full month
+    await parcel('E2', BRINGISH, new Date('2026-07-20T09:00:00Z')) // the stray
+    await parcel('E3', BRINGISH, new Date('2026-08-10T09:00:00Z'))
+    await put({ carrier: BRINGISH, month: '2026-07', amount: 324_814_90, currency: 'NOK' })
+    await put({ carrier: BRINGISH, month: '2026-08', amount: 100_00, currency: 'NOK' })
+    const body = await load()
+
+    // August alone: 100.00 over 1 parcel. July would have contributed
+    // 324 814.90 over one stray parcel.
+    expect(of(body, BRINGISH)?.averageMinor).toBe(100_00)
+  })
+
+  it('shows a bill that was read for a month with no parcels at all', async () => {
+    await era('2026-08-01T00:00:00Z')
+    await parcel('E4', BRINGISH, new Date('2026-08-10T09:00:00Z'))
+    await put({ carrier: BRINGISH, month: '2026-06', amount: 233_785_88, currency: 'NOK' })
+    const body = await load()
+
+    // June is on screen because its money is real, and refused a division
+    // because its parcels were never counted.
+    const june = body.months.find((m) => m.carrier === BRINGISH && m.month === '2026-06')
+    expect(june?.amount).toBe(233_785_88)
+    expect(june?.counted).toBe(false)
+  })
+
+  it('treats every month as inside the record when no shop declares a start', async () => {
+    await parcel('E5', BRINGISH, new Date('2026-07-04T09:00:00Z'))
+    await put({ carrier: BRINGISH, month: '2026-07', amount: 100_00, currency: 'NOK' })
+    const body = await load()
+
+    expect(of(body, BRINGISH)?.averageMinor).toBe(100_00)
   })
 })

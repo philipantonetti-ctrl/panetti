@@ -23,6 +23,26 @@ export type CarrierShipments = {
   /** 'YYYY-MM'. */
   month: string
   count: number
+  /**
+   * False when WE were not counting parcels for the whole month, so `count`
+   * covers less time than the month's invoice does. Such a month must never be
+   * divided: production holds one stray parcel dated July beside July's
+   * 324 814.90 kr bill (measured 2026-08-21), and dividing reads that as
+   * 324 814.90 kr per parcel. Absent means true, because a caller that has
+   * not thought about completeness is describing an unbounded record.
+   */
+  complete?: boolean
+}
+
+/**
+ * The first month wholly inside a record that begins at `from`: the month
+ * itself when counting began on its first day, otherwise the next one.
+ */
+export function firstFullMonth(from: Date): string {
+  const day = from.toISOString().slice(0, 10)
+  if (day.endsWith('-01')) return day.slice(0, 7)
+  const [y, m] = day.slice(0, 7).split('-').map(Number)
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
 }
 
 /** One carrier invoice, for one calendar month. */
@@ -76,8 +96,13 @@ export function carrierAverages(
       costs.filter((c) => c.carrier === carrier).map((c) => [c.month, c] as const),
     )
 
-    const counted = mine.filter((s) => invoices.has(s.month)).sort((a, b) => a.month.localeCompare(b.month))
-    const missing = mine.filter((s) => !invoices.has(s.month)).map((s) => s.month).sort()
+    // Incomplete months drop out of BOTH lists: they cannot be divided, and
+    // nagging for an invoice for a month that would be refused anyway sends
+    // someone to fetch a figure with no use.
+    const whole = mine.filter((s) => s.complete !== false)
+
+    const counted = whole.filter((s) => invoices.has(s.month)).sort((a, b) => a.month.localeCompare(b.month))
+    const missing = whole.filter((s) => !invoices.has(s.month)).map((s) => s.month).sort()
 
     const parcelsInRange = mine.reduce((n, s) => n + s.count, 0)
     const shipmentCount = counted.reduce((n, s) => n + s.count, 0)
