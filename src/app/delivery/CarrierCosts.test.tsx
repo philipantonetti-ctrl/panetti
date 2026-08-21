@@ -35,6 +35,16 @@ const props = (over = {}) => ({
   ...over,
 })
 
+const invoices = (over = {}) => ({
+  found: 27,
+  read: 0,
+  waiting: 25,
+  noDetail: 2,
+  failed: 1,
+  lastError: 'Bring responded 406: Not Acceptable' as string | null,
+  ...over,
+})
+
 describe('CarrierCosts', () => {
   it('states the cost of sending one parcel', () => {
     const { container } = render(<CarrierCosts {...props()} />)
@@ -154,5 +164,60 @@ describe('CarrierCosts', () => {
   it('says nothing at all when no parcel moved in the range', () => {
     const { container } = render(<CarrierCosts {...props({ carriers: [], months: [] })} />)
     expect(container.textContent).toBe('')
+  })
+})
+
+/**
+ * "Where do I see on the website if it is finished." Asked by the client, and
+ * unanswerable until this line existed: the Bring invoice reader ran on a
+ * schedule with no surface at all, so a working one and a broken one looked
+ * identical from the page where its number is supposed to land.
+ */
+describe('CarrierCosts, the Bring invoice reader line', () => {
+  it('says how many invoices it has found and how many it has read', () => {
+    render(<CarrierCosts {...props({ bringInvoices: invoices() })} />)
+    expect(screen.getByText(/27 invoices found/i)).toBeInTheDocument()
+    expect(screen.getByText(/0 read/i)).toBeInTheDocument()
+  })
+
+  it('shows what Bring answered, so it can be forwarded as it is', () => {
+    render(<CarrierCosts {...props({ bringInvoices: invoices() })} />)
+    expect(screen.getByText(/Bring responded 406/i)).toBeInTheDocument()
+  })
+
+  it('does not show an error when there is none', () => {
+    render(
+      <CarrierCosts {...props({ bringInvoices: invoices({ read: 27, waiting: 0, failed: 0, lastError: null }) })} />,
+    )
+    expect(screen.queryByText(/406/)).not.toBeInTheDocument()
+    expect(screen.getByText(/27 read/i)).toBeInTheDocument()
+  })
+
+  /** A carrier we do not read invoices for must not grow a line about them. */
+  it('says nothing under DHL', () => {
+    render(
+      <CarrierCosts
+        {...props({
+          carriers: [average({ carrier: 'DHL' })],
+          months: [month({ carrier: 'DHL' })],
+          bringInvoices: invoices(),
+        })}
+      />,
+    )
+    expect(screen.queryByText(/invoices found/i)).not.toBeInTheDocument()
+  })
+
+  /** Before the reader has ever run there is nothing to report, not a zero. */
+  it('says nothing when no invoice has been found at all', () => {
+    render(
+      <CarrierCosts {...props({ bringInvoices: invoices({ found: 0, read: 0, waiting: 0, noDetail: 0, failed: 0, lastError: null }) })} />,
+    )
+    expect(screen.queryByText(/invoices found/i)).not.toBeInTheDocument()
+  })
+
+  /** The panel predates this line and must still render without it. */
+  it('renders when no status was passed at all', () => {
+    render(<CarrierCosts {...props()} />)
+    expect(screen.queryByText(/invoices found/i)).not.toBeInTheDocument()
   })
 })
