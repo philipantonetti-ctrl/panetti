@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toMinor, toMajor, mulRate, pct, sum, formatMoney } from './money'
+import { toMinor, toMajor, mulRate, pct, sum, formatMoney, formatMoneyWhole } from './money'
 
 describe('money', () => {
   it('converts major units to integer minor units', () => {
@@ -33,5 +33,30 @@ describe('money', () => {
   it('formats money for display in its currency', () => {
     expect(formatMoney(4499900, 'NOK')).toContain('44')
     expect(formatMoney(125050, 'USD')).toContain('1,250')
+  })
+
+  /**
+   * The dashboard headline figures, without øre.
+   *
+   * A million kroner and 25 øre is not a more precise answer than a million
+   * kroner. It is three more characters on the figures the page is built
+   * around, and at 32px they were wide enough to run out of the Net Profit
+   * card and over the one beside it.
+   *
+   * Rounds, never truncates. Truncating would make every figure on the strip
+   * quietly smaller than the truth, and this is the number the owner opens the
+   * page to read.
+   */
+  it('formats money with no minor units at all', () => {
+    expect(formatMoneyWhole(100637025, 'NOK')).toContain('1,006,370')
+    expect(formatMoneyWhole(100637025, 'NOK')).not.toContain('.25')
+    expect(formatMoneyWhole(100637075, 'NOK')).toContain('1,006,371')
+  })
+
+  // Still money, so it still carries its currency. A bare 1,006,370 on a page
+  // that consolidates four currencies into one would be the wrong kind of tidy.
+  it('keeps the currency when it drops the minor units', () => {
+    expect(formatMoneyWhole(100637025, 'NOK')).toContain('NOK')
+    expect(formatMoneyWhole(125050, 'USD')).toContain('$')
   })
 })
