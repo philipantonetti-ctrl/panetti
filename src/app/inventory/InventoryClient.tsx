@@ -17,6 +17,10 @@ export type Row = {
   seasonal: boolean
   forecast: {
     runsOutOn: string | null
+    /** Out of stock from `from`, covered again by an arrival on `until`. */
+    gap: { from: string; until: string } | null
+    /** Units on order whose date has passed with nothing received. */
+    overdueArrivals: { quantity: number; since: string } | null
     orderBy: string | null
     daysLate: number | null
     quantity: number | null
@@ -356,6 +360,28 @@ export function InventoryClient({
                       </span>
                     ) : (
                       <span className="text-muted">{r.forecast.note}</span>
+                    )}
+                    {/* The stockout an arrival heals. Without this line a shelf
+                        that is empty TODAY with a container booked reads as "no
+                        risk within a year", which is true of the year and false
+                        of the fortnight the reader is standing in. */}
+                    {r.forecast.gap && (
+                      <div
+                        className={`text-[11px] ${
+                          Date.parse(r.forecast.gap.from) <= today.getTime() ? 'text-loss' : 'text-muted'
+                        }`}
+                      >
+                        out of stock until {when(r.forecast.gap.until)}
+                      </div>
+                    )}
+                    {/* Goods past their date that nobody has received: neither
+                        counted as stock nor silently dropped. A person chases
+                        the supplier, not a new order. */}
+                    {r.forecast.overdueArrivals && (
+                      <div className="text-[11px] text-warn">
+                        {r.forecast.overdueArrivals.quantity} on order, overdue since{' '}
+                        {when(r.forecast.overdueArrivals.since)}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-2.5">

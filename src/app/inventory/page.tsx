@@ -35,6 +35,15 @@ export default async function InventoryPage() {
               ...r.forecast,
               runsOutOn: r.forecast.runsOutOn?.toISOString() ?? null,
               orderBy: r.forecast.orderBy?.toISOString() ?? null,
+              gap: r.forecast.gap
+                ? { from: r.forecast.gap.from.toISOString(), until: r.forecast.gap.until.toISOString() }
+                : null,
+              overdueArrivals: r.forecast.overdueArrivals
+                ? {
+                    quantity: r.forecast.overdueArrivals.quantity,
+                    since: r.forecast.overdueArrivals.since.toISOString(),
+                  }
+                : null,
             },
             stock: { ...r.stock, byShop: r.stock.byShop },
           }))}

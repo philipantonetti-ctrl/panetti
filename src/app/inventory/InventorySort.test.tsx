@@ -8,6 +8,7 @@ const row = (over: Partial<Row> & { sku: string }): Row => ({
   stock: { quantity: 0, disagrees: false, byShop: [] },
   burn: 0, trend: null, seasonal: true,
   forecast: {
+    gap: null, overdueArrivals: null,
     runsOutOn: null, orderBy: null, daysLate: null,
     quantity: null, needed: null, raisedBy: null, onOrderWithoutEta: 0, note: null,
   },
@@ -36,13 +37,13 @@ const click = (label: string) => fireEvent.click(screen.getByRole('button', { na
 // passing assertion cannot be the input order leaking through.
 const ROWS = [
   row({ sku: 'MID', stock: { quantity: 50, disagrees: false, byShop: [] }, burn: 8.6,
-        forecast: { runsOutOn: '2026-10-20T00:00:00.000Z', orderBy: null, daysLate: null,
+        forecast: { gap: null, overdueArrivals: null, runsOutOn: '2026-10-20T00:00:00.000Z', orderBy: null, daysLate: null,
                     quantity: 200, needed: 200, raisedBy: null, onOrderWithoutEta: 0, note: null } }),
   row({ sku: 'HIGH', stock: { quantity: 1305, disagrees: false, byShop: [] }, burn: 30.3,
-        forecast: { runsOutOn: '2026-09-19T00:00:00.000Z', orderBy: null, daysLate: null,
+        forecast: { gap: null, overdueArrivals: null, runsOutOn: '2026-09-19T00:00:00.000Z', orderBy: null, daysLate: null,
                     quantity: 900, needed: 900, raisedBy: null, onOrderWithoutEta: 0, note: null } }),
   row({ sku: 'LOW', stock: { quantity: 2, disagrees: false, byShop: [] }, burn: 0.1,
-        forecast: { runsOutOn: '2026-12-12T00:00:00.000Z', orderBy: null, daysLate: null,
+        forecast: { gap: null, overdueArrivals: null, runsOutOn: '2026-12-12T00:00:00.000Z', orderBy: null, daysLate: null,
                     quantity: 10, needed: 10, raisedBy: null, onOrderWithoutEta: 0, note: null } }),
 ]
 
