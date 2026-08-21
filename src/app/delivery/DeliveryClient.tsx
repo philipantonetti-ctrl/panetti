@@ -12,11 +12,19 @@ import { trackingUrl } from '@/lib/delivery/tracking-url'
 import type { DeliveryStats, CountryStat } from '@/lib/delivery/stats'
 import type { DeliveryState, Parcel } from '@/lib/delivery/view'
 import type { CarrierAverage } from '@/lib/delivery/carrier-cost'
-import { CarrierCosts, type CarrierCostSave, type CarrierMonth } from './CarrierCosts'
+import {
+  CarrierCosts,
+  type BringInvoiceStatus,
+  type CarrierCostSave,
+  type CarrierMonth,
+} from './CarrierCosts'
 
 type CarrierCostPayload = {
   carriers: CarrierAverage[]
   months: CarrierMonth[]
+  // Optional: an older cached response, or a deploy mid-flight, simply has no
+  // reader line rather than a crash.
+  bringInvoices?: BringInvoiceStatus | null
   defaultCurrency: string
 }
 
@@ -1324,6 +1332,7 @@ export function DeliveryClient({
                       months={costs.months}
                       defaultCurrency={costs.defaultCurrency}
                       onSave={saveCarrierCost}
+                      bringInvoices={costs.bringInvoices}
                     />
                   )}
                   <Distribution data={data.stats.distribution} waiting={whyBlank(data.stats)} />
