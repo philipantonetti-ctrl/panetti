@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { InventoryClient, type Row } from './InventoryClient'
 
@@ -26,6 +26,17 @@ const shows = (ui: ReactElement, pattern: RegExp) =>
   expect(render(ui).container.textContent).toMatch(pattern)
 
 describe('InventoryClient', () => {
+  /**
+   * "I put that the stock should last 45 days - why does it suggest 6110?"
+   * The number is the product's cover days of sales; the header says so on
+   * hover, so the reader does not have to find the rule on another tab.
+   */
+  it('says on the How-many header what the number covers', () => {
+    render(<InventoryClient rows={[row()]} unusable={[]} />)
+    const header = screen.getByRole('columnheader', { name: /how many/i })
+    expect(header.getAttribute('title')).toMatch(/cover days/i)
+  })
+
   /**
    * The MACBE661 case: shelf empty today, arrivals booked that cover the year.
    * "no risk within a year" is true of the year and false of the fortnight the

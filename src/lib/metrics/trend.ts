@@ -1,4 +1,4 @@
-import { daysInRange, eachDay, utcDay } from '../dates'
+import { daysInMonthOf, daysInRange, eachDay, utcDay } from '../dates'
 import { zonedDayStr } from '../tz'
 import { computeMetrics, type MetricsInput } from './engine'
 import type { EngineOrder } from './types'
@@ -16,6 +16,26 @@ export function previousRange(from: Date, to: Date): { from: Date; to: Date } {
   const end = new Date(utcDay(from).getTime() - DAY_MS)
   const start = new Date(end.getTime() - (length - 1) * DAY_MS)
   return { from: start, to: end }
+}
+
+/**
+ * The same calendar dates one year earlier - "YoY, same period last year", in
+ * the client's words. Not the same LENGTH shifted back: this month's first
+ * 21 days read against last year's first 21 days of the same month, so the
+ * two sides line up the way a person would line them up on a calendar.
+ *
+ * 29 February has no twin and lands on the 28th rather than spilling into
+ * March, which would quietly hand the range one extra day.
+ */
+export function sameRangeLastYear(from: Date, to: Date): { from: Date; to: Date } {
+  const back = (d: Date) => {
+    const u = utcDay(d)
+    const y = u.getUTCFullYear() - 1
+    const m = u.getUTCMonth()
+    const first = new Date(Date.UTC(y, m, 1))
+    return new Date(Date.UTC(y, m, Math.min(u.getUTCDate(), daysInMonthOf(first))))
+  }
+  return { from: back(from), to: back(to) }
 }
 
 /**

@@ -90,8 +90,8 @@ describe('forecast', () => {
   it('nets incoming arrivals off the suggested quantity', () => {
     const f = forecast(input({ arrivals: [{ eta: inDays(30), quantity: 50 }] }), TODAY)
     expect(day(f.runsOutOn!)).toBe(day(inDays(9)))
-    // 160 days of cover at 10 a day is 1600, minus the 50 already coming.
-    expect(f.needed).toBe(1550)
+    // 90 days of cover at 10 a day is 900, minus the 50 already coming.
+    expect(f.needed).toBe(850)
   })
 
   /**
@@ -118,33 +118,58 @@ describe('forecast', () => {
     expect(f.onOrderWithoutEta).toBe(500)
   })
 
-  it('covers lead time plus the cover period', () => {
-    // 10 a day over 30 + 40 + 90 days.
-    expect(forecast(input({ stock: 1000 }), TODAY).quantity).toBe(1600)
+  /**
+   * The quantity is the COVER period and nothing more. Lead time already
+   * decides WHEN to order (order-by = run-out minus lead); adding it to the
+   * quantity as well is what turned "the stock should last 45 days" into
+   * 6110 pizza ovens - 200 days of sales on a product with 140 days of lead.
+   * The client's own orders overlap (twelve on that one SKU this year), so
+   * nothing obliges one order to carry the next order's lead time too.
+   */
+  it('orders enough for the cover period alone; lead time sets the date, not the amount', () => {
+    // 10 a day over the 90-day default cover = 900. Not 30 + 40 + 90 = 1600.
+    expect(forecast(input({ stock: 1000 }), TODAY).quantity).toBe(900)
   })
 
   it('honours a custom cover period instead of the 90-day default', () => {
-    // 10 a day over 30 production + 40 delivery + 30 cover = 1000 units,
-    // against 1600 at the default cover. So this pins the override itself.
+    // 10 a day over 30 days of cover = 300 units, against 900 at the default.
     const f = forecast(input({ stock: 1000, coverDays: 30 }), TODAY)
-    expect(f.quantity).toBe(1000)
+    expect(f.quantity).toBe(300)
+  })
+
+  /**
+   * PANPIZPRO as the client saw it on 2026-08-22: 897 in stock at 29.87 a
+   * day, 70 + 70 days of lead, 60 days of cover, containers of 611. The page
+   * said "How many: 6110" - ten containers, 200 days of sales.
+   */
+  it('sizes the pizza oven order to its cover days: three containers, not ten', () => {
+    const f = forecast(
+      input({
+        stock: 897, level: 29.87, productionDays: 70, deliveryDays: 70,
+        coverDays: 60, moq: 611, unitsPerContainer: 611,
+      }),
+      TODAY,
+    )
+    expect(f.needed).toBe(1793) // 60 days x 29.87, rounded up
+    expect(f.quantity).toBe(1833) // three containers of 611
+    expect(f.raisedBy).toBe('container')
   })
 
   it('never orders below the supplier minimum', () => {
     // Runs out on day 299, inside the 365-day horizon, so a quantity is
-    // genuinely computed: 1/day over 30 + 40 + 90 days = 160 units. The
+    // genuinely computed: 1/day over the 90-day cover = 90 units. The
     // supplier's 500 minimum is what must raise it.
     const f = forecast(input({ stock: 300, level: 1, moq: 500 }), TODAY)
     expect(f.quantity).toBe(500)
   })
 
   it('rounds up to whole containers', () => {
-    const f = forecast(input({ stock: 1000, unitsPerContainer: 1000 }), TODAY)
-    expect(f.quantity).toBe(2000) // 1600 needed -> two containers
+    const f = forecast(input({ stock: 1000, unitsPerContainer: 400 }), TODAY)
+    expect(f.quantity).toBe(1200) // 900 needed -> three containers
   })
 
   it('a container rounding can never drop below the minimum', () => {
-    // 160 needed, raised to the 500 minimum, then rounded up to two 400-unit
+    // 90 needed, raised to the 500 minimum, then rounded up to two 400-unit
     // containers = 800. Applying the container first would give 400, then the
     // minimum would lift it to 500 — not a whole number of containers.
     const f = forecast(input({ stock: 300, level: 1, moq: 500, unitsPerContainer: 400 }), TODAY)
@@ -154,33 +179,33 @@ describe('forecast', () => {
   })
 
   /**
-   * "Order 500" without "you need 160" is a number nobody can sanity-check. The
+   * "Order 500" without "you need 90" is a number nobody can sanity-check. The
    * reorder tips quote both, and say which rule made up the difference, because
    * "the supplier will not take less" and "that is a whole container" are
    * different reasons to buy stock you do not yet need.
    */
   it('reports what demand alone called for, next to the number to order', () => {
     const f = forecast(input({ stock: 300, level: 1, moq: 500 }), TODAY)
-    expect(f.needed).toBe(160)
+    expect(f.needed).toBe(90)
     expect(f.quantity).toBe(500)
     expect(f.raisedBy).toBe('minimum')
   })
 
   it('names the container, not the minimum, when the container is what rounded it up', () => {
-    const f = forecast(input({ stock: 1000, unitsPerContainer: 1000 }), TODAY)
-    expect(f.needed).toBe(1600)
+    const f = forecast(input({ stock: 1000, unitsPerContainer: 400 }), TODAY)
+    expect(f.needed).toBe(900)
     expect(f.raisedBy).toBe('container')
   })
 
   it('names nothing when plain demand set the number', () => {
     const f = forecast(input({ stock: 1000 }), TODAY)
-    expect(f.needed).toBe(1600)
-    expect(f.quantity).toBe(1600)
+    expect(f.needed).toBe(900)
+    expect(f.quantity).toBe(900)
     expect(f.raisedBy).toBeNull()
   })
 
   it('names the minimum when both rules applied, because the minimum is what binds', () => {
-    // 160 needed. Containers alone would give 400; it is the 500 minimum that
+    // 90 needed. Containers alone would give 400; it is the 500 minimum that
     // forces the second container.
     const f = forecast(input({ stock: 300, level: 1, moq: 500, unitsPerContainer: 400 }), TODAY)
     expect(f.quantity).toBe(800)

@@ -21,8 +21,12 @@ afterEach(() => {
 const payload = {
   metrics: { displayCurrency: 'USD', byShop: [], total: { ...ZERO_FIGURES } },
   previous: { ...ZERO_FIGURES },
+  lastYear: { ...ZERO_FIGURES },
   series: [],
   leaderboard: [],
+  range: { from: '2026-08-01T00:00:00.000Z', to: '2026-08-21T00:00:00.000Z' },
+  previousRange: { from: '2026-07-11T00:00:00.000Z', to: '2026-07-31T00:00:00.000Z' },
+  lastYearRange: { from: '2025-08-01T00:00:00.000Z', to: '2025-08-21T00:00:00.000Z' },
 }
 
 /** A fresh Response per call — a body can only be read once. */
@@ -98,5 +102,46 @@ describe('DashboardClient live refresh', () => {
     })
     const metricCalls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0])).filter((u) => u.includes('/api/metrics'))
     expect(metricCalls.length).toBe(2)
+  })
+})
+
+/**
+ * The client asked for YoY beside the figure he had. The strip gets both
+ * comparisons from this page, each named by what it is actually against - the
+ * 21 days before this one, and the same 21 dates last year - so the words
+ * under the numbers come from the ranges the API really compared, not from a
+ * preset label guessed on the client.
+ */
+describe('DashboardClient comparisons', () => {
+  it('labels the period before by its length, and names last year', async () => {
+    // Production's own figures for 1-21 Aug 2026, the 21 days before, and
+    // 1-21 Aug 2025 (read 2026-08-22). Every figure non-zero on every side, so
+    // all five lines carry a percentage and its label rather than "no data".
+    const figures = (orders: number, netRevenue: number, netProfit: number, avgOrderValue: number, ambassadorSales: number) =>
+      ({ ...ZERO_FIGURES, orders, netRevenue, netProfit, avgOrderValue, ambassadorSales })
+    const live = {
+      ...payload,
+      metrics: { ...payload.metrics, total: figures(828, 385113348, 101852287, 465113, 22679631) },
+      previous: figures(825, 364608641, 106179678, 441950, 21264435),
+      lastYear: figures(622, 279836067, 42968191, 449897, 5134879),
+    }
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(live), { status: 200 }))))
+    render(<DashboardClient email="admin@test.local" shops={[]} />)
+    expect(await screen.findAllByText('vs 21 days before')).toHaveLength(5)
+    expect(screen.getAllByText('vs last year')).toHaveLength(5)
+    // And the dates behind each, on hover: the API's own ranges.
+    expect(screen.getAllByTitle('vs last year: 2025-08-01 → 2025-08-21').length).toBeGreaterThan(0)
+    expect(screen.getAllByTitle('vs 21 days before: 2026-07-11 → 2026-07-31').length).toBeGreaterThan(0)
+  })
+
+  it('says "the day before" for a one-day range rather than "1 days before"', async () => {
+    const oneDay = {
+      ...payload,
+      previousRange: { from: '2026-08-20T00:00:00.000Z', to: '2026-08-20T00:00:00.000Z' },
+    }
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(oneDay), { status: 200 }))))
+    render(<DashboardClient email="admin@test.local" shops={[]} />)
+    // Zero figures both sides, so the label lives in the tooltip of the "no data" line.
+    expect(await screen.findAllByTitle('vs the day before: 2026-08-20 → 2026-08-20')).toHaveLength(5)
   })
 })

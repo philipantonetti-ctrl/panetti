@@ -67,6 +67,17 @@ const COLUMNS = {
 type Column = keyof typeof COLUMNS
 
 /**
+ * One header earns a hint. "How many" is the figure the client asked about
+ * ("I put that the stock should last 45 days - why does it suggest 6110?"),
+ * and the answer is a rule rather than a value, so it is said on hover here
+ * instead of sending him to find it on the Suppliers tab.
+ */
+const HINTS: Partial<Record<Column, string>> = {
+  'How many':
+    'Enough to last the product’s cover days, after what is already on order. Rounded up to the supplier minimum and to whole containers.',
+}
+
+/**
  * Which way a first click should sort, per column.
  *
  * "Which product am I about to run out of" is answered by the SOONEST date, and
@@ -281,6 +292,7 @@ export function InventoryClient({
                     <th
                       key={label}
                       className="px-4 py-2.5"
+                      title={HINTS[label]}
                       // Announced, not merely coloured: the arrow below is
                       // decoration, this is what a screen reader reads.
                       aria-sort={
