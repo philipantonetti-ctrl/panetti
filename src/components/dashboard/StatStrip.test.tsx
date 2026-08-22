@@ -20,7 +20,7 @@ const total: Figures = {
 }
 
 const previous: Comparison = {
-  label: 'vs the 20 days before',
+  label: 'vs 20 days before',
   dates: '2026-07-12 → 2026-07-31',
   missing: 'No prior data',
   figures: {
@@ -118,7 +118,7 @@ describe('StatStrip', () => {
    */
   it('reads every figure against the period before AND the same dates last year', () => {
     strip()
-    expect(screen.getAllByText('vs the 20 days before')).toHaveLength(5)
+    expect(screen.getAllByText('vs 20 days before')).toHaveLength(5)
     expect(screen.getAllByText('vs last year')).toHaveLength(5)
   })
 
@@ -133,7 +133,7 @@ describe('StatStrip', () => {
 
   it('keeps the period-before figure it always had, labelled now', () => {
     strip()
-    const before = screen.getAllByTitle('vs the 20 days before: 2026-07-12 → 2026-07-31').map((el) => el.textContent)
+    const before = screen.getAllByTitle('vs 20 days before: 2026-07-12 → 2026-07-31').map((el) => el.textContent)
     // 801 orders against 794.
     expect(before.some((t) => t?.includes('+0.9%'))).toBe(true)
   })

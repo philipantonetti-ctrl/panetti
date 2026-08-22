@@ -31,12 +31,13 @@ const dates = (r: Range) => `${r.from.slice(0, 10)} → ${r.to.slice(0, 10)}`
 
 /**
  * What the period-before figure is against, in plain words. Named by length
- * rather than by preset - "this month" against "the 21 days before" is what
- * the API actually compared, and it stays true for a custom range too.
+ * rather than by preset - "this month" against "21 days before" is what the
+ * API actually compared, and it stays true for a custom range too. Kept short
+ * on purpose: it shares the hero's line with the margin figure.
  */
 function beforeLabel(r: Range): string {
   const n = daysInRange(new Date(r.from), new Date(r.to))
-  return n === 1 ? 'vs the day before' : `vs the ${n} days before`
+  return n === 1 ? 'vs the day before' : `vs ${n} days before`
 }
 
 /** Skeletons in the shape of the content — never a spinner in the middle of a table. */

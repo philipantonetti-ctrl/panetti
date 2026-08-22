@@ -127,14 +127,14 @@ describe('DashboardClient comparisons', () => {
     }
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(live), { status: 200 }))))
     render(<DashboardClient email="admin@test.local" shops={[]} />)
-    expect(await screen.findAllByText('vs the 21 days before')).toHaveLength(5)
+    expect(await screen.findAllByText('vs 21 days before')).toHaveLength(5)
     expect(screen.getAllByText('vs last year')).toHaveLength(5)
     // And the dates behind each, on hover: the API's own ranges.
     expect(screen.getAllByTitle('vs last year: 2025-08-01 → 2025-08-21').length).toBeGreaterThan(0)
-    expect(screen.getAllByTitle('vs the 21 days before: 2026-07-11 → 2026-07-31').length).toBeGreaterThan(0)
+    expect(screen.getAllByTitle('vs 21 days before: 2026-07-11 → 2026-07-31').length).toBeGreaterThan(0)
   })
 
-  it('says "the day before" for a one-day range rather than "the 1 days before"', async () => {
+  it('says "the day before" for a one-day range rather than "1 days before"', async () => {
     const oneDay = {
       ...payload,
       previousRange: { from: '2026-08-20T00:00:00.000Z', to: '2026-08-20T00:00:00.000Z' },

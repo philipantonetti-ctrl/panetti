@@ -42,7 +42,7 @@ import type { Figures } from '@/lib/metrics/types'
  */
 export type Comparison = {
   figures: Figures
-  /** Visible, beside the percentage: "vs the 21 days before", "vs last year". */
+  /** Visible, beside the percentage: "vs 21 days before", "vs last year". */
   label: string
   /** The exact range, for the tooltip: "2026-07-11 → 2026-07-31". */
   dates: string
@@ -160,7 +160,9 @@ export function StatStrip({
         </p>
 
         <div className="mt-2 flex flex-col gap-0.5">
-          <div className="flex items-center gap-3">
+          {/* Wraps as whole items: when the card is narrow the margin drops to
+              its own line instead of the label breaking mid-phrase. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
             <Delta k="netProfit" total={total} against={previous} />
             <span className="num text-[12px] text-muted">
               {(total.netMargin * 100).toFixed(1)}% margin
