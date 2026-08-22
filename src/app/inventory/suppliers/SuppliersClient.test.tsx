@@ -275,3 +275,16 @@ describe('SuppliersClient, products only the other webshops sell', () => {
     expect(screen.queryByRole('button', { name: /sold only in other webshops/i })).toBeNull()
   })
 })
+
+/**
+ * The client typed 45 into "Cover days" expecting an order of 45 days of
+ * sales and got a suggestion for 200 days. The field is explained where it is
+ * typed, in one sentence, so the number he sets and the number he gets agree.
+ */
+describe('SuppliersClient cover days', () => {
+  it('says that cover days is how long one order should last, and that the suggestion is that many days of sales', () => {
+    const { container } = render(<SuppliersClient items={[item()]} suppliers={[]} />)
+    expect(container.textContent).toMatch(/cover days is how long one order should last/i)
+    expect(container.textContent).toMatch(/that many days of sales/i)
+  })
+})

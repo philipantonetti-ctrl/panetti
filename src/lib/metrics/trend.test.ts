@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { previousRange, deltaPct, dailySeries } from './trend'
+import { previousRange, sameRangeLastYear, deltaPct, dailySeries } from './trend'
 import { computeMetrics } from './engine'
 import { buildRateTable } from './fx'
 import type { CostBook, EngineOrder, EngineShop } from './types'
@@ -24,6 +24,31 @@ describe('previousRange', () => {
     const prev = previousRange(new Date('2026-03-01'), new Date('2026-03-31'))
     expect(day(prev.to)).toBe('2026-02-28')
     expect(day(prev.from)).toBe('2026-01-29') // 31 days back from 28 Feb
+  })
+})
+
+/**
+ * The client asked for "YoY, same period last year" beside the period-before
+ * figure: the same calendar dates one year earlier, so this month's first 21
+ * days read against last year's first 21 days of the same month.
+ */
+describe('sameRangeLastYear', () => {
+  it('is the same calendar dates, one year earlier', () => {
+    const ly = sameRangeLastYear(new Date('2026-08-01'), new Date('2026-08-21'))
+    expect(day(ly.from)).toBe('2025-08-01')
+    expect(day(ly.to)).toBe('2025-08-21')
+  })
+
+  it('keeps a range that crosses New Year on its own dates', () => {
+    const ly = sameRangeLastYear(new Date('2025-12-20'), new Date('2026-01-10'))
+    expect(day(ly.from)).toBe('2024-12-20')
+    expect(day(ly.to)).toBe('2025-01-10')
+  })
+
+  it('lands a leap day on the 28th, never on 1 March', () => {
+    const ly = sameRangeLastYear(new Date('2028-02-29'), new Date('2028-02-29'))
+    expect(day(ly.from)).toBe('2027-02-28')
+    expect(day(ly.to)).toBe('2027-02-28')
   })
 })
 

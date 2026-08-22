@@ -5,18 +5,38 @@ import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
-import { StatStrip } from '@/components/dashboard/StatStrip'
+import { StatStrip, type Comparison } from '@/components/dashboard/StatStrip'
 import { TrendChart } from '@/components/dashboard/TrendChart'
 import { CompareTable } from '@/components/dashboard/CompareTable'
-import { PRESET_LABELS, type Preset } from '@/lib/dates'
+import { daysInRange, type Preset } from '@/lib/dates'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { EngineResult, Figures } from '@/lib/metrics/types'
 import type { SeriesPoint } from '@/lib/metrics/trend'
 
+type Range = { from: string; to: string }
+
 type Payload = {
   metrics: EngineResult
+  /** The equally long period immediately before the range. */
   previous: Figures
+  /** The same calendar dates one year earlier. */
+  lastYear: Figures
   series: SeriesPoint[]
+  previousRange: Range
+  lastYearRange: Range
+}
+
+/** "2026-07-11 → 2026-07-31": the dates a comparison really covers, for the tooltip. */
+const dates = (r: Range) => `${r.from.slice(0, 10)} → ${r.to.slice(0, 10)}`
+
+/**
+ * What the period-before figure is against, in plain words. Named by length
+ * rather than by preset - "this month" against "the 21 days before" is what
+ * the API actually compared, and it stays true for a custom range too.
+ */
+function beforeLabel(r: Range): string {
+  const n = daysInRange(new Date(r.from), new Date(r.to))
+  return n === 1 ? 'vs the day before' : `vs the ${n} days before`
 }
 
 /** Skeletons in the shape of the content — never a spinner in the middle of a table. */
@@ -86,10 +106,22 @@ export function DashboardClient({
   }, [preset, from, to, selected, tick])
 
   const currency = data?.metrics.displayCurrency ?? 'USD'
-  const periodLabel =
-    preset === 'custom'
-      ? 'the period before'
-      : `the previous ${PRESET_LABELS[preset].toLowerCase()}`
+
+  // The two things every headline figure is read against. The client asked
+  // for "YoY, same period last year" beside the period-before figure he
+  // already had; the words come from the ranges the API really compared.
+  const previous: Comparison | null = data && {
+    figures: data.previous,
+    label: beforeLabel(data.previousRange),
+    dates: dates(data.previousRange),
+    missing: 'No prior data',
+  }
+  const lastYear: Comparison | null = data && {
+    figures: data.lastYear,
+    label: 'vs last year',
+    dates: dates(data.lastYearRange),
+    missing: 'No data last year',
+  }
 
   return (
     <AppShell email={email}>
@@ -140,7 +172,7 @@ export function DashboardClient({
 
         {loading && !data ? (
           <Skeleton />
-        ) : data ? (
+        ) : data && previous && lastYear ? (
           // On a refetch the numbers stay put but dim, so changing the range
           // gives instant feedback instead of looking frozen until it lands.
           <div
@@ -149,9 +181,9 @@ export function DashboardClient({
           >
             <StatStrip
               total={data.metrics.total}
-              previous={data.previous}
+              previous={previous}
+              lastYear={lastYear}
               currency={currency}
-              hint={periodLabel}
             />
 
             <TrendChart series={data.series} currency={currency} />

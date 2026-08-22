@@ -309,6 +309,14 @@ export function SuppliersClient({
         )}
       </div>
 
+      {/* The field the client misread: he typed 45 expecting 45 days of sales
+          and the forecast, which then still added the lead time on top,
+          offered 200 days' worth. Said once, where the number is typed. */}
+      <p className="text-[12px] text-muted">
+        Cover days is how long one order should last once it lands. The forecast suggests that
+        many days of sales, rounded up to the supplier minimum and to whole containers.
+      </p>
+
       {visible.map(row)}
 
       {/*

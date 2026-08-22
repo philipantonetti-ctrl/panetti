@@ -166,13 +166,19 @@ export function forecast(input: ForecastInput, today: Date): Forecast {
   const orderBy = new Date(runsOutOn.getTime() - leadDays * DAY)
   const late = Math.ceil((from.getTime() - orderBy.getTime()) / DAY)
 
-  // Cover the lead time and then the cover period, counted from when the shelf
-  // empties — that is the stretch the new stock has to carry.
+  // The cover period, counted from when the shelf empties - how long the
+  // client said one order should last. The lead time is NOT added: it already
+  // decided WHEN to order, one line up, and adding it here as well is what
+  // turned "the stock should last 45 days" into 6110 pizza ovens (200 days of
+  // sales on a product with 140 days of lead). His orders overlap - twelve on
+  // that SKU in one year - so nothing obliges one order to carry the next
+  // order's lead time too.
+  //
   // Net of what is already on the water: the deepest shortfall the window
   // reaches once booked arrivals are counted in. With none it is plain summed
-  // demand, as before; with some it stops the suggestion re-ordering goods a
-  // supplier has already been paid to send.
-  const horizon = leadDays + (input.coverDays ?? DEFAULT_COVER_DAYS)
+  // demand; with some it stops the suggestion re-ordering goods a supplier
+  // has already been paid to send.
+  const horizon = input.coverDays ?? DEFAULT_COVER_DAYS
   let balance = 0
   let shortfall = 0
   for (let i = 0; i < horizon; i++) {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { StatStrip } from './StatStrip'
+import { StatStrip, type Comparison } from './StatStrip'
 import { ZERO_FIGURES, type Figures } from '@/lib/metrics/types'
 
 /**
@@ -19,17 +19,42 @@ const total: Figures = {
   netMargin: 0.271,
 }
 
-const previous: Figures = {
-  ...ZERO_FIGURES,
-  orders: 794,
-  netProfit: 103217000,
-  netRevenue: 352580000,
-  avgOrderValue: 443800,
-  ambassadorSales: 20180000,
+const previous: Comparison = {
+  label: 'vs the 20 days before',
+  dates: '2026-07-12 → 2026-07-31',
+  missing: 'No prior data',
+  figures: {
+    ...ZERO_FIGURES,
+    orders: 794,
+    netProfit: 103217000,
+    netRevenue: 352580000,
+    avgOrderValue: 443800,
+    ambassadorSales: 20180000,
+  },
 }
 
-const strip = () =>
-  render(<StatStrip total={total} previous={previous} currency="NOK" hint="previous 20 days" />)
+/**
+ * The same 20 days one year earlier, as the production database actually has
+ * them (1-21 Aug 2025, read 2026-08-22): 622 orders, 2,798,360.67 net.
+ */
+const lastYear: Comparison = {
+  label: 'vs last year',
+  dates: '2025-08-01 → 2025-08-20',
+  missing: 'No data last year',
+  figures: {
+    ...ZERO_FIGURES,
+    orders: 622,
+    netProfit: 42968191,
+    netRevenue: 279836067,
+    avgOrderValue: 449897,
+    ambassadorSales: 5134879,
+  },
+}
+
+const strip = (over: Partial<Parameters<typeof StatStrip>[0]> = {}) =>
+  render(
+    <StatStrip total={total} previous={previous} lastYear={lastYear} currency="NOK" {...over} />,
+  )
 
 describe('StatStrip', () => {
   /**
@@ -82,5 +107,41 @@ describe('StatStrip', () => {
   it('keeps the one decimal on the margin', () => {
     strip()
     expect(screen.getByText(/27\.1% margin/)).toBeTruthy()
+  })
+
+  /**
+   * The client's ask, in his words: "show the increase and decrease in %
+   * compared to last year also, so YoY (same period last year). Because now
+   * it only shows compared to last month." Two lines under every figure, each
+   * saying what it is measured against - an unlabelled second percentage
+   * would be two arrows nobody can tell apart.
+   */
+  it('reads every figure against the period before AND the same dates last year', () => {
+    strip()
+    expect(screen.getAllByText('vs the 20 days before')).toHaveLength(5)
+    expect(screen.getAllByText('vs last year')).toHaveLength(5)
+  })
+
+  it('says how far each figure moved against last year', () => {
+    strip()
+    const yoy = screen.getAllByTitle('vs last year: 2025-08-01 → 2025-08-20').map((el) => el.textContent)
+    // 3,709,137.17 against 2,798,360.67; 801 orders against 622; profit 1,006,370.25 against 429,681.91.
+    expect(yoy.some((t) => t?.includes('+32.5%'))).toBe(true)
+    expect(yoy.some((t) => t?.includes('+28.8%'))).toBe(true)
+    expect(yoy.some((t) => t?.includes('+134.2%'))).toBe(true)
+  })
+
+  it('keeps the period-before figure it always had, labelled now', () => {
+    strip()
+    const before = screen.getAllByTitle('vs the 20 days before: 2026-07-12 → 2026-07-31').map((el) => el.textContent)
+    // 801 orders against 794.
+    expect(before.some((t) => t?.includes('+0.9%'))).toBe(true)
+  })
+
+  /** A shop that opened this year has no last year. Say so; never print a NaN or a dash. */
+  it('says when there is nothing last year to compare with', () => {
+    strip({ lastYear: { ...lastYear, figures: ZERO_FIGURES } })
+    expect(screen.getAllByText('No data last year')).toHaveLength(5)
+    expect(screen.queryByText(/NaN/)).toBeNull()
   })
 })
