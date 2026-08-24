@@ -1,7 +1,7 @@
 ﻿import { describe, it, expect } from 'vitest'
 import { computeMetrics, entriesIn } from './engine'
 import { buildRateTable } from './fx'
-import type { CostBook, EngineAdSpend, EngineExpense, EngineOrder, EngineShop } from './types'
+import type { CostBook, EngineAdSpend, EngineAffiliateCost, EngineExpense, EngineOrder, EngineShop } from './types'
 
 const shops: EngineShop[] = [
   { id: 'no', name: 'Mazzetti.no', currency: 'NOK' },
@@ -726,6 +726,67 @@ describe('computeMetrics and ad spend', () => {
     // Every existing caller passes no adSpend. Their profit must not move.
     const res = run(undefined)
     expect(res.total.marketing).toBe(0)
+    expect(res.total.netProfit).toBe(0)
+  })
+})
+
+describe('affiliate cost', () => {
+  const affShops: EngineShop[] = [
+    { id: 's1', name: 'One', currency: 'NOK' },
+    { id: 's2', name: 'Two', currency: 'NOK' },
+  ]
+  // NOK -> USD: 0.10 on 1 July, 0.20 on 2 July.
+  const affRates = buildRateTable([
+    { date: new Date('2026-07-01'), currency: 'USD', rate: 1 },
+    { date: new Date('2026-07-01'), currency: 'NOK', rate: 0.1 },
+    { date: new Date('2026-07-02'), currency: 'NOK', rate: 0.2 },
+  ])
+  const cost = (over: Partial<EngineAffiliateCost> = {}): EngineAffiliateCost => ({
+    shopId: 's1',
+    date: new Date('2026-07-01'),
+    amount: 10000, // 100.00 kr of commission + fee
+    currency: 'NOK',
+    ...over,
+  })
+  const run = (affiliate?: EngineAffiliateCost[]) =>
+    computeMetrics({
+      shops: affShops,
+      orders: [],
+      expenses: [],
+      costs: new Map(),
+      rates: affRates,
+      affiliate,
+      displayCurrency: 'USD',
+      from: new Date('2026-07-01'),
+      to: new Date('2026-07-02'),
+    })
+
+  it('converts each day at that day’s own rate', () => {
+    const res = run([cost(), cost({ date: new Date('2026-07-02') })])
+    expect(res.byShop[0].affiliate).toBe(3000) // $10 + $20, never $20 or $40
+  })
+
+  it('takes affiliate straight out of net profit, separately from marketing', () => {
+    const res = run([cost()])
+    expect(res.total.affiliate).toBe(1000)
+    expect(res.total.marketing).toBe(0)
+    expect(res.total.netProfit).toBe(-1000)
+  })
+
+  it('ignores cost outside the range and never crosses shops', () => {
+    const res = run([
+      cost({ date: new Date('2026-06-30') }),
+      cost(),
+      cost({ shopId: 's2', amount: 50000 }),
+    ])
+    expect(res.byShop[0].affiliate).toBe(1000)
+    expect(res.byShop[1].affiliate).toBe(50000 * 0.1)
+    expect(res.total.affiliate).toBe(1000 + 5000)
+  })
+
+  it('is zero when absent — every existing caller’s profit must not move', () => {
+    const res = run(undefined)
+    expect(res.total.affiliate).toBe(0)
     expect(res.total.netProfit).toBe(0)
   })
 })
