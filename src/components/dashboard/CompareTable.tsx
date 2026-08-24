@@ -47,6 +47,7 @@ const COLUMNS: Column[] = [
   { key: 'transactionFees', label: 'Transaction fees', money: true, hint: 'Payment gateway: % of the charged total + fixed part' },
   { key: 'cogs', label: 'COGS', money: true, shareOfNetRevenue: true, hint: 'Product cost + handling, and its share of net revenue' },
   { key: 'marketing', label: 'Marketing', money: true, hint: 'Meta and Google ad spend, converted at each day’s own rate' },
+  { key: 'affiliate', label: 'Affiliate', money: true, hint: 'Addrevenue affiliate commission + platform fee, converted at each day’s own rate' },
   { key: 'operationalExpenses', label: 'Op. expenses', money: true },
   { key: 'roas', label: 'ROAS', roas: true, hint: 'Gross revenue per unit of ad spend. The Total row is the blended figure: all gross revenue over all spend.' },
   { key: 'commission', label: 'Commission', money: true },
