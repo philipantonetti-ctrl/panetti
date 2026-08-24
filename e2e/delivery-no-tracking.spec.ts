@@ -125,7 +125,12 @@ test('the too-new orders are still accounted for, in their own place', async ({ 
   //
   // The COUNT, not just the label. Every stage is drawn even at zero, so
   // asserting the words alone passes whether or not the state exists.
-  const stage = page.locator('dl div').filter({ hasText: 'Too new to say' })
+  //
+  // "Just ordered", not "Too new to say": the stage was renamed when the
+  // client pasted the old words back asking what they meant, and this
+  // assertion was left behind pointing at a label the page had stopped
+  // drawing, so it could only ever fail.
+  const stage = page.locator('dl div').filter({ hasText: 'Just ordered' })
   await expect(stage).toBeVisible({ timeout: 15_000 })
   const count = Number((await stage.locator('dd').innerText()).replace(/[^0-9]/g, ''))
   expect(count).toBeGreaterThan(0)

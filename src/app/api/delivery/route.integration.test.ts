@@ -158,6 +158,106 @@ describe('GET /api/delivery', () => {
   })
 
   /**
+   * The client's words: "when order is delivered or ready for collection, it
+   * can go away from the Late section."
+   *
+   * The list used to keep them, advertise the fact in its own heading, and
+   * then reconcile itself with the tile above in a second sentence. Live on
+   * 2026-08-24 that was sixteen rows under a tile reading 13 — six of them
+   * badged Delivered or Ready for collection, not one of them a thing anybody
+   * could chase. The section is a to-do list, and a to-do list carrying
+   * finished work stops being read.
+   *
+   * The miss itself is not forgotten. It is exactly what the on-time rate is
+   * made of, which the last two assertions hold in place.
+   */
+  it('drops an order from the late list once the parcel reaches the customer', async () => {
+    const base = {
+      shopId, placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed',
+      currency: 'NOK', shippingCountry: 'NO',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+    }
+    const moving = await db.order.create({
+      data: { ...base, externalId: 'E-MOVING', number: 'RTE6001' },
+    })
+    const waiting = await db.order.create({
+      data: { ...base, externalId: 'E-WAITING', number: 'RTE6002' },
+    })
+    const done = await db.order.create({
+      data: { ...base, externalId: 'E-DONE6', number: 'RTE6003' },
+    })
+
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${TRACK}MOVING`, carrier: 'BRING', orderId: moving.id,
+        handedInAt: new Date('2026-08-04T08:00:00Z'), lastStatus: 'HANDED_IN',
+      },
+    })
+    // Arrived at the pickup point, well past a 3-business-day promise.
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${TRACK}WAITING`, carrier: 'BRING', orderId: waiting.id,
+        handedInAt: new Date('2026-08-04T08:00:00Z'),
+        availableAt: new Date('2026-08-15T09:00:00Z'),
+        outcome: 'DELIVERED', terminal: true,
+      },
+    })
+    // And one the customer has already walked to the shop for.
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${TRACK}DONE6`, carrier: 'BRING', orderId: done.id,
+        handedInAt: new Date('2026-08-04T08:00:00Z'),
+        availableAt: new Date('2026-08-15T09:00:00Z'),
+        collectedAt: new Date('2026-08-16T09:00:00Z'),
+        outcome: 'DELIVERED', terminal: true,
+      },
+    })
+
+    const body = await (await GET(new Request(url))).json()
+
+    expect(body.late.map((l: { number: string }) => l.number)).toEqual(['RTE6001'])
+    expect(body.lateTotal).toBe(1)
+    // The tile and the list are one set now, not two rules that agree.
+    expect(body.stats.lateNow).toBe(1)
+
+    // Both arrivals still count against the on-time rate. Dropping them from
+    // the queue must not quietly forgive them.
+    expect(body.stats.judged).toBe(2)
+    expect(body.stats.onTimeRate).toBe(0)
+  })
+
+  /**
+   * COLLECTED stops the clock in milestones.ts, but only READY_FOR_PICKUP and
+   * DELIVERED write `availableAt`. A parcel whose feed carried the collection
+   * and neither of those has a `collectedAt` and no `availableAt` at all — so
+   * a rule reading `availableAt` alone leaves it in the queue, adding a day to
+   * its "days over" every morning, while the customer is holding the box.
+   */
+  it('drops one whose only arrival evidence is the collection', async () => {
+    const collected = await db.order.create({
+      data: {
+        shopId, externalId: 'E-COLL', number: 'RTE6101',
+        placedAt: new Date('2026-08-03T08:00:00Z'), status: 'completed',
+        currency: 'NOK', shippingCountry: 'NO',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      },
+    })
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${TRACK}COLL`, carrier: 'BRING', orderId: collected.id,
+        handedInAt: new Date('2026-08-04T08:00:00Z'),
+        collectedAt: new Date('2026-08-15T09:00:00Z'), terminal: true,
+      },
+    })
+
+    const body = await (await GET(new Request(url))).json()
+
+    expect(body.late).toEqual([])
+    expect(body.lateTotal).toBe(0)
+    expect(body.stats.lateNow).toBe(0)
+  })
+
+  /**
    * The second half of the same complaint: "many orders will never receive
    * tracking, will this forever show 637?"
    *

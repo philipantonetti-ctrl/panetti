@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deliveryFor, type DeliveryOrder } from './view'
+import { deliveryFor, hasArrived, stillLate, type DeliveryOrder } from './view'
 import type { PromisePoint } from './promise'
 
 const OSLO = 'Europe/Oslo'
@@ -467,5 +467,110 @@ describe('a parcel the file says arrived, with no date yet', () => {
     const v = undated({ availableAt: new Date('2026-08-06T09:00:00Z') })
     expect(v.state).toBe('AVAILABLE')
     expect(v.totalDays).toBe(3)
+  })
+})
+
+/**
+ * The chase queue: what is late, still not with the customer, and holds a
+ * parcel somebody can go and ask about.
+ *
+ * Three screens ask that question — the LATE RIGHT NOW tile, the Late list
+ * under it and the Slack alert — and each used to spell its own answer out.
+ * The list's answer left out the "still not with the customer" half, so on
+ * 2026-08-24 it ran to sixteen rows under a tile reading 13, six of them
+ * badged Delivered or Ready for collection. The client's words: "when order is
+ * delivered or ready for collection, it can go away from the Late section."
+ */
+describe('stillLate', () => {
+  const chasing = (over = {}) =>
+    deliveryFor(order({ shipments: [parcel(over)] }), promises, OSLO, NOW)
+
+  it('keeps a parcel still crawling past its promise', () => {
+    const v = chasing({ handedInAt: new Date('2026-08-04T16:00:00Z') })
+    expect(v.state).toBe('IN_TRANSIT')
+    expect(stillLate(v)).toBe(true)
+  })
+
+  it('lets go of one waiting at the pickup point, however late it got there', () => {
+    const v = chasing({ availableAt: new Date('2026-08-12T09:00:00Z'), outcome: 'DELIVERED' })
+    expect(v.state).toBe('AVAILABLE')
+    // Still late, so the on-time rate still records the miss. There is simply
+    // nothing left for anyone to chase.
+    expect(v.late).toBe(true)
+    expect(stillLate(v)).toBe(false)
+  })
+
+  it('lets go of one already in the customer hands', () => {
+    const v = chasing({
+      availableAt: new Date('2026-08-12T09:00:00Z'),
+      collectedAt: new Date('2026-08-13T09:00:00Z'),
+      outcome: 'DELIVERED',
+    })
+    expect(v.state).toBe('DELIVERED')
+    expect(stillLate(v)).toBe(false)
+  })
+
+  /**
+   * COLLECTED stops the clock in milestones.ts, but only READY_FOR_PICKUP and
+   * DELIVERED write `availableAt`. A parcel whose feed carried the collection
+   * and neither of those has a `collectedAt` and no `availableAt` at all —
+   * so a rule reading `availableAt` alone calls it outstanding while the
+   * customer is holding the box.
+   */
+  it('lets go of one whose only arrival evidence is the collection', () => {
+    const v = chasing({ collectedAt: new Date('2026-08-12T09:00:00Z') })
+    expect(v.state).toBe('DELIVERED')
+    expect(v.availableAt).toBeNull()
+    expect(hasArrived(v)).toBe(true)
+    expect(stillLate(v)).toBe(false)
+  })
+
+  // A return is the one settled ending the customer never received. It stays.
+  it('keeps a parcel going back to the sender', () => {
+    const v = chasing({ outcome: 'RETURNED' })
+    expect(v.state).toBe('RETURNED')
+    expect(hasArrived(v)).toBe(false)
+    expect(stillLate(v)).toBe(true)
+  })
+
+  /**
+   * The same returned/cancelled guard `availableAt` already carries, on the
+   * other milestone. milestonesFrom nulls both for a parcel going back, so a
+   * row holding one is already contradicting itself — but `deliveryFor` reads
+   * denormalised columns, not events, and until this guard existed such a row
+   * made `hasArrived` true and quietly took a RETURN off the chase queue. A
+   * return is the one settled ending the customer never received; it is the
+   * last thing that should vanish on the strength of a date beside it that
+   * says the opposite.
+   */
+  it('never reports a returned parcel as collected', () => {
+    const v = chasing({ collectedAt: new Date('2026-08-12T09:00:00Z'), outcome: 'RETURNED' })
+    expect(v.state).toBe('RETURNED')
+    expect(v.collectedAt).toBeNull()
+    expect(hasArrived(v)).toBe(false)
+    expect(stillLate(v)).toBe(true)
+  })
+
+  /**
+   * Late, and nothing to ask anyone about. These have their own section and
+   * their own tile — see the split in api/delivery/route.ts — because a
+   * missing warehouse file is chased with the warehouse, not the carrier.
+   */
+  it('leaves out an order the warehouse never booked', () => {
+    const v = deliveryFor(order(), promises, OSLO, NOW)
+    expect(v.state).toBe('NO_TRACKING')
+    expect(v.late).toBe(true)
+    expect(stillLate(v)).toBe(false)
+  })
+
+  it('leaves out a parcel still inside its promise', () => {
+    const v = deliveryFor(
+      order({ placedAt: new Date('2026-08-19T08:00:00Z'), shipments: [parcel()] }),
+      promises,
+      OSLO,
+      NOW,
+    )
+    expect(v.late).toBe(false)
+    expect(stillLate(v)).toBe(false)
   })
 })

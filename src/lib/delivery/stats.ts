@@ -1,4 +1,4 @@
-import type { OrderDelivery } from './view'
+import { stillLate, type OrderDelivery } from './view'
 
 export type CountryStat = {
   country: string
@@ -160,20 +160,15 @@ export function deliveryStats(
     judged: delivered.filter((v) => v.promiseDays !== null).length,
     unjudged: delivered.filter((v) => v.promiseDays === null).length,
     // "Late RIGHT NOW" is the live queue: missed its promise, still not with
-    // the customer, and HAS A PARCEL somebody can go and ask about. `late`
-    // alone also covers orders that arrived late, which belong in the on-time
-    // rate but not in a tile someone reads as a to-do list. A returned parcel
-    // has no availableAt, so it correctly stays here.
+    // the customer, and HAS A PARCEL somebody can go and ask about.
     //
-    // The parcel clause is the one that was missing. api/delivery/route.ts
-    // splits the late rows in two — a parcel is chased with the carrier, a
-    // missing file is chased with the warehouse — and this count was never
-    // told. Live on 2026-08-19 the tile read 155 against a list of 8, and the
-    // 147-row difference was orders with no tracking number at all: unchasable
-    // by the tile's own definition of itself, and asserting a lateness that a
-    // missing file is no evidence of. They keep their own section and their
-    // own count; what they lose is a claim on this one.
-    lateNow: views.filter((v) => v.late && v.availableAt === null && v.parcels.length > 0).length,
+    // Spelled out here once, and now spelled out NOWHERE else: `stillLate` is
+    // the same function api/delivery/route.ts filters the list with, so the
+    // tile and the rows under it are one set by construction rather than two
+    // agreeing rules. They stopped agreeing twice — 155 against 8 when this
+    // count forgot the parcel clause, then 13 against 16 when the LIST forgot
+    // the arrival clause.
+    lateNow: views.filter(stillLate).length,
     noTracking: views.filter((v) => v.state === 'NO_TRACKING').length,
     notDue: views.filter((v) => v.state === 'NOT_DUE').length,
     // Booked is the warehouse still holding it; in transit is the carrier

@@ -10,6 +10,7 @@ import { daysBetween } from '@/lib/delivery/days'
 import { loadDelivery, type LoadedDelivery } from '@/lib/delivery/load'
 import { deliveryStats } from '@/lib/delivery/stats'
 import { carrierName, trackingUrl } from '@/lib/delivery/tracking-url'
+import { stillLate } from '@/lib/delivery/view'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -58,13 +59,6 @@ export async function GET(req: Request) {
       rows.map((r) => r.view),
       rows.map((r) => r.order.shippingCountry),
     )
-
-    // The true totals, not the capped array lengths. Both lists are capped for
-    // the payload's sake, and a heading that reports the cap is a wrong number
-    // exactly when the situation is worst — 300 unlinked parcels would read as
-    // "50", on the one section whose whole job is to make a linking outage
-    // visible.
-    const lateMatching = rows.filter((r) => r.view.late)
 
     /**
      * Two lists, not one, because they are two different jobs.
@@ -119,7 +113,22 @@ export async function GET(req: Request) {
       parcels: r.view.parcels,
     })
 
-    const chasable = lateMatching.filter((r) => r.view.parcels.length > 0)
+    /**
+     * The chase queue, from the SAME function the tile above is counted with
+     * (lib/delivery/view.ts). Not a rule of its own: this list has now twice
+     * drifted from the tile it sits under — 155 against 8 when the tile forgot
+     * the parcel clause, then 13 against 16 when this list kept every order
+     * that had SINCE ARRIVED and advertised the fact in its own heading.
+     *
+     * The client's words on the second one: "when order is delivered or ready
+     * for collection, it can go away from the Late section." A parcel in the
+     * customer's hands is not something anybody can chase, and a to-do list
+     * carrying finished work stops being read. Those orders are still on the
+     * page — they are what the on-time rate is made of, and "Where everything
+     * is now" counts them under Ready for collection and Delivered — they are
+     * simply no longer queued.
+     */
+    const chasable = rows.filter((r) => stillLate(r.view))
 
     /**
      * EVERY order with no parcel, not only the ones also past their promise.
@@ -133,6 +142,11 @@ export async function GET(req: Request) {
      */
     const unfiled = rows.filter((r) => r.view.state === 'NO_TRACKING')
 
+    // The true totals, not the capped array lengths. Both lists are capped for
+    // the payload's sake, and a heading that reports the cap is a wrong number
+    // exactly when the situation is worst — 300 unlinked parcels would read as
+    // "50", on the one section whose whole job is to make a linking outage
+    // visible.
     const lateTotal = chasable.length
     const late = chasable.sort(byUrgency).slice(0, LATE_LIMIT).map(toRow)
     const noTrackingTotal = unfiled.length
