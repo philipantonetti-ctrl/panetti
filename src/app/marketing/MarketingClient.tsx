@@ -150,12 +150,19 @@ export function MarketingClient({
   shops,
   initialPreset,
   hasAccounts,
+  hasAffiliate = false,
   platforms = [],
 }: {
   email: string
   shops: Shop[]
   initialPreset?: Preset
   hasAccounts: boolean
+  // Whether any active affiliate account exists (src/app/marketing/page.tsx).
+  // The AffiliateSection below answers to the page's date and shop filters, so
+  // those filters must exist for a workspace with affiliate data but no
+  // Meta/Google account — otherwise its one section is frozen at the default
+  // preset and every shop.
+  hasAffiliate?: boolean
   // Workspace-level list of connected platforms, from the server component
   // (src/app/marketing/page.tsx) — never from a /api/marketing response,
   // whose byPlatform narrows to whatever platform filter is active and would
@@ -259,8 +266,17 @@ export function MarketingClient({
             : undefined
         }
       >
-        {hasAccounts && (
+        {/* The filter header exists for either channel: the AffiliateSection
+            reads these same date/shop states, so affiliate data alone earns
+            the controls. Note the setLoading(true) in these handlers is never
+            cleared when hasAccounts is false (the fetch effect returns early)
+            — harmless today because `loading` is only read inside the
+            hasAccounts branch below. */}
+        {(hasAccounts || hasAffiliate) && (
           <>
+            {/* Self-hides for an affiliate-only workspace: page.tsx derives
+                `platforms` from ad accounts, so it is empty here and
+                PlatformFilter renders nothing below two options. */}
             <PlatformFilter
               options={platforms}
               selected={platform}
@@ -288,14 +304,18 @@ export function MarketingClient({
                 if (next.to !== undefined) setTo(next.to)
               }}
             />
-            <button
-              type="button"
-              onClick={refresh}
-              disabled={syncing}
-              className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 hover:border-faint disabled:opacity-50"
-            >
-              {syncing ? 'Refreshing…' : 'Refresh ad data'}
-            </button>
+            {/* Syncs AD spend — meaningless without an ad account, so it keeps
+                the narrower gate. */}
+            {hasAccounts && (
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={syncing}
+                className="rounded-[var(--radius-control)] border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 hover:border-faint disabled:opacity-50"
+              >
+                {syncing ? 'Refreshing…' : 'Refresh ad data'}
+              </button>
+            )}
           </>
         )}
       </PageHeader>

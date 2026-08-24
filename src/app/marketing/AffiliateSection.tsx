@@ -25,6 +25,9 @@ type Payload = {
   byShop: ShopRow[]
   byChannel: ChannelRow[]
   unmatched: number
+  // What those unmatched sales cost, converted like everything else. Kept OUT
+  // of total.cost on purpose: the total must stay exactly the engine's figure.
+  unmatchedCost: number
 }
 
 /** Same grouping as the tables beside it; the three sit on one page. */
@@ -131,8 +134,12 @@ export function AffiliateSection({
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
   }, [preset, from, to, shops, tick])
 
-  // Nothing connected and nothing recorded: the section does not exist.
-  if (!data || (!data.connected && data.total.sales === 0)) return null
+  // Nothing connected and nothing recorded: the section does not exist. But
+  // unmatched sales ARE recorded money — a workspace whose rows all failed to
+  // match a shop, with its account then paused, has zero tracked sales and
+  // still needs the warning below, which is the only thing explaining where
+  // that money went.
+  if (!data || (!data.connected && data.total.sales === 0 && data.unmatched === 0)) return null
 
   const currency = data.displayCurrency
   const stats = [
@@ -170,8 +177,12 @@ export function AffiliateSection({
 
       {data.unmatched > 0 && (
         <p className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-muted">
-          {data.unmatched} {data.unmatched === 1 ? 'sale belongs' : 'sales belong'} to an Addrevenue
-          market that matches none of the shops, so their cost is missing from every per-shop figure.
+          {/* The route filters unmatched rows out of EVERYTHING it sums, so
+              this must not read as a per-shop-table footnote: the money is
+              absent from the headline total and the channel table too. */}
+          {formatMoney(data.unmatchedCost, currency)} of affiliate cost ({data.unmatched}{' '}
+          {data.unmatched === 1 ? 'sale' : 'sales'}) belongs to an Addrevenue market that matches
+          none of the shops, so it is missing from every figure here — including the total above.
           Check the shops’ URLs on the{' '}
           <Link href="/settings/affiliate" className="font-semibold text-accent hover:underline">
             Affiliate settings page

@@ -332,6 +332,54 @@ describe('MarketingClient', () => {
     expect(screen.getByTestId('affiliate-section')).toBeTruthy()
   })
 
+  // FIX (affiliate-only workspace): the filter header used to gate on ad
+  // accounts alone, so a workspace with affiliate data but no Meta/Google
+  // account saw its affiliate section frozen at the default preset and every
+  // shop, with no control to change either. The date and shop filters must
+  // appear for affiliate data too — while the ad doorway stays, the ad-sync
+  // refresh button stays ad-only, and /api/marketing is still never fetched.
+  it('offers the date and shop filters to an affiliate-only workspace', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(
+      <MarketingClient
+        email="admin@test.local"
+        shops={threeShops}
+        hasAccounts={false}
+        hasAffiliate={true}
+      />,
+    )
+    await act(async () => {})
+
+    // The controls the affiliate section answers to.
+    expect(screen.getByRole('button', { name: 'Date range' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Shops' })).toBeTruthy()
+    // The ad-specific parts keep gating on ad accounts alone.
+    expect(screen.getByText('No ad accounts connected yet')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull()
+    const marketingCalls = fetchMock.mock.calls
+      .map((c: unknown[]) => String(c[0]))
+      .filter((u) => u.includes('/api/marketing'))
+    expect(marketingCalls).toHaveLength(0)
+
+    // And the filters actually reach the affiliate section.
+    selectOnly('Panetti Norway')
+    await act(async () => {})
+    const props = JSON.parse(screen.getByTestId('affiliate-section').textContent!)
+    expect(props.shops).toEqual(['a'])
+  })
+
+  it('shows no filter header at all with neither ads nor affiliate', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={false} />)
+    await act(async () => {})
+
+    expect(screen.queryByRole('button', { name: 'Date range' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Shops' })).toBeNull()
+  })
+
   it("hands the affiliate section the page's own date and shop filters", async () => {
     vi.stubGlobal('fetch', fetchPayload())
 
