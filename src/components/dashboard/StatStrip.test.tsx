@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { StatStrip, type Comparison } from './StatStrip'
 import { ZERO_FIGURES, type Figures } from '@/lib/metrics/types'
 
@@ -16,6 +16,7 @@ const total: Figures = {
   netRevenue: 370913717, // 3,709,137.17
   avgOrderValue: 463063, // 4,630.63 — rounds UP, which is the point
   ambassadorSales: 22319711, // 223,197.11
+  affiliate: 1988019, // 19,880.19 — the real 30-day figure the day this shipped
   netMargin: 0.271,
 }
 
@@ -30,6 +31,7 @@ const previous: Comparison = {
     netRevenue: 352580000,
     avgOrderValue: 443800,
     ambassadorSales: 20180000,
+    affiliate: 2100000, // higher than today: the cost FELL against the period before
   },
 }
 
@@ -48,6 +50,7 @@ const lastYear: Comparison = {
     netRevenue: 279836067,
     avgOrderValue: 449897,
     ambassadorSales: 5134879,
+    affiliate: 350000, // the program was weeks old: the cost ROSE hard year on year
   },
 }
 
@@ -90,6 +93,7 @@ describe('StatStrip', () => {
       ['stat-net-revenue', '3,709,137.17'],
       ['stat-avg-order-value', '4,630.63'],
       ['stat-ambassador-sales', '223,197.11'],
+      ['stat-affiliate-cost', '19,880.19'],
     ] as const) {
       expect(screen.getByTestId(id).textContent).toContain(exact)
     }
@@ -118,8 +122,8 @@ describe('StatStrip', () => {
    */
   it('reads every figure against the period before AND the same dates last year', () => {
     strip()
-    expect(screen.getAllByText('vs 20 days before')).toHaveLength(5)
-    expect(screen.getAllByText('vs last year')).toHaveLength(5)
+    expect(screen.getAllByText('vs 20 days before')).toHaveLength(6)
+    expect(screen.getAllByText('vs last year')).toHaveLength(6)
   })
 
   it('says how far each figure moved against last year', () => {
@@ -141,7 +145,29 @@ describe('StatStrip', () => {
   /** A shop that opened this year has no last year. Say so; never print a NaN or a dash. */
   it('says when there is nothing last year to compare with', () => {
     strip({ lastYear: { ...lastYear, figures: ZERO_FIGURES } })
-    expect(screen.getAllByText('No data last year')).toHaveLength(5)
+    expect(screen.getAllByText('No data last year')).toHaveLength(6)
     expect(screen.queryByText(/NaN/)).toBeNull()
+  })
+
+  /**
+   * The client's instruction, verbatim: the affiliate commission "added to our
+   * dashboard and show as a cost". A cost's arrows point the other way from
+   * revenue's: RISING is the bad direction. Painting a +468% cost increase in
+   * gain-green would read as good news, so the colours invert while the arrow
+   * and percentage keep telling the plain truth.
+   */
+  it('paints a rising affiliate cost as a loss and a falling one as a gain', () => {
+    strip()
+    const cell = screen.getByTestId('stat-affiliate-cost').parentElement!
+
+    // Against the period before, the cost FELL 5.3% — good news, green.
+    const before = within(cell).getByTitle('vs 20 days before: 2026-07-12 → 2026-07-31')
+    expect(before.textContent).toContain('5.3%')
+    expect(before.className).toContain('text-gain')
+
+    // Against last year it ROSE 468% — real money out, red.
+    const yoy = within(cell).getByTitle('vs last year: 2025-08-01 → 2025-08-20')
+    expect(yoy.textContent).toContain('468.0%')
+    expect(yoy.className).toContain('text-loss')
   })
 })

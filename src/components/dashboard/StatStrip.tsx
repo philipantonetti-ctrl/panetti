@@ -53,7 +53,22 @@ export type Comparison = {
 type Key = keyof Figures
 
 /** Which way did it move, against one comparison. */
-function Delta({ k, total, against }: { k: Key; total: Figures; against: Comparison }) {
+function Delta({
+  k,
+  total,
+  against,
+  costly = false,
+}: {
+  k: Key
+  total: Figures
+  against: Comparison
+  /**
+   * True for a COST figure: rising is the bad direction, so the colours
+   * invert. The arrow, sign and percentage still tell the plain truth —
+   * only which of them is good news changes.
+   */
+  costly?: boolean
+}) {
   const change = deltaPct(total[k], against.figures[k])
   const title = `${against.label}: ${against.dates}`
 
@@ -66,13 +81,14 @@ function Delta({ k, total, against }: { k: Key; total: Figures; against: Compari
   }
 
   const up = change >= 0
+  const good = costly ? !up : up
   const pct = `${Math.abs(change * 100).toFixed(1)}%`
 
   // The arrow and the sign carry the meaning too, so colour never carries it alone.
   return (
     <span
       title={title}
-      className={`num inline-flex items-center gap-1 text-[12px] font-medium ${up ? 'text-gain' : 'text-loss'}`}
+      className={`num inline-flex items-center gap-1 text-[12px] font-medium ${good ? 'text-gain' : 'text-loss'}`}
     >
       <span aria-hidden="true">{up ? '↑' : '↓'}</span>
       <span>
@@ -91,16 +107,18 @@ function Deltas({
   total,
   previous,
   lastYear,
+  costly = false,
 }: {
   k: Key
   total: Figures
   previous: Comparison
   lastYear: Comparison
+  costly?: boolean
 }) {
   return (
     <>
-      <Delta k={k} total={total} against={previous} />
-      <Delta k={k} total={total} against={lastYear} />
+      <Delta k={k} total={total} against={previous} costly={costly} />
+      <Delta k={k} total={total} against={lastYear} costly={costly} />
     </>
   )
 }
@@ -145,7 +163,7 @@ export function StatStrip({
   const against = { total, previous, lastYear }
 
   return (
-    <section className="grid grid-cols-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface lg:grid-cols-[minmax(260px,1.1fr)_repeat(4,1fr)]">
+    <section className="grid grid-cols-1 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface lg:grid-cols-[minmax(260px,1.1fr)_repeat(5,1fr)]">
       {/* The hero: did we make money? */}
       <div className="border-b border-line px-5 py-4 lg:border-b-0 lg:border-r">
         <p className="text-[11px] font-semibold tracking-wide text-faint">NET PROFIT</p>
@@ -196,10 +214,22 @@ export function StatStrip({
         />
       </div>
 
+      <div className="border-b border-line lg:border-b-0 lg:border-r">
+        <Stat
+          label="AMBASSADOR SALES"
+          value={formatMoney(total.ambassadorSales, currency)}
+          deltas={<Deltas k="ambassadorSales" {...against} />}
+        />
+      </div>
+
+      {/* The client's instruction, verbatim: the Addrevenue commissions
+          "added to our dashboard and show as a cost". A headline cell, not
+          only a compare-table column, so it is visible without scrolling —
+          and costly, so a rising cost is never painted as good news. */}
       <Stat
-        label="AMBASSADOR SALES"
-        value={formatMoney(total.ambassadorSales, currency)}
-        deltas={<Deltas k="ambassadorSales" {...against} />}
+        label="AFFILIATE COST"
+        value={formatMoney(total.affiliate, currency)}
+        deltas={<Deltas k="affiliate" {...against} costly />}
       />
     </section>
   )
