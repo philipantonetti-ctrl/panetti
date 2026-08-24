@@ -73,6 +73,7 @@ model Shop {
   b2bCustomers          B2bCustomer[]
   deliveryPromises      DeliveryPromise[]
   affiliateTransactions AffiliateTransaction[]
+  mailboxes             Mailbox[]
 }
 
 model Product {
@@ -170,6 +171,10 @@ model Order {
   /// checked (backfill pending); '' = checked, the store has none on file.
   /// Same convention as customerName.
   shippingCountry   String?
+  /// From Woo's billing details. Same tri-state as customerName: null = not
+  /// yet backfilled, '' = checked, the store has none. Stored digits-and-plus
+  /// as Woo gives it; the inbox normalises at match time, not here.
+  customerPhone     String?
   /// When we posted this order to Slack as late. Set only after Slack accepts,
   /// so nothing can ever alert twice and a Slack outage retries next run.
   deliveryAlertedAt DateTime?
@@ -179,11 +184,13 @@ model Order {
   b2bCustomer B2bCustomer? @relation(fields: [b2bCustomerId], references: [id], onDelete: Restrict)
   items       OrderItem[]
   shipments   Shipment[]
+  tickets     Ticket[]
 
   @@unique([shopId, externalId])
   @@index([shopId, placedAt])
   @@index([ambassadorId, placedAt])
   @@index([b2bCustomerId])
+  @@index([customerEmail])
 }
 
 model OrderItem {
@@ -260,7 +267,9 @@ model User {
   role         String // "ADMIN" | "AMBASSADOR"
   ambassadorId String? @unique
 
-  ambassador Ambassador? @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+  ambassador      Ambassador?     @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)
+  assignedTickets Ticket[]
+  ticketMessages  TicketMessage[]
 }
 
 // One row per shop rate change: the fulfillment cost charged to an order is the
@@ -1034,4 +1043,131 @@ model BringReportRun {
 
   @@unique([invoiceNumber])
   @@index([state])
+}
+
+/// One support address, forwarded into Postmark's inbound stream.
+///
+/// The routing anchor. Which brand and country an email belongs to is decided
+/// by the address it was sent TO, never inferred from its text — support@
+/// panetti.de is Panetti Germany, full stop. `shopId` is what scopes an order
+/// number found in the mail: Woo numbers repeat across stores, so "#1042" only
+/// means something inside this mailbox's own shop.
+model Mailbox {
+  id        String   @id @default(cuid())
+  address   String   @unique // lowercase
+  name      String
+  shopId    String?
+  /// Default reply language for this brand: nb | sv | da | fi | de | en.
+  /// A ticket whose language could not be detected renders in this.
+  language  String   @default("en")
+  signature String   @default("")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  shop    Shop?    @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  tickets Ticket[]
+}
+
+/// One conversation with one customer about one thing.
+model Ticket {
+  id             String    @id @default(cuid())
+  /// Human-facing, rendered PA-1042, and carried in every outbound subject as
+  /// [PA-1042] so a reply from a client that strips threading headers still
+  /// finds its way home.
+  number         Int       @unique @default(autoincrement())
+  mailboxId      String
+  status         String    @default("OPEN") // OPEN | PENDING | CLOSED
+  priority       String    @default("NORMAL") // LOW | NORMAL | HIGH
+  subject        String
+  customerEmail  String // lowercase
+  customerName   String    @default("")
+  tags           String[]  @default([])
+  /// shipping | return | warranty | refund | product | other. Null = not yet
+  /// classified. Keyword rules write it today; an AI classifier can replace
+  /// them without touching this column.
+  category       String?
+  /// Null = not detected. Rendered as the mailbox default, never stored as one:
+  /// Norwegian and Danish fool every detector, and a stored guess would pick
+  /// the wrong macro variant forever.
+  language       String?
+  assigneeUserId String?
+  /// The order this conversation is ABOUT, from the matching cascade or a
+  /// person's hand. Null is honest: the sidebar says "no order matched" and
+  /// offers the customer's orders to pick from.
+  matchedOrderId String?
+  firstMessageAt DateTime
+  lastMessageAt  DateTime
+  closedAt       DateTime?
+  createdAt      DateTime  @default(now())
+
+  mailbox      Mailbox         @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  assignee     User?           @relation(fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  matchedOrder Order?          @relation(fields: [matchedOrderId], references: [id], onDelete: SetNull)
+  messages     TicketMessage[]
+
+  @@index([mailboxId, status, lastMessageAt])
+  @@index([customerEmail])
+  @@index([assigneeUserId])
+}
+
+/// One email in, one email out, or one internal note — the same row shape, so
+/// the thread is one ordered list. A NOTE never leaves the building.
+model TicketMessage {
+  id            String   @id @default(cuid())
+  ticketId      String
+  direction     String // INBOUND | OUTBOUND | NOTE
+  authorUserId  String? // null on INBOUND
+  /// RFC 5322 Message-ID without the angle brackets. Theirs as received; ours
+  /// minted BEFORE sending so the References chain never depends on reading
+  /// anything back from Postmark. Unique, which is what makes a redelivered
+  /// webhook a no-op — the ShipmentEvent seam, applied to email.
+  rfcMessageId  String?  @unique
+  inReplyTo     String?
+  /// Space-separated ids, oldest first, exactly as the header carries them.
+  references    String   @default("")
+  fromEmail     String
+  toEmail       String
+  subject       String   @default("")
+  textBody      String
+  /// Stored raw; sanitised at render time, never trusted.
+  htmlBody      String?
+  /// Postmark's quoted-history-free text — what the thread view shows.
+  strippedReply String?
+  spamScore     Float?
+  postmarkId    String?
+  sentAt        DateTime
+
+  ticket      Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author      User?              @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  attachments TicketAttachment[]
+
+  @@index([ticketId, sentAt])
+}
+
+/// Bytes in Postgres, deliberately: one database, and Postmark keeps inbound
+/// content only 45 days, so this is the system of record. Capped at 10 MB per
+/// file on the way in.
+model TicketAttachment {
+  id          String @id @default(cuid())
+  messageId   String
+  filename    String
+  contentType String
+  sizeBytes   Int
+  content     Bytes
+
+  message TicketMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+/// A reply template. One row per language variant sharing a name — the
+/// ticket's language (or its mailbox's default) picks the variant.
+model Macro {
+  id        String   @id @default(cuid())
+  name      String
+  language  String   @default("en")
+  body      String
+  createdAt DateTime @default(now())
+
+  @@unique([name, language])
 }
