@@ -79,6 +79,8 @@ const CUSTOMERS = [
 
 async function main() {
   console.log('Clearing existing data...')
+  await db.affiliateTransaction.deleteMany()
+  await db.affiliateAccount.deleteMany()
   await db.adSpend.deleteMany()
   await db.adAccount.deleteMany()
   await db.adConnection.deleteMany()
@@ -361,6 +363,47 @@ async function main() {
         },
       })
     }
+  }
+
+  console.log('Creating affiliate sales...')
+  // The affiliate program: one Addrevenue brand with tracked sales across
+  // three shops, so the Affiliate column, the Marketing section and the
+  // settings page all have something true to show. Token 'seed' works because
+  // decryptSecret passes unprefixed values through, and nothing here ever
+  // calls the real platform.
+  const affiliateAccount = await db.affiliateAccount.create({
+    data: { externalId: '986851', name: 'Panetti (sample)', token: 'seed', lastSyncAt: today },
+  })
+  const CHANNELS = [
+    { id: '3464435', name: 'Forbrukertesten.com' },
+    { id: '3464436', name: 'Hjem og Hage' },
+    { id: '3464437', name: 'Testsieger.de' },
+  ]
+  // Roughly the real mix: most paid out, a slice still working through.
+  const AFFILIATE_STATUSES = ['paidOut', 'paidOut', 'invoiced', 'new']
+  let affiliateId = 1
+  for (let d = 0; d < 90; d += 2) {
+    const shop = shops[d % 3] // Panetti Norway / Sweden / Denmark
+    const channel = CHANNELS[d % CHANNELS.length]
+    const orderValue = between(40000, 900000)
+    const commission = Math.round(orderValue * 0.15)
+    await db.affiliateTransaction.create({
+      data: {
+        accountId: affiliateAccount.id,
+        externalId: String(affiliateId++),
+        date: new Date(Date.UTC(2026, 6, 14) - d * 24 * 60 * 60 * 1000),
+        market: ['NO', 'SE', 'DK'][d % 3],
+        shopId: shop.id,
+        channelId: channel.id,
+        channelName: channel.name,
+        status: AFFILIATE_STATUSES[d % AFFILIATE_STATUSES.length],
+        commission,
+        brokerageFee: Math.round(commission * 0.15),
+        orderValue,
+        currency: shop.currency,
+        eventOrderId: String(19000 + d),
+      },
+    })
   }
 
   const orders = await db.order.count()

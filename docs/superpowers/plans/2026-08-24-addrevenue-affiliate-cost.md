@@ -2099,6 +2099,12 @@ import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affili
 
 ### Task 12: Seed data and the E2E walk
 
+> **As built (2026-08-24):** the spec was made SELF-SEEDING (tagged `E2E AFFILIATE`
+> fixtures created in beforeAll, swept in both hooks — the delivery specs' pattern)
+> instead of depending on `npm run db:seed`, because re-seeding wipes users/orders
+> and the user had not approved that. The seed.ts additions below were still made,
+> for whoever seeds a fresh database later; `npm run db:seed` was NOT run.
+
 **Files:**
 - Modify: `prisma/seed.ts` (deleteMany block ~line 82; new section after the AD_ACCOUNTS loop)
 - Modify: `e2e/global-setup.ts` (warm list)
