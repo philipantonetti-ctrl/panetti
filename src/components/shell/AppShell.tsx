@@ -201,6 +201,17 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       {
+        href: '/settings/affiliate',
+        label: 'Affiliate',
+        icon: icon(
+          <>
+            <path d="M9 15 15 9" />
+            <path d="M10.5 6.5 12 5a4 4 0 0 1 5.7 5.7l-1.6 1.5" />
+            <path d="M13.5 17.5 12 19a4 4 0 0 1-5.7-5.7l1.6-1.5" />
+          </>,
+        ),
+      },
+      {
         href: '/settings/delivery',
         label: 'Delivery settings',
         icon: icon(

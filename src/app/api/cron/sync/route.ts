@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { syncAllShops } from '@/lib/woo/sync'
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
+import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affiliate/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { ensureRates } from '@/lib/fx/rates'
@@ -237,6 +238,20 @@ export async function GET(req: Request) {
     // Each account keeps its own lastError; the settings page tells the story.
   }
 
+  // Affiliate commissions from Addrevenue. Two bounded requests per brand and
+  // a six-hour spacing inside syncAllAffiliateAccounts, so most runs cost
+  // nothing; a due account is roughly five to ten seconds (a full-history
+  // mirror rewrite against Neon), so a due run costs the budget ~20s — spent
+  // here, with the money pulls, ahead of the greedy parcel poll. Best-effort
+  // like the ads: a bad token keeps its own lastError on the settings page
+  // and must never fail the shop sync.
+  let affiliate: AffiliateSyncResult[] = []
+  try {
+    affiliate = await syncAllAffiliateAccounts()
+  } catch {
+    // Each account keeps its own lastError; the settings page tells the story.
+  }
+
   // Top up exchange rates BEFORE parcel tracking, not after. Rates are one
   // cheap bounded call; parcel polling is greedy and runs to its deadline. With
   // the order reversed, a busy backlog of parcels could eat the whole
@@ -249,6 +264,10 @@ export async function GET(req: Request) {
         ...(await db.shop.findMany({ select: { currency: true } })).map((s) => s.currency),
         // Ad accounts can bill in a currency no shop trades in.
         ...(await db.adAccount.findMany({ select: { currency: true } })).map((a) => a.currency),
+        // Affiliate rows carry their own currency (measured: FI sales in SEK).
+        ...(
+          await db.affiliateTransaction.groupBy({ by: ['currency'] })
+        ).map((t) => t.currency),
       ]),
     ]
     const now = new Date()
@@ -310,6 +329,8 @@ export async function GET(req: Request) {
     failed,
     adAccounts: ads.length,
     adFailed: ads.filter((r) => !r.ok).map((r) => r.name),
+    affiliateAccounts: affiliate.length,
+    affiliateFailed: affiliate.filter((r) => !r.ok).map((r) => r.name),
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,

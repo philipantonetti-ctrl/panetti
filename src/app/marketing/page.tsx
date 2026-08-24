@@ -29,6 +29,11 @@ export default async function MarketingPage() {
   })
   const platforms = platformAccounts.map((a) => ({ provider: a.provider, label: platformLabel(a.provider) }))
 
+  // The affiliate program counts as a marketing channel of its own: with no ad
+  // account at all, an active affiliate account still needs the date/shop
+  // filter header, or its section sits frozen at the defaults.
+  const hasAffiliate = (await db.affiliateAccount.count({ where: { active: true } })) > 0
+
   const setting = await getSetting()
   return (
     <MarketingClient
@@ -36,6 +41,7 @@ export default async function MarketingPage() {
       shops={shops}
       initialPreset={setting.defaultPreset as Preset}
       hasAccounts={platforms.length > 0}
+      hasAffiliate={hasAffiliate}
       platforms={platforms}
     />
   )

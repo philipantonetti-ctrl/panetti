@@ -80,7 +80,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'get_metrics',
     description:
-      'Revenue, profit, COGS, marketing, fees and margin for a date range, per shop and in total. Call this when the question is about money. Also returns the list of shops and their ids.',
+      'Revenue, profit, COGS, marketing, affiliate, fees and margin for a date range, per shop and in total. Call this when the question is about money. Also returns the list of shops and their ids.',
     input_schema: {
       type: 'object' as const,
       properties: { ...DATE_PROPS },

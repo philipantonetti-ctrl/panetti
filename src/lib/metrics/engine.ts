@@ -10,6 +10,7 @@ import {
   ZERO_FIGURES,
   type CostBook,
   type EngineAdSpend,
+  type EngineAffiliateCost,
   type EngineExpense,
   type EngineOrder,
   type EngineResult,
@@ -49,6 +50,11 @@ export type MetricsInput = {
    * not care), which makes marketing 0 and leaves net profit exactly as it was.
    */
   adSpend?: EngineAdSpend[]
+  /**
+   * One row per shop per day per currency of affiliate cost (commission +
+   * Addrevenue's fee, pre-summed). Absent means none, and profit is unmoved.
+   */
+  affiliate?: EngineAffiliateCost[]
   /** Workspace timezone for day boundaries. Defaults to UTC. */
   timezone?: string
   /** Per-shop overrides: a shop's orders bucket days in ITS zone. */
@@ -70,8 +76,8 @@ export function fulfillmentOn(points: FulfillmentPoint[], date: Date): number {
 }
 
 /**
- * Ad spend is dated by plain UTC day, the way the platforms report it — unlike
- * an order, which belongs to its shop's own calendar day.
+ * Ad spend and affiliate cost are dated by plain UTC day, the way the platforms
+ * report them — unlike an order, which belongs to its shop's own calendar day.
  */
 function spendInRange(date: Date, from: Date, to: Date): boolean {
   const d = utcDay(date).getTime()
@@ -140,7 +146,8 @@ export function entriesIn<T extends EngineOrder>(
  *   fulfillment  = fixed per-order cost, at the rate in force on the order's day
  *   fees         = gateway % of the charged total + fixed part, per order
  *   marketing    = Meta + Google spend, at each day's own rate
- *   net profit   = net revenue - cogs - fulfillment - fees - marketing - operational expenses - commission
+ *   affiliate    = Addrevenue commission + platform fee, at each day's own rate
+ *   net profit   = net revenue - cogs - fulfillment - fees - marketing - affiliate - operational expenses - commission
  *
  * Money arrives in each shop's own currency and is converted to `displayCurrency`
  * using the rate from the order's own date, so history never shifts.
@@ -160,6 +167,13 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const list = spendByShop.get(row.shopId)
     if (list) list.push(row)
     else spendByShop.set(row.shopId, [row])
+  }
+
+  const affiliateByShop = new Map<string, EngineAffiliateCost[]>()
+  for (const row of input.affiliate ?? []) {
+    const list = affiliateByShop.get(row.shopId)
+    if (list) list.push(row)
+    else affiliateByShop.set(row.shopId, [row])
   }
 
   /**
@@ -258,6 +272,14 @@ export function computeMetrics(input: MetricsInput): EngineResult {
         .filter((r) => spendInRange(r.date, from, to))
         .map((r) => crossConvert(r.spend, r.currency, displayCurrency, r.date, rates)),
     )
+
+    // Affiliate commission and the platform's fee, dated and converted the
+    // same way ad spend is: the platform-reported day, at that day's own rate.
+    const affiliate = sum(
+      (affiliateByShop.get(shop.id) ?? [])
+        .filter((r) => spendInRange(r.date, from, to))
+        .map((r) => crossConvert(r.amount, r.currency, displayCurrency, r.date, rates)),
+    )
     const netRevenue = netSales + shippingCharged
 
     const cogs = sum(
@@ -290,7 +312,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     )
 
     const netProfit =
-      netRevenue - cogs - fulfillment - transactionFees - marketing - operationalExpenses - commission
+      netRevenue - cogs - fulfillment - transactionFees - marketing - affiliate - operationalExpenses - commission
 
     // The tally reverses with the money. It is the one figure that used to
     // count the sale entries and ignore the reversals, so a store whose orders
@@ -314,6 +336,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       grossRevenue: netRevenue + taxes,
       cogs,
       marketing,
+      affiliate,
       fulfillment,
       transactionFees,
       operationalExpenses,
@@ -354,6 +377,7 @@ function totalOf(rows: ShopFigures[]): Figures {
     grossRevenue: add((r) => r.grossRevenue),
     cogs: add((r) => r.cogs),
     marketing: add((r) => r.marketing),
+    affiliate: add((r) => r.affiliate),
     operationalExpenses: add((r) => r.operationalExpenses),
     commission: add((r) => r.commission),
     netProfit,

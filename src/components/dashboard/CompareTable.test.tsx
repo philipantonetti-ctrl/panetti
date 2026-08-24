@@ -21,6 +21,7 @@ const row: ShopFigures = {
   grossRevenue: 118750, // net revenue + VAT = what the customer paid
   cogs: 24795, // 26.10% of net revenue
   marketing: 25000, // 250.00 kr of ads -> 118,750 / 25,000 = 4.75x
+  affiliate: 5500, // 55.00 kr of Addrevenue commission + platform fee
   netProfit: 45205, // 95000 net revenue - 24795 cogs - 25000 marketing
   netMargin: 45205 / 95000,
 }
@@ -36,7 +37,7 @@ describe('CompareTable', () => {
 
     for (const label of [
       'Orders', 'Gross revenue', 'Discounts', 'Net sales', 'Fulfillment', 'VAT',
-      'Transaction fees', 'COGS', 'Marketing', 'Op. expenses', 'ROAS', 'Commission',
+      'Transaction fees', 'COGS', 'Marketing', 'Affiliate', 'Op. expenses', 'ROAS', 'Commission',
       'Net profit', 'Margin',
     ]) {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
@@ -117,6 +118,17 @@ describe('CompareTable', () => {
     // The shop row and the identical Total both carry it.
     const spend = formatMoney(25000, 'NOK')
     expect(screen.getAllByText((_t, el) => el?.textContent === spend).length).toBe(2)
+  })
+
+  it('shows Affiliate as its own cost, never folded into Marketing', () => {
+    render(<CompareTable result={result} />)
+
+    // Its own column: the shop row and the identical Total both carry it, and
+    // Marketing still reads the ad spend alone.
+    const affiliate = formatMoney(5500, 'NOK')
+    expect(screen.getAllByText((_t, el) => el?.textContent === affiliate).length).toBe(2)
+    const marketing = formatMoney(25000, 'NOK')
+    expect(screen.getAllByText((_t, el) => el?.textContent === marketing).length).toBe(2)
   })
 
   it('shows ROAS as gross revenue over ad spend, blended in the Total', () => {

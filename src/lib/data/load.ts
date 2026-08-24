@@ -5,6 +5,7 @@ import { zoneDayEndUtc, zoneDayStartUtc } from '../tz'
 import { buildRateTable } from '../metrics/fx'
 import { ensureRates, loadRates } from '../fx/rates'
 import { attributedSpend, relevantAdCurrencies } from '../ads/attribution'
+import { affiliateCosts, relevantAffiliateCurrencies } from '../affiliate/cost'
 import { normaliseSku } from '../inventory/sku'
 import { getSetting } from '../settings'
 import type { ShippingPoint } from '../inventory/shipping'
@@ -186,6 +187,10 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   // campaign for split accounts and per account otherwise — see attribution.ts.
   const adSpend: EngineAdSpend[] = await attributedSpend(shopIds, from, to)
 
+  // Affiliate cost, the same road ad spend travels: pre-attributed flat rows
+  // the engine converts at each day's own rate.
+  const affiliate = await affiliateCosts(shopIds, from, to)
+
   const feeRow = await db.processingFee.findFirst({
     where: { gateway: ACTIVE_GATEWAY, active: true, noFeesApply: false },
   })
@@ -207,6 +212,8 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     // Sourced from every relevant account, not just today's spend rows: a
     // currency with nothing booked yet still needs a rate the moment it does.
     ...(await relevantAdCurrencies(shopIds)),
+    // Affiliate rows carry their own currency too — measured: FI sales in SEK.
+    ...(await relevantAffiliateCurrencies(shopIds)),
     ...(processingFee ? [processingFee.currency] : []),
   ])
   if (inPlay.size > 1) {
@@ -218,6 +225,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     orders,
     expenses,
     adSpend,
+    affiliate,
     costs,
     rates: buildRateTable(await loadRates()),
     displayCurrency,

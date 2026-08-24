@@ -63,15 +63,16 @@ model Shop {
   currencyFormat String?
   formatCountry  String?
 
-  orders           Order[]
-  products         Product[]
-  expenses         OperationalExpense[]
-  codes            AmbassadorCode[]
-  fulfillmentRates FulfillmentRate[]
-  adAccounts       AdAccount[]
-  adCampaigns      AdCampaign[]
-  b2bCustomers     B2bCustomer[]
-  deliveryPromises DeliveryPromise[]
+  orders                Order[]
+  products              Product[]
+  expenses              OperationalExpense[]
+  codes                 AmbassadorCode[]
+  fulfillmentRates      FulfillmentRate[]
+  adAccounts            AdAccount[]
+  adCampaigns           AdCampaign[]
+  b2bCustomers          B2bCustomer[]
+  deliveryPromises      DeliveryPromise[]
+  affiliateTransactions AffiliateTransaction[]
 }
 
 model Product {
@@ -458,6 +459,61 @@ model AdCampaignSpend {
   campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, date])
+  @@index([date])
+}
+
+// One Addrevenue brand account (Panetti, Mazzetti), holding the API token the
+// client pasted. `externalId` is Addrevenue's advertiser id; name and id come
+// from their /advertisers answer at connect time, never typed by hand.
+model AffiliateAccount {
+  id         String    @id @default(cuid())
+  provider   String    @default("addrevenue")
+  externalId String // Addrevenue advertiser id, e.g. "986851"
+  name       String // advertiser displayName from the platform
+  token      String // encrypted
+  active     Boolean   @default(true)
+  lastSyncAt DateTime?
+  lastError  String?
+  createdAt  DateTime  @default(now())
+
+  transactions AffiliateTransaction[]
+
+  @@unique([provider, externalId])
+}
+
+// One tracked affiliate sale, an EXACT mirror of Addrevenue's transaction row.
+// The sync refetches the full history and upserts by (account, externalId):
+// restatement and denial arrive as changed rows, remote deletion as absence —
+// all the same mirror operation. Money in minor units of `currency`, which is
+// the ROW's own (a FI sale can be in SEK); converted at read time.
+model AffiliateTransaction {
+  id           String    @id @default(cuid())
+  accountId    String
+  externalId   String // Addrevenue transaction id, e.g. "1176373" — theirs to shape, so String like every platform id here
+  date         DateTime // the sale's day, UTC midnight — the platform-reported day
+  market       String // "NO" | "SE" | "DK" | "FI" | "DE"
+  // Resolved from the advertiser's market URL matched against Shop.wooUrl at
+  // sync time. Null = no shop matched; surfaced in settings, never guessed.
+  shopId       String?
+  channelId    String
+  channelName  String // the affiliate site, e.g. "Forbrukertesten.com"
+  status       String // new | invoiced | readyForPayout | paidOut
+  // Set = Addrevenue denied this sale; it then costs nothing. Zero denials in
+  // the entire history so far, but the field is the documented deny signal.
+  denyDate     DateTime?
+  commission   Int // what the affiliate earns, minor units of `currency`
+  brokerageFee Int // Addrevenue's markup on top — also our money
+  orderValue   Int // the sale the commission was earned on (their eventValue)
+  currency     String
+  eventOrderId String? // the Woo order number, for audit against /orders
+
+  account AffiliateAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // SetNull, not Cascade: removing a shop must not delete the record of what
+  // affiliates were paid.
+  shop    Shop?            @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, externalId])
+  @@index([shopId, date])
   @@index([date])
 }
 

@@ -108,6 +108,19 @@ export type EngineAdSpend = {
   currency: string
 }
 
+/**
+ * One (shop, day, currency) slice of affiliate cost (Addrevenue commission +
+ * their fee), in the TRANSACTIONS' own currency — a FI sale can be in SEK, so
+ * one shop-day can hold two rows. `date` is plain UTC midnight, the
+ * platform-reported day, like ad spend.
+ */
+export type EngineAffiliateCost = {
+  shopId: string
+  date: Date
+  amount: number
+  currency: string
+}
+
 export type EngineShop = {
   id: string
   name: string
@@ -134,6 +147,7 @@ export type Figures = {
   grossRevenue: number // net revenue + VAT = what customers actually paid (Nordic "brutto")
   cogs: number // product cost + handling combined
   marketing: number // Meta and Google ad spend, at each day's own rate
+  affiliate: number // Addrevenue commission + platform fee, at each day's own rate
   operationalExpenses: number
   commission: number
   netProfit: number
@@ -163,6 +177,7 @@ export const ZERO_FIGURES: Figures = {
   grossRevenue: 0,
   cogs: 0,
   marketing: 0,
+  affiliate: 0,
   operationalExpenses: 0,
   commission: 0,
   netProfit: 0,
