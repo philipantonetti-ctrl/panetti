@@ -59,20 +59,20 @@ model AffiliateAccount {
 }
 
 // One tracked affiliate sale, an EXACT mirror of Addrevenue's transaction row.
-// The sync refetches the full history and upserts by (account, externalId),
-// deleting rows the platform no longer returns — restatement, denial and
-// remote deletion are the same operation. Money in minor units of `currency`,
-// which is the ROW's own (a FI sale can be in SEK); converted at read time.
+// The sync refetches the full history and upserts by (account, externalId):
+// restatement and denial arrive as changed rows, remote deletion as absence —
+// all the same mirror operation. Money in minor units of `currency`, which is
+// the ROW's own (a FI sale can be in SEK); converted at read time.
 model AffiliateTransaction {
   id           String    @id @default(cuid())
   accountId    String
-  externalId   Int // Addrevenue transaction id
+  externalId   String // Addrevenue transaction id, e.g. "1176373" — theirs to shape, so String like every platform id here
   date         DateTime // the sale's day, UTC midnight — the platform-reported day
   market       String // "NO" | "SE" | "DK" | "FI" | "DE"
   // Resolved from the advertiser's market URL matched against Shop.wooUrl at
   // sync time. Null = no shop matched; surfaced in settings, never guessed.
   shopId       String?
-  channelId    Int
+  channelId    String
   channelName  String // the affiliate site, e.g. "Forbrukertesten.com"
   status       String // new | invoiced | readyForPayout | paidOut
   // Set = Addrevenue denied this sale; it then costs nothing. Zero denials in
@@ -196,10 +196,10 @@ describe('fetchTransactions', () => {
     )
     const [row] = await fetchTransactions('t', { fromDate: '2025-07-01', toDate: '2026-08-24' })
     expect(row).toEqual({
-      externalId: 1176373,
+      externalId: '1176373',
       date: new Date('2026-01-02T00:00:00.000Z'),
       market: 'NO',
-      channelId: 3464435,
+      channelId: '3464435',
       channelName: 'Forbrukertesten.com',
       status: 'paidOut',
       denyDate: null,
@@ -237,7 +237,7 @@ describe('fetchTransactions', () => {
       .mockResolvedValueOnce(page(2, false))
     vi.stubGlobal('fetch', spy)
     const rows = await fetchTransactions('t', { fromDate: '2025-07-01', toDate: '2026-08-24' })
-    expect(rows.map((r) => r.externalId)).toEqual([1, 2])
+    expect(rows.map((r) => r.externalId)).toEqual(['1', '2'])
     expect(String(spy.mock.calls[1][0])).toContain('offset=1')
   })
 })
@@ -273,10 +273,10 @@ export type AffiliateAdvertiser = {
 
 /** One transaction, parsed: money in integer minor units of `currency`. */
 export type AffiliateTxRow = {
-  externalId: number
+  externalId: string // their numeric id, stringified — platform ids are Strings here
   date: Date // UTC midnight of the platform-reported sale day
   market: string
-  channelId: number
+  channelId: string
   channelName: string
   status: string
   denyDate: Date | null
@@ -367,10 +367,10 @@ export async function fetchTransactions(
     const page = (body.results ?? []) as RawTx[]
     for (const r of page) {
       rows.push({
-        externalId: r.id,
+        externalId: String(r.id),
         date: utcDayOf(r.date),
         market: r.market ?? '',
-        channelId: r.channelId,
+        channelId: String(r.channelId),
         channelName: r.channelName ?? '',
         status: r.status ?? '',
         denyDate: r.denyDate ? utcDayOf(r.denyDate) : null,
@@ -596,7 +596,7 @@ describe('syncAffiliateAccount', () => {
     const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({
-      externalId: 1,
+      externalId: '1',
       shopId: shop.id,
       commission: 12835,
       brokerageFee: 1925,
@@ -622,7 +622,7 @@ describe('syncAffiliateAccount', () => {
 
     const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ externalId: 1, status: 'paidOut' })
+    expect(rows[0]).toMatchObject({ externalId: '1', status: 'paidOut' })
   })
 
   it('a market with no matching shop stays unmatched and is reported', async () => {
@@ -835,7 +835,7 @@ async function seed() {
     accountId: account.id,
     market: 'NO',
     shopId: shop.id,
-    channelId: 1,
+    channelId: '1',
     channelName: 'Forbrukertesten.com',
     status: 'new',
     orderValue: 85564,
@@ -844,16 +844,16 @@ async function seed() {
   await db.affiliateTransaction.createMany({
     data: [
       // Two sales on one day in one currency roll into one row: 128.35+19.25 and 59.88+8.98.
-      { ...base, externalId: 1, date: new Date('2026-01-02'), commission: 12835, brokerageFee: 1925 },
-      { ...base, externalId: 2, date: new Date('2026-01-02'), commission: 5988, brokerageFee: 898 },
+      { ...base, externalId: '1', date: new Date('2026-01-02'), commission: 12835, brokerageFee: 1925 },
+      { ...base, externalId: '2', date: new Date('2026-01-02'), commission: 5988, brokerageFee: 898 },
       // A different currency the same day stays its own row.
-      { ...base, externalId: 3, date: new Date('2026-01-02'), commission: 1000, brokerageFee: 100, currency: 'SEK' },
+      { ...base, externalId: '3', date: new Date('2026-01-02'), commission: 1000, brokerageFee: 100, currency: 'SEK' },
       // Denied costs nothing.
-      { ...base, externalId: 4, date: new Date('2026-01-02'), commission: 99999, brokerageFee: 9999, denyDate: new Date('2026-02-01') },
+      { ...base, externalId: '4', date: new Date('2026-01-02'), commission: 99999, brokerageFee: 9999, denyDate: new Date('2026-02-01') },
       // Outside the asked range.
-      { ...base, externalId: 5, date: new Date('2026-03-01'), commission: 7777, brokerageFee: 777 },
+      { ...base, externalId: '5', date: new Date('2026-03-01'), commission: 7777, brokerageFee: 777 },
       // Unmatched market: no shop, so no per-shop cost.
-      { ...base, externalId: 6, shopId: null, date: new Date('2026-01-02'), commission: 5555, brokerageFee: 555 },
+      { ...base, externalId: '6', shopId: null, date: new Date('2026-01-02'), commission: 5555, brokerageFee: 555 },
     ],
   })
   return { shop, account }
@@ -1139,11 +1139,11 @@ describe('loadMetricsInput affiliate', () => {
     await db.affiliateTransaction.create({
       data: {
         accountId: account.id,
-        externalId: 1,
+        externalId: '1',
         date: new Date('2026-01-02'),
         market: 'NO',
         shopId: shop.id,
-        channelId: 1,
+        channelId: '1',
         channelName: 'Forbrukertesten.com',
         status: 'new',
         commission: 12835,
@@ -2067,11 +2067,11 @@ After the AD_ACCOUNTS loop (where ad spend seeding ends), add — reusing the fi
     await db.affiliateTransaction.create({
       data: {
         accountId: affiliateAccount.id,
-        externalId: affiliateId++,
+        externalId: String(affiliateId++),
         date: new Date(Date.UTC(2026, 6, 14) - d * 24 * 60 * 60 * 1000),
         market: ['NO', 'SE', 'DK'][d % 3],
         shopId: shop.id,
-        channelId: channel.id,
+        channelId: String(channel.id),
         channelName: channel.name,
         status: STATUSES[d % STATUSES.length],
         commission,
