@@ -9,6 +9,13 @@ import { toMinor } from '../money'
  */
 
 const BASE = 'https://addrevenue.io/api/v2'
+/**
+ * Runaway guard, same idea as the ads clients' MAX_PAGES. This client makes
+ * up its own offsets, so a provider that started ignoring them while still
+ * answering hasNextPage:true would otherwise loop forever. 20 pages of 5,000
+ * is 100k rows of headroom over a ~2,200-row history.
+ */
+const MAX_PAGES = 20
 
 /** Provider wording that can be shown on the settings page as-is. */
 export class AffiliateApiError extends Error {}
@@ -43,7 +50,7 @@ async function get(token: string, path: string): Promise<Envelope> {
   let res: Response
   try {
     res = await fetch(`${BASE}${path}`, {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}` },
     })
   } catch {
     throw new AffiliateApiError('Could not reach Addrevenue. Check the connection and try again.')
@@ -56,12 +63,26 @@ async function get(token: string, path: string): Promise<Envelope> {
   if (!res.ok) {
     throw new AffiliateApiError(`Addrevenue answered ${res.status}. Try again in a while.`)
   }
-  return (await res.json()) as Envelope
+  try {
+    return (await res.json()) as Envelope
+  } catch {
+    // Not the ads clients' `.catch(() => ({}))`: an empty envelope here would
+    // surface as "no advertiser attached" and point a person at the wrong
+    // problem.
+    throw new AffiliateApiError('Addrevenue answered with something that was not JSON. Try again in a while.')
+  }
 }
 
 /** "2026-01-02" (their plain sale day) -> UTC midnight. */
-function utcDayOf(s: string): Date {
-  return new Date(`${s.slice(0, 10)}T00:00:00.000Z`)
+function utcDayOf(s: string | null | undefined): Date {
+  // Loud, and in provider voice: the sync stores this message verbatim as
+  // lastError, where a raw TypeError would point at us instead of the data —
+  // and an Invalid Date would not surface until some later read.
+  const d = s ? new Date(`${s.slice(0, 10)}T00:00:00.000Z`) : null
+  if (!d || Number.isNaN(d.getTime())) {
+    throw new AffiliateApiError('Addrevenue sent a transaction without a readable date.')
+  }
+  return d
 }
 
 /**
@@ -85,7 +106,7 @@ export async function fetchAdvertiser(token: string): Promise<AffiliateAdvertise
 
 type RawTx = {
   id: number
-  date: string
+  date?: string | null // guarded in utcDayOf — the wire has no schema
   channelId: number
   channelName?: string
   market?: string
@@ -101,7 +122,7 @@ type RawTx = {
 /**
  * Every transaction in the window, all pages. The whole history is ~2,200
  * rows against a 5,000-per-page cap, so today this is one request per brand —
- * the loop is for the day it is not.
+ * the loop and its cap are for the day it is not.
  */
 export async function fetchTransactions(
   token: string,
@@ -109,13 +130,12 @@ export async function fetchTransactions(
 ): Promise<AffiliateTxRow[]> {
   const rows: AffiliateTxRow[] = []
   let offset = 0
-  for (;;) {
-    const path =
-      `/transactions?fromDate=${window.fromDate}&toDate=${window.toDate}` +
-      (offset > 0 ? `&offset=${offset}` : '')
-    const body = await get(token, path)
-    const page = (body.results ?? []) as RawTx[]
-    for (const r of page) {
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({ fromDate: window.fromDate, toDate: window.toDate })
+    if (offset > 0) params.set('offset', String(offset))
+    const body = await get(token, `/transactions?${params}`)
+    const batch = (body.results ?? []) as RawTx[]
+    for (const r of batch) {
       rows.push({
         externalId: String(r.id),
         date: utcDayOf(r.date),
@@ -131,7 +151,11 @@ export async function fetchTransactions(
         eventOrderId: r.eventOrderId ?? null,
       })
     }
-    if (!body.meta?.hasNextPage || page.length === 0) return rows
-    offset += page.length
+    // An empty page ends the walk even when hasNextPage claims more: there is
+    // nothing left to read, so it is a clean stop, not a runaway.
+    if (!body.meta?.hasNextPage || batch.length === 0) return rows
+    offset += batch.length
   }
+  // Cap and say so — a silent truncation would be read as a real total.
+  throw new AffiliateApiError(`Addrevenue kept paging past ${MAX_PAGES} pages — refusing to run away.`)
 }

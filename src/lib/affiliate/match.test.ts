@@ -40,4 +40,15 @@ describe('matchMarketsToShops', () => {
     expect(byMarket.has('FI')).toBe(false)
     expect(unmatched).toEqual(['FI'])
   })
+  it('two shops on one host make that market unmatched, never a coin toss', () => {
+    const { byMarket, unmatched } = matchMarketsToShops(
+      [{ market: 'NO', url: 'https://panetti.no' }],
+      [
+        { id: 's-1', wooUrl: 'https://www.panetti.no' },
+        { id: 's-2', wooUrl: 'panetti.no' },
+      ],
+    )
+    expect(byMarket.has('NO')).toBe(false)
+    expect(unmatched).toEqual(['NO'])
+  })
 })

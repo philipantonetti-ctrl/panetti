@@ -68,6 +68,30 @@ describe('fetchAdvertiser', () => {
     await expect(fetchAdvertiser('bad')).rejects.toThrow(AffiliateApiError)
     await expect(fetchAdvertiser('bad')).rejects.toThrow(/rejected the token/i)
   })
+
+  it('a server error names the status', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ message: 'boom' }, 500)))
+    await expect(fetchAdvertiser('t')).rejects.toThrow(/Addrevenue answered 500/)
+  })
+
+  it('a network failure is plain words too, not a fetch stack', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
+    await expect(fetchAdvertiser('t')).rejects.toThrow(/could not reach Addrevenue/i)
+  })
+
+  it('a 200 that is not JSON is a plain-words error, not a SyntaxError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => Promise.resolve(new Response('not json', { status: 200 }))),
+    )
+    await expect(fetchAdvertiser('t')).rejects.toThrow(AffiliateApiError)
+    await expect(fetchAdvertiser('t')).rejects.toThrow(/was not JSON/i)
+  })
+
+  it('a token with no advertiser behind it says so', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ results: [], meta: { totalCount: 0, hasNextPage: false } })))
+    await expect(fetchAdvertiser('t')).rejects.toThrow(/no advertiser account is attached/i)
+  })
 })
 
 describe('fetchTransactions', () => {
@@ -110,6 +134,50 @@ describe('fetchTransactions', () => {
     expect(row.eventOrderId).toBeNull()
   })
 
+  it('a missing date is a plain-words error, not a TypeError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        json({ results: [tx({ date: undefined })], meta: { totalCount: 1, hasNextPage: false } }),
+      ),
+    )
+    await expect(fetchTransactions('t', { fromDate: '2025-07-01', toDate: '2026-08-24' })).rejects.toThrow(
+      /without a readable date/i,
+    )
+  })
+
+  it('a garbage date is loud, never a silent Invalid Date', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        json({ results: [tx({ date: 'garbage' })], meta: { totalCount: 1, hasNextPage: false } }),
+      ),
+    )
+    await expect(fetchTransactions('t', { fromDate: '2025-07-01', toDate: '2026-08-24' })).rejects.toThrow(
+      /without a readable date/i,
+    )
+  })
+
+  it('the first request carries no offset', async () => {
+    const spy = vi
+      .fn()
+      .mockResolvedValue(json({ results: [tx()], meta: { totalCount: 1, hasNextPage: false } }))
+    vi.stubGlobal('fetch', spy)
+    await fetchTransactions('t', { fromDate: '2025-07-01', toDate: '2026-08-24' })
+    expect(String(spy.mock.calls[0][0])).not.toContain('offset=')
+  })
+
+  it('an empty page ends the walk even when hasNextPage claims more', async () => {
+    const spy = vi
+      .fn()
+      .mockResolvedValueOnce(json({ results: [tx()], meta: { totalCount: 2, hasNextPage: true } }))
+      .mockResolvedValueOnce(json({ results: [], meta: { totalCount: 2, hasNextPage: true } }))
+    vi.stubGlobal('fetch', spy)
+    const rows = await fetchTransactions('t', { fromDate: '2025-07-01', toDate: '2026-08-24' })
+    expect(rows).toHaveLength(1)
+    expect(spy).toHaveBeenCalledTimes(2)
+  })
+
   it('follows hasNextPage with an offset until the platform says done', async () => {
     const page = (id: number, hasNextPage: boolean) =>
       json({ results: [tx({ id })], meta: { totalCount: 2, hasNextPage } })
@@ -121,5 +189,22 @@ describe('fetchTransactions', () => {
     const rows = await fetchTransactions('t', { fromDate: '2025-07-01', toDate: '2026-08-24' })
     expect(rows.map((r) => r.externalId)).toEqual(['1', '2'])
     expect(String(spy.mock.calls[1][0])).toContain('offset=1')
+  })
+
+  it('refuses to run away when the platform pages forever', async () => {
+    // Fresh Response per call — a body can only be read once.
+    const spy = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(json({ results: [tx()], meta: { totalCount: 999999, hasNextPage: true } })),
+      )
+    vi.stubGlobal('fetch', spy)
+    const err = await fetchTransactions('t', { fromDate: '2025-07-01', toDate: '2026-08-24' }).then(
+      () => null,
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(AffiliateApiError)
+    expect(String(err)).toMatch(/kept paging past 20 pages/)
+    expect(spy).toHaveBeenCalledTimes(20)
   })
 })

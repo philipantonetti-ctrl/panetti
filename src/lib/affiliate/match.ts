@@ -23,9 +23,18 @@ export function matchMarketsToShops(
   shops: { id: string; wooUrl: string | null }[],
 ): { byMarket: Map<string, string>; unmatched: string[] } {
   const shopByHost = new Map<string, string>()
+  const ambiguous = new Set<string>()
   for (const s of shops) {
     const host = hostOf(s.wooUrl)
-    if (host) shopByHost.set(host, s.id)
+    if (!host || ambiguous.has(host)) continue
+    if (shopByHost.has(host)) {
+      // Two shops on one host: picking either would be a guess, so the host
+      // matches nothing and the market surfaces as unmatched instead.
+      shopByHost.delete(host)
+      ambiguous.add(host)
+    } else {
+      shopByHost.set(host, s.id)
+    }
   }
 
   const byMarket = new Map<string, string>()
