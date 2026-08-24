@@ -572,7 +572,14 @@ const tx = (over: Record<string, unknown> = {}) => ({
 function stub(markets: Record<string, { market: string; url: string }>, txs: unknown[]) {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+    vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      // Only this file's token is answered. A foreign account swept up by a
+      // syncAll test (another test file's row, or seeded sample data in the
+      // shared dev DB) gets a 403 and stores its own lastError — its
+      // transactions are never touched, because the mirror rewrite only runs
+      // on success.
+      const auth = (init?.headers as Record<string, string> | undefined)?.Authorization
+      if (auth !== 'Bearer plain-token') return json({ message: 'Invalid token' }, 403)
       const url = String(input)
       if (url.includes('/advertisers')) return advertisers(markets)
       if (url.includes('/transactions'))
@@ -653,21 +660,27 @@ describe('syncAffiliateAccount', () => {
 })
 
 describe('syncAllAffiliateAccounts', () => {
+  // The shared dev database can hold affiliate accounts this file never made
+  // (another test file's rows, seeded sample data), so every assertion here is
+  // scoped to this file's marker — the same discipline ads/sync.test.ts uses.
+  const mine = (results: { name: string }[]) => results.filter((r) => r.name.includes(MARKER))
+
   it('skips an account synced within six hours unless forced', async () => {
     await makeShop()
     const fresh = await makeAccount({ lastSyncAt: new Date() })
     stub(NO('https://www.affiliate-test.no'), [tx()])
 
-    expect(await syncAllAffiliateAccounts()).toHaveLength(0)
+    expect(mine(await syncAllAffiliateAccounts())).toHaveLength(0)
 
-    const forced = await syncAllAffiliateAccounts({ force: true })
+    const forced = mine(await syncAllAffiliateAccounts({ force: true }))
     expect(forced).toHaveLength(1)
     expect(forced[0].accountId).toBe(fresh.id)
   })
 
   it('leaves inactive accounts alone', async () => {
     await makeAccount({ active: false })
-    expect(await syncAllAffiliateAccounts({ force: true })).toHaveLength(0)
+    stub(NO('https://www.affiliate-test.no'), [tx()])
+    expect(mine(await syncAllAffiliateAccounts({ force: true }))).toHaveLength(0)
   })
 })
 ```
@@ -829,6 +842,9 @@ async function seed() {
       externalId: `aff-cost-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: `${MARKER} Panetti`,
       token: 'plain-token',
+      // Inactive, so a parallel sync test's forced syncAll never sweeps this
+      // row up. The cost loader reads transactions, not account activity.
+      active: false,
     },
   })
   const base = {
@@ -1134,6 +1150,8 @@ describe('loadMetricsInput affiliate', () => {
         externalId: `load-aff-${Date.now()}`,
         name: `${MARKER} Panetti`,
         token: 'plain-token',
+        // Inactive: invisible to any forced syncAll in parallel test files.
+        active: false,
       },
     })
     await db.affiliateTransaction.create({
