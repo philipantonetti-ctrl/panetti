@@ -28,7 +28,14 @@ export async function POST(req: Request) {
   try {
     assertAdmin(await currentUser())
 
-    const parsed = Body.safeParse(await req.json())
+    // A malformed body dies here as a 400. Letting req.json() throw would land
+    // it in the generic catch, whose console.error prints V8's SyntaxError —
+    // and that error quotes a snippet of the body it choked on, which on this
+    // route can be a token.
+    const raw = await req.json().catch(() => null)
+    if (raw === null) return NextResponse.json({ error: 'Invalid details' }, { status: 400 })
+
+    const parsed = Body.safeParse(raw)
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error.issues[0]?.message ?? 'Invalid details' },

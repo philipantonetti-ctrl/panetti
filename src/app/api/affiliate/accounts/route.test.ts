@@ -163,6 +163,25 @@ describe('POST /api/affiliate/accounts', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('answers a malformed body with a 400, never a thrown SyntaxError', async () => {
+    // The generic catch logs its error, and V8's SyntaxError quotes the body
+    // it choked on — on this route that can be a token. The 400 path must
+    // catch the parse itself.
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await POST(
+      new Request('http://localhost/api/affiliate/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: `{"token": "${TOKEN}`, // truncated mid-string, as a bad client would
+      }),
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Invalid details')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   /** The whole point of the route: prove it, THEN store it. */
   it("answers with Addrevenue's own words and stores nothing when the token is refused", async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ message: 'Forbidden' }, 403)))
@@ -243,6 +262,44 @@ describe('GET /api/affiliate/accounts', () => {
     expect(mine).toMatchObject({ name: `Panetti ${MARK}`, transactions: 2, unmatched: 1 })
     expect(Object.keys(mine!)).not.toContain('token')
     expect(JSON.stringify(body)).not.toContain(TOKEN)
+  })
+
+  it("keeps each brand's counts on its own row", async () => {
+    stubAddrevenue()
+    await connect()
+
+    // A second brand, seeded directly — the per-account join in withCounts is
+    // what this test is about, and one account cannot exercise a join.
+    const other = await db.affiliateAccount.create({
+      data: {
+        externalId: `${ADVERTISER}2`,
+        name: `Mazzetti ${MARK}`,
+        token: 'plain-token',
+        active: false,
+      },
+    })
+    await db.affiliateTransaction.create({
+      data: {
+        accountId: other.id,
+        externalId: '9001',
+        date: new Date('2026-03-04'),
+        market: 'SE',
+        shopId: null,
+        channelId: '77',
+        channelName: 'Testsieger.de',
+        status: 'new',
+        commission: 1000,
+        brokerageFee: 150,
+        orderValue: 9000,
+        currency: 'SEK',
+      },
+    })
+
+    const body = await (await GET()).json()
+    const rows = body.accounts as { externalId: string; transactions: number; unmatched: number }[]
+    // Distinct counts per brand — a join that summed globally would show 3/2 on both.
+    expect(rows.find((a) => a.externalId === ADVERTISER)).toMatchObject({ transactions: 2, unmatched: 1 })
+    expect(rows.find((a) => a.externalId === `${ADVERTISER}2`)).toMatchObject({ transactions: 1, unmatched: 1 })
   })
 })
 

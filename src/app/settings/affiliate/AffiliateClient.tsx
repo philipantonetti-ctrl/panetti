@@ -52,6 +52,10 @@ export function AffiliateClient({
         // Keep what they pasted: a rejected token is usually a mistyped one,
         // and clearing the box would make them fetch it from Addrevenue again.
         toast.error(json?.error ?? 'Could not connect')
+        // A failure part-way through (the first import runs inside this
+        // request) can still have created the account — show what now exists
+        // rather than leaving a hidden row behind an error toast.
+        await reload()
         return
       }
       setToken('')
@@ -63,6 +67,9 @@ export function AffiliateClient({
       await reload()
     } catch {
       toast.error('Could not reach the server')
+      // Same reason as above: the server may have finished the create before
+      // the connection dropped.
+      await reload().catch(() => {})
     } finally {
       setBusy(false)
     }
@@ -76,7 +83,19 @@ export function AffiliateClient({
         toast.error((await res.json().catch(() => null))?.error ?? 'Sync failed')
         return
       }
-      toast.success('Affiliate sales refreshed')
+      // The route answers 200 with per-brand results; a brand whose token died
+      // is in there as ok: false, and a green toast over it would contradict
+      // the status cell the reload is about to paint red.
+      const results = ((await res.json().catch(() => null))?.results ?? []) as {
+        name: string
+        ok: boolean
+      }[]
+      const failed = results.filter((r) => !r.ok).map((r) => r.name)
+      if (failed.length > 0) {
+        toast.error(`Sync failed for ${failed.join(' and ')} — see the status below.`)
+      } else {
+        toast.success('Affiliate sales refreshed')
+      }
       await reload()
     } catch {
       toast.error('Could not reach the server')
