@@ -2858,6 +2858,8 @@ Assign the NOTE's `authorUserId` and the OUTBOUND's to the admin user if you kep
 
 ### Task 20: End-to-end
 
+**Amendment (shared-environment):** the local Postgres and port 3000 are shared with another live session, so (a) **never run `npm run db:seed`** during this work — it wipes that session's local affiliate data; the seed code in Task 19 is written and type-checked but not run; (b) the spec below must be **self-sufficient**: it creates its own mailbox through `POST /api/inbox/mailboxes` (unique address `support+e2e<timestamp>@e2e.invalid`), ingests its own email through `POST /api/inbox/inbound?token=…` (`INBOX_INBOUND_SECRET=e2e-secret` in the worktree `.env`, read by the dev server), and matches it against a real order found via `page.request.get('/api/orders?preset=last_12_months&limit=50')` (pick the first row with a non-empty `customerEmail`; send the webhook From that address with `#<number>` in the body); it removes its mailbox (and thereby its tickets, cascade) at the end. Macros are created by the spec too (`POST /api/inbox/macros`, name `[e2e] Where is my order?`) and deleted after. (c) `playwright.config.ts` reads `const port = Number(process.env.E2E_PORT ?? 3000)` for both `baseURL` and `webServer.url`, and `webServer.command` becomes `` `npm run dev -- -p ${port}` ``; run with `E2E_PORT=3100`. Assertions stay as written below, substituting the created data for the seeded tickets.
+
 **Files:**
 - Create: `e2e/inbox.spec.ts`
 - Modify: `e2e/global-setup.ts:9` (add `'/inbox', '/settings/inbox'` — if not done in Task 17)
