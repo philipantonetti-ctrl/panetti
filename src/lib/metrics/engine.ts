@@ -76,8 +76,8 @@ export function fulfillmentOn(points: FulfillmentPoint[], date: Date): number {
 }
 
 /**
- * Ad spend is dated by plain UTC day, the way the platforms report it — unlike
- * an order, which belongs to its shop's own calendar day.
+ * Ad spend and affiliate cost are dated by plain UTC day, the way the platforms
+ * report them — unlike an order, which belongs to its shop's own calendar day.
  */
 function spendInRange(date: Date, from: Date, to: Date): boolean {
   const d = utcDay(date).getTime()

@@ -46,6 +46,8 @@ async function seed() {
       { ...base, externalId: '5', date: new Date('2026-03-01'), commission: 7777, brokerageFee: 777 },
       // Unmatched market: no shop, so no per-shop cost.
       { ...base, externalId: '6', shopId: null, date: new Date('2026-01-02'), commission: 5555, brokerageFee: 555 },
+      // A second in-range day stays its own row — days must never collapse.
+      { ...base, externalId: '7', date: new Date('2026-01-05'), commission: 100, brokerageFee: 10 },
     ],
   })
   return { shop, account }
@@ -55,10 +57,15 @@ describe('affiliateCosts', () => {
   it('groups commission + brokerage per shop, day and currency, skipping denied rows', async () => {
     const { shop } = await seed()
     const rows = await affiliateCosts([shop.id], new Date('2026-01-01'), new Date('2026-01-31'))
-    expect(rows).toHaveLength(2)
-    const nok = rows.find((r) => r.currency === 'NOK')!
+    expect(rows).toHaveLength(3)
+    // The two NOK rows are two different DAYS — the day dimension must survive.
+    const nokRows = rows.filter((r) => r.currency === 'NOK')
+    expect(new Set(nokRows.map((r) => r.date.toISOString())).size).toBe(2)
+    const nok = nokRows.find((r) => r.date.toISOString().startsWith('2026-01-02'))!
     expect(nok).toMatchObject({ shopId: shop.id, amount: 12835 + 1925 + 5988 + 898 })
     expect(nok.date).toEqual(new Date('2026-01-02T00:00:00.000Z'))
+    const jan5 = nokRows.find((r) => r.date.toISOString().startsWith('2026-01-05'))!
+    expect(jan5.amount).toBe(110)
     const sek = rows.find((r) => r.currency === 'SEK')!
     expect(sek.amount).toBe(1100)
   })

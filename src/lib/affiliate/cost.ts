@@ -8,6 +8,8 @@ import type { EngineAffiliateCost } from '../metrics/types'
  * account, so both count (the client's explicit decision, 2026-08-24).
  * Denied rows cost nothing; unmatched rows (shopId null) can belong to no
  * shop's figures and are surfaced elsewhere instead of summed here.
+ * Transactions count regardless of the account's `active` flag: booked money
+ * still counts after an account is paused — `active` gates syncing, not history.
  *
  * One implementation for every caller, like ads/attribution.ts: a second
  * copy is how the Dashboard and the Marketing page come to disagree.
@@ -41,10 +43,11 @@ export async function affiliateCosts(
  */
 export async function relevantAffiliateCurrencies(shopIds: string[]): Promise<string[]> {
   if (!shopIds.length) return []
-  const rows = await db.affiliateTransaction.findMany({
+  // groupBy, not findMany+distinct: Prisma applies `distinct` client-side,
+  // which would fetch every transaction's currency on each dashboard load.
+  const rows = await db.affiliateTransaction.groupBy({
+    by: ['currency'],
     where: { shopId: { in: shopIds } },
-    select: { currency: true },
-    distinct: ['currency'],
   })
   return rows.map((r) => r.currency)
 }

@@ -764,6 +764,7 @@ describe('affiliate cost', () => {
   it('converts each day at that day’s own rate', () => {
     const res = run([cost(), cost({ date: new Date('2026-07-02') })])
     expect(res.byShop[0].affiliate).toBe(3000) // $10 + $20, never $20 or $40
+    expect(res.byShop[1].affiliate).toBe(0) // no rows: a zero, not a missing figure
   })
 
   it('takes affiliate straight out of net profit, separately from marketing', () => {
@@ -775,7 +776,8 @@ describe('affiliate cost', () => {
 
   it('ignores cost outside the range and never crosses shops', () => {
     const res = run([
-      cost({ date: new Date('2026-06-30') }),
+      cost({ date: new Date('2026-06-30') }), // the day before the range
+      cost({ date: new Date('2026-07-03') }), // the day after it
       cost(),
       cost({ shopId: 's2', amount: 50000 }),
     ])

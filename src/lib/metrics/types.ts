@@ -109,9 +109,10 @@ export type EngineAdSpend = {
 }
 
 /**
- * One day of one shop's affiliate cost (Addrevenue commission + their fee),
- * in the TRANSACTIONS' own currency — a FI sale can be in SEK. `date` is
- * plain UTC midnight, the platform-reported day, like ad spend.
+ * One (shop, day, currency) slice of affiliate cost (Addrevenue commission +
+ * their fee), in the TRANSACTIONS' own currency — a FI sale can be in SEK, so
+ * one shop-day can hold two rows. `date` is plain UTC midnight, the
+ * platform-reported day, like ad spend.
  */
 export type EngineAffiliateCost = {
   shopId: string
