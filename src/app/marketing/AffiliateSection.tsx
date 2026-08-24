@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { formatMoney } from '@/lib/money'
 import type { Preset } from '@/lib/dates'
 
@@ -171,7 +172,11 @@ export function AffiliateSection({
         <p className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-muted">
           {data.unmatched} {data.unmatched === 1 ? 'sale belongs' : 'sales belong'} to an Addrevenue
           market that matches none of the shops, so their cost is missing from every per-shop figure.
-          Check the shops’ URLs on the Affiliate settings page.
+          Check the shops’ URLs on the{' '}
+          <Link href="/settings/affiliate" className="font-semibold text-accent hover:underline">
+            Affiliate settings page
+          </Link>
+          .
         </p>
       )}
 
