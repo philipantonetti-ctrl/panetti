@@ -625,7 +625,7 @@ describe('syncAffiliateAccount', () => {
 
     // Next run: row 1 moved to paidOut, row 2 no longer exists on their side.
     stub(NO('https://www.affiliate-test.no'), [tx({ id: 1, status: 'paidOut' })])
-    await syncAffiliateAccount({ ...account, lastSyncAt: null })
+    await syncAffiliateAccount(account)
 
     const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
     expect(rows).toHaveLength(1)
@@ -643,6 +643,40 @@ describe('syncAffiliateAccount', () => {
 
     const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
     expect(rows[0].shopId).toBeNull()
+  })
+
+  it('connecting the shop later heals historical rows on the next sync', async () => {
+    const account = await makeAccount()
+    stub(NO('https://www.affiliate-test.no'), [tx()])
+    await syncAffiliateAccount(account) // no shop yet -> shopId null
+    const shop = await makeShop()
+    await syncAffiliateAccount(account)
+    const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
+    expect(rows[0].shopId).toBe(shop.id)
+  })
+
+  it('an empty answer never wipes a mirror that holds history', async () => {
+    await makeShop()
+    const account = await makeAccount()
+    stub(NO('https://www.affiliate-test.no'), [tx()])
+    await syncAffiliateAccount(account)
+
+    // The platform hiccups: a well-formed 200 with nothing in it.
+    stub(NO('https://www.affiliate-test.no'), [])
+    const result = await syncAffiliateAccount(account)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/keeping the mirror/)
+    expect(await db.affiliateTransaction.count({ where: { accountId: account.id } })).toBe(1)
+    const fresh = await db.affiliateAccount.findUniqueOrThrow({ where: { id: account.id } })
+    expect(fresh.lastError).toMatch(/keeping the mirror/)
+  })
+
+  it('a genuinely new account with zero sales still syncs clean', async () => {
+    await makeShop()
+    const account = await makeAccount()
+    stub(NO('https://www.affiliate-test.no'), [])
+    const result = await syncAffiliateAccount(account)
+    expect(result).toMatchObject({ ok: true, rows: 0 })
   })
 
   it('stores the failure on the account instead of throwing', async () => {
@@ -692,7 +726,7 @@ describe('syncAllAffiliateAccounts', () => {
 import { db } from '../db'
 import { utcDay } from '../dates'
 import { decryptSecret } from '../secrets'
-import { fetchAdvertiser, fetchTransactions } from './client'
+import { AffiliateApiError, fetchAdvertiser, fetchTransactions } from './client'
 import { matchMarketsToShops } from './match'
 
 /**
@@ -743,6 +777,20 @@ export async function syncAffiliateAccount(
 
     const toDate = utcDay(now).toISOString().slice(0, 10)
     const rows = await fetchTransactions(token, { fromDate: FIRST_DATA_DATE, toDate })
+
+    // Zero transactions for an account that HAS some is an outage answer, not
+    // a truth — mirroring it would silently zero the affiliate cost on every
+    // dashboard until the platform recovers (importVismaStock refuses the
+    // same wipe, for the same reason). A genuinely new account has nothing
+    // stored, so it still syncs clean.
+    if (rows.length === 0) {
+      const kept = await db.affiliateTransaction.count({ where: { accountId: account.id } })
+      if (kept > 0) {
+        throw new AffiliateApiError(
+          `Addrevenue answered with zero transactions for an account holding ${kept} — keeping the mirror as it was.`,
+        )
+      }
+    }
 
     await db.$transaction([
       ...rows.map((r) => {
