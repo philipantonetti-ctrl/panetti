@@ -60,7 +60,13 @@ const tx = (over: Record<string, unknown> = {}) => ({
 function stub(markets: Record<string, { market: string; url: string }>, txs: unknown[]) {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+    vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      // Only OUR token gets data. A foreign account swept up by a syncAll test
+      // (another file's row, or seeded sample data in the shared dev DB) gets a
+      // 403 and stores its own lastError — its transactions are never touched,
+      // because the mirror rewrite only runs on success.
+      const auth = (init?.headers as Record<string, string> | undefined)?.Authorization
+      if (auth !== 'Bearer plain-token') return json({ message: 'Invalid token' }, 403)
       const url = String(input)
       if (url.includes('/advertisers')) return advertisers(markets)
       if (url.includes('/transactions'))
@@ -141,20 +147,29 @@ describe('syncAffiliateAccount', () => {
 })
 
 describe('syncAllAffiliateAccounts', () => {
+  // syncAll reads every active account in the shared dev DB — other suites'
+  // rows and seeded sample data included — so assertions only count accounts
+  // this file created, the ads/sync.test.ts discipline.
+  const mine = <T extends { name: string }>(results: T[]) =>
+    results.filter((r) => r.name.includes(MARKER))
+
   it('skips an account synced within six hours unless forced', async () => {
     await makeShop()
     const fresh = await makeAccount({ lastSyncAt: new Date() })
     stub(NO('https://www.affiliate-test.no'), [tx()])
 
-    expect(await syncAllAffiliateAccounts()).toHaveLength(0)
+    expect(mine(await syncAllAffiliateAccounts())).toHaveLength(0)
 
-    const forced = await syncAllAffiliateAccounts({ force: true })
+    const forced = mine(await syncAllAffiliateAccounts({ force: true }))
     expect(forced).toHaveLength(1)
     expect(forced[0].accountId).toBe(fresh.id)
   })
 
   it('leaves inactive accounts alone', async () => {
     await makeAccount({ active: false })
-    expect(await syncAllAffiliateAccounts({ force: true })).toHaveLength(0)
+    // Any foreign ACTIVE account force sweeps up hits the stub, never the
+    // real network — and its wrong token gets the stub's 403.
+    stub(NO('https://www.affiliate-test.no'), [tx()])
+    expect(mine(await syncAllAffiliateAccounts({ force: true }))).toHaveLength(0)
   })
 })
