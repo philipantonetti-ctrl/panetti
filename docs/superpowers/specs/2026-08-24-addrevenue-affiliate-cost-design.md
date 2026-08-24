@@ -51,6 +51,9 @@ wrong; everything below was observed.
   NO in SEK (1). Store the row's own `currency`; never assume the shop's.
 - Volume: Panetti 2,097 rows since 2025-07-19; Mazzetti 70 since 2025-09-14. One page
   each at `perPage` 5000. Full-history refetch is a cheap, single request per brand.
+- `eventOrderId` is NOT always a Woo order number: the live data contains the literal
+  string `"DELETED"` where the order was removed from the shop. It is stored for audit
+  and nothing joins on it — do not build one without handling that value.
 - `updatedFromDate` filter works (incremental sync is possible; not needed at this volume).
 - `GET /channels` and `/payouts` answer 403 for advertiser tokens — affiliate-side only.
 
@@ -145,6 +148,15 @@ copied from the live probes. Engine/load additions tested beside the existing su
 Playwright spec seeds transactions and walks Dashboard column, Marketing section and
 the settings page. Final acceptance: a real local sync with the live tokens, then the
 dashboard inspected — measured numbers, not fixtures.
+
+## Live verification of the client (2026-08-24, read-only)
+
+The finished `src/lib/affiliate/client.ts` was run against both real tokens before any
+UI was built on it: 2,169 transactions (Panetti 2,099, Mazzetti 70) parsed with **zero
+malformed rows** — every commission, fee and order value an integer, every date valid,
+every row carrying a currency and id. Both advertisers resolved with their market URLs.
+The currency-is-not-the-market edge showed up in the live data exactly as designed for:
+Mazzetti NO/SEK ×1, Panetti FI/SEK ×4. Still zero denials across the whole history.
 
 ## Noted edges (accepted)
 
