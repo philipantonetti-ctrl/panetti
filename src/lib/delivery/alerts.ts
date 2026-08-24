@@ -3,7 +3,7 @@ import { VOIDED_STATUSES } from '../metrics/types'
 import { postSlack } from '../slack/notify'
 import { getSetting } from '../settings'
 import { getDeliveryConfig } from './config'
-import { deliveryFor, type DeliveryState, type Parcel } from './view'
+import { deliveryFor, hasArrived, type DeliveryState, type Parcel } from './view'
 
 export type LateAlert = {
   id: string
@@ -121,11 +121,19 @@ export async function flushDeliveryAlerts(
         //
         // `none: {}` keeps the order the warehouse never booked at all, which
         // is the single most important thing this alert catches. A RETURNED
-        // parcel has a null availableAt by construction in map.ts, so returns
-        // stay in too.
+        // parcel has a null availableAt AND a null collectedAt by construction
+        // in milestones.ts, so returns stay in too.
+        //
+        // BOTH dates on the one parcel, not availableAt alone. They are
+        // written from different words — COLLECTED writes only the second —
+        // so a parcel carrying a collection and nothing else passed a test for
+        // "availableAt is null" while sitting in the customer's hallway. It is
+        // dropped in the loop below either way; matching here keeps it out of
+        // the 500 candidate slots as well, which is what stops arrived orders
+        // crowding out the ones that need alerting.
         OR: [
           { shipments: { none: {} } },
-          { shipments: { some: { availableAt: null } } },
+          { shipments: { some: { availableAt: null, collectedAt: null } } },
         ],
         // And a floor in time. Without one, orders that were never shipped and
         // never alerted accumulate the same way. An order that went late months
@@ -174,9 +182,15 @@ export async function flushDeliveryAlerts(
     // promise, INCLUDING orders that arrived late — those belong in the on-time
     // rate, but paging someone about a parcel already in the customer's hands
     // changes nothing and trains people to ignore the channel. Alert only on
-    // what is still outstanding: undelivered, or returned (availableAt is null
-    // for a return, so returns correctly stay in).
-    if (!view.late || view.availableAt !== null) continue
+    // what is still outstanding: undelivered, or returned (a return has
+    // neither arrival date, so returns correctly stay in).
+    //
+    // `hasArrived`, not `availableAt !== null`: the same rule the Delivery
+    // page's own queue is filtered by (lib/delivery/view.ts). This is the ONE
+    // clause that differs from `stillLate` — no parcel is required, because an
+    // order the warehouse never booked is the single most important thing this
+    // alert catches.
+    if (!view.late || hasArrived(view)) continue
     late.push({
       id: o.id, number: o.number, shop: o.shop.name,
       country: o.shippingCountry || null,

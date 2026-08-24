@@ -212,6 +212,24 @@ describe('deliveryStats', () => {
     expect(s.onTimeRate).toBe(0)
   })
 
+  /**
+   * `availableAt` alone was the rule, and a parcel can carry a `collectedAt`
+   * without one: COLLECTED stops the clock in milestones.ts, while only
+   * READY_FOR_PICKUP and DELIVERED write `availableAt`. Such an order read as
+   * outstanding, and kept adding a day to its "days over" every morning, while
+   * the customer was holding the box.
+   */
+  it('does not queue one whose only arrival evidence is the collection', () => {
+    const s = deliveryStats(
+      [v({
+        state: 'DELIVERED', totalDays: null, availableAt: null,
+        collectedAt: new Date(), late: true,
+      })],
+      ['NO'],
+    )
+    expect(s.lateNow).toBe(0)
+  })
+
   it('keeps a returned parcel in the live queue, since the customer got nothing', () => {
     const s = deliveryStats(
       [v({ state: 'RETURNED', totalDays: null, availableAt: null, late: true })],

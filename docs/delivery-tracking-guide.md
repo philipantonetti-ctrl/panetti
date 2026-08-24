@@ -26,7 +26,12 @@ Underneath:
   whether to talk to the warehouse or to Bring.
 - **How long orders took.** A bar per day count, so you see the slow tail.
 - **By country.** Median days and on-time rate for each country.
-- **Late list.** Every late order, with links to the order and to Bring.
+- **Late list.** Exactly the orders behind "Late right now", worst first,
+  with links to the order and to whichever carrier is holding the parcel. An
+  order leaves this list the moment its parcel reaches the customer, whether
+  that is their door or their pickup point. It still counts against the
+  on-time rate, and it is still in "Where everything is now" — there is
+  simply nothing left to chase.
 - **Unlinked parcels.** Tracking numbers no order claimed. If this grows,
   something is wrong with the warehouse file.
 - **Recent imports.** Every file read, and how many parcels it linked.

@@ -189,8 +189,17 @@ export function deliveryFor(
     order.shipments.every((s) => s.availableAt !== null)
   const availableAt = allAvailable ? maxDate(order.shipments.map((s) => s.availableAt)) : null
 
+  // The same guard `allAvailable` carries, on the other milestone. A parcel
+  // going back was not collected, and milestonesFrom already writes both as
+  // null for one — but this function reads denormalised columns rather than
+  // events, and a row holding a stale collectedAt beside a RETURNED outcome
+  // would otherwise satisfy `hasArrived` and take the return off the chase
+  // queue. A return is the one settled ending the customer never received.
   const allCollected =
-    order.shipments.length > 0 && order.shipments.every((s) => s.collectedAt !== null)
+    !returned &&
+    !cancelled &&
+    order.shipments.length > 0 &&
+    order.shipments.every((s) => s.collectedAt !== null)
   const collectedAt = allCollected ? maxDate(order.shipments.map((s) => s.collectedAt)) : null
 
   const handedInAt = minDate(order.shipments.map((s) => s.handedInAt))
@@ -285,3 +294,42 @@ export function deliveryFor(
     parcels,
   }
 }
+
+/**
+ * The order reached the customer: in their hands, or waiting for them at their
+ * chosen pickup point. Both are endings; neither is anything to chase.
+ *
+ * Reads BOTH timestamps rather than `availableAt` alone. They are written from
+ * two different words (milestones.ts): READY_FOR_PICKUP and DELIVERED stop the
+ * clock and write `availableAt`, while COLLECTED only proves the hand-over and
+ * writes `collectedAt`. A parcel whose feed carried the collection and neither
+ * of the other two therefore has a `collectedAt` and no `availableAt` at all —
+ * and reading one field calls that parcel outstanding while the customer is
+ * holding the box.
+ */
+export const hasArrived = (v: OrderDelivery): boolean =>
+  v.availableAt !== null || v.collectedAt !== null
+
+/**
+ * Late, still not with the customer, and holding a parcel somebody can go and
+ * ask about. THE definition of the chase queue.
+ *
+ * One function because three screens ask this question — the "LATE RIGHT NOW"
+ * tile (stats.ts), the Late list under it (api/delivery/route.ts) and the
+ * Slack alert (alerts.ts) — and each used to spell out its own answer. The
+ * list's left out the middle clause, so on 2026-08-24 it ran to sixteen rows
+ * under a tile reading 13, six of them badged Delivered or Ready for
+ * collection. A parcel in the customer's hands is not a thing anyone can
+ * chase, and a to-do list that carries finished work stops being read.
+ *
+ * The miss itself is NOT forgotten: `late` stays true on an order that arrived
+ * past its promise, which is what the on-time rate is made of (stats.ts's
+ * `rate`). This says only that the queue is done with it.
+ *
+ * The parcel clause is the one the Slack alert deliberately drops — it pages
+ * about an order the warehouse never booked, which is the single most
+ * important thing it catches — so alerts.ts composes `late` and `hasArrived`
+ * itself rather than calling this.
+ */
+export const stillLate = (v: OrderDelivery): boolean =>
+  v.late && !hasArrived(v) && v.parcels.length > 0

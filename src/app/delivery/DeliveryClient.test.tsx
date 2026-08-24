@@ -80,44 +80,46 @@ describe('LateList', () => {
   })
 
   /**
-   * "Available" said both "waiting at a pickup point" and "in the customer's
-   * hands". DHL only ever reports the second, so a DHL row badged "Available"
-   * beside a DHL tracking page that said "Delivered".
+   * The client's words: "when order is delivered or ready for collection, it
+   * can go away from the Late section."
+   *
+   * The heading used to advertise that it kept them, and then reconcile itself
+   * with the tile above in a second sentence — a number on the page matching
+   * nothing under it, which is the complaint that started all of this. The rows
+   * are now exactly what the tile counts, so there is nothing left to reconcile
+   * and nothing left to explain away. Which orders the route sends is held in
+   * place by api/delivery/route.integration.test.ts; this holds the heading to
+   * the same story, because a heading that outlives the rule it describes is
+   * how the page came to disagree with itself in the first place.
    */
-  it('says delivered when the customer has the parcel', () => {
-    const { container } = render(
-      <LateList rows={[order({ state: 'DELIVERED' })]} total={1} judged={24} />,
-    )
-    expect(container.textContent).toMatch(/Delivered/)
-  })
-
-  it('says ready for collection while a parcel waits at a pickup point', () => {
-    const { container } = render(
-      <LateList rows={[order({ state: 'AVAILABLE' })]} total={1} judged={24} />,
-    )
-    expect(container.textContent).toMatch(/Ready for collection/i)
-    // The word on its own is the ambiguity being removed.
-    expect(container.textContent).not.toMatch(/\bAvailable\b/)
+  it('does not advertise itself as holding orders that have already arrived', () => {
+    const { container } = render(<LateList rows={[order()]} total={1} judged={24} />)
+    expect(container.textContent).not.toMatch(/since arrived/i)
+    expect(container.textContent).not.toMatch(/still out/i)
   })
 
   /**
-   * The tile above counts the live queue — still not with the customer — while
-   * this list deliberately keeps orders that have since arrived, so the two
-   * legitimately differ. Left unexplained that is the same complaint that
-   * started this: a number on the page matching nothing under it.
+   * The empty state became far more reachable with this change: a range where
+   * every late parcel has since arrived now empties the list. "No parcel is
+   * past its promise in this range" is a plain lie about such a range — some
+   * were, they simply arrived — and the on-time rate sitting above it would be
+   * saying so at the same time.
    */
-  it('reconciles itself with the tile when some rows have already arrived', () => {
-    const { container } = render(
-      <LateList rows={[order(), order({ id: 'o2', state: 'AVAILABLE' })]} total={2} stillOut={1} judged={24} />,
-    )
-    expect(container.textContent).toMatch(/1 still out/i)
+  it('does not claim nothing was late when the late ones have merely arrived', () => {
+    const { container } = render(<LateList rows={[]} total={0} judged={24} />)
+    expect(container.textContent).toMatch(/still not with the customer/i)
   })
 
-  it('says nothing extra when every row is still out', () => {
-    const { container } = render(
-      <LateList rows={[order()]} total={1} stillOut={1} judged={24} />,
-    )
-    expect(container.textContent).not.toMatch(/still out/i)
+  // The other empty state, unchanged: nothing has been judged at all, which is
+  // a different piece of news and must not be reported as "nothing is late".
+  it('still says when no order has been judged yet', () => {
+    const { container } = render(<LateList rows={[]} total={0} judged={0} />)
+    expect(container.textContent).toMatch(/nothing to chase/i)
+  })
+
+  it('says plainly that every row is still away from the customer', () => {
+    const { container } = render(<LateList rows={[order()]} total={1} judged={24} />)
+    expect(container.textContent).toMatch(/still not reached the customer/i)
   })
 })
 

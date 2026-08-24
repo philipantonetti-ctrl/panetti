@@ -185,16 +185,17 @@ const STATE_TONE: Record<DeliveryState, string> = {
   NOT_DUE: 'bg-panel text-muted',
   BOOKED: 'bg-panel text-muted',
   IN_TRANSIT: 'bg-panel text-muted',
-  // Both endings keep the tone the single AVAILABLE state had. These badges
-  // are only drawn inside the Late and No-tracking lists, where an order that
-  // arrived did so past its promise — the colour is about that, not about the
-  // arrival, so splitting the state must not quietly recolour it.
-  AVAILABLE: 'bg-warn-soft text-loss',
-  DELIVERED: 'bg-warn-soft text-loss',
-  // Quiet, unlike the two above. Those are drawn in the Late list, where an
-  // order that arrived arrived late. This state is never late by construction
-  // — the parcel is with the customer and we simply hold no date for it — so
-  // the amber that means "past its promise" would be saying something untrue.
+  // All three arrivals are quiet now. The first two were amber because the
+  // only lists that draw a badge were the Late one and the No-tracking one,
+  // where an order that HAD arrived had arrived past its promise. Neither list
+  // routes an arrival any more — lib/delivery/view.ts's `stillLate` is what
+  // drops them — so amber here could only ever paint "past its promise" onto a
+  // parcel nobody is waiting for. Kept in the map because DeliveryState is
+  // exhaustive, not because a row is expected to carry one.
+  AVAILABLE: 'bg-panel text-muted',
+  DELIVERED: 'bg-panel text-muted',
+  // Never late by construction — the parcel is with the customer and we simply
+  // hold no date for it — so this one was quiet before the two above joined it.
   DELIVERED_UNDATED: 'bg-panel text-muted',
   RETURNED: 'bg-warn-soft text-loss',
   CANCELLED: 'bg-warn-soft text-loss',
@@ -329,8 +330,9 @@ export function Tiles({
           // "has a parcel" is load-bearing, not decoration. This tile used to
           // count orders with no tracking number too, and read 155 against a
           // Late list of 8. Saying what it counts is half of what stops that
-          // returning; the other half is the count itself, in stats.ts.
-          hint="Has a parcel, missed its promise, and still not with the customer — the list to chase."
+          // returning; the other half is the count itself, in stats.ts — which
+          // now counts with the very function the list is filtered by.
+          hint="Has a parcel, missed its promise, and still not with the customer — exactly the Late list below."
         />
       </div>
       <Tile
@@ -834,28 +836,27 @@ export function NoTracking({
 /**
  * The only part anyone acts on, so it is the part with the most room.
  *
- * Every row here HAS a parcel. Orders past their promise with nothing to show
- * for them live in AwaitingFile above — see the reasoning there.
+ * Every row here HAS a parcel, and not one of them has reached the customer.
+ * Orders past their promise with nothing to show for them live in NoTracking
+ * above — see the reasoning there. Orders whose parcel has since arrived are
+ * on the page too, but not here: they are what the on-time rate is made of and
+ * "Where everything is now" counts them under Ready for collection and
+ * Delivered. The client asked for exactly that — "when order is delivered or
+ * ready for collection, it can go away from the Late section" — and the reason
+ * it is right is that this list is worked through, and finished work in a
+ * to-do list teaches people to stop reading it.
+ *
+ * It no longer takes a "still out" figure to reconcile itself with the tile
+ * above, because there is nothing left to reconcile: both are
+ * lib/delivery/view.ts's `stillLate` over the same rows.
  */
 export function LateList({
   rows,
   total,
-  stillOut,
   judged,
 }: {
   rows: LateOrder[]
   total: number
-  /**
-   * How many of these have NOT reached the customer — the same figure the
-   * "LATE RIGHT NOW" tile shows.
-   *
-   * The tile counts the live queue and this list deliberately keeps orders
-   * that have since arrived, so the two differ by design. Unexplained, that
-   * is the complaint this whole section came from: a number on the page
-   * matching nothing underneath it. Optional, so a caller with nothing to
-   * reconcile simply says nothing.
-   */
-  stillOut?: number
   /** How many orders were actually assessed. Zero makes "nothing is late" a lie. */
   judged: number
 }) {
@@ -864,23 +865,15 @@ export function LateList({
   // whose job is to say how much is actually wrong.
   const capped = total > rows.length
   return (
-    <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+    // Named so the section can be linked to and found — the No-tracking
+    // section below has carried an id for the same reason since the tile above
+    // it learned to open it.
+    <section id="late" className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <div className="px-5 py-3.5">
         <h2 className="text-[13px] font-semibold text-ink">Late</h2>
         <p className="mt-0.5 text-[12px] text-muted">
-          Has a parcel and missed its promise, worst first. Includes orders that have since
-          arrived.
-          {/* Only when it actually differs. "8 late, 8 still out" is noise, and
-              a line that prints on every load stops being read. */}
-          {stillOut !== undefined && stillOut < total && (
-            <>
-              {' '}
-              <span className="num text-ink">
-                {stillOut.toLocaleString('en-US')} still out
-              </span>
-              , which is the figure in the tile above.
-            </>
-          )}
+          Has a parcel, missed its promise and has still not reached the customer, worst first.
+          The same orders the tile above counts.
         </p>
         {capped && (
           <p className="num mt-0.5 text-[12px] text-warn">
@@ -898,7 +891,13 @@ export function LateList({
               "nothing is late" here would quietly speak for them too. */}
           {judged === 0
             ? 'No order has passed its promised date yet, so there is nothing to chase.'
-            : 'No parcel is past its promise in this range.'}
+            : // Not "no parcel is past its promise", which this used to say and
+              // which stopped being true the day arrived orders left the list:
+              // a range whose every late parcel has since turned up empties
+              // this section, with the on-time rate above it saying out loud
+              // that several missed. Both halves of the rule, so the sentence
+              // survives the list being empty for either reason.
+              'Nothing in this range is past its promise and still not with the customer.'}
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -1372,7 +1371,6 @@ export function DeliveryClient({
                   <LateList
                     rows={data.late}
                     total={data.lateTotal}
-                    stillOut={data.stats.lateNow}
                     judged={data.stats.judged}
                   />
                   <NoTracking

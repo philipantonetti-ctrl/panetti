@@ -209,6 +209,26 @@ describe('flushDeliveryAlerts', () => {
     expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
   })
 
+  /**
+   * COLLECTED stops the clock in milestones.ts, but only READY_FOR_PICKUP and
+   * DELIVERED write `availableAt`. A parcel whose feed carried the collection
+   * and neither of those has a `collectedAt` and no `availableAt` at all — and
+   * a rule reading `availableAt` alone paged somebody about a box the customer
+   * had already walked home with.
+   */
+  it('does not alert a parcel the customer has collected, dateless though the arrival is', async () => {
+    const o = await order('1001')
+    await db.shipment.create({
+      data: {
+        trackingNumber: T1, orderId: o.id,
+        collectedAt: new Date('2026-08-15T09:00:00Z'), terminal: true,
+      },
+    })
+    const fn = ok()
+    expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
+    expect(fn).not.toHaveBeenCalled()
+  })
+
   it('alerts a returned parcel, because the customer never got their order', async () => {
     const o = await order('1001')
     await db.shipment.create({
