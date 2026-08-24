@@ -156,7 +156,10 @@ describe('syncAffiliateAccount', () => {
   it('a market with no matching shop stays unmatched and is reported', async () => {
     await makeShop() // affiliate-test.no — deliberately not panetti.fi
     const account = await makeAccount()
-    stub({ FI: { market: 'FI', url: 'https://www.panetti.fi' } }, [tx({ market: 'FI', currency: 'EUR' })])
+    // The tagged domain family, NOT a real store's: this file shares its
+    // database with the real connected shops, and the day Panetti Finland got
+    // its true wooUrl, a stub pointing at panetti.fi stopped being unmatched.
+    stub({ FI: { market: 'FI', url: 'https://www.affiliate-test.fi' } }, [tx({ market: 'FI', currency: 'EUR' })])
 
     const result = await syncAffiliateAccount(account)
     expect(result.ok).toBe(true)
