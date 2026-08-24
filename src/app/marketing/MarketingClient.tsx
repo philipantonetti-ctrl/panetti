@@ -14,6 +14,7 @@ import { PlatformCard } from '@/components/marketing/PlatformCard'
 import { PlatformTable } from '@/components/marketing/PlatformTable'
 import { SpendCheck } from '@/components/marketing/SpendCheck'
 import { BreakdownTable } from './BreakdownTable'
+import { AffiliateSection } from './AffiliateSection'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { Preset } from '@/lib/dates'
 import type { MarketingPlatformRow, MarketingSeriesPoint, MarketingShopRow } from '@/lib/ads/marketing'
@@ -376,6 +377,14 @@ export function MarketingClient({
             ) : null}
           </>
         )}
+
+        {/* Outside the ternary on purpose: the affiliate program is its own
+            channel, not a subset of paid ads, so it must still be here for a
+            workspace that has never connected a Meta or Google account. It
+            renders nothing at all when there is no affiliate program either. */}
+        <div className="mt-4">
+          <AffiliateSection preset={preset} from={from} to={to} shops={selected} tick={tick} />
+        </div>
       </PageBody>
     </AppShell>
   )

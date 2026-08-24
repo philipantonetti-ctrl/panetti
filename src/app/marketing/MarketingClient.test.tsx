@@ -33,6 +33,20 @@ vi.mock('./BreakdownTable', () => ({
     <div data-testid="breakdown-table">{JSON.stringify(props)}</div>
   ),
 }))
+// Same reasoning as BreakdownTable above: AffiliateSection fetches its own
+// figures from its own endpoint and decides for itself whether it has anything
+// to show. Standing in for itself here leaves these tests proving only what
+// MarketingClient controls — that the section is mounted at all, and with the
+// page's own filter state.
+vi.mock('./AffiliateSection', () => ({
+  AffiliateSection: (props: {
+    preset: string
+    from: string
+    to: string
+    shops: string[]
+    tick: number
+  }) => <div data-testid="affiliate-section">{JSON.stringify(props)}</div>,
+}))
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -302,6 +316,34 @@ describe('MarketingClient', () => {
       .map((c) => String(c[0]))
       .filter((u) => u.includes('/api/marketing'))
     expect(marketingCalls).toHaveLength(0)
+  })
+
+  // The affiliate program is its own channel, not a subset of paid ads: a
+  // workspace that never connected Meta or Google can still be paying
+  // affiliate commission, and that cost is already charged to net profit on
+  // the dashboard. Mounted OUTSIDE the doorway ternary for exactly that
+  // reason — the section decides for itself whether it has anything to show.
+  it('mounts the affiliate section even with no ad account connected', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+
+    renderPage(<MarketingClient email="admin@test.local" shops={[]} hasAccounts={false} />)
+    await act(async () => {})
+
+    expect(screen.getByTestId('affiliate-section')).toBeTruthy()
+  })
+
+  it("hands the affiliate section the page's own date and shop filters", async () => {
+    vi.stubGlobal('fetch', fetchPayload())
+
+    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
+    await act(async () => {})
+
+    const props = () => JSON.parse(screen.getByTestId('affiliate-section').textContent!)
+    expect(props()).toMatchObject({ preset: 'this_month', shops: [] })
+
+    selectOnly('Panetti Norway')
+    await act(async () => {})
+    expect(props().shops).toEqual(['a'])
   })
 
   // Three shops, not one: "all shops" (the default, an empty selection) and
