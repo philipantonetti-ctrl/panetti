@@ -2063,8 +2063,11 @@ import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affili
 ```ts
   // Affiliate commissions from Addrevenue. Two bounded requests per brand and
   // a six-hour spacing inside syncAllAffiliateAccounts, so most runs cost
-  // nothing. Best-effort like the ads: a bad token keeps its own lastError on
-  // the settings page and must never fail the shop sync.
+  // nothing; a due account is roughly five to ten seconds (a full-history
+  // mirror rewrite against Neon), so a due run costs the budget ~20s — spent
+  // here, with the money pulls, ahead of the greedy parcel poll. Best-effort
+  // like the ads: a bad token keeps its own lastError on the settings page
+  // and must never fail the shop sync.
   let affiliate: AffiliateSyncResult[] = []
   try {
     affiliate = await syncAllAffiliateAccounts()
