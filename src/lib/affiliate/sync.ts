@@ -1,7 +1,7 @@
 import { db } from '../db'
 import { utcDay } from '../dates'
 import { decryptSecret } from '../secrets'
-import { fetchAdvertiser, fetchTransactions } from './client'
+import { AffiliateApiError, fetchAdvertiser, fetchTransactions } from './client'
 import { matchMarketsToShops } from './match'
 
 /**
@@ -52,6 +52,20 @@ export async function syncAffiliateAccount(
 
     const toDate = utcDay(now).toISOString().slice(0, 10)
     const rows = await fetchTransactions(token, { fromDate: FIRST_DATA_DATE, toDate })
+
+    // Zero transactions for an account that HAS some is an outage answer, not
+    // a truth — mirroring it would silently zero the affiliate cost on every
+    // dashboard until the platform recovers (importVismaStock refuses the
+    // same wipe, for the same reason). A genuinely new account has nothing
+    // stored, so it still syncs clean.
+    if (rows.length === 0) {
+      const kept = await db.affiliateTransaction.count({ where: { accountId: account.id } })
+      if (kept > 0) {
+        throw new AffiliateApiError(
+          `Addrevenue answered with zero transactions for an account holding ${kept} — keeping the mirror as it was.`,
+        )
+      }
+    }
 
     await db.$transaction([
       ...rows.map((r) => {

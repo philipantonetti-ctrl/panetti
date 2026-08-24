@@ -112,11 +112,45 @@ describe('syncAffiliateAccount', () => {
 
     // Next run: row 1 moved to paidOut, row 2 no longer exists on their side.
     stub(NO('https://www.affiliate-test.no'), [tx({ id: 1, status: 'paidOut' })])
-    await syncAffiliateAccount({ ...account, lastSyncAt: null })
+    await syncAffiliateAccount(account)
 
     const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ externalId: '1', status: 'paidOut' })
+  })
+
+  it('refuses to wipe a history-bearing mirror when the platform answers empty', async () => {
+    await makeShop()
+    const account = await makeAccount()
+    stub(NO('https://www.affiliate-test.no'), [tx()])
+    await syncAffiliateAccount(account)
+    expect(await db.affiliateTransaction.count({ where: { accountId: account.id } })).toBe(1)
+
+    // Outage answer: a well-formed 200 with zero rows. Mirroring it would
+    // delete the whole history and zero the affiliate cost on every dashboard.
+    stub(NO('https://www.affiliate-test.no'), [])
+    const result = await syncAffiliateAccount(account)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/keeping the mirror/)
+
+    const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
+    expect(rows).toHaveLength(1)
+
+    const fresh = await db.affiliateAccount.findUniqueOrThrow({ where: { id: account.id } })
+    expect(fresh.lastError).toMatch(/keeping the mirror/)
+  })
+
+  it('a brand-new account with nothing on either side still syncs clean', async () => {
+    await makeShop()
+    const account = await makeAccount()
+    stub(NO('https://www.affiliate-test.no'), [])
+
+    const result = await syncAffiliateAccount(account)
+    expect(result).toMatchObject({ ok: true, rows: 0 })
+
+    const fresh = await db.affiliateAccount.findUniqueOrThrow({ where: { id: account.id } })
+    expect(fresh.lastError).toBeNull()
+    expect(fresh.lastSyncAt).not.toBeNull()
   })
 
   it('a market with no matching shop stays unmatched and is reported', async () => {
@@ -130,6 +164,22 @@ describe('syncAffiliateAccount', () => {
 
     const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
     expect(rows[0].shopId).toBeNull()
+  })
+
+  it('connecting the shop later heals historical rows on the next sync', async () => {
+    const account = await makeAccount()
+    stub(NO('https://www.affiliate-test.no'), [tx()])
+    await syncAffiliateAccount(account) // no shop yet -> shopId null
+    const before = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
+    expect(before[0].shopId).toBeNull()
+
+    // The shop is connected afterwards; the next mirror rewrite must fill
+    // shopId on the OLD row too. (The ads sync deliberately never touches its
+    // campaigns' shopId — applying that instinct here would break this.)
+    const shop = await makeShop()
+    await syncAffiliateAccount(account)
+    const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
+    expect(rows[0].shopId).toBe(shop.id)
   })
 
   it('stores the failure on the account instead of throwing', async () => {
