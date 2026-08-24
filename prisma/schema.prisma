@@ -482,20 +482,20 @@ model AffiliateAccount {
 }
 
 // One tracked affiliate sale, an EXACT mirror of Addrevenue's transaction row.
-// The sync refetches the full history and upserts by (account, externalId),
-// deleting rows the platform no longer returns — restatement, denial and
-// remote deletion are the same operation. Money in minor units of `currency`,
-// which is the ROW's own (a FI sale can be in SEK); converted at read time.
+// The sync refetches the full history and upserts by (account, externalId):
+// restatement and denial arrive as changed rows, remote deletion as absence —
+// all the same mirror operation. Money in minor units of `currency`, which is
+// the ROW's own (a FI sale can be in SEK); converted at read time.
 model AffiliateTransaction {
   id           String    @id @default(cuid())
   accountId    String
-  externalId   Int // Addrevenue transaction id
+  externalId   String // Addrevenue transaction id, e.g. "1176373" — theirs to shape, so String like every platform id here
   date         DateTime // the sale's day, UTC midnight — the platform-reported day
   market       String // "NO" | "SE" | "DK" | "FI" | "DE"
   // Resolved from the advertiser's market URL matched against Shop.wooUrl at
   // sync time. Null = no shop matched; surfaced in settings, never guessed.
   shopId       String?
-  channelId    Int
+  channelId    String
   channelName  String // the affiliate site, e.g. "Forbrukertesten.com"
   status       String // new | invoiced | readyForPayout | paidOut
   // Set = Addrevenue denied this sale; it then costs nothing. Zero denials in
