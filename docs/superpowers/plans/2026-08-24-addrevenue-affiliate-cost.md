@@ -663,7 +663,7 @@ describe('syncAllAffiliateAccounts', () => {
   // The shared dev database can hold affiliate accounts this file never made
   // (another test file's rows, seeded sample data), so every assertion here is
   // scoped to this file's marker — the same discipline ads/sync.test.ts uses.
-  const mine = (results: { name: string }[]) => results.filter((r) => r.name.includes(MARKER))
+  const mine = <T extends { name: string }>(results: T[]) => results.filter((r) => r.name.includes(MARKER))
 
   it('skips an account synced within six hours unless forced', async () => {
     await makeShop()
