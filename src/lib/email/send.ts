@@ -11,6 +11,18 @@ const ENDPOINT = 'https://api.postmarkapp.com/email'
  */
 const STREAM = 'outbound'
 
+export type SendOptions = {
+  /** Who the message is from. Defaults to EMAIL_FROM — the app's own voice. */
+  from?: string
+  /** Extra RFC headers, e.g. Message-ID / In-Reply-To / References for threading. */
+  headers?: Record<string, string>
+}
+
+export type SendResult = {
+  /** Postmark's own id for the delivery, for its activity log. Null if it sent none. */
+  postmarkId: string | null
+}
+
 /**
  * Send one transactional email through Postmark's REST API.
  *
@@ -27,9 +39,14 @@ const STREAM = 'outbound'
  * Configuration is read at call time, not at module load: a serverless instance
  * may be reused across a redeploy that changed the variables.
  */
-export async function sendEmail(to: string, subject: string, textBody: string): Promise<void> {
+export async function sendEmail(
+  to: string,
+  subject: string,
+  textBody: string,
+  opts: SendOptions = {},
+): Promise<SendResult> {
   const token = process.env.POSTMARK_SERVER_TOKEN
-  const from = process.env.EMAIL_FROM
+  const from = opts.from ?? process.env.EMAIL_FROM
 
   // Checked before the network, so a misconfigured server never opens a
   // connection to be told something it could have known locally. The variable
@@ -37,6 +54,10 @@ export async function sendEmail(to: string, subject: string, textBody: string): 
   // whoever has to go and set it.
   if (!token) throw new Error('POSTMARK_SERVER_TOKEN is not set, so no email can be sent')
   if (!from) throw new Error('EMAIL_FROM is not set, so no email can be sent')
+
+  const headers = opts.headers
+    ? Object.entries(opts.headers).map(([Name, Value]) => ({ Name, Value }))
+    : undefined
 
   const res = await fetch(ENDPOINT, {
     method: 'POST',
@@ -51,6 +72,7 @@ export async function sendEmail(to: string, subject: string, textBody: string): 
       Subject: subject,
       TextBody: textBody,
       MessageStream: STREAM,
+      ...(headers ? { Headers: headers } : {}),
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   })
@@ -63,4 +85,9 @@ export async function sendEmail(to: string, subject: string, textBody: string): 
     const body = (await res.text()).slice(0, 200)
     throw new Error(`Postmark responded ${res.status}: ${body}`)
   }
+
+  // Best-effort: the send already succeeded, and an unparseable body must not
+  // turn it into a failure the caller then retries into a duplicate email.
+  const parsed = (await res.json().catch(() => null)) as { MessageID?: unknown } | null
+  return { postmarkId: typeof parsed?.MessageID === 'string' ? parsed.MessageID : null }
 }
