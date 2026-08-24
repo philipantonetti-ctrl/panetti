@@ -21,6 +21,7 @@ const TABS: { name: string; items: Item[] }[] = [
     items: [
       { href: '/settings/shop', title: 'General settings', blurb: 'Set each webshop’s formats & info', icon: '⚙️' },
       { href: '/settings/shops', title: 'Connected stores', blurb: 'Connect WooCommerce and sync orders', icon: '🔌' },
+      { href: '/settings/affiliate', title: 'Affiliate', blurb: 'Connect Addrevenue — commissions count as a cost', icon: '🔗' },
     ],
   },
   {
