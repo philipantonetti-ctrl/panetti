@@ -143,3 +143,11 @@ describe('mapOrder', () => {
     expect(o.shippingCountry).toBe('DE')
   })
 })
+
+describe('customer phone', () => {
+  it('carries the billing phone, and an empty string when the store has none', () => {
+    expect(mapOrder({ ...baseOrder, billing: { phone: ' +47 912 34 567 ' } }).customerPhone).toBe('+47 912 34 567')
+    expect(mapOrder({ ...baseOrder, billing: {} }).customerPhone).toBe('')
+    expect(mapOrder(baseOrder).customerPhone).toBe('')
+  })
+})

@@ -79,6 +79,28 @@ The webhook receiver needs the deployment's public URL (`APP_URL`, or on
 Vercel the production URL is picked up automatically) and verifies every
 delivery against a per-shop HMAC secret the app generates itself.
 
+## The support inbox
+
+Every brand's support address in one queue, under Inbox. Each email becomes a
+ticket (or continues one, by its mail headers and our [PA-n] subject token),
+is matched to the customer's orders and parcels, and is answered from the
+brand's own address without leaving the app.
+
+Connecting it:
+
+1. Set `INBOX_INBOUND_SECRET` (any long random string) and point the Postmark
+   server's inbound webhook at `/api/inbox/inbound?token=<that secret>`.
+2. Set `POSTMARK_INBOUND_ADDRESS` to the server's inbound address, so
+   Settings -> Support inbox can show where to forward.
+3. Add each address on Settings -> Support inbox and forward the real mailbox
+   to the inbound address (the page has per-host notes).
+4. Verify each brand domain in Postmark (DKIM + Return-Path) so replies leave
+   from `support@panetti.no` and friends, threaded into the customer's own
+   conversation.
+
+Until an address is connected the inbox runs on the seeded sample tickets, the
+same way shops show sample data until they are connected.
+
 ## The advisor
 
 Every morning a briefing is written from the last seven days against the seven

@@ -5,8 +5,8 @@
  * Production builds compile ahead of time and don't need the favour.
  */
 export default async function globalSetup() {
-  const base = 'http://localhost:3000'
-  for (const path of ['/login', '/dashboard', '/advisor', '/orders', '/portal', '/account', '/settings/shops', '/settings/affiliate', '/marketing', '/b2b']) {
+  const base = `http://localhost:${process.env.E2E_PORT ?? 3000}`
+  for (const path of ['/login', '/dashboard', '/advisor', '/inbox', '/settings/inbox', '/orders', '/portal', '/account', '/settings/shops', '/settings/affiliate', '/marketing', '/b2b']) {
     try {
       await fetch(`${base}${path}`, { redirect: 'manual' })
     } catch {

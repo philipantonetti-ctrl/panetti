@@ -82,4 +82,43 @@ describe('sendEmail', () => {
     await expect(sendEmail('amb@example.com', 'S', 'B')).rejects.toThrow()
     expect(fn).not.toHaveBeenCalled()
   })
+
+  /**
+   * A support reply must leave from the BRAND's address, threaded onto the
+   * customer's conversation. Neither is a concern of the password reset that
+   * this function was written for, so both arrive as options and the old
+   * three-argument call keeps meaning exactly what it did.
+   */
+  it('sends from the address given, with custom headers, and returns Postmark id', async () => {
+    const fn = vi.fn<Fetch>(async () => new Response('{"MessageID":"pm-123"}', { status: 200 }))
+    vi.stubGlobal('fetch', fn)
+
+    const r = await sendEmail('kari@example.com', 'Re: Order', 'Hello', {
+      from: 'support@panetti.no',
+      headers: { 'Message-ID': '<a@panetti.no>', 'In-Reply-To': '<b@gmail.com>' },
+    })
+
+    const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.From).toBe('support@panetti.no')
+    expect(body.Headers).toEqual([
+      { Name: 'Message-ID', Value: '<a@panetti.no>' },
+      { Name: 'In-Reply-To', Value: '<b@gmail.com>' },
+    ])
+    expect(r).toEqual({ postmarkId: 'pm-123' })
+  })
+
+  it('falls back to EMAIL_FROM and sends no Headers field when none are given', async () => {
+    const fn = ok()
+    vi.stubGlobal('fetch', fn)
+    await sendEmail('amb@example.com', 'S', 'B')
+    const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.From).toBe('no-reply@panetti.no')
+    expect(body.Headers).toBeUndefined()
+  })
+
+  it('an explicit from does not need EMAIL_FROM to be set', async () => {
+    vi.stubEnv('EMAIL_FROM', '')
+    vi.stubGlobal('fetch', ok())
+    await expect(sendEmail('a@b.c', 'S', 'B', { from: 'support@panetti.no' })).resolves.toEqual({ postmarkId: null })
+  })
 })
