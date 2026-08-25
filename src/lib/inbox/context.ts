@@ -58,8 +58,10 @@ export async function customerContext(email: string, excludeTicketId: string, no
 
   if (orders.length === 0 && tickets.length === 0) return { customer: null, orders: [], previousTickets: [] }
 
-  // The newest order is the freshest word on who they are. Null means we
-  // never stored it, and the sidebar says so rather than showing a blank.
+  // The newest order is the freshest word on who they are. Phone and country
+  // fold null (never stored) and '' (checked, none) into one "nothing to
+  // show" - the sidebar does not distinguish a pending backfill from an
+  // empty file, and pretending it could would be the confident wrong answer.
   const newest = orders[0]
   const customer = newest
     ? {

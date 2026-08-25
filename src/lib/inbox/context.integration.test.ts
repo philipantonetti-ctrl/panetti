@@ -27,7 +27,7 @@ beforeEach(async () => {
     data: {
       shopId, externalId: 'c1', number: '#2001', placedAt: new Date('2026-08-10T10:00:00Z'), status: 'completed', currency: 'NOK',
       grossSales: 249900, discountTotal: 0, netSales: 249900, shippingCharged: 0, taxTotal: 62475, total: 312375,
-      customerName: 'Kari Olsen', customerEmail: KARI, customerPhone: '+47 912 34 567', shippingCountry: 'NO',
+      customerName: 'Kari Olsen', customerEmail: KARI, customerPhone: '+47 976 54 321', shippingCountry: 'NO',
       items: { create: [{ productId: product.id, sku: 'MPX-001', name: 'Massasjepistol Pro X', quantity: 1, unitPrice: 249900, lineNetTotal: 249900 }] },
     },
   })
@@ -48,7 +48,7 @@ beforeEach(async () => {
 describe('customerContext', () => {
   it('assembles the customer, their orders newest first with products, parcels, refund state and delivery, and past tickets', async () => {
     const ctx = await customerContext(KARI, 'not-a-ticket', NOW)
-    expect(ctx.customer).toEqual({ name: 'Kari Olsen', email: KARI, phone: '+47 912 34 567', country: 'NO' })
+    expect(ctx.customer).toEqual({ name: 'Kari Olsen', email: KARI, phone: '+47 976 54 321', country: 'NO' })
     expect(ctx.orders.map((o) => o.number)).toEqual(['#2001', '#1990'])
     const [o1, o2] = ctx.orders
     expect(o1.products).toEqual([{ name: 'Massasjepistol Pro X', quantity: 1 }])

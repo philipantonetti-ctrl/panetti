@@ -67,6 +67,9 @@ export async function matchOrder(input: { email: string; text: string; shopId: s
     const samePhone = (a: string, b: string) => a === b || a.endsWith(b) || b.endsWith(a)
     const hit = recent.find((o) => {
       const held = normalizePhone(o.customerPhone!)
+      // A junk stored phone ("0", "1234") would suffix-match almost anything;
+      // the text side is length-checked by phonesIn, the stored side is not.
+      if (held.length < 8) return false
       return phones.some((p) => samePhone(held, p))
     })
     if (hit) return { orderId: hit.id, via: 'phone' }

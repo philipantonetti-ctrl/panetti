@@ -123,37 +123,62 @@ export async function ingestInbound(p: InboundPayload, now: Date = new Date()): 
   }
 
   if (existing) {
-    const created = await db.$transaction(async (tx) => {
-      const m = await tx.ticketMessage.create({ data: { ...message, ticketId: existing.id } })
-      // The customer wrote again: whatever state the ticket was in, someone
-      // must look. A first match is also attempted now if none was ever made.
-      const match = existing.matchedOrderId ? null : await matchOrder({ email: from.email, text: `${subject}\n${text}`, shopId: mailbox.shopId })
-      await tx.ticket.update({
-        where: { id: existing.id },
-        data: { status: 'OPEN', closedAt: null, lastMessageAt: sentAt, ...(match ? { matchedOrderId: match.orderId } : {}) },
+    // A first match is attempted now if none was ever made - BEFORE the
+    // transaction: matchOrder is several reads, one of them wide, and holding
+    // a pooled connection open while asking for more is how a busy serverless
+    // pool starves itself.
+    const match = existing.matchedOrderId ? null : await matchOrder({ email: from.email, text: `${subject}\n${text}`, shopId: mailbox.shopId })
+    try {
+      const created = await db.$transaction(async (tx) => {
+        const m = await tx.ticketMessage.create({ data: { ...message, ticketId: existing.id } })
+        // The customer wrote again: whatever state the ticket was in, someone
+        // must look.
+        await tx.ticket.update({
+          where: { id: existing.id },
+          data: { status: 'OPEN', closedAt: null, lastMessageAt: sentAt, ...(match ? { matchedOrderId: match.orderId } : {}) },
+        })
+        return m
       })
-      return m
-    })
-    return { outcome: 'continued', ticketId: existing.id, messageId: created.id }
+      return { outcome: 'continued', ticketId: existing.id, messageId: created.id }
+    } catch (e) {
+      return (await duplicateOf(e, rfcMessageId)) ?? Promise.reject(e)
+    }
   }
 
   const match = await matchOrder({ email: from.email, text: `${subject}\n${text}`, shopId: mailbox.shopId })
-  const ticket = await db.ticket.create({
-    data: {
-      mailboxId: mailbox.id,
-      subject: subject || '(no subject)',
-      customerEmail: from.email,
-      customerName: from.name,
-      category: categorize(subject, text),
-      language: detectLanguage(`${subject}\n${text}`),
-      matchedOrderId: match?.orderId ?? null,
-      firstMessageAt: sentAt,
-      lastMessageAt: sentAt,
-      messages: { create: message },
-    },
-    include: { messages: { select: { id: true } } },
-  })
-  return { outcome: 'created', ticketId: ticket.id, messageId: ticket.messages[0].id }
+  try {
+    const ticket = await db.ticket.create({
+      data: {
+        mailboxId: mailbox.id,
+        subject: subject || '(no subject)',
+        customerEmail: from.email,
+        customerName: from.name,
+        category: categorize(subject, text),
+        language: detectLanguage(`${subject}\n${text}`),
+        matchedOrderId: match?.orderId ?? null,
+        firstMessageAt: sentAt,
+        lastMessageAt: sentAt,
+        messages: { create: message },
+      },
+      include: { messages: { select: { id: true } } },
+    })
+    return { outcome: 'created', ticketId: ticket.id, messageId: ticket.messages[0].id }
+  } catch (e) {
+    return (await duplicateOf(e, rfcMessageId)) ?? Promise.reject(e)
+  }
+}
+
+/**
+ * Two deliveries of one message can pass the dedupe check together; the
+ * unique column then rejects the second insert. That is the idempotency
+ * WORKING, not an error - answer as the duplicate it is, so Postmark gets
+ * its 200 and never redelivers.
+ */
+async function duplicateOf(e: unknown, rfcMessageId: string): Promise<IngestResult | null> {
+  const p2002 = typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2002'
+  if (!p2002) return null
+  const seen = await db.ticketMessage.findUnique({ where: { rfcMessageId }, select: { ticketId: true } })
+  return seen ? { outcome: 'duplicate', ticketId: seen.ticketId } : null
 }
 
 async function findTicket(
