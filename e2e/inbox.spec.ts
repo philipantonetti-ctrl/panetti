@@ -3,17 +3,61 @@ import { PrismaClient } from '@prisma/client'
 
 /**
  * Self-sufficient on purpose: the shared local database must NOT be reseeded
- * (another session holds real data in it), so this spec creates its own
- * mailbox and macro through the app's own APIs, ingests its own email through
- * the real Postmark webhook route, matches it against an order the seed
- * already holds, and deletes its rows afterwards.
+ * (another session holds real data in it) and may hold any state at all, so
+ * this spec creates its own shop, order, mailbox and macro, ingests its own
+ * email through the real Postmark webhook route, and deletes every row it
+ * made afterwards. Nothing here assumes what the database already contains.
  */
 const RUN = Date.now().toString(36)
+const NUM = `#9${String(Date.now() % 100000).padStart(5, '0')}`
+const SHOP_NAME = `[e2e] Shop ${RUN}`
+const CUSTOMER_EMAIL = `kari.e2e${RUN}@e2e-customer.invalid`
+const CUSTOMER_NAME = 'Kari Testdatter'
 const MAILBOX_ADDRESS = `support+e2e${RUN}@e2e.invalid`
 const MAILBOX_NAME = `[e2e] Mailbox ${RUN}`
 const MACRO_NAME = `[e2e] Where is my order? ${RUN}`
 // The dev server reads the same .env, so the webhook secret lines up.
 const SECRET = process.env.INBOX_INBOUND_SECRET ?? 'e2e-secret'
+
+function client() {
+  process.loadEnvFile?.('.env')
+  return new PrismaClient()
+}
+
+let shopId: string
+
+test.beforeAll(async () => {
+  const db = client()
+  try {
+    const shop = await db.shop.create({ data: { name: SHOP_NAME, currency: 'NOK' } })
+    shopId = shop.id
+    await db.order.create({
+      data: {
+        shopId, externalId: `e2e-${RUN}`, number: NUM, placedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        status: 'completed', currency: 'NOK', grossSales: 249900, discountTotal: 0, netSales: 249900,
+        shippingCharged: 0, taxTotal: 62475, total: 312375,
+        customerName: CUSTOMER_NAME, customerEmail: CUSTOMER_EMAIL, customerPhone: '+47 900 00 000',
+      },
+    })
+  } finally {
+    await db.$disconnect()
+  }
+})
+
+test.afterAll(async () => {
+  // Prisma, not the API: tickets have no delete route (by design), and rows
+  // left behind would greet the next run.
+  const db = client()
+  try {
+    await db.ticket.deleteMany({ where: { mailbox: { address: { endsWith: '@e2e.invalid' } } } })
+    await db.mailbox.deleteMany({ where: { address: { endsWith: '@e2e.invalid' } } })
+    await db.macro.deleteMany({ where: { name: { startsWith: '[e2e]' } } })
+    await db.order.deleteMany({ where: { shop: { name: { startsWith: '[e2e]' } } } })
+    await db.shop.deleteMany({ where: { name: { startsWith: '[e2e]' } } })
+  } finally {
+    await db.$disconnect()
+  }
+})
 
 async function signIn(page: Page, email: string) {
   await page.goto('/login')
@@ -23,33 +67,14 @@ async function signIn(page: Page, email: string) {
   await page.waitForURL(/\/(dashboard|portal)/)
 }
 
-test.afterAll(async () => {
-  // Prisma, not the API: tickets have no delete route (by design), and rows
-  // left behind would greet the next run. Node 22 loads .env itself.
-  process.loadEnvFile?.('.env')
-  const db = new PrismaClient()
-  try {
-    await db.ticket.deleteMany({ where: { mailbox: { address: { endsWith: '@e2e.invalid' } } } })
-    await db.mailbox.deleteMany({ where: { address: { endsWith: '@e2e.invalid' } } })
-    await db.macro.deleteMany({ where: { name: { startsWith: '[e2e]' } } })
-  } finally {
-    await db.$disconnect()
-  }
-})
-
 test('an email becomes a ticket, matched to its customer and order, worked and answered from the inbox', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
 
-  // A real order from the seeded data - the spec adapts to whatever is there.
-  const ordersRes = await page.request.get('/api/orders?preset=last_12_months&limit=50')
-  expect(ordersRes.ok()).toBeTruthy()
-  const { orders } = (await ordersRes.json()) as { orders: { number: string; customerName: string; customerEmail: string }[] }
-  const order = orders.find((o) => o.customerEmail && o.customerName)
-  expect(order, 'the database should hold at least one order with a customer').toBeTruthy()
-
-  // Our own mailbox and macro, through the app's own doors.
+  // Our own mailbox and macro, through the app's own doors. The mailbox is
+  // tied to the spec's shop, so the order number in the email is brand-scoped
+  // exactly as a real one would be.
   const mb = await page.request.post('/api/inbox/mailboxes', {
-    data: { address: MAILBOX_ADDRESS, name: MAILBOX_NAME, language: 'nb' },
+    data: { address: MAILBOX_ADDRESS, name: MAILBOX_NAME, language: 'nb', shopId },
   })
   expect(mb.ok()).toBeTruthy()
   const macro = await page.request.post('/api/inbox/macros', {
@@ -60,14 +85,14 @@ test('an email becomes a ticket, matched to its customer and order, worked and a
   // The webhook, exactly as Postmark would deliver it.
   const hook = await page.request.post(`/api/inbox/inbound?token=${SECRET}`, {
     data: {
-      From: order!.customerEmail,
-      FromFull: { Email: order!.customerEmail, Name: order!.customerName },
+      From: CUSTOMER_EMAIL,
+      FromFull: { Email: CUSTOMER_EMAIL, Name: CUSTOMER_NAME },
       To: MAILBOX_ADDRESS,
       ToFull: [{ Email: MAILBOX_ADDRESS }],
       OriginalRecipient: MAILBOX_ADDRESS,
-      Subject: `Hvor er ordre ${order!.number}?`,
+      Subject: `Hvor er ordre ${NUM}?`,
       MessageID: `pm-e2e-${RUN}`,
-      TextBody: `Hei, jeg lurer på hvor ordre ${order!.number} er. Takk!`,
+      TextBody: `Hei, jeg lurer på hvor ordre ${NUM} er. Takk!`,
       Headers: [{ Name: 'Message-ID', Value: `<e2e-${RUN}@example.com>` }],
       Attachments: [],
     },
@@ -84,13 +109,15 @@ test('an email becomes a ticket, matched to its customer and order, worked and a
 
   const sidebar = page.getByTestId('ticket-sidebar')
   await expect(sidebar).toBeVisible()
-  await expect(sidebar).toContainText(order!.customerName)
-  await expect(sidebar).toContainText(order!.number)
+  await expect(sidebar).toContainText(CUSTOMER_NAME)
+  await expect(sidebar).toContainText(NUM)
+  await expect(sidebar).toContainText('+47 900 00 000')
 
   // The macro fills the customer's name and the order number.
   await page.getByLabel('Insert macro').selectOption({ label: `${MACRO_NAME} (nb)` })
-  const box = page.getByLabel('Message')
-  await expect(box).toHaveValue(new RegExp(order!.number.replace('#', '\\#')))
+  const box = page.getByLabel('Message', { exact: true })
+  await expect(box).toHaveValue(new RegExp(NUM.replace('#', '\\#')))
+  await expect(box).toHaveValue(/Kari/)
   await expect(box).not.toHaveValue(/\{\{/)
 
   // An internal note is recorded and labelled, never sent.
@@ -102,7 +129,7 @@ test('an email becomes a ticket, matched to its customer and order, worked and a
 
   // Assignment and status round-trip through the sidebar.
   await page.getByLabel('Assign to').selectOption({ label: 'admin@ecom.test' })
-  await page.getByLabel('Status').selectOption('PENDING')
+  await page.getByLabel('Status', { exact: true }).selectOption('PENDING')
   await page.getByRole('tab', { name: 'Pending' }).click()
   await expect(page.getByTestId('ticket-row').filter({ hasText: 'Hvor er ordre' })).toBeVisible()
 
