@@ -52,7 +52,8 @@ describe('InboxSettingsClient', () => {
   })
 
   it('adding a macro posts it', async () => {
-    const fn = vi.fn(async (_input: string | URL | Request) => new Response(JSON.stringify({ ok: true, macros: [] }), { status: 200 }))
+    type Fetch = (input: string | URL | Request) => Promise<Response>
+    const fn = vi.fn<Fetch>(async () => new Response(JSON.stringify({ ok: true, macros: [] }), { status: 200 }))
     vi.stubGlobal('fetch', fn)
     page(null)
     fireEvent.change(screen.getByLabelText('Macro name'), { target: { value: 'Warranty' } })
