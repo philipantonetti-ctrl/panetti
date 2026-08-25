@@ -79,6 +79,11 @@ const CUSTOMERS = [
 
 async function main() {
   console.log('Clearing existing data...')
+  await db.ticketAttachment.deleteMany()
+  await db.ticketMessage.deleteMany()
+  await db.ticket.deleteMany()
+  await db.macro.deleteMany()
+  await db.mailbox.deleteMany()
   await db.affiliateTransaction.deleteMany()
   await db.affiliateAccount.deleteMany()
   await db.adSpend.deleteMany()
@@ -98,7 +103,7 @@ async function main() {
   await db.fxRate.deleteMany()
 
   console.log('Creating shops...')
-  const shops = []
+  const shops: { id: string; name: string; currency: string }[] = []
   for (const s of SHOPS) {
     shops.push(await db.shop.create({ data: { name: s.name, currency: s.currency } }))
   }
@@ -145,7 +150,7 @@ async function main() {
     })
   }
 
-  await db.user.create({
+  const admin = await db.user.create({
     data: { email: 'admin@ecom.test', passwordHash, role: 'ADMIN' },
   })
   await db.user.create({
@@ -284,6 +289,7 @@ async function main() {
           ambassadorId: ambassador?.id ?? null,
           customerName: customer ?? '',
           customerEmail: customer ? `${customer.split(' ')[0].toLowerCase()}@customer.test` : '',
+          customerPhone: customer ? `+47 9${String(1000000 + CUSTOMERS.indexOf(customer) * 7919).slice(-7)}` : '',
           items: { create: items },
         },
       })
@@ -405,6 +411,82 @@ async function main() {
       },
     })
   }
+
+  console.log('Creating the support inbox...')
+  const byName = (name: string) => shops.find((s) => s.name === name)!
+  const MAILBOXES = [
+    { address: 'support@panetti.no', name: 'Panetti Norway', shop: byName('Panetti Norway'), language: 'nb', signature: 'Med vennlig hilsen\nPanetti kundeservice' },
+    { address: 'support@panetti.de', name: 'Panetti Germany', shop: byName('Panetti Germany'), language: 'de', signature: 'Mit freundlichen Grüßen\nPanetti Kundenservice' },
+    { address: 'support@mazzetti.no', name: 'Mazzetti Norway', shop: byName('Mazzetti.no'), language: 'nb', signature: 'Med vennlig hilsen\nMazzetti' },
+  ]
+  const mailboxes = []
+  for (const m of MAILBOXES) {
+    mailboxes.push(await db.mailbox.create({ data: { address: m.address, name: m.name, shopId: m.shop.id, language: m.language, signature: m.signature } }))
+  }
+
+  const MACROS: { name: string; language: string; body: string }[] = [
+    { name: 'Where is my order?', language: 'en', body: 'Hi {{customer_name}},\n\nThank you for your message. Your order {{order_number}} is {{delivery_status}}. You can follow the parcel with tracking number {{tracking_number}}.\n\nKind regards,\n{{agent_name}}' },
+    { name: 'Where is my order?', language: 'nb', body: 'Hei {{customer_name}},\n\nTakk for meldingen. Bestillingen din {{order_number}} er {{delivery_status}}. Du kan følge pakken med sporingsnummer {{tracking_number}}.\n\nMed vennlig hilsen,\n{{agent_name}}' },
+    { name: 'Return instructions', language: 'en', body: 'Hi {{customer_name}},\n\nYou can return {{product_name}} within 14 days of delivery. Pack it in its original box, attach the return label we send you, and hand it in at your nearest pickup point. Quote order {{order_number}}.\n\nKind regards,\n{{agent_name}}' },
+    { name: 'Warranty', language: 'en', body: 'Hi {{customer_name}},\n\n{{product_name}} carries a two-year warranty. Please reply with a short description of the fault and, if possible, a photo or video, and quote order {{order_number}}. We will get back to you within two working days.\n\nKind regards,\n{{agent_name}}' },
+    { name: 'Damaged product', language: 'en', body: 'Hi {{customer_name}},\n\nWe are sorry {{product_name}} arrived damaged. Please send us a photo of the damage and of the packaging, quoting order {{order_number}}, and we will arrange a replacement or a refund straight away.\n\nKind regards,\n{{agent_name}}' },
+    { name: 'Refund confirmation', language: 'en', body: 'Hi {{customer_name}},\n\nYour refund for order {{order_number}} has been issued. Depending on your bank it takes 3-5 working days to appear on your statement.\n\nKind regards,\n{{agent_name}}' },
+    { name: 'Product instructions', language: 'en', body: 'Hi {{customer_name}},\n\nThank you for choosing {{product_name}}. The user guide is in the box; if it is missing, reply to this email and we will send it as a PDF.\n\nKind regards,\n{{agent_name}}' },
+  ]
+  for (const m of MACROS) await db.macro.create({ data: m })
+
+  // Tickets from customers the seed already gave orders, so the sidebar has
+  // real orders to show on day one. Read from the data rather than hard-coded:
+  // the order numbers are whatever the loop above produced.
+  const norway = mailboxes[0]
+  const germany = mailboxes[1]
+  const recentNorway = await db.order.findFirst({
+    where: { shopId: byName('Panetti Norway').id, customerEmail: { not: '' }, status: 'completed' },
+    orderBy: { placedAt: 'desc' },
+  })
+  if (!recentNorway) throw new Error('seed: expected a Panetti Norway order with a customer')
+  const firstName = recentNorway.customerName!.split(' ')[0]
+
+  await db.ticket.create({
+    data: {
+      mailboxId: norway.id, subject: `Hvor er ordre ${recentNorway.number}?`, customerEmail: recentNorway.customerEmail!, customerName: recentNorway.customerName!,
+      category: 'shipping', language: 'nb', matchedOrderId: recentNorway.id, priority: 'HIGH', tags: ['late'],
+      firstMessageAt: new Date('2026-07-13T09:12:00Z'), lastMessageAt: new Date('2026-07-13T09:12:00Z'),
+      messages: { create: [{ direction: 'INBOUND', rfcMessageId: 'seed-1@customer.test', fromEmail: recentNorway.customerEmail!, toEmail: norway.address, subject: `Hvor er ordre ${recentNorway.number}?`,
+        textBody: `Hei,\n\nJeg bestilte for over en uke siden (ordre ${recentNorway.number}) og har ikke fått noen sporing. Hva skjer?\n\n${firstName}`, sentAt: new Date('2026-07-13T09:12:00Z') }] },
+    },
+  })
+  await db.ticket.create({
+    data: {
+      mailboxId: norway.id, subject: 'Spørsmål om varmefunksjonen', customerEmail: recentNorway.customerEmail!, customerName: recentNorway.customerName!,
+      category: 'product', language: 'nb', status: 'CLOSED', closedAt: new Date('2026-06-21T10:00:00Z'),
+      firstMessageAt: new Date('2026-06-20T14:00:00Z'), lastMessageAt: new Date('2026-06-21T10:00:00Z'),
+      messages: { create: [
+        { direction: 'INBOUND', rfcMessageId: 'seed-2@customer.test', fromEmail: recentNorway.customerEmail!, toEmail: norway.address, textBody: 'Hvordan slår jeg på varmen i stolen?', sentAt: new Date('2026-06-20T14:00:00Z') },
+        { direction: 'OUTBOUND', rfcMessageId: 'seed-2r@panetti.no', authorUserId: admin.id, fromEmail: norway.address, toEmail: recentNorway.customerEmail!, textBody: 'Hei! Hold inne knappen med flammesymbolet i to sekunder.\n\nMed vennlig hilsen\nPanetti kundeservice', sentAt: new Date('2026-06-21T10:00:00Z') },
+      ] },
+    },
+  })
+  await db.ticket.create({
+    data: {
+      mailboxId: germany.id, subject: 'Rücksendung meiner Bestellung', customerEmail: 'jonas.weber@example.de', customerName: 'Jonas Weber',
+      category: 'return', language: 'de',
+      firstMessageAt: new Date('2026-07-12T16:40:00Z'), lastMessageAt: new Date('2026-07-12T16:40:00Z'),
+      messages: { create: [{ direction: 'INBOUND', rfcMessageId: 'seed-3@example.de', fromEmail: 'jonas.weber@example.de', toEmail: germany.address, textBody: 'Hallo,\n\nich möchte meine Bestellung zurückschicken. Wie gehe ich vor?\n\nJonas Weber', sentAt: new Date('2026-07-12T16:40:00Z') }] },
+    },
+  })
+  await db.ticket.create({
+    data: {
+      mailboxId: mailboxes[2].id, subject: 'Question about the massage chair', customerEmail: 'unknown@example.com', customerName: 'Sam',
+      category: 'product', language: 'en', status: 'PENDING', assigneeUserId: admin.id,
+      firstMessageAt: new Date('2026-07-11T08:00:00Z'), lastMessageAt: new Date('2026-07-11T12:00:00Z'),
+      messages: { create: [
+        { direction: 'INBOUND', rfcMessageId: 'seed-4@example.com', fromEmail: 'unknown@example.com', toEmail: mailboxes[2].address, textBody: 'Does the Lite Comfort fit under a 70 cm desk?', sentAt: new Date('2026-07-11T08:00:00Z') },
+        { direction: 'NOTE', authorUserId: admin.id, fromEmail: 'admin@ecom.test', toEmail: '', textBody: 'Checked with the warehouse: 68 cm with the headrest down.', sentAt: new Date('2026-07-11T11:00:00Z') },
+        { direction: 'OUTBOUND', rfcMessageId: 'seed-4r@mazzetti.no', authorUserId: admin.id, fromEmail: mailboxes[2].address, toEmail: 'unknown@example.com', textBody: 'Yes - 68 cm with the headrest down.\n\nMed vennlig hilsen\nMazzetti', sentAt: new Date('2026-07-11T12:00:00Z') },
+      ] },
+    },
+  })
 
   const orders = await db.order.count()
   console.log(`\nDone. ${shops.length} shops, ${ambassadors.length} ambassadors, ${orders} orders.`)
