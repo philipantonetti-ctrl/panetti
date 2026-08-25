@@ -12,19 +12,19 @@
 
 ## Ground rules (read once)
 
-- **Worktree:** everything happens in `C:\Users\alama\.config\superpowers\worktrees\ecom-analytics\support-inbox` on branch `feat/support-inbox`. All commands below run from that root. The main checkout is another session's — never touch it.
+- **Worktree:** everything happens in `C:\Users\alama\.config\superpowers\worktrees\ecom-analytics\support-inbox` on branch `feat/support-inbox`. All commands below run from that root. The main checkout is another session's - never touch it.
 - **Shared Postgres.** The local DB is shared with another live session. Integration tests must create their own rows tagged `[inbox-test]` (shop names, mailbox addresses `*.inbox-test.invalid`) and clean them up in `beforeEach` + `afterAll`. Never `deleteMany()` a table wholesale in a test.
-- **Tests that touch the DB** are named `*.integration.test.ts` and, unless they touch a shared singleton, stay in the parallel `app` vitest project (they will — nothing here touches `Setting`/`DeliveryConfig`).
-- **Comment style:** this codebase's comments are decision records — say WHY a branch exists, never what the next line does. Match it. No "added by", no restating code.
+- **Tests that touch the DB** are named `*.integration.test.ts` and, unless they touch a shared singleton, stay in the parallel `app` vitest project (they will - nothing here touches `Setting`/`DeliveryConfig`).
+- **Comment style:** this codebase's comments are decision records - say WHY a branch exists, never what the next line does. Match it. No "added by", no restating code.
 - **Money** is integer minor units; render with `formatMoney(minor, currency)` from `@/lib/money`.
 - **Null ≠ zero / null ≠ empty.** `null` means "don't know" everywhere (language undetected, no match, phone not stored). Never store a guess.
 - **Commit after every task** with the repo's message style: `type(scope): what changed, in a sentence a person would say`. End with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
 - **Verification commands:** `npx vitest run <file>` for one file; `npm test` for the suite; `npx tsc --noEmit` for types; `npm run lint`; `npm run test:e2e -- --headed e2e/inbox.spec.ts` (e2e needs `--headed` on this machine and a running `npm run dev` or lets Playwright start one).
-- **Known baseline:** on `origin/main`, `src/app/dashboard/DashboardClient.test.tsx` fails deterministically (affiliate merge added a sixth stat tile). Task 0 fixes it. `src/lib/woo/sync.test.ts` can time out when the other session hammers Postgres — rerun alone; it passes.
+- **Known baseline:** on `origin/main`, `src/app/dashboard/DashboardClient.test.tsx` fails deterministically (affiliate merge added a sixth stat tile). Task 0 fixes it. `src/lib/woo/sync.test.ts` can time out when the other session hammers Postgres - rerun alone; it passes.
 
 ---
 
-### Task 0: Baseline — make main's one red test green
+### Task 0: Baseline - make main's one red test green
 
 **Files:**
 - Modify: `src/app/dashboard/DashboardClient.test.tsx:145`
@@ -34,7 +34,7 @@
 **Step 1: Run the failing test**
 
 Run: `npx vitest run src/app/dashboard/DashboardClient.test.tsx`
-Expected: 1 failed — `expected [...] to have a length of 5 but got 6`
+Expected: 1 failed - `expected [...] to have a length of 5 but got 6`
 
 **Step 2: Fix the expectation**
 
@@ -60,7 +60,7 @@ git commit -m "test(dashboard): the day-before tooltip counts the affiliate tile
 
 ---
 
-### Task 1: Schema — five tables and one column
+### Task 1: Schema - five tables and one column
 
 **Files:**
 - Modify: `prisma/schema.prisma` (Shop relations ~line 66, Order fields ~line 166 + index block ~line 182, User relations ~line 262, new models at end)
@@ -101,7 +101,7 @@ In `model User`, add:
 /// One support address, forwarded into Postmark's inbound stream.
 ///
 /// The routing anchor. Which brand and country an email belongs to is decided
-/// by the address it was sent TO, never inferred from its text — support@
+/// by the address it was sent TO, never inferred from its text - support@
 /// panetti.de is Panetti Germany, full stop. `shopId` is what scopes an order
 /// number found in the mail: Woo numbers repeat across stores, so "#1042" only
 /// means something inside this mailbox's own shop.
@@ -163,7 +163,7 @@ model Ticket {
   @@index([assigneeUserId])
 }
 
-/// One email in, one email out, or one internal note — the same row shape, so
+/// One email in, one email out, or one internal note - the same row shape, so
 /// the thread is one ordered list. A NOTE never leaves the building.
 model TicketMessage {
   id            String   @id @default(cuid())
@@ -173,7 +173,7 @@ model TicketMessage {
   /// RFC 5322 Message-ID without the angle brackets. Theirs as received; ours
   /// minted BEFORE sending so the References chain never depends on reading
   /// anything back from Postmark. Unique, which is what makes a redelivered
-  /// webhook a no-op — the ShipmentEvent seam, applied to email.
+  /// webhook a no-op - the ShipmentEvent seam, applied to email.
   rfcMessageId  String?  @unique
   inReplyTo     String?
   /// Space-separated ids, oldest first, exactly as the header carries them.
@@ -183,7 +183,7 @@ model TicketMessage {
   textBody      String
   /// Stored raw; sanitised at render time, never trusted.
   htmlBody      String?
-  /// Postmark's quoted-history-free text — what the thread view shows.
+  /// Postmark's quoted-history-free text - what the thread view shows.
   strippedReply String?
   spamScore     Float?
   postmarkId    String?
@@ -212,7 +212,7 @@ model TicketAttachment {
   @@index([messageId])
 }
 
-/// A reply template. One row per language variant sharing a name — the
+/// A reply template. One row per language variant sharing a name - the
 /// ticket's language (or its mailbox's default) picks the variant.
 model Macro {
   id        String   @id @default(cuid())
@@ -237,7 +237,7 @@ Expected: no output (clean).
 
 ```bash
 git add prisma/schema.prisma
-git commit -m "feat(inbox): mailboxes, tickets, messages, attachments and macros — and the phone Woo always sent"
+git commit -m "feat(inbox): mailboxes, tickets, messages, attachments and macros - and the phone Woo always sent"
 ```
 
 ---
@@ -248,7 +248,7 @@ git commit -m "feat(inbox): mailboxes, tickets, messages, attachments and macros
 - Modify: `src/lib/email/send.ts`
 - Test: `src/lib/email/send.test.ts`
 
-**Step 1: Write the failing tests** — append inside the `describe('sendEmail', …)` block:
+**Step 1: Write the failing tests** - append inside the `describe('sendEmail', …)` block:
 
 ```ts
   /**
@@ -296,11 +296,11 @@ git commit -m "feat(inbox): mailboxes, tickets, messages, attachments and macros
 Run: `npx vitest run src/lib/email/send.test.ts`
 Expected: 3 failed (type errors on the 4th argument / `Headers` undefined / return value).
 
-**Step 3: Implement** — replace the function signature and body in `src/lib/email/send.ts`:
+**Step 3: Implement** - replace the function signature and body in `src/lib/email/send.ts`:
 
 ```ts
 export type SendOptions = {
-  /** Who the message is from. Defaults to EMAIL_FROM — the app's own voice. */
+  /** Who the message is from. Defaults to EMAIL_FROM - the app's own voice. */
   from?: string
   /** Extra RFC headers, e.g. Message-ID / In-Reply-To / References for threading. */
   headers?: Record<string, string>
@@ -372,7 +372,7 @@ Keep the existing file header comments (`TIMEOUT_MS`, `ENDPOINT`, `STREAM` and t
 Run: `npx vitest run src/lib/email/send.test.ts src/app/api/auth/forgot`
 Expected: all pass (the forgot route ignores the new return value).
 
-Run: `npx tsc --noEmit` — clean.
+Run: `npx tsc --noEmit` - clean.
 
 **Step 5: Commit**
 
@@ -383,7 +383,7 @@ git commit -m "feat(email): a message can leave from a brand's own address, thre
 
 ---
 
-### Task 3: Threading — pure header logic
+### Task 3: Threading - pure header logic
 
 **Files:**
 - Create: `src/lib/inbox/threading.ts`
@@ -485,7 +485,7 @@ describe('spamScoreOf', () => {
     expect(spamScoreOf(H([['X-Spam-Score', '7.3']]))).toBe(7.3)
     expect(spamScoreOf(H([['X-Spam-Score', '-0.1']]))).toBe(-0.1)
   })
-  it('is null when absent or unreadable — unknown, not clean', () => {
+  it('is null when absent or unreadable - unknown, not clean', () => {
     expect(spamScoreOf(H([]))).toBeNull()
     expect(spamScoreOf(H([['X-Spam-Score', 'n/a']]))).toBeNull()
   })
@@ -495,7 +495,7 @@ describe('spamScoreOf', () => {
 **Step 2: Run to see them fail**
 
 Run: `npx vitest run src/lib/inbox/threading.test.ts`
-Expected: FAIL — cannot find module './threading'
+Expected: FAIL - cannot find module './threading'
 
 **Step 3: Implement `src/lib/inbox/threading.ts`**
 
@@ -555,7 +555,7 @@ export const ticketToken = (number: number): string => `[PA-${number}]`
 
 /**
  * Gmail threads on headers AND a matching subject, so the customer's subject is
- * kept as-is under a single "Re:" — never rewritten — with our token added
+ * kept as-is under a single "Re:" - never rewritten - with our token added
  * once at the end.
  */
 export function replySubject(subject: string, number: number): string {
@@ -604,12 +604,12 @@ Expected: all pass
 
 ```bash
 git add src/lib/inbox/threading.ts src/lib/inbox/threading.test.ts
-git commit -m "feat(inbox): the threading rules — ids, our subject token, and what counts as an autoresponder"
+git commit -m "feat(inbox): the threading rules - ids, our subject token, and what counts as an autoresponder"
 ```
 
 ---
 
-### Task 4: Identifiers in the text — order numbers, tracking numbers, phones
+### Task 4: Identifiers in the text - order numbers, tracking numbers, phones
 
 **Files:**
 - Create: `src/lib/inbox/identifiers.ts`
@@ -667,14 +667,14 @@ describe('phones', () => {
 })
 ```
 
-**Step 2: Run to see them fail** — `npx vitest run src/lib/inbox/identifiers.test.ts` → cannot find module.
+**Step 2: Run to see them fail** - `npx vitest run src/lib/inbox/identifiers.test.ts` → cannot find module.
 
 **Step 3: Implement `src/lib/inbox/identifiers.ts`**
 
 ```ts
 /**
  * What a customer types when they mean an order, in the languages the shops
- * trade in. The number itself is 3–7 digits: shop numbers run #1000–#99999
+ * trade in. The number itself is 3-7 digits: shop numbers run #1000-#99999
  * today, and anything longer is a parcel or a phone.
  */
 const ORDER_WORD =
@@ -691,8 +691,8 @@ export function orderNumbersIn(text: string): string[] {
 
 /**
  * Bring's 18-digit numbers start 373 (the shape lib/bring already matches);
- * DHL Express is JJD + digits. A generic 14–20 digit run covers the rest of
- * Bring's range without swallowing 8–12 digit phones.
+ * DHL Express is JJD + digits. A generic 14-20 digit run covers the rest of
+ * Bring's range without swallowing 8-12 digit phones.
  */
 const TRACKING = /\b(?:373\d{15}|JJD\d{15,22}|\d{14,20})\b/g
 
@@ -707,7 +707,7 @@ export function normalizePhone(raw: string): string {
 }
 
 /**
- * A phone is 8–12 digits once the spaces come out, optionally led by + or 00.
+ * A phone is 8-12 digits once the spaces come out, optionally led by + or 00.
  * The run is matched WITH its separators so "912 34 567" is one number, not
  * three, and then normalised. Anything that also reads as a tracking number
  * is not a phone.
@@ -729,7 +729,7 @@ export function phonesIn(text: string): string[] {
 }
 ```
 
-**Step 4: Run** — `npx vitest run src/lib/inbox/identifiers.test.ts` → all pass. If `phonesIn('order #1042, …')` still finds `1042`: it is 4 digits, below the 8-digit floor, so it cannot — but verify the `#` guard against `#91234567` style input by adding that as an extra case if you wish.
+**Step 4: Run** - `npx vitest run src/lib/inbox/identifiers.test.ts` → all pass. If `phonesIn('order #1042, …')` still finds `1042`: it is 4 digits, below the 8-digit floor, so it cannot - but verify the `#` guard against `#91234567` style input by adding that as an extra case if you wish.
 
 **Step 5: Commit**
 
@@ -740,7 +740,7 @@ git commit -m "feat(inbox): order numbers, parcel numbers and phones, as custome
 
 ---
 
-### Task 5: Category and language — keyword rules, honest about not knowing
+### Task 5: Category and language - keyword rules, honest about not knowing
 
 **Files:**
 - Create: `src/lib/inbox/classify.ts`
@@ -831,7 +831,7 @@ export type Language = (typeof LANGUAGES)[number]
  * Stop-word scoring. Deliberately tiny: the mailbox's default language is
  * already a strong prior, so this only needs to be right when it speaks, and
  * it speaks only on a clear winner. Bokmål and Danish share most of their
- * short words — hei/takk against hej/tak is what separates them here — and
+ * short words - hei/takk against hej/tak is what separates them here - and
  * when they tie the answer is null, never a coin toss.
  */
 const WORDS: Record<Language, string[]> = {
@@ -855,7 +855,7 @@ export function detectLanguage(text: string): Language | null {
 }
 ```
 
-**Step 4: Run** — `npx vitest run src/lib/inbox/classify.test.ts`. If a language case ties, adjust the sentence in the test toward the language's distinct words (hei/takk vs hej/tak; `mitt`/`inte` for sv; `modtaget` for da) — the lists are the spec, the sentences are the examples.
+**Step 4: Run** - `npx vitest run src/lib/inbox/classify.test.ts`. If a language case ties, adjust the sentence in the test toward the language's distinct words (hei/takk vs hej/tak; `mitt`/`inte` for sv; `modtaget` for da) - the lists are the spec, the sentences are the examples.
 
 **Step 5: Commit**
 
@@ -866,7 +866,7 @@ git commit -m "feat(inbox): what a ticket is about and which language it speaks,
 
 ---
 
-### Task 6: Macros — render variables, block on the missing ones
+### Task 6: Macros - render variables, block on the missing ones
 
 **Files:**
 - Create: `src/lib/inbox/macros.ts`
@@ -896,7 +896,7 @@ describe('renderMacro', () => {
     expect(r.missing).toEqual(['tracking_number'])
   })
 
-  it('treats null and empty as missing — an empty name is not a name', () => {
+  it('treats null and empty as missing - an empty name is not a name', () => {
     expect(renderMacro('{{customer_name}}', { customer_name: '' }).missing).toEqual(['customer_name'])
     expect(renderMacro('{{customer_name}}', { customer_name: null }).missing).toEqual(['customer_name'])
   })
@@ -960,7 +960,7 @@ export function hasMissingMarker(text: string): boolean {
 }
 ```
 
-**Step 4: Run** — all pass.
+**Step 4: Run** - all pass.
 
 **Step 5: Commit**
 
@@ -971,7 +971,7 @@ git commit -m "feat(inbox): macro variables fill in, and a missing one is marked
 
 ---
 
-### Task 7: Delivery phrase — the same verdict, in words a customer can read
+### Task 7: Delivery phrase - the same verdict, in words a customer can read
 
 **Files:**
 - Create: `src/lib/inbox/delivery-phrase.ts`
@@ -1051,7 +1051,7 @@ export function deliveryPhrase(d: OrderDelivery): string | null {
 }
 ```
 
-**Step 4: Run** — all pass. `npx tsc --noEmit` clean (the switch is exhaustive over `DeliveryState`; if TS complains about a missing return, add `default: return null`).
+**Step 4: Run** - all pass. `npx tsc --noEmit` clean (the switch is exhaustive over `DeliveryState`; if TS complains about a missing return, add `default: return null`).
 
 **Step 5: Commit**
 
@@ -1062,14 +1062,14 @@ git commit -m "feat(inbox): the delivery verdict in a customer's sentence, or no
 
 ---
 
-### Task 8: The phone Woo always sent — map, store, backfill
+### Task 8: The phone Woo always sent - map, store, backfill
 
 **Files:**
 - Modify: `src/lib/woo/map.ts:34` (WooOrder.billing), `:57` (MappedOrder), `:102` (mapOrder)
 - Modify: `src/lib/woo/sync.ts:187-206` (storeOrder data), `:339-362` (backfillCustomers)
-- Test: `src/lib/woo/map.test.ts` (append), `src/lib/woo/sync.test.ts` (append one case near the existing backfill tests — grep `backfillCustomers` in that file for the fixture helpers it already uses)
+- Test: `src/lib/woo/map.test.ts` (append), `src/lib/woo/sync.test.ts` (append one case near the existing backfill tests - grep `backfillCustomers` in that file for the fixture helpers it already uses)
 
-**Step 1: Failing test in `map.test.ts`** — append:
+**Step 1: Failing test in `map.test.ts`** - append:
 
 ```ts
 describe('customer phone', () => {
@@ -1084,13 +1084,13 @@ describe('customer phone', () => {
 })
 ```
 
-(Adapt `base` to whatever minimal fixture helper `map.test.ts` already uses — grep for `const woo` / `fixture` at its top and reuse it rather than duplicating.)
+(Adapt `base` to whatever minimal fixture helper `map.test.ts` already uses - grep for `const woo` / `fixture` at its top and reuse it rather than duplicating.)
 
-**Step 2: Run** — `npx vitest run src/lib/woo/map.test.ts` → fails: `customerPhone` undefined.
+**Step 2: Run** - `npx vitest run src/lib/woo/map.test.ts` → fails: `customerPhone` undefined.
 
 **Step 3: Implement**
 
-`map.ts` — extend the billing type and MappedOrder, and add the mapping line:
+`map.ts` - extend the billing type and MappedOrder, and add the mapping line:
 
 ```ts
   billing?: { first_name?: string; last_name?: string; email?: string; country?: string; phone?: string }
@@ -1105,14 +1105,14 @@ describe('customer phone', () => {
     customerPhone: woo.billing?.phone?.trim() ?? '',
 ```
 
-`sync.ts` `storeOrder` — add `customerPhone: o.customerPhone,` after `customerEmail: o.customerEmail,` in the `data` object.
+`sync.ts` `storeOrder` - add `customerPhone: o.customerPhone,` after `customerEmail: o.customerEmail,` in the `data` object.
 
-`sync.ts` `backfillCustomers` — the queue widens to orders missing the phone too, and the write carries all three. Replace the `where` and the `update`:
+`sync.ts` `backfillCustomers` - the queue widens to orders missing the phone too, and the write carries all three. Replace the `where` and the `update`:
 
 ```ts
     // Widened when the phone column arrived: every order synced before it has
     // customerName set and customerPhone null. Same queue, same drain, same
-    // '' when the store has none — it costs zero again once history is filled.
+    // '' when the store has none - it costs zero again once history is filled.
     where: { shopId, OR: [{ customerName: null }, { customerPhone: null }] },
 ```
 
@@ -1126,9 +1126,9 @@ describe('customer phone', () => {
 
 Update the function's doc comment: "touches NOTHING but the three customer fields".
 
-**Step 4: Sync test** — in `sync.test.ts`, find the existing backfill test (grep `backfillCustomers`) and add one assertion-level case beside it: an order created with `customerName: 'X', customerPhone: null` is picked up and ends with `customerPhone` from the fixture Woo order (`billing.phone`), and an order with both set is not touched. Follow the file's existing `connectedShop(...)` + fetch-stub helpers exactly.
+**Step 4: Sync test** - in `sync.test.ts`, find the existing backfill test (grep `backfillCustomers`) and add one assertion-level case beside it: an order created with `customerName: 'X', customerPhone: null` is picked up and ends with `customerPhone` from the fixture Woo order (`billing.phone`), and an order with both set is not touched. Follow the file's existing `connectedShop(...)` + fetch-stub helpers exactly.
 
-Run: `npx vitest run src/lib/woo/map.test.ts src/lib/woo/sync.test.ts` → pass. `npx tsc --noEmit` clean (every place constructing a `MappedOrder` literal in tests must gain `customerPhone` — the compiler lists them).
+Run: `npx vitest run src/lib/woo/map.test.ts src/lib/woo/sync.test.ts` → pass. `npx tsc --noEmit` clean (every place constructing a `MappedOrder` literal in tests must gain `customerPhone` - the compiler lists them).
 
 **Step 5: Commit**
 
@@ -1207,15 +1207,15 @@ describe('matchOrder', () => {
     const m = await matchOrder({ email: 'husband@example.com', text: 'my wife\'s number is 912 34 567', shopId: null })
     expect(m).toEqual({ orderId: orderA1042, via: 'phone' })
   })
-  it('and null when nothing fits — never a guess', async () => {
+  it('and null when nothing fits - never a guess', async () => {
     expect(await matchOrder({ email: 'stranger@example.com', text: 'hi', shopId: null })).toBeNull()
   })
 })
 ```
 
-Note: the tracking number in the fixture deliberately breaks the `373…` shape with a `TMATCH` prefix so cleanup can find it; `trackingNumbersIn` will not match it, so make the test text carry the digits alone as well: use `text: 'parcel 373000000000000001 TMATCH373000000000000001'` and store the shipment as `'373000000000000001'`… **No** — keep cleanup safe: store `trackingNumber: 'TMATCH373000000000000001'` and in `match.ts` also look up any whitespace-delimited token of 12+ alphanumerics against `Shipment.trackingNumber` (`candidates = [...trackingNumbersIn(text), ...text.match(/\b[A-Z0-9]{12,}\b/g)]`). Real Bring/DHL numbers satisfy both; the test satisfies the second.
+Note: the tracking number in the fixture deliberately breaks the `373…` shape with a `TMATCH` prefix so cleanup can find it; `trackingNumbersIn` will not match it, so make the test text carry the digits alone as well: use `text: 'parcel 373000000000000001 TMATCH373000000000000001'` and store the shipment as `'373000000000000001'`… **No** - keep cleanup safe: store `trackingNumber: 'TMATCH373000000000000001'` and in `match.ts` also look up any whitespace-delimited token of 12+ alphanumerics against `Shipment.trackingNumber` (`candidates = [...trackingNumbersIn(text), ...text.match(/\b[A-Z0-9]{12,}\b/g)]`). Real Bring/DHL numbers satisfy both; the test satisfies the second.
 
-**Step 2: Run** — `npx vitest run src/lib/inbox/match.integration.test.ts` → module not found.
+**Step 2: Run** - `npx vitest run src/lib/inbox/match.integration.test.ts` → module not found.
 
 **Step 3: Implement `src/lib/inbox/match.ts`**
 
@@ -1232,7 +1232,7 @@ export type Match = { orderId: string; via: 'order_number' | 'tracking' | 'email
  * order on their address, because "where is #1042" is not a question about
  * #1050. Every step returns the ONE order it is sure of or moves on; nothing
  * here picks the best of several, because a wrong confident match is the one
- * outcome the inbox must never produce — null is shown as "no order matched"
+ * outcome the inbox must never produce - null is shown as "no order matched"
  * and the person picks.
  *
  * `shopId` is the receiving mailbox's shop. Woo order numbers repeat across
@@ -1289,18 +1289,18 @@ export async function matchOrder(input: { email: string; text: string; shopId: s
 }
 ```
 
-**Step 4: Run** — all pass.
+**Step 4: Run** - all pass.
 
 **Step 5: Commit**
 
 ```bash
 git add src/lib/inbox/match.ts src/lib/inbox/match.integration.test.ts
-git commit -m "feat(inbox): which order an email is about — number, parcel, address, phone, or honestly none"
+git commit -m "feat(inbox): which order an email is about - number, parcel, address, phone, or honestly none"
 ```
 
 ---
 
-### Task 10: Sidebar context — the customer, their orders, their parcels, their history
+### Task 10: Sidebar context - the customer, their orders, their parcels, their history
 
 **Files:**
 - Create: `src/lib/inbox/context.ts`
@@ -1379,7 +1379,7 @@ describe('customerContext', () => {
 })
 ```
 
-**Step 2: Run** — fails, module missing.
+**Step 2: Run** - fails, module missing.
 
 **Step 3: Implement `src/lib/inbox/context.ts`**
 
@@ -1416,7 +1416,7 @@ const MAX_ORDERS = 10
 
 /**
  * Everything the sidebar shows about the person on the other end, derived
- * from orders — there is no Customer table, on purpose, and at this scale a
+ * from orders - there is no Customer table, on purpose, and at this scale a
  * lookup by email is instant. Delivery comes from the same deliveryFor() the
  * Delivery page prints, so support and the owner read one story.
  */
@@ -1489,18 +1489,18 @@ export async function customerContext(email: string, excludeTicketId: string, no
 }
 ```
 
-**Step 4: Run** — pass. If `deliveryFor` on a refunded order does not return `VOIDED` in your fixture, the phrase test still holds via the `null` branch — check `view.ts` line ~150 onward for the exact precedence and adjust the expected `state` only if the verdict itself differs; never change the phrase to make it pass.
+**Step 4: Run** - pass. If `deliveryFor` on a refunded order does not return `VOIDED` in your fixture, the phrase test still holds via the `null` branch - check `view.ts` line ~150 onward for the exact precedence and adjust the expected `state` only if the verdict itself differs; never change the phrase to make it pass.
 
 **Step 5: Commit**
 
 ```bash
 git add src/lib/inbox/context.ts src/lib/inbox/context.integration.test.ts
-git commit -m "feat(inbox): the sidebar's facts — orders, parcels, the delivery verdict, and past tickets"
+git commit -m "feat(inbox): the sidebar's facts - orders, parcels, the delivery verdict, and past tickets"
 ```
 
 ---
 
-### Task 11: Ingest — an inbound email becomes or continues a ticket
+### Task 11: Ingest - an inbound email becomes or continues a ticket
 
 **Files:**
 - Create: `src/lib/inbox/ingest.ts`
@@ -1618,7 +1618,7 @@ describe('ingestInbound', () => {
     expect(await db.ticket.count({ where: { mailboxId } })).toBe(0)
   })
 
-  it('mail from our own support address is dropped — the self-loop', async () => {
+  it('mail from our own support address is dropped - the self-loop', async () => {
     const r = await ingestInbound(payload({ From: SUPPORT, FromFull: { Email: SUPPORT, Name: 'us' }, Headers: [{ Name: 'Message-ID', Value: '<self@x>' }] }))
     expect(r).toEqual({ outcome: 'ignored_own' })
   })
@@ -1648,7 +1648,7 @@ describe('ingestInbound', () => {
 })
 ```
 
-**Step 2: Run** — module missing.
+**Step 2: Run** - module missing.
 
 **Step 3: Implement `src/lib/inbox/ingest.ts`**
 
@@ -1719,7 +1719,7 @@ function sender(p: InboundPayload): { email: string; name: string } {
  *  4. An autoresponder? Never opens a ticket.
  *  5. Which ticket? References/In-Reply-To against every id we hold, then
  *     our own [PA-n] subject token, then an open conversation with the same
- *     sender on the same mailbox. Never across mailboxes — a token from
+ *     sender on the same mailbox. Never across mailboxes - a token from
  *     another brand's ticket is treated as no token.
  *
  * The message row and the ticket write land in one transaction.
@@ -1754,7 +1754,7 @@ export async function ingestInbound(p: InboundPayload, now: Date = new Date()): 
     const name = typeof a.Name === 'string' ? a.Name : ''
     const content = typeof a.Content === 'string' ? a.Content : ''
     // Judged on the still-encoded length so a whale is refused before it is
-    // ever decoded into memory — the delivery intake's own rule.
+    // ever decoded into memory - the delivery intake's own rule.
     if (!name || !content || content.length > MAX_ATTACHMENT_B64_CHARS) return []
     const buf = Buffer.from(content, 'base64')
     return [{ filename: name, contentType: a.ContentType || 'application/octet-stream', sizeBytes: buf.length, content: buf }]
@@ -1836,7 +1836,7 @@ async function findTicket(
 }
 ```
 
-**Step 4: Run** — `npx vitest run src/lib/inbox/ingest.integration.test.ts` → all pass. (`matchOrder` inside the transaction uses `db`, not `tx` — acceptable: it only reads, and Postgres reads outside the transaction see committed data, which is all it needs.)
+**Step 4: Run** - `npx vitest run src/lib/inbox/ingest.integration.test.ts` → all pass. (`matchOrder` inside the transaction uses `db`, not `tx` - acceptable: it only reads, and Postgres reads outside the transaction see committed data, which is all it needs.)
 
 **Step 5: Commit**
 
@@ -1847,7 +1847,7 @@ git commit -m "feat(inbox): an inbound email becomes a ticket, or joins the one 
 
 ---
 
-### Task 12: Reply — from the brand, in the thread
+### Task 12: Reply - from the brand, in the thread
 
 **Files:**
 - Create: `src/lib/inbox/reply.ts`
@@ -1954,7 +1954,7 @@ describe('addNote', () => {
 })
 ```
 
-**Step 2: Run** — module missing.
+**Step 2: Run** - module missing.
 
 **Step 3: Implement `src/lib/inbox/reply.ts`**
 
@@ -1964,7 +1964,7 @@ import { sendEmail } from '@/lib/email/send'
 import { mintMessageId, replySubject } from './threading'
 
 /**
- * A reply leaves from the ticket's mailbox — the brand's own address — and
+ * A reply leaves from the ticket's mailbox - the brand's own address - and
  * carries the three headers that keep it in the customer's thread:
  *
  *   Message-ID   ours, minted BEFORE the send and stored with the row
@@ -2027,7 +2027,7 @@ export async function addNote(ticketId: string, userId: string, text: string, no
 }
 ```
 
-**Step 4: Run** — all pass.
+**Step 4: Run** - all pass.
 
 **Step 5: Commit**
 
@@ -2038,7 +2038,7 @@ git commit -m "feat(inbox): a reply leaves from the brand's address and stays in
 
 ---
 
-### Task 13: The webhook route — Postmark knocks here
+### Task 13: The webhook route - Postmark knocks here
 
 **Files:**
 - Create: `src/app/api/inbox/inbound/route.ts`
@@ -2101,7 +2101,7 @@ describe('POST /api/inbox/inbound', () => {
 })
 ```
 
-**Step 2: Run** — module missing.
+**Step 2: Run** - module missing.
 
 **Step 3: Implement `src/app/api/inbox/inbound/route.ts`**
 
@@ -2117,8 +2117,8 @@ export const maxDuration = 60
 
 /**
  * NOT admin-only, and deliberately so: Postmark is a machine and has no
- * session. A shared secret in the URL is the whole of the authentication —
- * the same arrangement api/delivery/inbound already runs on — so it is
+ * session. A shared secret in the URL is the whole of the authentication -
+ * the same arrangement api/delivery/inbound already runs on - so it is
  * compared in constant time and nothing happens before it passes.
  */
 function authorised(req: Request): boolean {
@@ -2138,7 +2138,7 @@ function authorised(req: Request): boolean {
  * retries ten times over six hours, which is exactly right for a database
  * that was briefly unreachable, and the unique Message-ID makes every retry
  * of a message we DID store a no-op. Only the outcomes that would fail
- * identically forever — not our mailbox, an autoresponder, our own mail —
+ * identically forever - not our mailbox, an autoresponder, our own mail -
  * are acknowledged with a 200, so they never come back.
  */
 export async function POST(req: Request) {
@@ -2173,7 +2173,7 @@ and add `'/inbox'` to `PROTECTED_PAGES` (Task 17 relies on it; do it now so it i
 const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox']
 ```
 
-**Step 4: Run** — `npx vitest run src/app/api/inbox/inbound src/middleware` → pass (there is a `middleware.test.ts`; if it enumerates `MACHINE_PATHS`, extend its expectation).
+**Step 4: Run** - `npx vitest run src/app/api/inbox/inbound src/middleware` → pass (there is a `middleware.test.ts`; if it enumerates `MACHINE_PATHS`, extend its expectation).
 
 **Step 5: Commit**
 
@@ -2184,7 +2184,7 @@ git commit -m "feat(inbox): the door Postmark knocks on, and why it may answer 5
 
 ---
 
-### Task 14: Ticket routes — list, open, update
+### Task 14: Ticket routes - list, open, update
 
 **Files:**
 - Create: `src/app/api/inbox/tickets/route.ts`
@@ -2273,7 +2273,7 @@ describe('GET + PATCH /api/inbox/tickets/[id]', () => {
 })
 ```
 
-**Step 2: Run** — modules missing.
+**Step 2: Run** - modules missing.
 
 **Step 3: Implement**
 
@@ -2445,7 +2445,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 }
 ```
 
-**Step 4: Run** — pass. `npx tsc --noEmit` clean.
+**Step 4: Run** - pass. `npx tsc --noEmit` clean.
 
 **Step 5: Commit**
 
@@ -2456,7 +2456,7 @@ git commit -m "feat(inbox): the queue, one ticket with its facts, and the fields
 
 ---
 
-### Task 15: Message route — reply or note
+### Task 15: Message route - reply or note
 
 **Files:**
 - Create: `src/app/api/inbox/tickets/[id]/messages/route.ts`
@@ -2527,7 +2527,7 @@ describe('POST /api/inbox/tickets/[id]/messages', () => {
 })
 ```
 
-**Step 2: Run** — missing.
+**Step 2: Run** - missing.
 
 **Step 3: Implement `src/app/api/inbox/tickets/[id]/messages/route.ts`**
 
@@ -2575,7 +2575,7 @@ export async function POST(req: Request, { params }: Ctx) {
 }
 ```
 
-**Step 4: Run** — pass.
+**Step 4: Run** - pass.
 
 **Step 5: Commit**
 
@@ -2593,7 +2593,7 @@ git commit -m "feat(inbox): reply or note, and a refused send says why"
 - Create: `src/app/api/inbox/mailboxes/route.ts` (GET, POST), `src/app/api/inbox/mailboxes/[id]/route.ts` (PATCH, DELETE)
 - Test: `src/app/api/inbox/macros/route.integration.test.ts`, `src/app/api/inbox/mailboxes/route.integration.test.ts`
 
-**Step 1: Failing tests** — both files follow Task 14's mock pattern. Cases:
+**Step 1: Failing tests** - both files follow Task 14's mock pattern. Cases:
 
 Macros:
 - `POST {name:'Where is my order?', language:'en', body:'Hi {{customer_name}}…'}` → 200; `GET` lists it with `variables` = the `MACRO_VARIABLES` array in the response envelope.
@@ -2608,11 +2608,11 @@ Mailboxes:
 - `POST` with a malformed address → 400; duplicate → 409; `language: 'xx'` → 400.
 - `GET` lists with `shop: { id, name } | null`, `ticketCount`.
 - `PATCH [id] { active:false, signature:'…' }` → 200.
-- `DELETE [id]` with tickets → 409 ("Deactivate instead — N tickets would lose their mailbox"); without → 200.
+- `DELETE [id]` with tickets → 409 ("Deactivate instead - N tickets would lose their mailbox"); without → 200.
 
-**Step 2: Run** — missing.
+**Step 2: Run** - missing.
 
-**Step 3: Implement** — same shape as Task 14's routes (assertAdmin, zod, NO_STORE, AuthError → 403, P2002 → 409 via the `isUniqueViolation` helper copied from `api/ambassadors/[id]/codes/route.ts:14`). Validation:
+**Step 3: Implement** - same shape as Task 14's routes (assertAdmin, zod, NO_STORE, AuthError → 403, P2002 → 409 via the `isUniqueViolation` helper copied from `api/ambassadors/[id]/codes/route.ts:14`). Validation:
 
 ```ts
 // macros
@@ -2643,9 +2643,9 @@ const MailboxBody = z.object({
 })
 ```
 
-GET `/api/inbox/mailboxes` also returns `forwardingAddress: process.env.POSTMARK_INBOUND_ADDRESS ?? null` — the settings page shows it beside every mailbox as "forward to this address", and says how to find it in Postmark when unset.
+GET `/api/inbox/mailboxes` also returns `forwardingAddress: process.env.POSTMARK_INBOUND_ADDRESS ?? null` - the settings page shows it beside every mailbox as "forward to this address", and says how to find it in Postmark when unset.
 
-**Step 4: Run** — pass. `npx tsc --noEmit` clean.
+**Step 4: Run** - pass. `npx tsc --noEmit` clean.
 
 **Step 5: Commit**
 
@@ -2666,8 +2666,8 @@ git commit -m "feat(inbox): macros and mailboxes, managed from settings"
 **Layout** (three columns inside `PageBody`, one `AppShell`, header title "Inbox"):
 
 1. **Queue** (left, 320px): status tabs `Open · Pending · Closed` (counts from the loaded list), a `<select aria-label="Mailbox">` (All mailboxes + each), a `<select aria-label="Assignee">` (Anyone / Me / Unassigned / each user), a search `<input aria-label="Search tickets">`. Rows are `<button data-testid="ticket-row">` showing `PA-{number}`, subject, customer name or email, mailbox name, relative time, tags, priority chip when HIGH. Selected row gets `aria-current="true"`.
-2. **Thread** (middle): ticket subject as `<h2>`, category/language chips, then messages oldest-first. INBOUND = surface card; OUTBOUND = accent-soft card with "Sent from {mailbox}"; NOTE = warn-soft card labelled **Internal note**. Each message shows author/from and time; INBOUND with `fullText !== text` gets a "Show quoted text" toggle. Attachments as filename chips. Below: the **composer** — tabs `Reply` / `Internal note`, a `<select aria-label="Insert macro">` (only on Reply; lists macros in the ticket's language first, then the rest, grouped by language), a `<textarea aria-label="Message">`, and a button reading `Send reply` or `Add note`. The send button is disabled while `hasMissingMarker(text)`; a line under the textarea says "Fill in: tracking_number" listing the missing names.
-3. **Sidebar** (right, 320px, `data-testid="ticket-sidebar"`): **Customer** (name, email, phone or "No phone on file", country + shop of the newest order, or "No customer found — no orders on this address"); **This ticket** (status `<select aria-label="Status">`, assignee `<select aria-label="Assign to">`, priority `<select aria-label="Priority">`, tags input with Enter-to-add and chips with ×, matched order `<select aria-label="Matched order">` listing the context's orders + "None"); **Orders** (each: number, shop, date, `formatMoney(total, currency)`, "Refunded in the shop" chip when refunded, products "1 × Massasjepistol Pro X", parcels as links (`Parcel.url`), delivery phrase); **Previous conversations** (PA-n · subject · status · date, click selects that ticket).
+2. **Thread** (middle): ticket subject as `<h2>`, category/language chips, then messages oldest-first. INBOUND = surface card; OUTBOUND = accent-soft card with "Sent from {mailbox}"; NOTE = warn-soft card labelled **Internal note**. Each message shows author/from and time; INBOUND with `fullText !== text` gets a "Show quoted text" toggle. Attachments as filename chips. Below: the **composer** - tabs `Reply` / `Internal note`, a `<select aria-label="Insert macro">` (only on Reply; lists macros in the ticket's language first, then the rest, grouped by language), a `<textarea aria-label="Message">`, and a button reading `Send reply` or `Add note`. The send button is disabled while `hasMissingMarker(text)`; a line under the textarea says "Fill in: tracking_number" listing the missing names.
+3. **Sidebar** (right, 320px, `data-testid="ticket-sidebar"`): **Customer** (name, email, phone or "No phone on file", country + shop of the newest order, or "No customer found - no orders on this address"); **This ticket** (status `<select aria-label="Status">`, assignee `<select aria-label="Assign to">`, priority `<select aria-label="Priority">`, tags input with Enter-to-add and chips with ×, matched order `<select aria-label="Matched order">` listing the context's orders + "None"); **Orders** (each: number, shop, date, `formatMoney(total, currency)`, "Refunded in the shop" chip when refunded, products "1 × Massasjepistol Pro X", parcels as links (`Parcel.url`), delivery phrase); **Previous conversations** (PA-n · subject · status · date, click selects that ticket).
 
 **Data flow:** `GET /api/inbox/tickets?…` on mount and whenever a filter changes (AbortController, exactly like `DashboardClient.tsx:92-107`); `GET /api/inbox/tickets/{id}` when a row is selected; `PATCH` on any sidebar field change then re-fetch the ticket and the list; `POST …/messages` on send; `useLiveTick()` refetches the list once a minute (same hook the dashboard uses). Toasts via `useToast()` for errors ("Not sent: …") and successes ("Reply sent", "Note added"). Macro insertion: `renderMacro(macro.body, vars)` with vars from the ticket + context: `customer_name` = first word of `customerName` (or null), `order_number` = matched order's number, `tracking_number` = matched order's first parcel number, `product_name` = matched order's products joined with ", ", `delivery_status` = matched order's `deliveryPhrase`, `agent_name` = the local part of the signed-in email, `brand_name` = mailbox name. Appends to the textarea (does not replace typed text).
 
@@ -2720,38 +2720,38 @@ export default async function InboxPage() {
 
 **Run:** `npx vitest run src/app/inbox src/components/shell` → pass; `npx tsc --noEmit`; `npm run lint`.
 
-**Commit:** `feat(inbox): the inbox — queue, thread, composer with macros, and the customer beside every ticket`
+**Commit:** `feat(inbox): the inbox - queue, thread, composer with macros, and the customer beside every ticket`
 
 ---
 
-### Task 18: Settings — mailboxes and macros, and how to connect
+### Task 18: Settings - mailboxes and macros, and how to connect
 
 **Files:**
 - Create: `src/app/settings/inbox/page.tsx`, `src/app/settings/inbox/InboxSettingsClient.tsx`
-- Modify: `src/app/settings/SettingsTabs.tsx:24` — add after the Affiliate tile:
+- Modify: `src/app/settings/SettingsTabs.tsx:24` - add after the Affiliate tile:
   `{ href: '/settings/inbox', title: 'Support inbox', blurb: 'Connect your support addresses, write macros', icon: '📥' },`
 
 **Page:** admin-gated like Task 17; loads mailboxes (with shop + ticketCount), shops (`id, name`), macros, and `process.env.POSTMARK_INBOUND_ADDRESS ?? null`; renders `InboxSettingsClient`.
 
 **Client sections:**
-1. **Support addresses** — table (address, name, shop, language, active, tickets) with an **Add address** form (`aria-label`s: "Email address", "Name", "Shop", "Language", "Signature") and per-row **Edit** (inline: name/shop/language/signature/active) and **Remove** (disabled with a title when `ticketCount > 0`).
-2. **How to connect** — a card: "Forward each address to **{forwardingAddress}**" (or, when null: "Set `POSTMARK_INBOUND_ADDRESS` to your Postmark server's inbound address — Postmark → your server → Inbound stream → Settings"), then four short per-host notes (Google Workspace admin routing; Gmail per-mailbox forwarding confirms by email — the confirmation lands as a ticket here, open it and click the link; Microsoft 365 needs external forwarding enabled in the outbound spam policy; domain hosts: a plain forward/alias). Then "Sending: verify each brand domain in Postmark (DKIM + Return-Path) so replies leave from these addresses."
-3. **Macros** — table (name, language, first line) with **Add macro** form ("Macro name", "Language", "Body") and the variable list rendered from `MACRO_VARIABLES` as chips, Edit inline, Delete.
+1. **Support addresses** - table (address, name, shop, language, active, tickets) with an **Add address** form (`aria-label`s: "Email address", "Name", "Shop", "Language", "Signature") and per-row **Edit** (inline: name/shop/language/signature/active) and **Remove** (disabled with a title when `ticketCount > 0`).
+2. **How to connect** - a card: "Forward each address to **{forwardingAddress}**" (or, when null: "Set `POSTMARK_INBOUND_ADDRESS` to your Postmark server's inbound address - Postmark → your server → Inbound stream → Settings"), then four short per-host notes (Google Workspace admin routing; Gmail per-mailbox forwarding confirms by email - the confirmation lands as a ticket here, open it and click the link; Microsoft 365 needs external forwarding enabled in the outbound spam policy; domain hosts: a plain forward/alias). Then "Sending: verify each brand domain in Postmark (DKIM + Return-Path) so replies leave from these addresses."
+3. **Macros** - table (name, language, first line) with **Add macro** form ("Macro name", "Language", "Body") and the variable list rendered from `MACRO_VARIABLES` as chips, Edit inline, Delete.
 
 Test `InboxSettingsClient.test.tsx`: renders the forwarding address when given and the instruction when null; adding a macro posts to `/api/inbox/macros`; a mailbox with tickets has its Remove disabled.
 
 **Run:** `npx vitest run src/app/settings/inbox src/app/settings` → pass; tsc; lint.
 
-**Commit:** `feat(inbox): settings — the addresses, the macros, and how to point the mail here`
+**Commit:** `feat(inbox): settings - the addresses, the macros, and how to point the mail here`
 
 ---
 
-### Task 19: Seed — a working inbox on a fresh database
+### Task 19: Seed - a working inbox on a fresh database
 
 **Files:**
-- Modify: `prisma/seed.ts` — clearing block (~line 82) and a new section after "Creating affiliate sales…" (~line 407)
+- Modify: `prisma/seed.ts` - clearing block (~line 82) and a new section after "Creating affiliate sales…" (~line 407)
 
-**Step 1: Clearing** — add at the top of the block, before `db.affiliateTransaction.deleteMany()`:
+**Step 1: Clearing** - add at the top of the block, before `db.affiliateTransaction.deleteMany()`:
 
 ```ts
   await db.ticketAttachment.deleteMany()
@@ -2761,13 +2761,13 @@ Test `InboxSettingsClient.test.tsx`: renders the forwarding address when given a
   await db.mailbox.deleteMany()
 ```
 
-**Step 2: Phones on orders** — in the order `create` (line ~285), after `customerEmail`, add:
+**Step 2: Phones on orders** - in the order `create` (line ~285), after `customerEmail`, add:
 
 ```ts
           customerPhone: customer ? `+47 9${String(1000000 + CUSTOMERS.indexOf(customer) * 7919).slice(-7)}` : '',
 ```
 
-**Step 3: The inbox section** — append before `const orders = await db.order.count()`:
+**Step 3: The inbox section** - append before `const orders = await db.order.count()`:
 
 ```ts
   console.log('Creating the support inbox...')
@@ -2788,7 +2788,7 @@ Test `InboxSettingsClient.test.tsx`: renders the forwarding address when given a
     { name: 'Return instructions', language: 'en', body: 'Hi {{customer_name}},\n\nYou can return {{product_name}} within 14 days of delivery. Pack it in its original box, attach the return label we send you, and hand it in at your nearest pickup point. Quote order {{order_number}}.\n\nKind regards,\n{{agent_name}}' },
     { name: 'Warranty', language: 'en', body: 'Hi {{customer_name}},\n\n{{product_name}} carries a two-year warranty. Please reply with a short description of the fault and, if possible, a photo or video, and quote order {{order_number}}. We will get back to you within two working days.\n\nKind regards,\n{{agent_name}}' },
     { name: 'Damaged product', language: 'en', body: 'Hi {{customer_name}},\n\nWe are sorry {{product_name}} arrived damaged. Please send us a photo of the damage and of the packaging, quoting order {{order_number}}, and we will arrange a replacement or a refund straight away.\n\nKind regards,\n{{agent_name}}' },
-    { name: 'Refund confirmation', language: 'en', body: 'Hi {{customer_name}},\n\nYour refund for order {{order_number}} has been issued. Depending on your bank it takes 3–5 working days to appear on your statement.\n\nKind regards,\n{{agent_name}}' },
+    { name: 'Refund confirmation', language: 'en', body: 'Hi {{customer_name}},\n\nYour refund for order {{order_number}} has been issued. Depending on your bank it takes 3-5 working days to appear on your statement.\n\nKind regards,\n{{agent_name}}' },
     { name: 'Product instructions', language: 'en', body: 'Hi {{customer_name}},\n\nThank you for choosing {{product_name}}. The user guide is in the box; if it is missing, reply to this email and we will send it as a PDF.\n\nKind regards,\n{{agent_name}}' },
   ]
   for (const m of MACROS) await db.macro.create({ data: m })
@@ -2841,28 +2841,28 @@ Test `InboxSettingsClient.test.tsx`: renders the forwarding address when given a
       messages: { create: [
         { direction: 'INBOUND', rfcMessageId: 'seed-4@example.com', fromEmail: 'unknown@example.com', toEmail: mailboxes[2].address, textBody: 'Does the Lite Comfort fit under a 70 cm desk?', sentAt: new Date('2026-07-11T08:00:00Z') },
         { direction: 'NOTE', fromEmail: 'admin@ecom.test', toEmail: '', textBody: 'Checked with the warehouse: 68 cm with the headrest down.', sentAt: new Date('2026-07-11T11:00:00Z') },
-        { direction: 'OUTBOUND', rfcMessageId: 'seed-4r@mazzetti.no', fromEmail: mailboxes[2].address, toEmail: 'unknown@example.com', textBody: 'Yes — 68 cm with the headrest down.\n\nMed vennlig hilsen\nMazzetti', sentAt: new Date('2026-07-11T12:00:00Z') },
+        { direction: 'OUTBOUND', rfcMessageId: 'seed-4r@mazzetti.no', fromEmail: mailboxes[2].address, toEmail: 'unknown@example.com', textBody: 'Yes - 68 cm with the headrest down.\n\nMed vennlig hilsen\nMazzetti', sentAt: new Date('2026-07-11T12:00:00Z') },
       ] },
     },
   })
   void t1
 ```
 
-Assign the NOTE's `authorUserId` and the OUTBOUND's to the admin user if you kept a reference to it (`const admin = await db.user.create(...)` at line 148 — capture it).
+Assign the NOTE's `authorUserId` and the OUTBOUND's to the admin user if you kept a reference to it (`const admin = await db.user.create(...)` at line 148 - capture it).
 
-**Step 4: Run** — `npm run db:seed` → ends with `Done. 11 shops, 24 ambassadors, N orders.` and no error. `npm test` still green (seed data does not affect tagged tests).
+**Step 4: Run** - `npm run db:seed` → ends with `Done. 11 shops, 24 ambassadors, N orders.` and no error. `npm test` still green (seed data does not affect tagged tests).
 
-**Step 5: Commit** — `feat(inbox): sample mailboxes, macros and tickets so the inbox works before any mail is connected`
+**Step 5: Commit** - `feat(inbox): sample mailboxes, macros and tickets so the inbox works before any mail is connected`
 
 ---
 
 ### Task 20: End-to-end
 
-**Amendment (shared-environment):** the local Postgres and port 3000 are shared with another live session, so (a) **never run `npm run db:seed`** during this work — it wipes that session's local affiliate data; the seed code in Task 19 is written and type-checked but not run; (b) the spec below must be **self-sufficient**: it creates its own mailbox through `POST /api/inbox/mailboxes` (unique address `support+e2e<timestamp>@e2e.invalid`), ingests its own email through `POST /api/inbox/inbound?token=…` (`INBOX_INBOUND_SECRET=e2e-secret` in the worktree `.env`, read by the dev server), and matches it against a real order found via `page.request.get('/api/orders?preset=last_12_months&limit=50')` (pick the first row with a non-empty `customerEmail`; send the webhook From that address with `#<number>` in the body); it removes its mailbox (and thereby its tickets, cascade) at the end. Macros are created by the spec too (`POST /api/inbox/macros`, name `[e2e] Where is my order?`) and deleted after. (c) `playwright.config.ts` reads `const port = Number(process.env.E2E_PORT ?? 3000)` for both `baseURL` and `webServer.url`, and `webServer.command` becomes `` `npm run dev -- -p ${port}` ``; run with `E2E_PORT=3100`. Assertions stay as written below, substituting the created data for the seeded tickets.
+**Amendment (shared-environment):** the local Postgres and port 3000 are shared with another live session, so (a) **never run `npm run db:seed`** during this work - it wipes that session's local affiliate data; the seed code in Task 19 is written and type-checked but not run; (b) the spec below must be **self-sufficient**: it creates its own mailbox through `POST /api/inbox/mailboxes` (unique address `support+e2e<timestamp>@e2e.invalid`), ingests its own email through `POST /api/inbox/inbound?token=…` (`INBOX_INBOUND_SECRET=e2e-secret` in the worktree `.env`, read by the dev server), and matches it against a real order found via `page.request.get('/api/orders?preset=last_12_months&limit=50')` (pick the first row with a non-empty `customerEmail`; send the webhook From that address with `#<number>` in the body); it removes its mailbox (and thereby its tickets, cascade) at the end. Macros are created by the spec too (`POST /api/inbox/macros`, name `[e2e] Where is my order?`) and deleted after. (c) `playwright.config.ts` reads `const port = Number(process.env.E2E_PORT ?? 3000)` for both `baseURL` and `webServer.url`, and `webServer.command` becomes `` `npm run dev -- -p ${port}` ``; run with `E2E_PORT=3100`. Assertions stay as written below, substituting the created data for the seeded tickets.
 
 **Files:**
 - Create: `e2e/inbox.spec.ts`
-- Modify: `e2e/global-setup.ts:9` (add `'/inbox', '/settings/inbox'` — if not done in Task 17)
+- Modify: `e2e/global-setup.ts:9` (add `'/inbox', '/settings/inbox'` - if not done in Task 17)
 
 **The spec** (copy the `signIn` helper from `e2e/orders.spec.ts:3-9`):
 
@@ -2941,19 +2941,19 @@ test('settings: a support address can be added and the forwarding instructions a
 
 **Run:** `npm run db:seed` (fresh data) then `npm run test:e2e -- --headed e2e/inbox.spec.ts` → 3 passed. Then the whole e2e suite once: `npm run test:e2e -- --headed` → all pass (the seed reset the DB; the other specs expect the seed).
 
-**Commit:** `test(inbox): the inbox end to end — queue, sidebar, macro, note, status, search, settings`
+**Commit:** `test(inbox): the inbox end to end - queue, sidebar, macro, note, status, search, settings`
 
 ---
 
-### Task 21: The gate — everything green, then hand over
+### Task 21: The gate - everything green, then hand over
 
 1. `npx tsc --noEmit` → clean.
 2. `npm run lint` → clean.
 3. `npm test` → **0 failed**. If `sync.test.ts` times out, rerun it alone (`npx vitest run src/lib/woo/sync.test.ts`); it is the shared-Postgres flake, and must pass alone.
 4. `npm run test:e2e -- --headed` → all pass.
-5. `npm run build` → succeeds (this pushes the schema, then builds — proves the additive migration is accepted).
+5. `npm run build` → succeeds (this pushes the schema, then builds - proves the additive migration is accepted).
 6. Update `README.md`: a short **Support inbox** section after "How data stays current": what it is, env vars (`INBOX_INBOUND_SECRET`, `POSTMARK_INBOUND_ADDRESS`), the forwarding sentence, the DKIM/Return-Path sentence. Commit: `docs(inbox): how the support inbox is connected`.
-7. `git log --oneline main..HEAD` — one commit per task. Then invoke **superpowers:finishing-a-development-branch**.
+7. `git log --oneline main..HEAD` - one commit per task. Then invoke **superpowers:finishing-a-development-branch**.
 
-**Production checklist for the hand-over note (not code):** Postmark plan must include inbound (Pro); set `INBOX_INBOUND_SECRET` and `POSTMARK_INBOUND_ADDRESS` in Vercel; point the Postmark inbound webhook at `https://panetti.vercel.app/api/inbox/inbound?token=…`; verify each brand domain in Postmark (DKIM + Return-Path) before agents reply from it; forward each support address; the first live inbound email is the test of the one unconfirmed fact (raw `Message-ID` / `References` in Postmark's `Headers[]`) — open it in the inbox and confirm its `rfcMessageId` is not `postmark:…`.
+**Production checklist for the hand-over note (not code):** Postmark plan must include inbound (Pro); set `INBOX_INBOUND_SECRET` and `POSTMARK_INBOUND_ADDRESS` in Vercel; point the Postmark inbound webhook at `https://panetti.vercel.app/api/inbox/inbound?token=…`; verify each brand domain in Postmark (DKIM + Return-Path) before agents reply from it; forward each support address; the first live inbound email is the test of the one unconfirmed fact (raw `Message-ID` / `References` in Postmark's `Headers[]`) - open it in the inbox and confirm its `rfcMessageId` is not `postmark:…`.
 

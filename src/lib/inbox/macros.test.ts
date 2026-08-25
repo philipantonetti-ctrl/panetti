@@ -19,7 +19,7 @@ describe('renderMacro', () => {
     expect(r.missing).toEqual(['tracking_number'])
   })
 
-  it('treats null and empty as missing — an empty name is not a name', () => {
+  it('treats null and empty as missing - an empty name is not a name', () => {
     expect(renderMacro('{{customer_name}}', { customer_name: '' }).missing).toEqual(['customer_name'])
     expect(renderMacro('{{customer_name}}', { customer_name: null }).missing).toEqual(['customer_name'])
   })

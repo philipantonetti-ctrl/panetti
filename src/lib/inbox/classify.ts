@@ -29,7 +29,7 @@ export type Language = (typeof LANGUAGES)[number]
  * Stop-word scoring. Deliberately tiny: the mailbox's default language is
  * already a strong prior, so this only needs to be right when it speaks, and
  * it speaks only on a clear winner. Bokmål and Danish share most of their
- * short words — hei/takk against hej/tak is what separates them here — and
+ * short words - hei/takk against hej/tak is what separates them here - and
  * when they tie the answer is null, never a coin toss.
  */
 const WORDS: Record<Language, string[]> = {

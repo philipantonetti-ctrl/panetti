@@ -341,7 +341,7 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
   const missing = await db.order.findMany({
     // Widened when the phone column arrived: every order synced before it has
     // customerName set and customerPhone null. Same queue, same drain, same
-    // '' when the store has none — it costs zero again once history is filled.
+    // '' when the store has none - it costs zero again once history is filled.
     where: { shopId, OR: [{ customerName: null }, { customerPhone: null }] },
     orderBy: { placedAt: 'desc' },
     take: CUSTOMER_BACKFILL_BATCH,
@@ -363,7 +363,7 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
         // What Woo says wins; what we already hold survives a store that no
         // longer has the order (a Visma or B2B row queued only for its null
         // phone must not have its real name wiped to ''); only then comes
-        // '' — checked, nothing there.
+        // '' - checked, nothing there.
         customerName: o?.customerName ?? m.customerName ?? '',
         customerEmail: o?.customerEmail ?? m.customerEmail ?? '',
         customerPhone: o?.customerPhone ?? m.customerPhone ?? '',

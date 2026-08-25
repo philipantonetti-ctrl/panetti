@@ -1048,7 +1048,7 @@ model BringReportRun {
 /// One support address, forwarded into Postmark's inbound stream.
 ///
 /// The routing anchor. Which brand and country an email belongs to is decided
-/// by the address it was sent TO, never inferred from its text — support@
+/// by the address it was sent TO, never inferred from its text - support@
 /// panetti.de is Panetti Germany, full stop. `shopId` is what scopes an order
 /// number found in the mail: Woo numbers repeat across stores, so "#1042" only
 /// means something inside this mailbox's own shop.
@@ -1110,7 +1110,7 @@ model Ticket {
   @@index([assigneeUserId])
 }
 
-/// One email in, one email out, or one internal note — the same row shape, so
+/// One email in, one email out, or one internal note - the same row shape, so
 /// the thread is one ordered list. A NOTE never leaves the building.
 model TicketMessage {
   id            String   @id @default(cuid())
@@ -1120,7 +1120,7 @@ model TicketMessage {
   /// RFC 5322 Message-ID without the angle brackets. Theirs as received; ours
   /// minted BEFORE sending so the References chain never depends on reading
   /// anything back from Postmark. Unique, which is what makes a redelivered
-  /// webhook a no-op — the ShipmentEvent seam, applied to email.
+  /// webhook a no-op - the ShipmentEvent seam, applied to email.
   rfcMessageId  String?  @unique
   inReplyTo     String?
   /// Space-separated ids, oldest first, exactly as the header carries them.
@@ -1131,7 +1131,7 @@ model TicketMessage {
   textBody      String
   /// Stored raw; sanitised at render time, never trusted.
   htmlBody      String?
-  /// Postmark's quoted-history-free text — what the thread view shows.
+  /// Postmark's quoted-history-free text - what the thread view shows.
   strippedReply String?
   spamScore     Float?
   postmarkId    String?
@@ -1160,7 +1160,7 @@ model TicketAttachment {
   @@index([messageId])
 }
 
-/// A reply template. One row per language variant sharing a name — the
+/// A reply template. One row per language variant sharing a name - the
 /// ticket's language (or its mailbox's default) picks the variant.
 model Macro {
   id        String   @id @default(cuid())

@@ -40,7 +40,7 @@ export function normalizePhone(raw: string): string {
  * The trailing \b only guards the END of a match: scanning a 18-digit parcel
  * number, the engine happily starts twelve digits from its end and "finds" a
  * phone inside it. So a match whose preceding character is a digit is part of
- * a longer run and no phone — and one preceded by # is an order number.
+ * a longer run and no phone - and one preceded by # is an order number.
  */
 const PHONE = /(?:\+|00)?\d(?:[\s.-]?\d){7,11}\b/g
 

@@ -91,7 +91,7 @@ describe('spamScoreOf', () => {
     expect(spamScoreOf(H([['X-Spam-Score', '7.3']]))).toBe(7.3)
     expect(spamScoreOf(H([['X-Spam-Score', '-0.1']]))).toBe(-0.1)
   })
-  it('is null when absent or unreadable — unknown, not clean', () => {
+  it('is null when absent or unreadable - unknown, not clean', () => {
     expect(spamScoreOf(H([]))).toBeNull()
     expect(spamScoreOf(H([['X-Spam-Score', 'n/a']]))).toBeNull()
   })

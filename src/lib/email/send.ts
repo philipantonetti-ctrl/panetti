@@ -12,7 +12,7 @@ const ENDPOINT = 'https://api.postmarkapp.com/email'
 const STREAM = 'outbound'
 
 export type SendOptions = {
-  /** Who the message is from. Defaults to EMAIL_FROM — the app's own voice. */
+  /** Who the message is from. Defaults to EMAIL_FROM - the app's own voice. */
   from?: string
   /** Extra RFC headers, e.g. Message-ID / In-Reply-To / References for threading. */
   headers?: Record<string, string>

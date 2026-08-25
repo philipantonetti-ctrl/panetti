@@ -53,7 +53,7 @@ export const ticketToken = (number: number): string => `[PA-${number}]`
 
 /**
  * Gmail threads on headers AND a matching subject, so the customer's subject is
- * kept as-is under a single "Re:" — never rewritten — with our token added
+ * kept as-is under a single "Re:" - never rewritten - with our token added
  * once at the end.
  */
 export function replySubject(subject: string, number: number): string {
