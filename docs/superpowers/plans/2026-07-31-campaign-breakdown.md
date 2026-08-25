@@ -17,15 +17,15 @@ and CTR once at render.
 ## Global Constraints
 
 - **Never run `git stash`, `git checkout -- `, `git reset`, `git clean`, or `git restore`.** Another session shares this working directory; those commands silently destroy its work.
-- **Edit files with the Edit/Write tools only.** PowerShell 5.1 `Get-Content`/`Set-Content` corrupts UTF-8 in this repo and these files contain `…`, `—` and `ø`.
+- **Edit files with the Edit/Write tools only.** PowerShell 5.1 `Get-Content`/`Set-Content` corrupts UTF-8 in this repo and these files contain `…`, `-` and `ø`.
 - **Never point anything at the live database.** `DATABASE_URL` is a local Postgres. Neon is production.
 - **If a suite goes red in the hundreds with no code change**, another checkout ran `prisma db push` and dropped columns. Introspect with `npx prisma db pull --print` before debugging, then `npx prisma db push` from here.
-- **Nothing in this plan adds a table, a column or a migration.** If a task seems to need one, stop and report — the design is deliberately storage-free.
+- **Nothing in this plan adds a table, a column or a migration.** If a task seems to need one, stop and report - the design is deliberately storage-free.
 - **No caching layer either.** An in-process cache was considered and rejected: on Vercel each request may land on a fresh instance, so a `Map` would mostly miss while still adding a TTL and a staleness question. One request per expansion is cheap. If latency ever grates the answer is Next's data cache, added deliberately and measured.
 - **Read only.** No task may request `ads_management`, write to a platform, or add a control that mutates a campaign.
 - Money is **minor units, integer, in the ad account's own currency**, matching the rest of `src/lib/ads`. Google returns micros and converts at the boundary.
 - Run tests with `npx vitest run <path>`. Type-check `npx tsc --noEmit`. Lint `npx eslint <paths>`. E2E `npx playwright test`.
-- Comments explain **why**, not what. Match the surrounding voice — `src/lib/ads/meta.ts` is the reference.
+- Comments explain **why**, not what. Match the surrounding voice - `src/lib/ads/meta.ts` is the reference.
 
 ## File Structure
 
@@ -52,7 +52,7 @@ Tasks build in order. Tasks 1 and 2 are independent of each other.
 
 Meta lets insights hang off any object id, so drilling needs no filter syntax:
 campaigns come off `act_{id}`, ad sets off a campaign id, ads off an ad set id.
-Aggregated over the range — no `time_increment` — each response is one row per
+Aggregated over the range - no `time_increment` - each response is one row per
 entity.
 
 `parseMetaInsights` cannot be reused: it keys on `date_start` and returns a
@@ -66,7 +66,7 @@ table.
 - Test: `src/lib/ads/meta.test.ts`
 
 **Interfaces:**
-- Consumes: `metaJson`, `day`, `action`, `count`, `toMinor` — all already in `meta.ts`
+- Consumes: `metaJson`, `day`, `action`, `count`, `toMinor` - all already in `meta.ts`
 - Produces:
   - `BreakdownLevel = 'campaign' | 'adset' | 'ad'`
   - `BreakdownEntry` (below)
@@ -88,7 +88,7 @@ export type BreakdownLevel = 'campaign' | 'adset' | 'ad'
  * What a platform driver returns: the platform's own figures for one entity and
  * nothing of ours. The route adds which of OUR accounts it came from.
  *
- * No ROAS and no CTR. Both are derived once, at render, from these numbers —
+ * No ROAS and no CTR. Both are derived once, at render, from these numbers -
  * carrying a derived figure alongside its inputs is how two numbers on one
  * screen come to disagree.
  */
@@ -291,7 +291,7 @@ Add `fetchMetaBreakdown` to the file's import from `./meta`.
 - [ ] **Step 3: Run them and watch them fail**
 
 Run: `npx vitest run src/lib/ads/meta.test.ts -t "fetchMetaBreakdown"`
-Expected: FAIL — `fetchMetaBreakdown` is not exported.
+Expected: FAIL - `fetchMetaBreakdown` is not exported.
 
 - [ ] **Step 4: Share the purchase extraction**
 
@@ -346,7 +346,7 @@ const BREAKDOWN_FIELDS: Record<BreakdownLevel, { id: string; name: string }> = {
  *
  * Meta serves insights off any object id, so a drill-down needs no filter
  * syntax: ad sets are asked of the campaign, ads of the ad set. Deliberately no
- * `time_increment` — this table shows a total for the chosen period, and asking
+ * `time_increment` - this table shows a total for the chosen period, and asking
  * per day would return entities × days and page for a very long time.
  */
 export async function fetchMetaBreakdown(
@@ -409,7 +409,7 @@ Import `BreakdownEntry` and `BreakdownLevel` from `./types` at the top.
 - [ ] **Step 6: Run the tests and watch them pass**
 
 Run: `npx vitest run src/lib/ads/meta.test.ts`
-Expected: PASS, including every pre-existing test — `parseMetaInsights` changed
+Expected: PASS, including every pre-existing test - `parseMetaInsights` changed
 shape internally and its existing tests prove it still behaves identically.
 
 - [ ] **Step 7: Type-check and commit**
@@ -426,7 +426,7 @@ git commit -m "feat: Meta insights per campaign, ad set and ad"
 
 Google's three levels are the same shape under different names, and GAQL
 aggregates over the `WHERE` range as long as `segments.date` stays out of the
-`SELECT` — putting it in would segment by day and produce the table we
+`SELECT` - putting it in would segment by day and produce the table we
 explicitly do not want.
 
 **Files:**
@@ -453,7 +453,7 @@ describe('fetchGoogleBreakdown', () => {
     })
 
   /**
-   * The GAQL actually sent — from the SECOND call, not the first.
+   * The GAQL actually sent - from the SECOND call, not the first.
    *
    * `searchStream` calls `googleAccessToken` before it queries anything, so
    * call 0 is the token exchange and call 1 is the query. Every pre-existing
@@ -495,7 +495,7 @@ describe('fetchGoogleBreakdown', () => {
 
     const q = sentQuery(fetchMock)
     // 'FROM ad_group' is a prefix of 'FROM ad_group_ad', so the bare substring
-    // would pass even if this level wrongly used the ad resource — a plausible
+    // would pass even if this level wrongly used the ad resource - a plausible
     // copy-paste between adjacent rows of BREAKDOWN_GAQL. The WHERE pins it.
     expect(q).toContain('FROM ad_group WHERE')
     expect(q).toContain('campaign.id = 777')
@@ -554,7 +554,7 @@ Use whatever `CREDS` fixture the file already defines for Google, and add
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `npx vitest run src/lib/ads/google.test.ts -t "fetchGoogleBreakdown"`
-Expected: FAIL — not exported.
+Expected: FAIL - not exported.
 
 - [ ] **Step 3: Add the driver**
 
@@ -605,11 +605,11 @@ export async function fetchGoogleBreakdown(
 ```
 
 `searchStream` is the existing GAQL runner in this file (it POSTs the query and
-returns `results`) — reuse it rather than adding a second HTTP path. `day` is
+returns `results`) - reuse it rather than adding a second HTTP path. `day` is
 already defined there too.
 
 Write `mapBreakdownRow` beside it. Read the level's id and name out of the
-nested result — `r.campaign`, `r.adGroup`, `r.adGroupAd.ad` — and convert cost
+nested result - `r.campaign`, `r.adGroup`, `r.adGroupAd.ad` - and convert cost
 with the file's existing **`microsToMinor`**. Google reports both `costMicros`
 and `cost_micros`, and `fetchGoogleDaily` already tolerates both at
 `google.ts:63`; do the same here rather than picking one and being surprised
@@ -692,22 +692,22 @@ Then, following the DB-backed pattern in
 `src/app/api/marketing/route.test.ts` for creating a shop, an ad account and an
 admin session, assert:
 
-1. **`refuses a non-admin`** — an ambassador session gets 403 and neither driver is called.
-2. **`asks the platform for the level and parent it was given`** — `?level=adset&parentId=777` reaches `fetchMetaBreakdown` with `{ level: 'adset', parentId: '777' }` and the account's `externalId`.
-3. **`switches driver on the provider`** — `?provider=google` calls `fetchGoogleBreakdown` and never `fetchMetaBreakdown`.
-4. **`stamps each row with the account it came from`** — a driver returning one entry yields a row carrying that account's id, name and currency.
-5. **`returns the union across a shop's accounts`** — two Meta accounts on one shop, each returning one entry, produce two rows, and the driver was called once per account.
-6. **`says so when the store has no accounts on that provider`** — empty `rows`, and no driver call.
-7. **`turns an expired token into readable text, not a crash`** — the driver rejects with `AdApiError('Facebook login expired. Press Connect with Facebook to renew it.')`. Assert the response status is **200**, `rows` is empty, and `errors[0].message` is that exact sentence.
-8. **`one broken account does not lose the other`** — two Meta accounts, the first driver call rejects and the second returns one entry. Assert `rows` has length 1 and `errors` has length 1, both naming the right account. This is the property that matters most and the one a shortcut would quietly drop.
-9. **`refuses an unknown level before calling anyone`** — `?level=banana` gives 400 and neither driver is called.
+1. **`refuses a non-admin`** - an ambassador session gets 403 and neither driver is called.
+2. **`asks the platform for the level and parent it was given`** - `?level=adset&parentId=777` reaches `fetchMetaBreakdown` with `{ level: 'adset', parentId: '777' }` and the account's `externalId`.
+3. **`switches driver on the provider`** - `?provider=google` calls `fetchGoogleBreakdown` and never `fetchMetaBreakdown`.
+4. **`stamps each row with the account it came from`** - a driver returning one entry yields a row carrying that account's id, name and currency.
+5. **`returns the union across a shop's accounts`** - two Meta accounts on one shop, each returning one entry, produce two rows, and the driver was called once per account.
+6. **`says so when the store has no accounts on that provider`** - empty `rows`, and no driver call.
+7. **`turns an expired token into readable text, not a crash`** - the driver rejects with `AdApiError('Facebook login expired. Press Connect with Facebook to renew it.')`. Assert the response status is **200**, `rows` is empty, and `errors[0].message` is that exact sentence.
+8. **`one broken account does not lose the other`** - two Meta accounts, the first driver call rejects and the second returns one entry. Assert `rows` has length 1 and `errors` has length 1, both naming the right account. This is the property that matters most and the one a shortcut would quietly drop.
+9. **`refuses an unknown level before calling anyone`** - `?level=banana` gives 400 and neither driver is called.
 
 Write each as a real test with assertions; do not leave any as prose.
 
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `npx vitest run src/app/api/marketing/breakdown/route.test.ts`
-Expected: FAIL — the route does not exist.
+Expected: FAIL - the route does not exist.
 
 - [ ] **Step 3: Write the resolver and the route**
 
@@ -865,20 +865,20 @@ git commit -m "feat: one endpoint serves the breakdown for both platforms"
 
 Create `src/app/marketing/BreakdownTable.test.tsx` (`// @vitest-environment jsdom`, mocking `next/navigation` as the sibling test files do). Cover:
 
-1. **`lists the campaigns it was given`** — one fetch on mount, rows rendered with name and formatted spend.
-2. **`derives ROAS from spend and value`** — a row with `spend: 100000, purchaseValue: 637000` shows `6.37×`; assert the rendered text, not an internal. Period, and the `×`, matching `src/components/marketing/MarketingTable.tsx:104` which renders on the same page.
-3. **`shows a dash rather than dividing by zero`** — `spend: 0` shows the em dash `—` for ROAS, never `Infinity` or `NaN`. Em dash, not en: `MarketingTable.tsx:99` uses `—` for an unknown value.
-4. **`expands a campaign into its ad sets`** — pressing a row fetches `level=adset&parentId=<that row's id>` and renders the children indented beneath it.
-5. **`expands an ad set into its ads`** — the same one level deeper.
-6. **`does not refetch a row it has already expanded`** — collapse and re-expand issues no second request.
-7. **`calls the middle level Ad set on Meta and Ad group on Google`** — the header text follows the provider.
-8. **`says when nothing ran in the period`** — empty rows renders the empty sentence, not an empty table.
-9. **`puts the reason under the row that failed`** — a failing expansion leaves the parent expanded and shows the platform's message.
+1. **`lists the campaigns it was given`** - one fetch on mount, rows rendered with name and formatted spend.
+2. **`derives ROAS from spend and value`** - a row with `spend: 100000, purchaseValue: 637000` shows `6.37×`; assert the rendered text, not an internal. Period, and the `×`, matching `src/components/marketing/MarketingTable.tsx:104` which renders on the same page.
+3. **`shows a dash rather than dividing by zero`** - `spend: 0` shows the em dash `-` for ROAS, never `Infinity` or `NaN`. Em dash, not en: `MarketingTable.tsx:99` uses `-` for an unknown value.
+4. **`expands a campaign into its ad sets`** - pressing a row fetches `level=adset&parentId=<that row's id>` and renders the children indented beneath it.
+5. **`expands an ad set into its ads`** - the same one level deeper.
+6. **`does not refetch a row it has already expanded`** - collapse and re-expand issues no second request.
+7. **`calls the middle level Ad set on Meta and Ad group on Google`** - the header text follows the provider.
+8. **`says when nothing ran in the period`** - empty rows renders the empty sentence, not an empty table.
+9. **`puts the reason under the row that failed`** - a failing expansion leaves the parent expanded and shows the platform's message.
 
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `npx vitest run src/app/marketing/BreakdownTable.test.tsx`
-Expected: FAIL — the component does not exist.
+Expected: FAIL - the component does not exist.
 
 - [ ] **Step 3: Build the table**
 
@@ -915,9 +915,9 @@ git commit -m "feat: a table that opens a campaign into its ad sets and ads"
 
 Append to `src/app/marketing/MarketingClient.test.tsx`:
 
-1. **`shows the breakdown only for a single store`** — one shop selected renders the table; "all shops" renders neither the table nor the switcher, and instead the sentence explaining why.
-2. **`switches the table between Meta and Google`** — pressing Google re-renders the table for that provider.
-3. **`starts on Meta`** — the default selection.
+1. **`shows the breakdown only for a single store`** - one shop selected renders the table; "all shops" renders neither the table nor the switcher, and instead the sentence explaining why.
+2. **`switches the table between Meta and Google`** - pressing Google re-renders the table for that provider.
+3. **`starts on Meta`** - the default selection.
 
 - [ ] **Step 2: Run them and watch them fail**
 
@@ -925,7 +925,7 @@ Run: `npx vitest run src/app/marketing/MarketingClient.test.tsx`
 
 - [ ] **Step 3: Wire it in**
 
-A segmented control with two options, not a dropdown — two options behind a
+A segmented control with two options, not a dropdown - two options behind a
 dropdown hides half of them. Below it, `<BreakdownTable>` for the selected
 provider and the single selected shop.
 
@@ -940,7 +940,7 @@ Run: `npx vitest run src/app/marketing/ && npx tsc --noEmit && npx eslint src/ap
 - [ ] **Step 5: Run the whole suite twice**
 
 Run `npx vitest run`, then again. Identical counts both times. A count that moves
-is a shared-database race, not flakiness — find the two tests that share a row.
+is a shared-database race, not flakiness - find the two tests that share a row.
 Do **not** use `--no-file-parallelism`; it is 6.7× slower and hides the problem.
 
 - [ ] **Step 6: Commit**
@@ -976,7 +976,7 @@ the request's `level` and `provider` parameters.
 
 What that does and does not prove, stated plainly so nobody mistakes its reach:
 
-- **Proves** the journey — the page renders, a single store gates the table in,
+- **Proves** the journey - the page renders, a single store gates the table in,
   a campaign expands into ad sets, an ad set into ads, and the switcher moves to
   Google. That is the thing no unit test can show, and the thing the user asked
   for.
@@ -1016,4 +1016,4 @@ git commit -m "test: the breakdown opens campaign to ad set to ad, end to end"
 
 **The figures must match Ads Manager for the same range.** They come from the
 same endpoint, so a mismatch means a bug in the range or the mapping, not a
-rounding difference — investigate rather than explain it away.
+rounding difference - investigate rather than explain it away.

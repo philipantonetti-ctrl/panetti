@@ -36,7 +36,7 @@ describe('convert', () => {
  * The strict half of crossConvert, for the one caller that must not accept a
  * guess: writing a product cost into another shop's currency. crossConvert
  * returns the amount UNCONVERTED when a rate is missing (fx.ts:114), which is
- * right for a display figure — never zero out money on screen — and catastrophic
+ * right for a display figure - never zero out money on screen - and catastrophic
  * for a stored cost, where a NOK number saved as SEK is close enough to look
  * plausible while overstating profit for good.
  */

@@ -43,7 +43,7 @@ export function wallClock(d: Date, tz: string): string {
 /**
  * The UTC instant at which the clock in `tz` reads `day` at `time`.
  *
- * Guess, then correct by the observed wall-clock difference — repeatedly,
+ * Guess, then correct by the observed wall-clock difference - repeatedly,
  * because the first correction can itself cross a DST switch. This is the same
  * convergence zoneDayStartUtc has always used; it is stated once here so that
  * asking for 18:00 is no more approximate than asking for midnight. Adding

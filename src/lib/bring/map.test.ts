@@ -22,8 +22,8 @@ const consignment = (
 /**
  * WHICH STATUS WORDS ARE PROVEN, AND WHICH ARE ONLY DOCUMENTED.
  *
- * The events below are hand-made, so they prove the RULES — what each word does
- * to a milestone — and not the WORDS themselves. If Bring's real string for a
+ * The events below are hand-made, so they prove the RULES - what each word does
+ * to a milestone - and not the WORDS themselves. If Bring's real string for a
  * home delivery were something other than 'DELIVERED', every test here would
  * still pass while no home-delivered parcel ever completed, and those parcels
  * would sit past their promise forever with nothing to say why. That is not
@@ -32,13 +32,13 @@ const consignment = (
  *
  * Seen in a real Bring response, so the word is certain:
  *   PRE_NOTIFIED, HANDED_IN            __fixtures__/real-package.json
- *   READY_FOR_PICKUP                   live api.bring.com, 2026-08-18 — the
+ *   READY_FOR_PICKUP                   live api.bring.com, 2026-08-18 - the
  *                                      clock-stop for a Nordic parcel, and the
  *                                      one that most needed confirming
  *   IN_TRANSIT, NOTIFICATION_SENT, TRANSPORT_TO_RECIPIENT, DEVIATION
  *                                      seen, and correctly move no date
  *
- * NOT yet seen in any real response — documentation only:
+ * NOT yet seen in any real response - documentation only:
  *   DELIVERED, COLLECTED, RETURN, DELIVERED_SENDER, DELIVERY_CANCELLED
  *
  * To close the gap: track a parcel through to collection. The pickup-point
@@ -190,13 +190,13 @@ describe('mapConsignments', () => {
   // sends, rather than what its documentation claims. Recorded from
   // api.bring.com on 2026-08-07 with the client's own credentials, against a
   // parcel genuinely in transit at the time. Personal details in the response
-  // (sender name, street, phone) are redacted — the mapper reads none of them.
+  // (sender name, street, phone) are redacted - the mapper reads none of them.
   //
   // If Bring ever changes a field name, this is the test that fails.
   it('maps the recorded real response', async () => {
     // Read at runtime, NOT imported. A static import of a file that does not
-    // exist is a COMPILE error even inside `it.skip` — skipping affects the
-    // runner, not the typechecker — and `next build` typechecks test files,
+    // exist is a COMPILE error even inside `it.skip` - skipping affects the
+    // runner, not the typechecker - and `next build` typechecks test files,
     // so an import here breaks the deployment while the suite stays green.
     // Same pattern parse.test.ts uses for its warehouse PDF fixture.
     const { readFile } = await import('node:fs/promises')
@@ -204,7 +204,7 @@ describe('mapConsignments', () => {
       new URL('./__fixtures__/real-package.json', import.meta.url),
       'utf8',
     )
-    // `consignmentSet` is what fetchTracking hands the mapper — the client
+    // `consignmentSet` is what fetchTracking hands the mapper - the client
     // unwraps the envelope, so the mapper never sees `apiVersion` and friends.
     const real = (JSON.parse(raw) as { consignmentSet: unknown[] }).consignmentSet
     const [p] = mapConsignments(real)

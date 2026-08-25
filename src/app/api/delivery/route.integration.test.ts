@@ -10,14 +10,14 @@ const { currentUser } = await import('@/lib/auth/current-user')
 
 let shopId: string
 
-// Tagged and scoped — see "Test data convention" in the Global Constraints.
+// Tagged and scoped - see "Test data convention" in the Global Constraints.
 // The 11 seeded shops stay put: they have no deliveryTrackingFrom, so every
 // order of theirs reads UNTRACKED and touches none of the assertions below.
 // That makes this a stronger test than deleting them would.
 const TAG = '[delivery-route-test]'
 const TRACK = 'TROUTE' // every tracking number below starts with it
 const scoped = { shop: { name: { contains: TAG } } }
-// The unlinked parcel below must carry this prefix too — a bare literal has no
+// The unlinked parcel below must carry this prefix too - a bare literal has no
 // prefix, so cleanup() would leave it behind and the next run's create() would
 // fail on Shipment.trackingNumber's unique constraint (see link.integration.test.ts's
 // IMPLEMENTER note for the exact same trap).
@@ -76,7 +76,7 @@ describe('GET /api/delivery', () => {
     })
     const body = await (await GET(new Request(url))).json()
     expect(body.stats.noTracking).toBe(1)
-    // Still reported, and still past its promise — but in noTracking rather
+    // Still reported, and still past its promise - but in noTracking rather
     // than late, because we hold no parcel for it. See the split below.
     expect(body.noTracking[0].number).toBe('RTE1001')
     expect(body.noTracking[0].state).toBe('NO_TRACKING')
@@ -124,8 +124,8 @@ describe('GET /api/delivery', () => {
    * The whole reported bug, end to end: "it says 155 late right now, but only
    * shows some when I scroll down."
    *
-   * Seeded here at the same shape in miniature — three orders past their
-   * promise with no parcel, one with a parcel — the tile read 4 while the list
+   * Seeded here at the same shape in miniature - three orders past their
+   * promise with no parcel, one with a parcel - the tile read 4 while the list
    * under it held 1. Same page, same range, two numbers 4x apart and no way to
    * tell from the screen why.
    */
@@ -163,7 +163,7 @@ describe('GET /api/delivery', () => {
    *
    * The list used to keep them, advertise the fact in its own heading, and
    * then reconcile itself with the tile above in a second sentence. Live on
-   * 2026-08-24 that was sixteen rows under a tile reading 13 — six of them
+   * 2026-08-24 that was sixteen rows under a tile reading 13 - six of them
    * badged Delivered or Ready for collection, not one of them a thing anybody
    * could chase. The section is a to-do list, and a to-do list carrying
    * finished work stops being read.
@@ -229,7 +229,7 @@ describe('GET /api/delivery', () => {
   /**
    * COLLECTED stops the clock in milestones.ts, but only READY_FOR_PICKUP and
    * DELIVERED write `availableAt`. A parcel whose feed carried the collection
-   * and neither of those has a `collectedAt` and no `availableAt` at all — so
+   * and neither of those has a `collectedAt` and no `availableAt` at all - so
    * a rule reading `availableAt` alone leaves it in the queue, adding a day to
    * its "days over" every morning, while the customer is holding the box.
    */
@@ -335,7 +335,7 @@ describe('GET /api/delivery', () => {
   })
 
   /**
-   * Null and '' are different facts here — see the schema comment on
+   * Null and '' are different facts here - see the schema comment on
    * Order.customerName. Neither is a name, and the page must not print
    * "null" at a person.
    */
@@ -355,7 +355,7 @@ describe('GET /api/delivery', () => {
   })
 
   it('lists parcels no order claimed, so they are visible rather than lost', async () => {
-    // No carrier given, so the column default applies — and the link has to
+    // No carrier given, so the column default applies - and the link has to
     // follow it. `url` is new: the page used to build this itself and always
     // built a Bring one, which was wrong for every DHL parcel.
     await db.shipment.create({ data: { trackingNumber: UNLINKED, lastStatus: 'IN_TRANSIT' } })
@@ -388,7 +388,7 @@ describe('GET /api/delivery', () => {
   it('reports the true count of unlinked parcels, not just the capped list', async () => {
     // Just over route.ts's take:50 cap, so the cap actually bites while the
     // fixture stays cheap. Every tracking number carries TRACK so cleanup()
-    // can reach every one of them on the next run — a bare literal here is
+    // can reach every one of them on the next run - a bare literal here is
     // exactly the trap 'lists parcels no order claimed' above already hit once.
     await db.shipment.createMany({
       data: Array.from({ length: 51 }, (_, i) => ({
@@ -400,8 +400,8 @@ describe('GET /api/delivery', () => {
     expect(body.unlinked.length).toBe(50)
     // Not an exact count: unlinked parcels have no shop to scope by by design
     // (that is the whole point of "visible rather than lost"), so this only
-    // asserts what the fix promises — the total is never silently equal to
-    // the capped page — rather than assuming nothing else is ever unlinked.
+    // asserts what the fix promises - the total is never silently equal to
+    // the capped page - rather than assuming nothing else is ever unlinked.
     expect(body.unlinkedTotal).toBeGreaterThan(body.unlinked.length)
     expect(body.unlinkedTotal).toBeGreaterThanOrEqual(51)
   })
@@ -411,7 +411,7 @@ describe('GET /api/delivery', () => {
     // stays cheap. Same shape as 'reports the orders that are late right now'
     // above, just 201 of them in one createMany.
     //
-    // These carry no shipment, so they land in noTracking — which is the
+    // These carry no shipment, so they land in noTracking - which is the
     // list that actually runs to hundreds in production, and so the one whose
     // cap most needs proving. Both lists are capped by the same LATE_LIMIT and
     // both report a true total beside it; asserting here covers the mechanism.
@@ -427,8 +427,8 @@ describe('GET /api/delivery', () => {
     const body = await (await GET(new Request(url))).json()
     expect(body.noTracking.length).toBe(200)
     // Exact, unlike unlinkedTotal above: late orders ARE scoped to this test's
-    // one tagged (and tracked) shop — the 11 seeded shops are all UNTRACKED
-    // and never contribute — so the true count is fully known here.
+    // one tagged (and tracked) shop - the 11 seeded shops are all UNTRACKED
+    // and never contribute - so the true count is fully known here.
     expect(body.noTrackingTotal).toBe(count)
   })
 })
@@ -436,7 +436,7 @@ describe('GET /api/delivery', () => {
 /**
  * The NO TRACKING tile counted every order with no parcel; this list held only
  * the ones ALSO past their promise. Two sizes for one idea, and the rows in
- * between were reachable from nowhere on the page — the client's words were
+ * between were reachable from nowhere on the page - the client's words were
  * "there is no way for me to press the no tracking to actually see which
  * orders are missing tracking".
  */
@@ -454,14 +454,14 @@ describe('the no-tracking list', () => {
    * three-business-day promise, and notDue asks whether 18:00 has come round
    * yet. Written against the real clock those answers change overnight. This
    * file was green on 2026-08-20 and red on 2026-08-21 with waitingDays 2
-   * where it says 1 — nothing had been touched, the day had simply moved.
+   * where it says 1 - nothing had been touched, the day had simply moved.
    *
    * The range in `url` is a second, slower fuse: RTE3003 is placed at `now`,
    * and once the real date left August it would fall outside from/to and
    * notDue would quietly drop to 0.
    *
    * 2026-08-20T08:00:00Z is 10:00 on a Thursday in Oslo, chosen so no
-   * assertion sits on a boundary — mid-morning is well clear of the noon
+   * assertion sits on a boundary - mid-morning is well clear of the noon
    * order cutoff and hours before the 18:00 file, and Thursday keeps the
    * business-day promise off a weekend.
    *
@@ -489,7 +489,7 @@ describe('the no-tracking list', () => {
    *            has not run out
    *   RTE3003  placed just now        no file is due yet, so nothing is missing
    *
-   * "Just now" is the frozen NOW above, not the wall clock — see the note
+   * "Just now" is the frozen NOW above, not the wall clock - see the note
    * on it for why these three dates only hold still against a fixed today.
    */
   const threeBare = async () => {
@@ -545,7 +545,7 @@ describe('the no-tracking list', () => {
    *
    * 2026-08-03T08:00:00Z is 10:00 in Oslo. Sent local because that is the
    * clock the noon warehouse cutoff is written in, so the time on screen is
-   * the one that decides which file the order belongs in — and because it is
+   * the one that decides which file the order belongs in - and because it is
    * the same clock waitingDays counts on, so the two cannot disagree.
    */
   it('gives each row the order date and time on the shop clock', async () => {

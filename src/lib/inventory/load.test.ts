@@ -167,7 +167,7 @@ describe('loadInventory', () => {
     await db.supplyItem.create({ data: { sku: SKU, name: 'Urgent' } })
 
     // Stocked but never sold, so burn is zero and it never runs out. It must
-    // still appear — a product that stopped selling is worth seeing — and it
+    // still appear - a product that stopped selling is worth seeing - and it
     // must sort behind everything that does have a date.
     const shop = await db.shop.findFirstOrThrow({ where: { name: `${TAG}-no` } })
     await db.product.create({
@@ -189,7 +189,7 @@ describe('loadInventory', () => {
   //
   // Deliberately ONE. loadInventory reads every Product, Shop and OrderItem in
   // the database, so every call is a chance to collide with another test file
-  // deleting a row mid-query — "Inconsistent query result: Field shop is
+  // deleting a row mid-query - "Inconsistent query result: Field shop is
   // required" is what that collision looks like. The arithmetic itself is pure
   // and is tested exhaustively below, without touching Postgres at all.
   //
@@ -200,7 +200,7 @@ describe('loadInventory', () => {
     const five = `${TAG}-FIVE`, split = `${TAG}-SPLIT`, eight = `${TAG}-EIGHT`
 
     // Identical demand for each: 600 units over the 60-day window, so 10 a day.
-    // Deliberately brisk — at a slower rate 100 on the shelf plus any of these
+    // Deliberately brisk - at a slower rate 100 on the shelf plus any of these
     // orders outlasts the 365-day horizon, every date comes back null, and the
     // comparison below cannot tell 500 from 800.
     for (const sku of [five, split, eight]) await sell(`${TAG}-no`, sku, 100, 600, 5, 'NO')
@@ -237,7 +237,7 @@ describe('loadInventory', () => {
    * The client's actual question: does the forecast know we are growing?
    *
    * The same 60 calendar days, a year apart, so nothing about the season is in
-   * the answer — only the change in trade.
+   * the answer - only the change in trade.
    */
   it('reports how this period compares with the same period last year', async () => {
     await sell(`${TAG}-no`, SKU, 100, 1380, 5, 'NO')   // this window
@@ -263,7 +263,7 @@ describe('loadInventory', () => {
    *
    * The busy stretch sits 380 to 438 days back, which is deliberate. That is
    * inside the window every one of the last 60 days is measured against, and
-   * outside every window a FUTURE day is measured against — so it can only move
+   * outside every window a FUTURE day is measured against - so it can only move
    * the underlying rate, and the test cannot pass for the wrong reason.
    */
   it('does not carry a peak forward twice: a rate measured in a busy season walks down slower', async () => {
@@ -309,7 +309,7 @@ describe('outstanding', () => {
  * `stockSource` is workspace-wide state: the moment ANY shop carries it, every
  * caller of loadInventory is scoped. Vitest runs the tests inside one file
  * sequentially, and this is the only file that calls loadInventory against the
- * database — the inventory route's test mocks it — so keeping them here is what
+ * database - the inventory route's test mocks it - so keeping them here is what
  * stops a flagged shop in one file emptying the rows another file is asserting
  * on. The afterEach above deletes these shops, which returns the workspace to
  * "nothing flagged" between tests.
@@ -385,7 +385,7 @@ describe('loadInventory, when some shops are named as the stock source', () => {
 
   it('falls back to every active shop when no shop is named', async () => {
     // The state on the day this ships. Nothing is flagged yet, so the tabs must
-    // look exactly as they did before — an empty page would read as data loss.
+    // look exactly as they did before - an empty page would read as data loss.
     await stock(`${TAG}-a`, SKU, 100, 'Pizza Oven')
     await stock(`${TAG}-b`, `${TAG}-B`, 50, 'Other')
     await db.supplyItem.create({ data: { sku: SKU, name: 'Pizza Oven' } })
@@ -410,7 +410,7 @@ describe('loadInventory, when some shops are named as the stock source', () => {
 
   /**
    * The page has to be able to SAY where its figures came from. Two scopes are
-   * mixed on one screen — stock from the named shops, sales from every shop —
+   * mixed on one screen - stock from the named shops, sales from every shop -
    * and no number on the page reveals which is which.
    */
   it('reports which shops the stock came from, named and in order', async () => {

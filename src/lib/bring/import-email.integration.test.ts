@@ -46,7 +46,7 @@ beforeAll(async () => {
 
   // importWarehouseFile refuses to run when Bring is not connected, so the
   // singleton must hold readable credentials. UPSERT, never delete-then-create:
-  // it is a fixed-id row no tag can isolate — see the Global Constraints.
+  // it is a fixed-id row no tag can isolate - see the Global Constraints.
   const connected = {
     bringApiUid: 'test@example.test',
     bringApiKey: encryptSecret('test-key'),
@@ -124,11 +124,11 @@ describe('importWarehouseFile', () => {
       orderBy: { receivedAt: 'desc' },
     })
     expect(row?.source).toBe('EMAIL')
-    // One consignment linked, not two packages — see the `linked` assertion above.
+    // One consignment linked, not two packages - see the `linked` assertion above.
     expect(row?.rowsLinked).toBe(1)
   })
 
-  it('is safe to run twice — the second import adopts, never rebuilds', async () => {
+  it('is safe to run twice - the second import adopts, never rebuilds', async () => {
     const before = await db.shipment.findFirst({
       where: { trackingNumber: `${PREFIX}0001` },
     })
@@ -176,7 +176,7 @@ describe('importWarehouseFile', () => {
 
   /**
    * The 2026-08-18 warehouse file, reported by the client: 51 parsed, 46
-   * linked, 5 unmatched — and only TWO of the five said anything about
+   * linked, 5 unmatched - and only TWO of the five said anything about
    * themselves. The other three were numbers Bring did not resolve, and this
    * function counted them into `rowsUnmatched` while writing only the refusals
    * into `unmatched`. So three parcels went missing with the count as the sole
@@ -229,7 +229,7 @@ describe('importWarehouseFile', () => {
     expect(row?.error).toMatch(/\.docx/)
   })
 
-  // A file can be taken this far — parsed, past the Bring-connected check —
+  // A file can be taken this far - parsed, past the Bring-connected check -
   // and still fail: Bring timing out, a dropped database connection. Nothing
   // after the parse step was guarded before this test, so the throw escaped
   // unrecorded: no TrackingImport row, and because the route answers 200

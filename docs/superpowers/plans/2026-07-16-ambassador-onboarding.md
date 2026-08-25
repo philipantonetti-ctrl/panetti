@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let an admin create and manage ambassadors, and let an ambassador claim a login from an invite link — so the discount code earns commission from the next sync, and the person logs in later.
+**Goal:** Let an admin create and manage ambassadors, and let an ambassador claim a login from an invite link - so the discount code earns commission from the next sync, and the person logs in later.
 
 **Architecture:** No schema change. Invite links are stateless JWTs signed with the existing `AUTH_SECRET` via `jose`, carrying only an ambassador id and a 7-day expiry. Single-use and revocation are derived from facts already in the database (does a login exist? is the ambassador active?) rather than stored token state.
 
@@ -123,7 +123,7 @@ describe('invite tokens', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/auth/invite.test.ts`
-Expected: FAIL — `Failed to resolve import "./invite"`
+Expected: FAIL - `Failed to resolve import "./invite"`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -168,7 +168,7 @@ export async function verifyInvite(token: string): Promise<string | null> {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/auth/invite.test.ts`
-Expected: PASS — 6 tests
+Expected: PASS - 6 tests
 
 - [ ] **Step 5: Commit**
 
@@ -300,7 +300,7 @@ describe('POST /api/ambassadors', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/ambassadors/route.test.ts`
-Expected: FAIL — `Failed to resolve import "./route"`
+Expected: FAIL - `Failed to resolve import "./route"`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -388,7 +388,7 @@ export async function POST(req: Request) {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/app/api/ambassadors/route.test.ts`
-Expected: PASS — 10 tests
+Expected: PASS - 10 tests
 
 - [ ] **Step 5: Commit**
 
@@ -468,7 +468,7 @@ describe('PATCH /api/ambassadors/[id]', () => {
     expect(after.commissionRate).toBeCloseTo(0.25)
   })
 
-  it('leaves absent fields untouched — it is not a full replace', async () => {
+  it('leaves absent fields untouched - it is not a full replace', async () => {
     await asAdmin()
     await patch({ name: 'After' })
     const after = await db.ambassador.findUniqueOrThrow({ where: { id } })
@@ -502,7 +502,7 @@ describe('PATCH /api/ambassadors/[id]', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run "src/app/api/ambassadors/[id]/route.test.ts"`
-Expected: FAIL — `Failed to resolve import "./route"`
+Expected: FAIL - `Failed to resolve import "./route"`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -555,7 +555,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run "src/app/api/ambassadors/[id]/route.test.ts"`
-Expected: PASS — 5 tests
+Expected: PASS - 5 tests
 
 - [ ] **Step 5: Commit**
 
@@ -649,7 +649,7 @@ describe('ambassador codes', () => {
     expect(await db.ambassadorCode.count({ where: { ambassadorId: id } })).toBe(1)
   })
 
-  // An ambassador with no code can never earn again — refuse rather than strand them.
+  // An ambassador with no code can never earn again - refuse rather than strand them.
   it('refuses to delete the LAST code', async () => {
     await asAdmin()
     const only = await db.ambassadorCode.findFirstOrThrow({ where: { ambassadorId: id } })
@@ -663,7 +663,7 @@ describe('ambassador codes', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run "src/app/api/ambassadors/[id]/codes/route.test.ts"`
-Expected: FAIL — `Failed to resolve import "./route"`
+Expected: FAIL - `Failed to resolve import "./route"`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -737,7 +737,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run "src/app/api/ambassadors/[id]/codes/route.test.ts"`
-Expected: PASS — 5 tests
+Expected: PASS - 5 tests
 
 - [ ] **Step 5: Commit**
 
@@ -748,13 +748,13 @@ git commit -m "feat: add and remove ambassador discount codes"
 
 ---
 
-## Task 5: Redeem an invite — SECURITY CRITICAL
+## Task 5: Redeem an invite - SECURITY CRITICAL
 
 **Files:**
 - Create: `src/app/api/invite/route.ts`
 - Test: `src/app/api/invite/route.test.ts`
 
-This route is **public** — no session required — so it needs no `next/headers` mock. Its four guards are the entire security model.
+This route is **public** - no session required - so it needs no `next/headers` mock. Its four guards are the entire security model.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -797,7 +797,7 @@ beforeEach(async () => {
 
 afterEach(wipe)
 
-describe('POST /api/invite — guard 1: the token itself', () => {
+describe('POST /api/invite - guard 1: the token itself', () => {
   it('rejects garbage', async () => {
     expect((await redeem({ token: 'nonsense', password: 'longenough1' })).status).toBe(400)
   })
@@ -817,7 +817,7 @@ describe('POST /api/invite — guard 1: the token itself', () => {
   })
 })
 
-describe('POST /api/invite — guard 2: the ambassador exists', () => {
+describe('POST /api/invite - guard 2: the ambassador exists', () => {
   it('rejects a token for a deleted ambassador', async () => {
     const token = await signInvite(ambA)
     await db.ambassador.delete({ where: { id: ambA } })
@@ -825,7 +825,7 @@ describe('POST /api/invite — guard 2: the ambassador exists', () => {
   })
 })
 
-describe('POST /api/invite — guard 3: active (this is revocation)', () => {
+describe('POST /api/invite - guard 3: active (this is revocation)', () => {
   it('rejects the link of a deactivated ambassador', async () => {
     const token = await signInvite(ambA)
     await db.ambassador.update({ where: { id: ambA }, data: { active: false } })
@@ -835,7 +835,7 @@ describe('POST /api/invite — guard 3: active (this is revocation)', () => {
   })
 })
 
-describe('POST /api/invite — guard 4: single use', () => {
+describe('POST /api/invite - guard 4: single use', () => {
   it('refuses a second redemption of the same link', async () => {
     const token = await signInvite(ambA)
     expect((await redeem({ token, password: 'longenough1' })).status).toBe(200)
@@ -856,7 +856,7 @@ describe('POST /api/invite — guard 4: single use', () => {
   })
 })
 
-describe('POST /api/invite — the happy path', () => {
+describe('POST /api/invite - the happy path', () => {
   it('creates an AMBASSADOR login, signs them in, and sends them to the portal', async () => {
     const token = await signInvite(ambA)
     const res = await redeem({ token, password: 'longenough1' })
@@ -886,7 +886,7 @@ describe('POST /api/invite — the happy path', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/invite/route.test.ts`
-Expected: FAIL — `Failed to resolve import "./route"`
+Expected: FAIL - `Failed to resolve import "./route"`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -903,7 +903,7 @@ const Body = z.object({ token: z.string().min(1), password: z.string().min(8) })
 
 /**
  * The only public write in the app. Four guards, in order. Guards 3 and 4 are
- * revocation and single-use, and neither needs stored state — they read facts
+ * revocation and single-use, and neither needs stored state - they read facts
  * the database already holds.
  */
 export async function POST(req: Request) {
@@ -912,7 +912,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Choose a password of at least 8 characters' }, { status: 400 })
   }
 
-  // 1. Signature, expiry, and audience — a session token will not pass.
+  // 1. Signature, expiry, and audience - a session token will not pass.
   const ambassadorId = await verifyInvite(parsed.data.token)
   if (!ambassadorId) {
     return NextResponse.json({ error: 'This invite link has expired. Ask for a new one.' }, { status: 400 })
@@ -923,13 +923,13 @@ export async function POST(req: Request) {
     include: { user: { select: { id: true } } },
   })
 
-  // 2. Still exists. 3. Still active — deactivating IS revocation.
+  // 2. Still exists. 3. Still active - deactivating IS revocation.
   // One message for both: a stranger holding a dead link learns nothing.
   if (!ambassador || !ambassador.active) {
     return NextResponse.json({ error: 'This invite is no longer valid.' }, { status: 400 })
   }
 
-  // 4. Single use — a redeemed link is dead, because the login now exists.
+  // 4. Single use - a redeemed link is dead, because the login now exists.
   if (ambassador.user) {
     return NextResponse.json({ error: 'You already have a login. Sign in instead.' }, { status: 409 })
   }
@@ -965,7 +965,7 @@ export async function POST(req: Request) {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/app/api/invite/route.test.ts`
-Expected: PASS — 9 tests
+Expected: PASS - 9 tests
 
 - [ ] **Step 5: Commit**
 
@@ -982,7 +982,7 @@ git commit -m "feat: redeem an invite link to claim an ambassador login"
 - Modify: `src/app/api/portal/route.ts` (the `everyone` / `totalAmbassadors` block, ~lines 68-92)
 - Test: `src/app/api/portal/rank.test.ts`
 
-`totalAmbassadors` counts `active: true`, while `better` ranks against everyone with orders. Nothing can deactivate anyone today, so the two always agree. **Task 3 shipped the deactivate button, so this is now reachable** — deactivate an ambassador with sales and someone else's portal reads "#9 of 8".
+`totalAmbassadors` counts `active: true`, while `better` ranks against everyone with orders. Nothing can deactivate anyone today, so the two always agree. **Task 3 shipped the deactivate button, so this is now reachable** - deactivate an ambassador with sales and someone else's portal reads "#9 of 8".
 
 - [ ] **Step 1: Read the current code**
 
@@ -1067,17 +1067,17 @@ describe('portal rank', () => {
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/portal/rank.test.ts`
-Expected: FAIL on at least one case — `rank` exceeds `totalAmbassadors`, because the two are computed over different populations.
+Expected: FAIL on at least one case - `rank` exceeds `totalAmbassadors`, because the two are computed over different populations.
 
 - [ ] **Step 4: Fix the implementation**
 
 Replace the `totalAmbassadors` line in `src/app/api/portal/route.ts`:
 
 ```ts
-// BEFORE — a different population from the one `better` ranks against.
+// BEFORE - a different population from the one `better` ranks against.
 // const totalAmbassadors = await db.ambassador.count({ where: { active: true } })
 
-// AFTER — rank and total must come from the SAME population, or you get "#9 of 8".
+// AFTER - rank and total must come from the SAME population, or you get "#9 of 8".
 // The population is everyone with an attributed order in range; `active` plays no
 // part, because a deactivated ambassador's past sales genuinely happened.
 // If I have no orders in range I am absent from `everyone`, so count me in myself.
@@ -1088,12 +1088,12 @@ const totalAmbassadors = iAmInPopulation ? everyone.length : everyone.length + 1
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run src/app/api/portal/rank.test.ts`
-Expected: PASS — 3 tests
+Expected: PASS - 3 tests
 
-- [ ] **Step 6: Run the FULL suite — this touched shared code**
+- [ ] **Step 6: Run the FULL suite - this touched shared code**
 
 Run: `npm test`
-Expected: PASS — every test, no regressions in the portal or leaderboard.
+Expected: PASS - every test, no regressions in the portal or leaderboard.
 
 - [ ] **Step 7: Commit**
 
@@ -1138,11 +1138,11 @@ export default async function AmbassadorsPage() {
 
 - [ ] **Step 3: Write the client**
 
-Key requirements — every one of these is load-bearing:
+Key requirements - every one of these is load-bearing:
 
 - `commissionPercent` is a **percent** in the field, with a `%` suffix. The API converts. Never send a fraction.
-- **Every fetch checks `res.ok`**, renders the server's `error` string, and uses `try`/`finally` so a button cannot stick on "Saving…". The existing `CostsClient.tsx:283-294` does the opposite — do not copy it.
-- The invite link is built client-side: `` `${window.location.origin}${row.invitePath}` `` — so no base-URL env var is needed.
+- **Every fetch checks `res.ok`**, renders the server's `error` string, and uses `try`/`finally` so a button cannot stick on "Saving…". The existing `CostsClient.tsx:283-294` does the opposite - do not copy it.
+- The invite link is built client-side: `` `${window.location.origin}${row.invitePath}` `` - so no base-URL env var is needed.
 - Show **Copy invite link** only when `row.onboarded === false`.
 
 ```tsx
@@ -1207,7 +1207,7 @@ export function AmbassadorsClient() {
       setError('Could not reach the server')
       return false
     } finally {
-      setBusy(false) // always — a button must never stick on "Saving…"
+      setBusy(false) // always - a button must never stick on "Saving…"
     }
   }
 
@@ -1324,7 +1324,7 @@ Expected: exit 0, all tests pass.
 
 - [ ] **Step 5: Style it to match the existing design system**
 
-Read `src/app/settings/shops/ShopsClient.tsx` and apply the same class names, spacing, and table styling. The markup above is deliberately unstyled — the app has one consistent design system and this screen must not look foreign.
+Read `src/app/settings/shops/ShopsClient.tsx` and apply the same class names, spacing, and table styling. The markup above is deliberately unstyled - the app has one consistent design system and this screen must not look foreign.
 
 - [ ] **Step 6: Commit**
 
@@ -1343,7 +1343,7 @@ git commit -m "feat: admin screen to create and manage ambassadors"
 
 - [ ] **Step 1: Write the server wrapper**
 
-It looks the invite up server-side purely so the page can greet them by name and fail early on a dead link. **This is presentation only** — `POST /api/invite` re-checks all four guards regardless.
+It looks the invite up server-side purely so the page can greet them by name and fail early on a dead link. **This is presentation only** - `POST /api/invite` re-checks all four guards regardless.
 
 ```tsx
 // src/app/invite/[token]/page.tsx
@@ -1439,7 +1439,7 @@ export function InviteClient({ token, name }: { token: string; name: string }) {
 
 Run: `sed -n '1,30p' src/components/PasswordField.tsx`
 
-If its props differ from `value`/`onChange`/`label`, adapt the calls above to the real interface. Do not change `PasswordField` itself — other screens use it.
+If its props differ from `value`/`onChange`/`label`, adapt the calls above to the real interface. Do not change `PasswordField` itself - other screens use it.
 
 - [ ] **Step 4: Verify**
 
@@ -1531,7 +1531,7 @@ test('an admin creates an ambassador, who claims a login and sees only their own
 Run: `npx playwright test e2e/ambassador-onboarding.spec.ts`
 Expected: PASS. Playwright starts the dev server itself (`reuseExistingServer: true`).
 
-If the admin credentials differ, take them from `prisma/seed.ts` — do not guess.
+If the admin credentials differ, take them from `prisma/seed.ts` - do not guess.
 
 - [ ] **Step 4: Run EVERYTHING green, as asked**
 
@@ -1552,10 +1552,10 @@ git commit -m "test: end-to-end ambassador onboarding journey"
 
 ## Definition of done
 
-- [ ] `npm test` — green, including every new test
-- [ ] `npx tsc --noEmit` — exit 0
-- [ ] `npm run build` — exit 0
-- [ ] `npx playwright test` — green
+- [ ] `npm test` - green, including every new test
+- [ ] `npx tsc --noEmit` - exit 0
+- [ ] `npm run build` - exit 0
+- [ ] `npx playwright test` - green
 - [ ] An admin can create an ambassador; the code exists, so the **next sync attributes orders to them before they have ever logged in**
 - [ ] A deactivated ambassador's invite link stops working immediately
 - [ ] A redeemed invite link cannot be redeemed twice

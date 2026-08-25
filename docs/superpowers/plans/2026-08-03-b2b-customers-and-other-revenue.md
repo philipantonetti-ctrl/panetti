@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let the owner register business customers with their own agreed prices, currency and VAT rate, then enter the orders those customers place by email — so that revenue, COGS and profit appear in the same numbers as the webshop.
+**Goal:** Let the owner register business customers with their own agreed prices, currency and VAT rate, then enter the orders those customers place by email - so that revenue, COGS and profit appear in the same numbers as the webshop.
 
-**Architecture:** A B2B order is written as an ordinary `Order` row with ordinary `OrderItem` lines, so `computeMetrics()` counts it with no knowledge that B2B exists. Two new tables hold the customer and their price book; four new columns on `Order`/`OrderItem` hold what makes a B2B order different. Along the way we correct a latent assumption in the metrics engine — that an order's currency equals its shop's — which a EUR order on a NOK shop would otherwise turn into COGS ten times too high.
+**Architecture:** A B2B order is written as an ordinary `Order` row with ordinary `OrderItem` lines, so `computeMetrics()` counts it with no knowledge that B2B exists. Two new tables hold the customer and their price book; four new columns on `Order`/`OrderItem` hold what makes a B2B order different. Along the way we correct a latent assumption in the metrics engine - that an order's currency equals its shop's - which a EUR order on a NOK shop would otherwise turn into COGS ten times too high.
 
 **Tech Stack:** Next.js 16 (App Router), React 19, Prisma 6 + PostgreSQL, Zod 4, Tailwind 4, Vitest (unit + integration against a real Postgres), Playwright (e2e).
 
@@ -12,10 +12,10 @@
 
 ## Global Constraints
 
-- **All money is an integer number of minor units** (øre, cents), never a float. Use `toMinor`/`toMajor`/`pct`/`sum` from `src/lib/money.ts`. `pct(minor, rate)` rounds half away from zero — use it for every percentage.
+- **All money is an integer number of minor units** (øre, cents), never a float. Use `toMinor`/`toMajor`/`pct`/`sum` from `src/lib/money.ts`. `pct(minor, rate)` rounds half away from zero - use it for every percentage.
 - **Money is always tagged with the currency it is in.** Conversion happens at read time only, never stored converted (`prisma/schema.prisma:10-11`).
 - **Schema changes must be additive.** `npm run build` runs `scripts/db-push.mjs`, which refuses anything destructive without an explicit flag. No column may be dropped or retyped.
-- **Every money endpoint is admin-only** — `assertAdmin(await currentUser())` inside a `try`, catching `AuthError` → 403 — and carries `Cache-Control: private, no-store`.
+- **Every money endpoint is admin-only** - `assertAdmin(await currentUser())` inside a `try`, catching `AuthError` → 403 - and carries `Cache-Control: private, no-store`.
 - **Tests run against a real local Postgres**, from `DATABASE_URL` in `.env`. Never point them at the live Neon database.
 - **The dev server must never be piped** (`npm run dev | head` wedges the port). Run it bare and in the background.
 - **Never run `git stash`, `git checkout --`, `git restore`, or `git reset --hard`.** They silently revert work in this repo.
@@ -38,7 +38,7 @@
 | `src/app/api/b2b/customers/route.test.ts` | Its tests. |
 | `src/app/api/b2b/customers/[id]/route.ts` | Read, edit (price list replaced wholesale), delete-or-refuse. |
 | `src/app/api/b2b/customers/[id]/route.test.ts` | Its tests. |
-| `src/app/api/b2b/orders/route.ts` | **`POST` only** — create a B2B order, recomputing every total server-side. Listing is `/api/orders?source=b2b`, which already computes per-order profit; a second list endpoint would be a second copy of that arithmetic. |
+| `src/app/api/b2b/orders/route.ts` | **`POST` only** - create a B2B order, recomputing every total server-side. Listing is `/api/orders?source=b2b`, which already computes per-order profit; a second list endpoint would be a second copy of that arithmetic. |
 | `src/app/api/b2b/orders/route.test.ts` | Its tests. |
 | `src/app/api/b2b/orders/[id]/route.ts` | Edit and delete one B2B order. |
 | `src/app/api/b2b/orders/[id]/route.test.ts` | Its tests. |
@@ -71,7 +71,7 @@
 
 ---
 
-### Task 1: Schema — the two tables and the four columns
+### Task 1: Schema - the two tables and the four columns
 
 **Files:**
 - Modify: `prisma/schema.prisma`
@@ -86,7 +86,7 @@ Append to `prisma/schema.prisma`:
 
 ```prisma
 // A business customer who buys off the webshop. Their orders are ordinary
-// Order rows — what makes them different is an agreed price list, their own
+// Order rows - what makes them different is an agreed price list, their own
 // currency, and an invoice instead of a card.
 model B2bCustomer {
   id         String   @id @default(cuid())
@@ -174,7 +174,7 @@ In `model OrderItem`, after `lineNetTotal`:
 - [ ] **Step 3: Push the schema and regenerate the client**
 
 Run: `npx prisma db push && npx prisma generate`
-Expected: "Your database is now in sync with your Prisma schema." No prompt about data loss. If it asks to reset, STOP — something is not additive.
+Expected: "Your database is now in sync with your Prisma schema." No prompt about data loss. If it asks to reset, STOP - something is not additive.
 
 - [ ] **Step 4: Verify nothing existing broke**
 
@@ -190,7 +190,7 @@ git commit -m "feat: tables for B2B customers and their agreed prices"
 
 ---
 
-### Task 2: `src/lib/b2b/pricing.ts` — the money math
+### Task 2: `src/lib/b2b/pricing.ts` - the money math
 
 **Files:**
 - Create: `src/lib/b2b/pricing.ts`
@@ -202,7 +202,7 @@ git commit -m "feat: tables for B2B customers and their agreed prices"
   - `type DiscountKind = 'PERCENT' | 'AMOUNT'`
   - `type B2bLine = { quantity: number; unitPrice: number; discountValue: number; discountKind: DiscountKind }`
   - `lineTotals(line: B2bLine): { gross: number; discount: number; net: number }`
-  - `type OrderTotals = { grossSales, discountTotal, netSales, shippingCharged, taxTotal, total }` — all `number`
+  - `type OrderTotals = { grossSales, discountTotal, netSales, shippingCharged, taxTotal, total }` - all `number`
   - `orderTotals(lines: B2bLine[], shippingCharged: number, vatPercent: number): OrderTotals`
 
 - [ ] **Step 1: Write the failing tests**
@@ -302,7 +302,7 @@ describe('orderTotals', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/lib/b2b/pricing.test.ts`
-Expected: FAIL — "Failed to resolve import './pricing'".
+Expected: FAIL - "Failed to resolve import './pricing'".
 
 - [ ] **Step 3: Write the implementation**
 
@@ -315,7 +315,7 @@ Create `src/lib/b2b/pricing.ts`:
  * Pure arithmetic on integer minor units, in the CUSTOMER's currency. The field
  * names are deliberately the ones `mapOrder()` produces from WooCommerce, so an
  * order built from this lands in the database in exactly the shape the metrics
- * engine already reads — no special case anywhere downstream.
+ * engine already reads - no special case anywhere downstream.
  */
 import { pct, sum } from '../money'
 
@@ -335,7 +335,7 @@ export type LineTotals = { gross: number; discount: number; net: number }
 /**
  * One line's worth.
  *
- * An AMOUNT discount is PER UNIT — "20.00 off each chair" — which is the frame
+ * An AMOUNT discount is PER UNIT - "20.00 off each chair" - which is the frame
  * the unit price beside it on the form is already in. The discount is clamped
  * to [0, gross]: a discount reduces revenue and can never invent it, and a
  * negative one is a typo, not a surcharge.
@@ -364,7 +364,7 @@ export type OrderTotals = {
 /**
  * The whole order.
  *
- * `vatPercent` is a percentage — 25 means 25% — and it falls on the goods and
+ * `vatPercent` is a percentage - 25 means 25% - and it falls on the goods and
  * the shipping alike, because shipping follows the rate of what is being
  * shipped. VAT is recorded, never counted as revenue: the engine's
  * `netRevenue` is net sales plus shipping, and `grossRevenue` adds the VAT back
@@ -407,7 +407,7 @@ git commit -m "feat: what a B2B order is worth, per line and in total"
 
 ---
 
-### Task 3: `src/lib/b2b/numbering.ts` — the B-NNNN identity
+### Task 3: `src/lib/b2b/numbering.ts` - the B-NNNN identity
 
 **Files:**
 - Create: `src/lib/b2b/numbering.ts`
@@ -416,9 +416,9 @@ git commit -m "feat: what a B2B order is worth, per line and in total"
 **Interfaces:**
 - Consumes: `db` from `src/lib/db.ts` (only in `nextB2bNumber`).
 - Produces:
-  - `parseB2bNumber(number: string): number` — `"B-0007"` → `7`, anything else → `0`
-  - `formatB2bNumber(n: number): string` — `7` → `"B-0007"`
-  - `b2bExternalId(number: string): string` — `"B-0007"` → `"b2b:B-0007"`
+  - `parseB2bNumber(number: string): number` - `"B-0007"` → `7`, anything else → `0`
+  - `formatB2bNumber(n: number): string` - `7` → `"B-0007"`
+  - `b2bExternalId(number: string): string` - `"B-0007"` → `"b2b:B-0007"`
   - `nextB2bNumber(shopId: string): Promise<string>`
 
 - [ ] **Step 1: Write the failing tests**
@@ -459,7 +459,7 @@ describe('parseB2bNumber', () => {
 
 describe('b2bExternalId', () => {
   it('namespaces the id so a WooCommerce order can never collide with it', () => {
-    // Woo external ids are always String(woo.id) — plain digits.
+    // Woo external ids are always String(woo.id) - plain digits.
     expect(b2bExternalId('B-0007')).toBe('b2b:B-0007')
   })
 })
@@ -468,7 +468,7 @@ describe('b2bExternalId', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/lib/b2b/numbering.test.ts`
-Expected: FAIL — "Failed to resolve import './numbering'".
+Expected: FAIL - "Failed to resolve import './numbering'".
 
 - [ ] **Step 3: Write the implementation**
 
@@ -478,7 +478,7 @@ Create `src/lib/b2b/numbering.ts`:
 /**
  * How a hand-entered order is identified.
  *
- * B2B orders carry their own sequence — B-0001, B-0002 — rather than borrowing
+ * B2B orders carry their own sequence - B-0001, B-0002 - rather than borrowing
  * the webshop's numbers, and their `externalId` is namespaced `b2b:`. A
  * WooCommerce `externalId` is always `String(woo.id)`, plain digits, so the
  * `@@unique([shopId, externalId])` that the sync and the webhook upsert on can
@@ -510,7 +510,7 @@ export function b2bExternalId(number: string): string {
  * The next number for this shop.
  *
  * Reads every B2B number the shop holds and takes the highest, rather than
- * `orderBy: { number: 'desc' }` — string ordering puts "B-9999" above
+ * `orderBy: { number: 'desc' }` - string ordering puts "B-9999" above
  * "B-10000" and would hand back a number already taken. These are typed by
  * hand, so the list is small enough that reading it costs nothing.
  *
@@ -544,7 +544,7 @@ git commit -m "feat: B2B orders number themselves, in their own sequence"
 
 ### Task 4: The engine learns that costs carry their own currency
 
-This is the one task that edits live money code. The gate is that **no existing assertion changes** — only the shared `order()` factories gain one field, and every expected number stays exactly as it is.
+This is the one task that edits live money code. The gate is that **no existing assertion changes** - only the shared `order()` factories gain one field, and every expected number stays exactly as it is.
 
 **Files:**
 - Modify: `src/lib/metrics/types.ts`
@@ -562,7 +562,7 @@ In `src/lib/metrics/types.ts`, inside `export type EngineOrder`, after `currency
 
 ```ts
   /**
-   * The currency this order's PRODUCT COSTS and FULFILLMENT RATE are held in —
+   * The currency this order's PRODUCT COSTS and FULFILLMENT RATE are held in -
    * its shop's. Usually the same as `currency`, and deliberately required
    * rather than defaulted: a B2B order can be invoiced in EUR while the shop's
    * costs stay in NOK, and silently reading one as the other is a tenfold
@@ -589,7 +589,7 @@ and after `commissionRate: number`:
 
 - [ ] **Step 2: Add `costCurrency` to the four test factories**
 
-Existing tests must still compile. In each factory add the field beside `currency`, matching the shop that factory uses. **Change nothing else — no assertion moves.**
+Existing tests must still compile. In each factory add the field beside `currency`, matching the shop that factory uses. **Change nothing else - no assertion moves.**
 
 `src/lib/metrics/engine.test.ts:28` (after `currency: 'NOK',`):
 
@@ -602,7 +602,7 @@ Existing tests must still compile. In each factory add the field beside `currenc
 - [ ] **Step 3: Run the whole suite to prove the refactor is inert**
 
 Run: `npm test`
-Expected: PASS, the same count as Task 1. If a number moved, the factory picked up the wrong currency — fix that, do not adjust an assertion.
+Expected: PASS, the same count as Task 1. If a number moved, the factory picked up the wrong currency - fix that, do not adjust an assertion.
 
 - [ ] **Step 4: Write the three failing tests**
 
@@ -611,7 +611,7 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
 ```ts
   // A business customer invoiced in EUR, buying from a NOK shop. Product costs
   // live in the SHOP's currency, so reading them as the order's would multiply
-  // COGS by the EUR/NOK rate — about tenfold — and show a large false loss.
+  // COGS by the EUR/NOK rate - about tenfold - and show a large false loss.
   it('reads product costs in the SHOP currency, not the order currency', () => {
     const res = computeMetrics({
       shops: [shops[0]],
@@ -627,7 +627,7 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
       to: new Date('2026-07-01'),
     })
 
-    // 2 x (100.00 + 10.00) kr = 220.00 kr, displayed in kr — unchanged.
+    // 2 x (100.00 + 10.00) kr = 220.00 kr, displayed in kr - unchanged.
     // Converted from EUR it would have been 2 420.00 kr.
     expect(res.total.cogs).toBe(22000)
   })
@@ -671,7 +671,7 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
     expect(
       computeMetrics({ ...input, orders: [order({ fulfillmentCost: 45000 })] }).total.fulfillment,
     ).toBe(45000)
-    // Zero is a real answer — "we did not ship it" — not "fall back to the rate".
+    // Zero is a real answer - "we did not ship it" - not "fall back to the rate".
     expect(
       computeMetrics({ ...input, orders: [order({ fulfillmentCost: 0 })] }).total.fulfillment,
     ).toBe(0)
@@ -681,7 +681,7 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
 - [ ] **Step 5: Run them to verify they fail**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: FAIL on all three — COGS comes back 24200 (22000 × the EUR→USD rate
+Expected: FAIL on all three - COGS comes back 24200 (22000 × the EUR→USD rate
 of 1.1, because `convert()` multiplies by the *from* currency's rate), fees
 2650, fulfillment 9900.
 
@@ -699,8 +699,8 @@ In `computeMetrics`, just below the existing `conv` helper (`engine.ts:93-94`), 
 Replace the fulfillment block (`engine.ts:103-106`):
 
 ```ts
-    // Fulfillment: what this order actually cost to ship when it says so — a
-    // hand-entered B2B order does — otherwise the shop's rate on its day.
+    // Fulfillment: what this order actually cost to ship when it says so - a
+    // hand-entered B2B order does - otherwise the shop's rate on its day.
     const ratesForShop = input.fulfillmentRates?.get(shop.id) ?? []
     const fulfillment = sum(
       shopOrders.map((o) =>
@@ -737,14 +737,14 @@ In the `cogs` block (`engine.ts:122-132`), change the returned line from `conv(l
 - [ ] **Step 7: Run the engine tests**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: PASS — the three new cases and every pre-existing one, with no assertion edited.
+Expected: PASS - the three new cases and every pre-existing one, with no assertion edited.
 
-- [ ] **Step 8: Give the loader the real value — no stopgap**
+- [ ] **Step 8: Give the loader the real value - no stopgap**
 
 `costCurrency` is required, so `src/lib/data/load.ts` stops compiling until it is set. Set it **correctly** now rather than parking the bug in a placeholder. Above the `orderRows` query, beside `rateByAmbassador`:
 
 ```ts
-  // A shop's costs are in ITS currency. An order need not share it — a B2B
+  // A shop's costs are in ITS currency. An order need not share it - a B2B
   // customer can be invoiced in EUR from a NOK store.
   const currencyByShop = new Map(shopRows.map((s) => [s.id, s.currency]))
 ```
@@ -785,7 +785,7 @@ git commit -m "fix: product costs are the shop's currency, not the order's"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `src/lib/data/load.integration.test.ts` (follow the file's existing setup and cleanup conventions — reuse its shop fixture helpers rather than inventing new ones):
+Append to `src/lib/data/load.integration.test.ts` (follow the file's existing setup and cleanup conventions - reuse its shop fixture helpers rather than inventing new ones):
 
 ```ts
 describe('loadMetricsInput and B2B orders', () => {
@@ -845,7 +845,7 @@ describe('loadMetricsInput and B2B orders', () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/lib/data/load.integration.test.ts`
-Expected: FAIL — `fulfillmentCost` and `chargesGatewayFee` are `undefined`. (`costCurrency` already reads `'NOK'` correctly; Task 4 set it.)
+Expected: FAIL - `fulfillmentCost` and `chargesGatewayFee` are `undefined`. (`costCurrency` already reads `'NOK'` correctly; Task 4 set it.)
 
 - [ ] **Step 3: Select the two new columns**
 
@@ -909,7 +909,7 @@ git commit -m "fix: fetch exchange rates for order currencies too"
 ### Task 6: The Orders API tells B2B apart, and gets the same three fixes
 
 **Files:**
-- Modify: `src/app/api/orders/route.ts` — the `where` (`:59-85`), the `select` (`:94-122`), the figures (`:171-198`), the payload (`:200-225`)
+- Modify: `src/app/api/orders/route.ts` - the `where` (`:59-85`), the `select` (`:94-122`), the figures (`:171-198`), the payload (`:200-225`)
 - Test: `src/app/api/orders/route.test.ts`
 
 **Interfaces:**
@@ -983,7 +983,7 @@ Add to that file's `beforeEach`, after the existing shop fixture, a B2B customer
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npx vitest run src/app/api/orders/route.test.ts`
-Expected: FAIL — `source` is undefined and `?source=` is ignored.
+Expected: FAIL - `source` is undefined and `?source=` is ignored.
 
 - [ ] **Step 3: Accept the filter**
 
@@ -1115,10 +1115,10 @@ git commit -m "feat: the order list tells a B2B order from a webshop one"
 - Produces:
   - `GET /api/b2b/customers?shopId=` → `{ customers: CustomerRow[] }`,
     `CustomerRow = { id, name, shopId, shopName, currency, vatPercent, email, note, active, priceCount, orderCount, revenue }`. `revenue` is minor units in the customer's **own** currency.
-  - `POST /api/b2b/customers` body `{ shopId, name, currency, vatPercent?, email?, note?, prices?: { productId, unitPrice }[] }` — `unitPrice` in **major** units as typed → `{ customer: { id } }`; 409 on a duplicate name.
+  - `POST /api/b2b/customers` body `{ shopId, name, currency, vatPercent?, email?, note?, prices?: { productId, unitPrice }[] }` - `unitPrice` in **major** units as typed → `{ customer: { id } }`; 409 on a duplicate name.
   - `GET /api/b2b/customers/[id]` → `{ customer: CustomerRow & { shopCurrency, canChangeShop, prices: PriceRow[] } }`,
-    `PriceRow = { productId, sku, name, imageUrl, unitPrice, costPerItem, handlingCost }` — `unitPrice` in the customer's currency, both costs in the **shop's**.
-  - `PATCH /api/b2b/customers/[id]` — POST's body plus `active`, `shopId` optional; `prices` replaces the list wholesale.
+    `PriceRow = { productId, sku, name, imageUrl, unitPrice, costPerItem, handlingCost }` - `unitPrice` in the customer's currency, both costs in the **shop's**.
+  - `PATCH /api/b2b/customers/[id]` - POST's body plus `active`, `shopId` optional; `prices` replaces the list wholesale.
   - `DELETE /api/b2b/customers/[id]` → 409 `{ error: 'This customer has orders. Deactivate them instead.' }` when orders exist.
   - Exported helpers Task 8 imports: `Price` (the Zod object) and `assertProductsBelongToShop(shopId, productIds)`.
 
@@ -1273,7 +1273,7 @@ describe('POST /api/b2b/customers', () => {
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npx vitest run src/app/api/b2b/customers/route.test.ts`
-Expected: FAIL — "Failed to resolve import './route'".
+Expected: FAIL - "Failed to resolve import './route'".
 
 - [ ] **Step 3: Write the collection route**
 
@@ -1371,7 +1371,7 @@ export async function GET(req: Request) {
             active: c.active,
             priceCount: c._count.prices,
             orderCount: t?._count._all ?? 0,
-            // Net revenue in the customer's OWN currency — every one of their
+            // Net revenue in the customer's OWN currency - every one of their
             // orders is in it, so nothing here needs converting.
             revenue: (t?._sum.netSales ?? 0) + (t?._sum.shippingCharged ?? 0),
           }
@@ -1438,7 +1438,7 @@ Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Write the failing tests for the item route**
 
-Create `src/app/api/b2b/customers/[id]/route.test.ts`. Copy the mock, `asAdmin`, `TAG` (change to `[b2b-cust-id-test]`), fixtures and `cleanup` from Step 1 verbatim — repeated deliberately, because these files are read independently — then replace the import and helpers with:
+Create `src/app/api/b2b/customers/[id]/route.test.ts`. Copy the mock, `asAdmin`, `TAG` (change to `[b2b-cust-id-test]`), fixtures and `cleanup` from Step 1 verbatim - repeated deliberately, because these files are read independently - then replace the import and helpers with:
 
 ```ts
 const { GET, PATCH, DELETE } = await import('./route')
@@ -1485,8 +1485,8 @@ describe('GET /api/b2b/customers/[id]', () => {
     const body = await (await GET(new Request('http://localhost/x'), params(c.id))).json()
     expect(body.customer.prices[0]).toMatchObject({
       productId, sku: 'SKU-1', name: 'Massage gun',
-      unitPrice: 8900,   // EUR — the customer's currency
-      costPerItem: 4000, // NOK — the shop's
+      unitPrice: 8900,   // EUR - the customer's currency
+      costPerItem: 4000, // NOK - the shop's
       handlingCost: 500,
     })
     expect(body.customer.shopCurrency).toBe('NOK')
@@ -1574,7 +1574,7 @@ describe('DELETE /api/b2b/customers/[id]', () => {
 - [ ] **Step 6: Run them to verify they fail**
 
 Run: `npx vitest run "src/app/api/b2b/customers/[id]/route.test.ts"`
-Expected: FAIL — "Failed to resolve import './route'".
+Expected: FAIL - "Failed to resolve import './route'".
 
 - [ ] **Step 7: Write the item route**
 
@@ -1637,7 +1637,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       _count: { _all: true },
       _sum: { netSales: true, shippingCharged: true },
     })
-    // Any order at all locks the shop, not just an earning one — a refunded
+    // Any order at all locks the shop, not just an earning one - a refunded
     // order is still history reported under this store.
     const everOrdered = await db.order.count({ where: { b2bCustomerId: id } })
     const today = new Date()
@@ -1710,7 +1710,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     await assertProductsBelongToShop(shopId, d.prices.map((p) => p.productId))
 
-    // Rewrite the price list rather than diff it — storeOrder()'s rule for
+    // Rewrite the price list rather than diff it - storeOrder()'s rule for
     // order lines, for the same reason: simpler and always right. Replacing a
     // price never touches an order already placed, because the price actually
     // charged is frozen on the OrderItem.
@@ -1802,7 +1802,7 @@ git commit -m "feat: register a B2B customer and their agreed prices"
 - Consumes: `orderTotals`, `lineTotals`, `B2bLine` (Task 2); `nextB2bNumber`, `b2bExternalId` (Task 3); `assertProductsBelongToShop` (Task 7).
 - Produces:
   - `POST /api/b2b/orders` body `{ customerId, placedAt: 'YYYY-MM-DD', shippingCharged?, fulfillmentCost?, lines: Line[] }` where `Line = { productId, quantity, unitPrice, discountValue?, discountKind?, savePrice? }`. `unitPrice`, `shippingCharged` and an `AMOUNT` `discountValue` are **major** units in the **customer's** currency; `fulfillmentCost` is **major** units in the **shop's**. → `{ order: { id, number } }`.
-  - `PATCH /api/b2b/orders/[id]` — the same body plus `status: 'completed' | 'refunded' | 'cancelled'`.
+  - `PATCH /api/b2b/orders/[id]` - the same body plus `status: 'completed' | 'refunded' | 'cancelled'`.
   - `DELETE /api/b2b/orders/[id]`.
   - Exported for the item route: `OrderBody` (Zod), `buildOrderWrite(input)`.
 
@@ -1950,7 +1950,7 @@ describe('POST /api/b2b/orders', () => {
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npx vitest run src/app/api/b2b/orders/route.test.ts`
-Expected: FAIL — "Failed to resolve import './route'".
+Expected: FAIL - "Failed to resolve import './route'".
 
 - [ ] **Step 3: Write the create route**
 
@@ -1988,7 +1988,7 @@ export const OrderBody = z.object({
   placedAt: z.string(),
   /** MAJOR units, customer currency, ex VAT. */
   shippingCharged: z.number().min(0).default(0),
-  /** MAJOR units, SHOP currency — it is a cost, and costs live there. */
+  /** MAJOR units, SHOP currency - it is a cost, and costs live there. */
   fulfillmentCost: z.number().min(0).default(0),
   lines: z.array(Line).min(1),
 })
@@ -2250,7 +2250,7 @@ describe('DELETE /api/b2b/orders/[id]', () => {
 
   it('refuses to delete a webshop order through this route', async () => {
     // This endpoint exists to fix a typo in something typed by hand. A synced
-    // order deleted here would come back on the next sync — or worse, not.
+    // order deleted here would come back on the next sync - or worse, not.
     await asAdmin()
     const woo = await db.order.create({
       data: {
@@ -2268,7 +2268,7 @@ describe('DELETE /api/b2b/orders/[id]', () => {
 - [ ] **Step 6: Run them to verify they fail**
 
 Run: `npx vitest run "src/app/api/b2b/orders/[id]/route.test.ts"`
-Expected: FAIL — "Failed to resolve import './route'".
+Expected: FAIL - "Failed to resolve import './route'".
 
 - [ ] **Step 7: Write the edit and delete route**
 
@@ -2315,7 +2315,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     const w = await buildOrderWrite(parsed.data)
 
-    // Lines are rewritten, not diffed — storeOrder()'s rule. `number` and
+    // Lines are rewritten, not diffed - storeOrder()'s rule. `number` and
     // `externalId` are deliberately untouched: an edit is the same order.
     await db.$transaction(async (tx) => {
       await tx.orderItem.deleteMany({ where: { orderId: id } })
@@ -2464,7 +2464,7 @@ describe('B2bClient', () => {
     mockFetch([customer])
     render(<B2bClient email="a@b.test" shops={shops} />)
 
-    // 14 220.00 EUR — the shop is NOK, and converting here would be a guess.
+    // 14 220.00 EUR - the shop is NOK, and converting here would be a guess.
     expect(await screen.findByText(/14,220\.00|14 220,00/)).toBeInTheDocument()
     expect(screen.getByText('Nordic Retail AS')).toBeInTheDocument()
     expect(screen.getByText('Mazzetti.no')).toBeInTheDocument()
@@ -2498,7 +2498,7 @@ describe('B2bClient', () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/app/b2b/B2bClient.test.tsx`
-Expected: FAIL — "Failed to resolve import './B2bClient'".
+Expected: FAIL - "Failed to resolve import './B2bClient'".
 
 - [ ] **Step 3: Write the server page**
 
@@ -2527,7 +2527,7 @@ export default async function B2bPage() {
 
 - [ ] **Step 4: Write the client**
 
-Create `src/app/b2b/B2bClient.tsx`. Leave the two modal mounts commented exactly as shown — Tasks 10 and 11 fill them in, and this task must compile and pass on its own.
+Create `src/app/b2b/B2bClient.tsx`. Leave the two modal mounts commented exactly as shown - Tasks 10 and 11 fill them in, and this task must compile and pass on its own.
 
 ```tsx
 'use client'
@@ -2577,7 +2577,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
   const [orders, setOrders] = useState<B2bOrder[]>([])
   const [loading, setLoading] = useState(true)
   // A page-load failure is not an action: a toast fades and would leave an
-  // empty table reading as "you have no customers" — a lie. Say it in place.
+  // empty table reading as "you have no customers" - a lie. Say it in place.
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(() => {
@@ -2684,7 +2684,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                   <tr>
                     <td colSpan={8} className="px-3 py-10 text-center text-faint">
                       <span className="font-semibold text-ink">No shops connected yet.</span>{' '}
-                      A business customer buys from a shop —{' '}
+                      A business customer buys from a shop -{' '}
                       <Link href="/settings/shops" className="text-accent hover:underline">
                         connect one first
                       </Link>.
@@ -2693,7 +2693,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                 ) : customers.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-3 py-10 text-center text-faint">
-                      <span className="font-semibold text-ink">No business customers yet</span> — add
+                      <span className="font-semibold text-ink">No business customers yet</span> - add
                       one and you can start entering their orders.
                     </td>
                   </tr>
@@ -2782,7 +2782,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                   orders.map((o) => (
                     <tr key={o.id} className="border-t border-line">
                       <td className="px-3 py-3 font-semibold text-ink">{o.number}</td>
-                      <td className="px-3 py-3 text-muted">{o.customer ?? '—'}</td>
+                      <td className="px-3 py-3 text-muted">{o.customer ?? '-'}</td>
                       <td className="px-3 py-3 text-muted">{o.placedAt.slice(0, 10)}</td>
                       <td className="px-3 py-3 text-muted">{o.status}</td>
                       <td className="num px-3 py-3 text-right text-ink">
@@ -2795,7 +2795,7 @@ export function B2bClient({ email, shops }: { email: string; shops: Shop[] }) {
                           !o.figures ? 'text-faint' : o.figures.profit < 0 ? 'text-loss' : 'text-gain'
                         }`}
                       >
-                        {o.figures ? formatMoney(o.figures.profit, o.currency) : '—'}
+                        {o.figures ? formatMoney(o.figures.profit, o.currency) : '-'}
                       </td>
                     </tr>
                   ))
@@ -2896,7 +2896,7 @@ Add `import userEvent from '@testing-library/user-event'` at the top of that fil
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/app/b2b/B2bClient.test.tsx`
-Expected: FAIL — no "Add business customer" heading; the button toasts instead.
+Expected: FAIL - no "Add business customer" heading; the button toasts instead.
 
 - [ ] **Step 3: Write the modal**
 
@@ -2913,7 +2913,7 @@ import { useToast } from '@/components/toast/useToast'
 import type { Shop } from '@/components/filters/ShopFilter'
 import type { Customer } from './B2bClient'
 
-/** Every currency, once — the list never changes. */
+/** Every currency, once - the list never changes. */
 const CURRENCY_OPTIONS: SelectOption[] = allCurrencies().map((c) => ({ value: c.code, label: c.label }))
 
 type Product = { id: string; sku: string; name: string }
@@ -3242,7 +3242,7 @@ git commit -m "feat: add a business customer with their currency, VAT and prices
 - Modify: `src/app/b2b/B2bClient.tsx` (mount it, and give the `+ Add order` button its real `onClick`)
 
 **Interfaces:**
-- Consumes: `orderTotals`, `lineTotals`, `DiscountKind` from `src/lib/b2b/pricing.ts` — **the same module the server uses**, so what the form shows and what the route stores cannot drift; `POST /api/b2b/orders`; `GET /api/b2b/customers/[id]`; `GET /api/products?shopId=`.
+- Consumes: `orderTotals`, `lineTotals`, `DiscountKind` from `src/lib/b2b/pricing.ts` - **the same module the server uses**, so what the form shows and what the route stores cannot drift; `POST /api/b2b/orders`; `GET /api/b2b/customers/[id]`; `GET /api/products?shopId=`.
 - Produces: `<OrderModal customers onClose onSaved />`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -3294,7 +3294,7 @@ describe('OrderModal', () => {
     await user.click(await screen.findByRole('button', { name: /add a line/i }))
     await user.selectOptions(await screen.findByLabelText('Product 1'), 'p1')
 
-    // The agreed 89.00 arrives on its own — the whole point of the price book.
+    // The agreed 89.00 arrives on its own - the whole point of the price book.
     expect(await screen.findByLabelText('Unit price 1')).toHaveValue(89)
 
     await user.clear(screen.getByLabelText('Quantity 1'))
@@ -3355,7 +3355,7 @@ describe('OrderModal', () => {
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npx vitest run src/app/b2b/OrderModal.test.tsx`
-Expected: FAIL — "Failed to resolve import './OrderModal'".
+Expected: FAIL - "Failed to resolve import './OrderModal'".
 
 - [ ] **Step 3: Write the modal**
 
@@ -3373,7 +3373,7 @@ import type { Customer } from './B2bClient'
 type Product = { id: string; sku: string; name: string }
 type AgreedPrice = { productId: string; unitPrice: number }
 
-/** One row of the form. Everything is a string — it is what was typed. */
+/** One row of the form. Everything is a string - it is what was typed. */
 type Row = {
   productId: string
   quantity: string
@@ -3503,7 +3503,7 @@ export function OrderModal({
       })
 
       if (!res.ok) {
-        // Keep the form open — closing would discard everything typed while
+        // Keep the form open - closing would discard everything typed while
         // the list shows nothing added.
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the order')
         return
@@ -3537,7 +3537,7 @@ export function OrderModal({
             >
               <option value="">Choose a customer…</option>
               {customers.filter((c) => c.active).map((c) => (
-                <option key={c.id} value={c.id}>{c.name} — {c.shopName} ({c.currency})</option>
+                <option key={c.id} value={c.id}>{c.name} - {c.shopName} ({c.currency})</option>
               ))}
             </select>
           </div>
@@ -3623,7 +3623,7 @@ export function OrderModal({
                         className="col-span-2 rounded-[var(--radius-control)] border border-line bg-surface px-2 py-2 text-sm text-ink"
                       >
                         <option value="PERCENT">%</option>
-                        {/* Per unit, not per line — the same frame as the price beside it. */}
+                        {/* Per unit, not per line - the same frame as the price beside it. */}
                         <option value="AMOUNT">{currency} / unit</option>
                       </select>
 
@@ -3764,7 +3764,7 @@ git commit -m "feat: enter what a business customer bought, discounts and all"
 
 ### Task 12: One customer's page
 
-**Deviation from the spec, deliberate:** the spec said prices are "editable inline" here. `CustomerModal` (Task 10) already edits them, and two editors for one list is two places to get it wrong. This page shows the price list **read-only with our own cost beside the agreed price** — which the modal deliberately does not show, because two currencies in an editing grid invite mistakes — plus a summary and a way through to their orders. Editing opens the same modal.
+**Deviation from the spec, deliberate:** the spec said prices are "editable inline" here. `CustomerModal` (Task 10) already edits them, and two editors for one list is two places to get it wrong. This page shows the price list **read-only with our own cost beside the agreed price** - which the modal deliberately does not show, because two currencies in an editing grid invite mistakes - plus a summary and a way through to their orders. Editing opens the same modal.
 
 **Files:**
 - Create: `src/app/b2b/[id]/page.tsx`, `src/app/b2b/[id]/CustomerClient.tsx`
@@ -3870,7 +3870,7 @@ export function CustomerClient({
       body: JSON.stringify({
         name: customer.name, currency: customer.currency, vatPercent: customer.vatPercent,
         email: customer.email, note: customer.note, active,
-        // Back to major units — the shape the route takes.
+        // Back to major units - the shape the route takes.
         prices: customer.prices.map((p) => ({
           productId: p.productId,
           unitPrice: toMajor(p.unitPrice),
@@ -3969,7 +3969,7 @@ export function CustomerClient({
                     {customer.prices.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="px-3 py-10 text-center text-faint">
-                          <span className="font-semibold text-ink">No agreed prices yet</span> — add
+                          <span className="font-semibold text-ink">No agreed prices yet</span> - add
                           some with Edit, or type a price when you enter their first order.
                         </td>
                       </tr>
@@ -4016,7 +4016,7 @@ export function CustomerClient({
 
 - [ ] **Step 3: See it in the browser**
 
-Start the dev server **bare and in the background** — piping it wedges the port:
+Start the dev server **bare and in the background** - piping it wedges the port:
 
 ```bash
 npm run dev
@@ -4039,7 +4039,7 @@ git commit -m "feat: one business customer, their prices and what they have boug
 ### Task 13: The Orders page tells them apart
 
 **Files:**
-- Modify: `src/app/orders/OrdersClient.tsx` — `OrderRow` (`:27-45`), state (`:115-130`), query (`:140-154`), header (`:229-252`), the number cell
+- Modify: `src/app/orders/OrdersClient.tsx` - `OrderRow` (`:27-45`), state (`:115-130`), query (`:140-154`), header (`:229-252`), the number cell
 - Test: `src/app/orders/OrdersClient.test.tsx`
 
 **Interfaces:**
@@ -4073,7 +4073,7 @@ it('badges a B2B order and can narrow to one source', async () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/app/orders/OrdersClient.test.tsx`
-Expected: FAIL — no "B2B" text and no "Source" control.
+Expected: FAIL - no "B2B" text and no "Source" control.
 
 - [ ] **Step 3: Extend `OrderRow`**
 
@@ -4217,7 +4217,7 @@ test('a B2B order reaches the Dashboard', async ({ page }) => {
   await page.goto('/orders?source=b2b')
   await expect(page.getByText('B2B').first()).toBeVisible()
 
-  // 5. And the Dashboard moved. Not "a number is shown" — a DIFFERENT number.
+  // 5. And the Dashboard moved. Not "a number is shown" - a DIFFERENT number.
   await page.goto('/dashboard?preset=this_month')
   await expect(page.getByTestId('stat-net-revenue')).not.toHaveText(before)
 })
@@ -4228,7 +4228,7 @@ If `stat-net-revenue` is not the test id `StatStrip` actually renders, read `src
 - [ ] **Step 2: Run it**
 
 Run: `npx playwright test e2e/b2b.spec.ts`
-Expected: PASS. If the product dropdown is empty, the seeded shop has no products — run `npm run db:seed` first.
+Expected: PASS. If the product dropdown is empty, the seeded shop has no products - run `npm run db:seed` first.
 
 - [ ] **Step 3: Run everything and commit**
 
@@ -4246,7 +4246,7 @@ git commit -m "test: a B2B customer's order reaches the Dashboard"
 
 ```markdown
 Orders from business customers are entered by hand under **B2B**. They are
-ordinary orders — same revenue, same COGS, same profit — with three
+ordinary orders - same revenue, same COGS, same profit - with three
 differences: they are invoiced, so they pay no payment-gateway fee; they carry
 the shipping cost you type rather than the shop's per-order rate; and they are
 priced and invoiced in the customer's own currency, which need not be the
@@ -4269,5 +4269,5 @@ git commit -m "docs: how B2B orders differ from webshop orders"
 
 **One simplification against the spec's route list:** `/api/b2b/orders` has no `GET`. `/api/orders?source=b2b` already lists orders with per-order profit, and a second endpoint would be a second copy of that arithmetic.
 
-**Riskiest task is 4**, the only one that edits live money code. Its gate is that no existing assertion changes — only four test factories gain one field each.
+**Riskiest task is 4**, the only one that edits live money code. Its gate is that no existing assertion changes - only four test factories gain one field each.
 

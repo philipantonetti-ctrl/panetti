@@ -6,14 +6,14 @@ const day = (d: Date) => d.toISOString().slice(0, 10)
 const TODAY = new Date('2026-07-14')
 
 /**
- * "When should this cost apply from?" — the three choices in the Update COGS modal.
+ * "When should this cost apply from?" - the three choices in the Update COGS modal.
  */
 describe('resolveEffectiveFrom', () => {
-  it('applies to future orders only — from today', () => {
+  it('applies to future orders only - from today', () => {
     expect(day(resolveEffectiveFrom({ apply: 'FUTURE' }, TODAY))).toBe('2026-07-14')
   })
 
-  it('applies to the last 60 days — from 60 days ago', () => {
+  it('applies to the last 60 days - from 60 days ago', () => {
     expect(day(resolveEffectiveFrom({ apply: 'LAST_60_DAYS' }, TODAY))).toBe('2026-05-15')
   })
 
@@ -87,7 +87,7 @@ describe('applyCostChange', () => {
     expect(rows[0]).toMatchObject({ costPerItem: 5000, handlingCost: 50 })
   })
 
-  it('leaves a cost at zero for dates before it was ever known — never guesses', () => {
+  it('leaves a cost at zero for dates before it was ever known - never guesses', () => {
     const rows = applyCostChange([], {
       costPerItem: 5000,
       costFrom: new Date('2026-06-01'),

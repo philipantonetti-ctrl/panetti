@@ -41,7 +41,7 @@ export type CampaignDailyRow = DailyRow & {
 
 export type VerifiedAccount = { name: string; currency: string }
 
-/** A provider's own words, surfaced to the UI — never an HTML dump. */
+/** A provider's own words, surfaced to the UI - never an HTML dump. */
 export class AdApiError extends Error {}
 
 /**
@@ -55,7 +55,7 @@ export type BreakdownLevel = 'campaign' | 'adset' | 'ad'
  * What a platform driver returns: the platform's own figures for one entity and
  * nothing of ours. The route adds which of OUR accounts it came from.
  *
- * No ROAS and no CTR. Both are derived once, at render, from these numbers —
+ * No ROAS and no CTR. Both are derived once, at render, from these numbers -
  * carrying a derived figure alongside its inputs is how two numbers on one
  * screen come to disagree.
  */

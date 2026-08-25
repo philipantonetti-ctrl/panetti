@@ -48,11 +48,11 @@ export type MappedOrder = {
   taxTotal: number
   total: number
   couponCode: string | null
-  // '' when the store has none on file — never null, so a synced order always
+  // '' when the store has none on file - never null, so a synced order always
   // counts as "customer checked" and the backfill knows it is done.
   customerName: string
   customerEmail: string
-  // ISO-2, uppercased. '' when the store has none on file — never null, so a
+  // ISO-2, uppercased. '' when the store has none on file - never null, so a
   // synced order counts as "country checked" and the backfill knows it is done.
   shippingCountry: string
   items: {
@@ -73,7 +73,7 @@ const num = (v: string | undefined | null): number => toMinor(v ? parseFloat(v) 
  * Turn a WooCommerce order into our own shape.
  *
  * The critical detail: in WooCommerce, a line item's `subtotal` is the value
- * BEFORE discount and `total` is the value AFTER discount — and BOTH exclude
+ * BEFORE discount and `total` is the value AFTER discount - and BOTH exclude
  * tax. So `total` is exactly our net sales, which is exactly the commission base.
  *
  * VAT (`total_tax`) is recorded for reference and never enters revenue.
@@ -94,7 +94,7 @@ export function mapOrder(woo: WooOrder): MappedOrder {
     grossSales,
     discountTotal,
     netSales,
-    shippingCharged: num(woo.shipping_total), // ex VAT — shipping_tax stays out
+    shippingCharged: num(woo.shipping_total), // ex VAT - shipping_tax stays out
     taxTotal: num(woo.total_tax),
     total: num(woo.total),
     couponCode: woo.coupon_lines?.[0]?.code?.toUpperCase() ?? null,

@@ -32,7 +32,7 @@ with `"Scheduled sync is not configured"` when `CRON_SECRET` is unset, and
 exists in production and the endpoint is guarded, not broken.
 
 The third row matters because Hobby accounts cannot deploy a sub-daily cron at
-all — the build fails with "Hobby accounts are limited to daily cron jobs".
+all - the build fails with "Hobby accounts are limited to daily cron jobs".
 This project deploys `*/15 * * * *` successfully, so the schedule is registered.
 
 And *some stores being fresh* proves the last thing: Vercel really is calling
@@ -53,7 +53,7 @@ export const maxDuration = 60
 
 The comment was true when it was written. It is not true now. **Vercel's
 default maximum duration is 300 seconds on every plan today**, so that line no
-longer asks for headroom — it discards 240 seconds of it.
+longer asks for headroom - it discards 240 seconds of it.
 
 `/api/sync`, the manual Sync all button, declares no `maxDuration` and
 therefore gets the full 300.
@@ -70,8 +70,8 @@ const shops = await db.shop.findMany({ where: { active: true, wooUrl: { not: nul
 for (const shop of shops) results.push(await syncShop(shop.id))
 ```
 
-There is **no `orderBy`**, so the row order is unspecified, and — this is the
-part that matters — **nothing gives a store that missed out last time any
+There is **no `orderBy`**, so the row order is unspecified, and - this is the
+part that matters - **nothing gives a store that missed out last time any
 priority on the next run**. Once the work exceeds 60 seconds the invocation is
 killed part-way through, and whichever stores were not reached have no better
 chance the next time. Meanwhile the button with five times the budget reaches
@@ -99,19 +99,19 @@ if (!firstSync && hasMore) {
 }
 ```
 
-The intent is right — never skip silently. The consequence is not. The next run
+The intent is right - never skip silently. The consequence is not. The next run
 asks for *the same window, now larger*. It can only grow. That store is stuck
 permanently, and Sync all hits the identical wall.
 
 The reason the author had to refuse rather than resume is visible in
-`client.ts:47`: the pull sorts by `orderby: 'date'` — creation date — even when
+`client.ts:47`: the pull sorts by `orderby: 'date'` - creation date - even when
 filtering on `modified_after`. Cut a modified-filtered list at an arbitrary
 point in creation order and there is genuinely no safe place to resume from.
 
 **A window wider than intended.** `client.ts:50` sends
 `modified_after=<UTC>` with no `dates_are_gmt`, so the store compares it
 against local time. A Nordic store in UTC+2 therefore pulls a two-hour-wider
-window on every sync — inflating the very count that trips the cap above.
+window on every sync - inflating the very count that trips the cap above.
 
 **And none of it is visible.** `AdAccount` has a `lastError` column that the
 settings page shows. `Shop` has none, and `src/app/settings/shops/page.tsx:19`
@@ -195,13 +195,13 @@ it qualifies the claim above: the window does *not* shrink every run
 unconditionally. Net progress per run is `resumeFrom - previousWatermark`, and
 the next window starts an `OVERLAP` behind the new watermark. So if more orders
 share `date_modified_gmt` values than one run can carry inside that five-minute
-band — a WooCommerce bulk status change over thousands of orders does exactly
-this — the resume point lands at or *behind* the current watermark. Writing it
+band - a WooCommerce bulk status change over thousands of orders does exactly
+this - the resume point lands at or *behind* the current watermark. Writing it
 would pin the window, or rewind it, and the same page would be fetched forever.
 
 Nothing is skipped in that case: the watermark never passes an order that was
 not stored, so the safety property holds. What fails is the drain, and worse,
-it fails *silently* — the run reports success and the operator sees only "more
+it fails *silently* - the run reports success and the operator sees only "more
 history to fetch", indistinguishable from a legitimately large backfill.
 
 So the advance is conditional on strict forward progress. When there is none,
@@ -210,7 +210,7 @@ than one sync can work through. The old code was wrong to refuse, but it was at
 least loud; this keeps the loudness for the one case that still deserves it.
 
 The deadline applies to both paths. A first sync already stops early and
-resumes by design, so it needs no new semantics — only the extra reason to
+resumes by design, so it needs no new semantics - only the extra reason to
 stop.
 
 `WooOrder` in `src/lib/woo/map.ts:14` carries `date_created_gmt` but not
@@ -226,7 +226,7 @@ rediscovers it as a mystery.
 Sorting on `modified` sorts on a key that **changes while we page**. The pull
 uses offset pagination (`page=N&per_page=100`). If an order on page 1 is edited
 during the second or so between two page fetches, its `modified` becomes now and
-it moves to the end of the ascending order — every later row shifts down one, and
+it moves to the end of the ascending order - every later row shifts down one, and
 the row that was first on page 2 is never returned. The monotonicity guard cannot
 see it, because the sequence it does receive is still non-decreasing. The
 watermark then advances past that row's stamp and the order is missed until
@@ -239,7 +239,7 @@ unsafe one, and that qualifies the claim above that draining never skips.
 
 Why it is deferred rather than fixed: it needs a modification landing inside the
 gap between two page fetches of a **multi-page** pull, and most incremental
-windows are a single page — multi-page pulls happen during catch-up. The missed
+windows are a single page - multi-page pulls happen during catch-up. The missed
 row is also, by construction, an order that was just modified, so the webhook
 stream carries it at that moment. That last point is reassuring but circular
 (the scheduled sync is documented as the webhooks' safety net), so this is a
@@ -255,13 +255,13 @@ sharing one second is already the stalled-store condition above.
 
 Advancing to the last row is only safe if the store honoured
 `orderby=modified`. If a WooCommerce version or plugin ignores it, rows arrive
-in another order and advancing would silently skip orders — precisely the harm
+in another order and advancing would silently skip orders - precisely the harm
 the "refuse loudly" code exists to prevent.
 
 So while paging we assert `date_modified_gmt` is non-decreasing. If it is not,
 we do not advance, and `lastError` says the store did not sort by modified
 date. This keeps the author's safety property *more* strictly than the current
-code — draining never skips, it stops exactly where it got to — while removing
+code - draining never skips, it stops exactly where it got to - while removing
 the permanent deadlock.
 
 ### Timeouts clamped to the deadline
@@ -273,7 +273,7 @@ seconds of budget left still overruns. Each request therefore gets
 dimensions.
 
 One "we stopped early, here is how far we got" signal now serves the page cap,
-the deadline and the request timeout identically — and the first-sync backfill
+the deadline and the request timeout identically - and the first-sync backfill
 path already speaks it.
 
 ## Error handling
@@ -312,7 +312,7 @@ lastError String?
 the first run, so that one run visits them in arbitrary order. Every store it
 reaches gets a timestamp, and `NULLS FIRST` puts the ones it missed at the very
 front of the next run. Rotation is exact from the second run onward, which is a
-better starting state than copying `lastSyncAt` across would have produced —
+better starting state than copying `lastSyncAt` across would have produced -
 a store frozen for a fortnight and a store synced a minute ago both start equal,
 and one run sorts them.
 
@@ -321,31 +321,31 @@ and one run sorts them.
 Matching the three flavours already in the repo. Vitest runs against the local
 portable Postgres, never the live database.
 
-**Stubbed-fetch unit — `fetchOrders`**
+**Stubbed-fetch unit - `fetchOrders`**
 - incremental URLs carry `orderby=modified`, `order=asc`, `dates_are_gmt=true`
 - first-sync URLs keep `orderby=date`
 - a deadline already passed returns `hasMore: true` without fetching
 - the request timeout clamps to the remaining budget
 - a non-monotonic `date_modified_gmt` sequence is flagged on the result
 
-**DB-backed — `syncShop`**
+**DB-backed - `syncShop`**
 - an early stop sets `lastSyncAt` to the last order's `date_modified_gmt`
 - a complete pull sets `lastSyncAt` to `fetchStartedAt`
 - a `401` leaves `lastSyncAt` untouched, sets `lastRunAt` and `lastError`
 - a non-monotonic response refuses to advance and explains why
 
-**DB-backed — `syncAllShops`**
+**DB-backed - `syncAllShops`**
 - stores are visited in `lastRunAt ASC NULLS FIRST`
 - a failing store does not stop later stores, **and its `lastRunAt` still
   moves**, so it rotates to the back
 - no new store is started once the deadline has passed
 
-**jsdom component — shops page**
+**jsdom component - shops page**
 - a failed store shows its reason
 - a catching-up store reads "checked 2 minutes ago, 12 days behind" rather than
   a bare stale date
 
-**Regression guard — cron route**
+**Regression guard - cron route**
 - assert `maxDuration === 300`. One constant caused this outage; a test stops
   anyone re-capping it.
 
@@ -354,7 +354,7 @@ portable Postgres, never the live database.
 **Fan-out, one invocation per store.** Better isolation, and it would guarantee
 the cadence at any store count. It also needs a per-store lock so a slow run is
 not re-entered, multiplies Neon connections by the store count, and **still
-requires every fix above** — a deadlocked store stays deadlocked, just in its
+requires every fix above** - a deadlocked store stays deadlocked, just in its
 own invocation. Not earned while the observed cause is one wrong constant.
 
 **An external queue (QStash, Inngest, Vercel Queues).** Durable retries and
@@ -390,7 +390,7 @@ Each of these was found by review, judged, and accepted rather than missed.
 
 **A slow response body still discards the pages already fetched.**
 `client.ts` wraps the `fetch()` call so an aborted request returns what it had
-instead of throwing — but `res.json()` sits outside that catch, and `fetch()`
+instead of throwing - but `res.json()` sits outside that catch, and `fetch()`
 resolves when the *headers* arrive, not when the body finishes. A store that
 answers promptly and then streams slowly therefore aborts at `res.json()`, and
 the rejection escapes uncaught. That reproduces the original bug for that one

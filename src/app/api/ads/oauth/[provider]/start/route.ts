@@ -11,7 +11,7 @@ import { STATE_COOKIE, buildGoogleAuthUrl, buildMetaAuthUrl } from '@/lib/ads/oa
  * foreign redirect cannot plant a connection.
  *
  * Nothing is asked of the platform here. An earlier version proved the app and
- * healed its domains first, then told the admin to press the button again —
+ * healed its domains first, then told the admin to press the button again -
  * which it could do forever.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ provider: string }> }) {

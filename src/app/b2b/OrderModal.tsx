@@ -9,7 +9,7 @@ import type { Customer } from './B2bClient'
 type Product = { id: string; sku: string; name: string }
 type AgreedPrice = { productId: string; unitPrice: number }
 
-/** One row of the form. Everything is a string — it is what was typed. */
+/** One row of the form. Everything is a string - it is what was typed. */
 type Row = {
   productId: string
   quantity: string
@@ -28,7 +28,7 @@ const emptyRow = (): Row => ({
   savePrice: false,
 })
 
-/** One line as `GET /api/b2b/orders/[id]` returns it — minor units on the wire. */
+/** One line as `GET /api/b2b/orders/[id]` returns it - minor units on the wire. */
 type LoadedLine = {
   productId: string
   quantity: number
@@ -64,12 +64,12 @@ export function OrderModal({
   const [shopCurrency, setShopCurrency] = useState('')
   const [busy, setBusy] = useState(false)
   // Editing only: the order's own number and status, once it has actually
-  // loaded — used both for the heading and to gate Save so it cannot fire on
+  // loaded - used both for the heading and to gate Save so it cannot fire on
   // a still-empty form while the fetch is in flight (the same defect
   // `pickCustomer`'s comment above describes, one step later).
   const [loaded, setLoaded] = useState<{ number: string; status: string } | null>(null)
   // Editing only: the status shown in the Status select, seeded from the
-  // loaded order and sent back verbatim unless deliberately changed — this is
+  // loaded order and sent back verbatim unless deliberately changed - this is
   // what stops an edit from silently un-voiding a refunded or cancelled order.
   const [status, setStatus] = useState('completed')
 
@@ -124,7 +124,7 @@ export function OrderModal({
    * Switching customers must drop everything the PREVIOUS one's fetch left
    * behind, not just the rows. Otherwise, switching to a customer on a
    * different shop shows the old shop's currency on the shipping-cost field
-   * — and leaves it enabled — until the new fetch resolves: the same
+   * - and leaves it enabled - until the new fetch resolves: the same
    * wrong-currency defect closed for the never-loads case, reached by a
    * second path. Agreed prices reset for the same reason: `agreed = []` is
    * what "no agreed price yet" already looks like on this form, so this
@@ -142,7 +142,7 @@ export function OrderModal({
 
   // Editing: pull the order back in the shape this form speaks. pickCustomer
   // clears the rows by design (see its comment above), so it runs first and
-  // the loaded lines land after — never the other way round, or they would
+  // the loaded lines land after - never the other way round, or they would
   // be wiped the instant they were set.
   useEffect(() => {
     if (!order) return
@@ -157,7 +157,7 @@ export function OrderModal({
         pickCustomer(o.customerId)
         setPlacedAt(o.placedAt)
         setShippingCharged(String(toMajor(o.shippingCharged)))
-        // Null means nobody costed this order, which is an EMPTY box — not a
+        // Null means nobody costed this order, which is an EMPTY box - not a
         // zero. Showing 0 here would store one on the next save and quietly
         // move the order from "not costed" to "shipping was free". Through the
         // same helper the void action uses, so one null check covers both.
@@ -215,7 +215,7 @@ export function OrderModal({
             placedAt,
             // Only editing sends a status. Creating has no status field in
             // the create route's schema, and a new order is always
-            // 'completed' — which is exactly what omitting it already means.
+            // 'completed' - which is exactly what omitting it already means.
             ...(editing ? { status } : {}),
             shippingCharged: parseFloat(shippingCharged) || 0,
             // Blank travels as null, so the order is costed by the per-SKU
@@ -236,12 +236,12 @@ export function OrderModal({
       )
 
       if (!res.ok) {
-        // Keep the form open — closing would discard everything typed while
+        // Keep the form open - closing would discard everything typed while
         // the list shows nothing added.
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not save the order')
         return
       }
-      // PATCH answers `{ ok: true }`, not the order — an edit is still the
+      // PATCH answers `{ ok: true }`, not the order - an edit is still the
       // same order, so its number is the one already loaded, not something
       // to read back off this response.
       toast.success(
@@ -298,12 +298,12 @@ export function OrderModal({
             >
               <option value="">Choose a customer…</option>
               {/* Active, plus whichever customer this order already belongs
-                  to — a deactivated customer must not make an edit's picker
+                  to - a deactivated customer must not make an edit's picker
                   render blank; the field stays disabled either way, and
                   `customer` above already resolves from the unfiltered
                   array, so nothing about what gets saved changes. */}
               {customers.filter((c) => c.active || c.id === customerId).map((c) => (
-                <option key={c.id} value={c.id}>{c.name} — {c.shopName} ({c.currency})</option>
+                <option key={c.id} value={c.id}>{c.name} - {c.shopName} ({c.currency})</option>
               ))}
             </select>
           </div>
@@ -389,7 +389,7 @@ export function OrderModal({
                         className="col-span-2 rounded-[var(--radius-control)] border border-line bg-surface px-2 py-2 text-sm text-ink"
                       >
                         <option value="PERCENT">%</option>
-                        {/* Per unit, not per line — the same frame as the price beside it. */}
+                        {/* Per unit, not per line - the same frame as the price beside it. */}
                         <option value="AMOUNT">{currency} / unit</option>
                       </select>
 
@@ -441,8 +441,8 @@ export function OrderModal({
                 <label htmlFor="b2b-fulfil" className="block text-xs font-medium text-ink">
                   {/* Never fall back to the customer's currency here: that is a
                       different currency, and this field is a cost. Until the
-                      shop's own currency has actually arrived — including if
-                      the fetch never comes back — say so instead of guessing. */}
+                      shop's own currency has actually arrived - including if
+                      the fetch never comes back - say so instead of guessing. */}
                   Shipping we paid {shopCurrency ? `(${shopCurrency})` : '(…)'}
                 </label>
                 <p className="text-[11px] text-muted">
@@ -486,7 +486,7 @@ export function OrderModal({
             onClick={save}
             // Editing: `!customer` already blocks Save until `customerId` is
             // set, and that only happens inside the same load callback that
-            // sets `loaded` — so there is no render where the form looks
+            // sets `loaded` - so there is no render where the form looks
             // populated but `loaded` is still null. `editing && !loaded` is
             // belt-and-braces alongside that check, not what closes the
             // race: it mirrors CustomerModal's own Save gate on

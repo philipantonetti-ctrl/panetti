@@ -20,7 +20,7 @@ export async function knownOrderNumbers(): Promise<Set<string>> {
 /**
  * Write one Shipment per pair.
  *
- * Order.number is NOT unique across shops — the only uniqueness on Order is
+ * Order.number is NOT unique across shops - the only uniqueness on Order is
  * [shopId, externalId]. So a number two shops both hold is ambiguous, and we
  * refuse it rather than guess: a wrong link would poison that order's delivery
  * figure permanently, and unlike a missing link nobody would ever notice.

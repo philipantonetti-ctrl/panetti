@@ -7,7 +7,7 @@ import type { Figures } from '@/lib/metrics/types'
 /**
  * The headline figures.
  *
- * One surface split by hairlines — not a grid of identical cards. Profit is the hero
+ * One surface split by hairlines - not a grid of identical cards. Profit is the hero
  * because it is the question the owner actually opens this page to answer.
  *
  * THE HERO IS WHOLE KRONER. The four figures beside it keep their øre.
@@ -20,12 +20,12 @@ import type { Figures } from '@/lib/metrics/types'
  *
  * Briefly all four, then asked back to one. The client reads these beside
  * BeProfit, and a figure quietly moved by up to a krone costs him more there
- * than an inconsistent row does — AVG ORDER VALUE rounding 4,630.63 to 4,631
+ * than an inconsistent row does - AVG ORDER VALUE rounding 4,630.63 to 4,631
  * is the case that decided it. The other four are set at 17px and none of them
  * was overflowing anything, so they were paying that price for nothing.
  *
  * ORDERS is a count and the margin is a percentage. Neither is money, neither
- * changed, and both are held there by a test — "drop the decimals" is exactly
+ * changed, and both are held there by a test - "drop the decimals" is exactly
  * the change that spreads along a row on its own.
  */
 
@@ -64,7 +64,7 @@ function Delta({
   against: Comparison
   /**
    * True for a COST figure: rising is the bad direction, so the colours
-   * invert. The arrow, sign and percentage still tell the plain truth —
+   * invert. The arrow, sign and percentage still tell the plain truth -
    * only which of them is good news changes.
    */
   costly?: boolean
@@ -123,7 +123,7 @@ function Deltas({
   )
 }
 
-/** "NET REVENUE" -> "stat-net-revenue" — one id per stat, derived so it can never drift from its label. */
+/** "NET REVENUE" -> "stat-net-revenue" - one id per stat, derived so it can never drift from its label. */
 function statTestId(label: string): string {
   return `stat-${label.toLowerCase().replace(/\s+/g, '-')}`
 }
@@ -224,7 +224,7 @@ export function StatStrip({
 
       {/* The client's instruction, verbatim: the Addrevenue commissions
           "added to our dashboard and show as a cost". A headline cell, not
-          only a compare-table column, so it is visible without scrolling —
+          only a compare-table column, so it is visible without scrolling -
           and costly, so a rising cost is never painted as good news. */}
       <Stat
         label="AFFILIATE COST"

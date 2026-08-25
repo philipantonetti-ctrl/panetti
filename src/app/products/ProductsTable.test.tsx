@@ -57,7 +57,7 @@ describe('ProductsTable', () => {
     const cells = cellsOf('Elektrischer Pizzaofen')
     expect(cells[1]).toBe('1')
     expect(cells[2]).toBe('2')
-    // Every money column runs through formatMoney — hand-rolled minor-unit
+    // Every money column runs through formatMoney - hand-rolled minor-unit
     // arithmetic would drift from these exact strings.
     expect(cells[3]).toBe('€200.00') // Gross
     expect(cells[4]).toBe('€200.00') // Revenue (netSales)
@@ -77,8 +77,8 @@ describe('ProductsTable', () => {
 
   it('renders exact money figures in a per-store child row, not just the merged row', () => {
     // Both stores keep the shared fixture's own money figures (gross/net
-    // 20000, cogs 6400, profit 13600 in EUR) — the same numbers already known
-    // to format as €200.00 / €200.00 / €64.00 / €136.00 above — so the
+    // 20000, cogs 6400, profit 13600 in EUR) - the same numbers already known
+    // to format as €200.00 / €200.00 / €64.00 / €136.00 above - so the
     // expectations here are derived from a known value, not newly guessed.
     const merged = row({ stores: [store(), store({ shopId: 'fi', shopName: 'Panetti Finland', productId: 'p-fi' })] })
     render(<ProductsTable rows={[merged]} total={TOTAL} currency="EUR" />)
@@ -107,7 +107,7 @@ describe('ProductsTable', () => {
   it('shows no margin rather than 0.0% when nothing was sold', () => {
     const dead = row({ netSales: 0, profit: 0, margin: 0, cogs: 0 })
     render(<ProductsTable rows={[dead]} total={TOTAL} currency="EUR" />)
-    expect(cellsOf('Elektrischer Pizzaofen')[7]).toBe('—')
+    expect(cellsOf('Elektrischer Pizzaofen')[7]).toBe('-')
   })
 
   it('says so plainly when nothing sold in the period', () => {
@@ -130,7 +130,7 @@ describe('ProductsTable', () => {
     // 30000; orders 1 and 1, summing to 2) do NOT add up to `distinctTotal`
     // in any column asserted below. An implementation that ignored the
     // `total` prop and re-summed the displayed rows instead would print
-    // different numbers than these — that is what makes this test able to
+    // different numbers than these - that is what makes this test able to
     // fail.
     const rowA = row()
     const rowB = row({

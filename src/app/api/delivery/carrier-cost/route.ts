@@ -14,8 +14,8 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
  * When the carrier's meter started for one parcel.
  *
  * `handedInAt` is the carrier physically taking it, which is the event it
- * bills for. Where a parcel never recorded one — a file import that gave us a
- * number before any carrier event arrived — the label date is the next best
+ * bills for. Where a parcel never recorded one - a file import that gave us a
+ * number before any carrier event arrived - the label date is the next best
  * claim, and the row's own creation is the last resort. Stated as one function
  * so the count and the WHERE clause below can never disagree about which
  * parcels belong to a month.
@@ -28,7 +28,7 @@ const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/
 /**
  * Cost per parcel, per carrier, for the range on screen.
  *
- * The money is entered by hand on purpose — see carrier-cost.ts. No endpoint
+ * The money is entered by hand on purpose - see carrier-cost.ts. No endpoint
  * either carrier exposes to us returns what a shipment actually cost.
  */
 export async function GET(req: Request) {
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
 
     /**
      * When the parcel record began, by the system's own declaration: the
-     * earliest deliveryTrackingFrom any active shop carries — the same "judge
+     * earliest deliveryTrackingFrom any active shop carries - the same "judge
      * nothing older than this" the rest of the Delivery page obeys. NOT
      * min(Shipment date), deliberately: production holds one stray parcel
      * dated July in a record that otherwise starts 12 August, so a
@@ -89,7 +89,7 @@ export async function GET(req: Request) {
     })
 
     /**
-     * Every stored bill, not just the on-screen months' — the whole point of
+     * Every stored bill, not just the on-screen months' - the whole point of
      * reading Bring's invoices automatically is that the money is VISIBLE, and
      * a bill for a month with no counted parcels (June and July hold real
      * totals and no parcels at all) has no shipment row to earn it a place.
@@ -116,7 +116,7 @@ export async function GET(req: Request) {
           })),
         ),
         // One row per carrier per month: every month that moved parcels, plus
-        // every month holding a bill — read or typed — even where no parcel
+        // every month holding a bill - read or typed - even where no parcel
         // was counted. `counted: false` marks a month whose parcel figures
         // must not be shown or divided: its bill covers the whole month and
         // its count does not.
@@ -182,7 +182,7 @@ export async function PUT(req: Request) {
     }
 
     // Null clears the invoice rather than storing a zero. Zero is a real
-    // figure — "they billed us nothing" — and must stay sayable.
+    // figure - "they billed us nothing" - and must stay sayable.
     if (body.amount === null) {
       await db.carrierCost.deleteMany({ where: { carrier, month } })
       return NextResponse.json({ ok: true }, { headers: NO_STORE })

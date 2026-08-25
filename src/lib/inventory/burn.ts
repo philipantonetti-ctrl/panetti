@@ -7,7 +7,7 @@ export const BURN_WINDOW_DAYS = 60
 
 /**
  * A year plus margin. Below this a SKU has no "same time last year" to compare
- * against, whatever the shop's age — Panetti Germany opened in September 2025.
+ * against, whatever the shop's age - Panetti Germany opened in September 2025.
  */
 export const SEASON_MIN_HISTORY_DAYS = 400
 
@@ -56,7 +56,7 @@ export function dailyBurn(sales: Sale[], today: Date): number {
  * whole mechanism: current trading, last year's calendar.
  *
  * The index is passed in rather than computed here for the same reason
- * `forecast()` takes one — it makes the arithmetic testable against a known
+ * `forecast()` takes one - it makes the arithmetic testable against a known
  * season instead of against a fixture of two years of sales.
  */
 export function seasonalLevel(sales: Sale[], today: Date, index: (day: Date) => number): number {
@@ -77,7 +77,7 @@ export function seasonalLevel(sales: Sale[], today: Date, index: (day: Date) => 
  * How this period compares with the same period a year ago.
  *
  * The SAME calendar days, a year apart, so the comparison carries no season of
- * its own — a November measured against a November. That makes it the growth
+ * its own - a November measured against a November. That makes it the growth
  * figure the forecast is already applying: the level is this window's rate with
  * the season removed, so multiplying it by a future day's index works out to
  * last year's sales on that day times exactly this ratio. Showing it is showing
@@ -86,7 +86,7 @@ export function seasonalLevel(sales: Sale[], today: Date, index: (day: Date) => 
  * Null rather than a number in the two cases where a figure would be a lie:
  * when the history does not cover the whole of last year's window (a shop open
  * thirteen months would be dividing by a part-window and reporting growth that
- * never happened), and when that window sold nothing at all — growing from
+ * never happened), and when that window sold nothing at all - growing from
  * nothing is not a percentage, the same call `deltaPct` makes.
  */
 export function yearOverYear(sales: Sale[], today: Date): number | null {
@@ -116,7 +116,7 @@ export function hasSeasonalHistory(sales: Sale[], today: Date): boolean {
 /**
  * How much busier than average this date was a year ago.
  *
- * Returns exactly 1 when there is not enough history — a flat rate stated
+ * Returns exactly 1 when there is not enough history - a flat rate stated
  * honestly, rather than a seasonal shape invented from ten months of data. The
  * caller shows "no seasonal history yet" on those rows.
  */

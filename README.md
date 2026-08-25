@@ -17,7 +17,7 @@ Sign in with:
 
 ## How the money is calculated
 
-Every revenue figure **excludes VAT** — VAT was never our money.
+Every revenue figure **excludes VAT** - VAT was never our money.
 
 ```
   Gross sales        line value before discount     (excl VAT)
@@ -31,10 +31,10 @@ Every revenue figure **excludes VAT** — VAT was never our money.
 = NET PROFIT
 ```
 
-Refunded and cancelled orders count for nothing — no revenue, no commission.
+Refunded and cancelled orders count for nothing - no revenue, no commission.
 
 Orders from business customers are entered by hand under **B2B**. They are
-ordinary orders — same revenue, same COGS, same profit — with three
+ordinary orders - same revenue, same COGS, same profit - with three
 differences: they are invoiced, so they pay no payment-gateway fee; they carry
 the shipping cost you type rather than the shop's per-order rate; and they are
 priced and invoiced in the customer's own currency, which need not be the
@@ -43,12 +43,12 @@ collide with WooCommerce.
 
 ## Where things live
 
-- `src/lib/metrics/` — all the money maths. Pure functions, heavily tested. **Start here.**
-- `src/lib/woo/` — talking to WooCommerce.
-- `src/lib/auth/` — logins and the rule that an ambassador only ever sees their own data.
-- `src/lib/advisor/` — the morning briefing and the chat. The facts are computed
+- `src/lib/metrics/` - all the money maths. Pure functions, heavily tested. **Start here.**
+- `src/lib/woo/` - talking to WooCommerce.
+- `src/lib/auth/` - logins and the rule that an ambassador only ever sees their own data.
+- `src/lib/advisor/` - the morning briefing and the chat. The facts are computed
   by the engine; the model only ranks and explains them.
-- `src/app/` — the pages and API routes. Thin: they just call the above.
+- `src/app/` - the pages and API routes. Thin: they just call the above.
 
 ## Connecting a real shop
 
@@ -63,7 +63,7 @@ Three layers, none of which run on the storefront:
 1. **Webhooks (live).** After a completed sync the app registers order webhooks
    on each store (`order.created/updated/deleted/restored`), so new orders,
    refunds, cancellations and edits land seconds after they happen. WooCommerce
-   delivers webhooks from its background queue — checkout never waits on us.
+   delivers webhooks from its background queue - checkout never waits on us.
 2. **Scheduled sync (safety net).** Vercel Cron pulls changes every 15 minutes,
    catching anything a webhook missed. Needs `CRON_SECRET` set.
 3. **Sync now (on demand).** Buttons on the Orders and Shops pages.
@@ -82,8 +82,8 @@ delivery against a per-shop HMAC secret the app generates itself.
 ## The advisor
 
 Every morning a briefing is written from the last seven days against the seven
-before them, and stored. The figures are computed by `src/lib/metrics/` — the same
-code every other page uses — and Claude is given them and asked only what deserves
+before them, and stored. The figures are computed by `src/lib/metrics/` - the same
+code every other page uses - and Claude is given them and asked only what deserves
 attention and why. It never calculates: an item citing a figure that was not
 computed is discarded, and the page prints numbers from the facts rather than from
 the model's words.
@@ -93,7 +93,7 @@ Needs `ANTHROPIC_API_KEY`. Without it the page says so and shows the facts alone
 ## Deploying
 
 `npm run build` pushes the Prisma schema to the database first (additive
-changes only — `db push` refuses anything destructive without an explicit
+changes only - `db push` refuses anything destructive without an explicit
 flag), then builds. So on Vercel a plain `git push` ships schema and code
 together, in the right order.
 

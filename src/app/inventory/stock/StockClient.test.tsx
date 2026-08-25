@@ -145,7 +145,7 @@ describe('StockClient', () => {
 
 /**
  * The shops are copies of Visma and they drift. Once Visma decides the number,
- * the page has to say so — a figure with no stated origin is the thing that
+ * the page has to say so - a figure with no stated origin is the thing that
  * made "which one is right?" unanswerable in the first place.
  */
 describe('StockClient, on where the number came from', () => {
@@ -164,7 +164,7 @@ describe('StockClient, on where the number came from', () => {
 
   /**
    * The case the old gate would have hidden. Every shop agrees with every other
-   * shop and all of them are wrong — 976 against Visma's 991, which is exactly
+   * shop and all of them are wrong - 976 against Visma's 991, which is exactly
    * what twelve of the fifty-two forecast SKUs looked like on 2026-08-18. The
    * shops do not "disagree", so nothing would have been shown.
    */
@@ -193,7 +193,7 @@ describe('StockClient, on where the number came from', () => {
 
   /**
    * A stale count is worth as much as a wrong one, and Visma dates its own
-   * warehouse rows — Goteborg had not moved since February.
+   * warehouse rows - Goteborg had not moved since February.
    */
   it('says when Visma last counted it', () => {
     show([row({ source: 'visma', countedAt: '2026-08-13T00:00:00.000Z' })])

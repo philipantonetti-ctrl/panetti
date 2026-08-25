@@ -18,7 +18,7 @@ export const SATURATION_SHARE = 0.05
  * 0..1, or null for "this is not a fact".
  *
  * `share` is what the move is worth as a fraction of the PREVIOUS window's
- * total revenue — the same frame for every shop, so a NOK store and a EUR one
+ * total revenue - the same frame for every shop, so a NOK store and a EUR one
  * are ranked against each other honestly.
  */
 export function severityOf(delta: number | null, share: number): number | null {

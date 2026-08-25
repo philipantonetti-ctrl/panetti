@@ -38,7 +38,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /**
- * Remove the brand AND its transactions (cascade) — which takes its cost out of
+ * Remove the brand AND its transactions (cascade) - which takes its cost out of
  * every historical figure, this month's and last year's alike. The client
  * confirms in those words before calling; PATCH above is the way to stop
  * syncing while keeping the history.

@@ -5,7 +5,7 @@ import type { Fact } from '../types'
  * Facts about whether the other facts can be TRUSTED.
  *
  * These bypass the materiality gates on purpose. "Norway's profit is overstated
- * because three products have no cost on file" is worth saying at any size —
+ * because three products have no cost on file" is worth saying at any size -
  * it is the product's own "say when you don't know" principle applied to the
  * briefing itself, and it is the difference between a wrong number the client
  * acts on and a gap he can close.
@@ -20,13 +20,13 @@ export const UNCOSTED_SATURATION = 5
  * USD is the pivot every rate is stored against (`quote: 'USD'` throughout
  * src/lib/fx), so crossing NOK into SEK reads BOTH currencies' USD rates and
  * divides one by the other. A missing rate therefore breaks conversion
- * whatever the display currency is — which is why this cannot be gated on the
+ * whatever the display currency is - which is why this cannot be gated on the
  * display currency being USD, as it once was. That gate silently switched the
  * warning off for every workspace that consolidates into anything else, and
  * this one consolidates into NOK.
  *
  * USD itself is never missing: it is the pivot, and its own rate is 1 by
- * definition. Nor is a currency the rate provider does not quote — an AED B2B
+ * definition. Nor is a currency the rate provider does not quote - an AED B2B
  * order can never gain a row, so reporting it would be a warning nobody can
  * ever clear. src/lib/fx/rates.ts makes the same exclusion for the same reason.
  */

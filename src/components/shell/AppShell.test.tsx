@@ -23,7 +23,7 @@ beforeEach(() => {
 const setup = () =>
   render(<ToastProvider><AppShell email="admin@test.local"><p>page</p></AppShell></ToastProvider>)
 
-// AppShell renders the sign-out control twice — once for the desktop sidebar
+// AppShell renders the sign-out control twice - once for the desktop sidebar
 // (hidden below the lg breakpoint) and once for the mobile top bar (hidden at
 // and above it). jsdom does not apply Tailwind's responsive `hidden` classes,
 // so both buttons are present in the tree at once; either exercises the same

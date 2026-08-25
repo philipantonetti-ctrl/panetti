@@ -4,7 +4,7 @@
 
 **Goal:** Close the four remaining gaps between our Marketing page and the client's BeProfit reference: ROAS and POAS on the trend, a Daily/Weekly/Monthly toggle, a page-level Ad Platform filter, and a Refresh button.
 
-**Architecture:** The platform filter is a server concern because it changes spend on every row and every ratio derived from it — `buildMarketing` takes a `platform` argument, filters accounts itself, and derives from that same argument whether the whole-store ratios (`roas`, `cpa`) may be computed at all. Granularity is a client concern because bucketing sums numbers and divides, contradicting no server figure; it lives in a pure helper consumed by `MarketingChart`. The refresh button reuses the existing `POST /api/ads/sync` route and the existing handler pattern from `AdAccountsClient`.
+**Architecture:** The platform filter is a server concern because it changes spend on every row and every ratio derived from it - `buildMarketing` takes a `platform` argument, filters accounts itself, and derives from that same argument whether the whole-store ratios (`roas`, `cpa`) may be computed at all. Granularity is a client concern because bucketing sums numbers and divides, contradicting no server figure; it lives in a pure helper consumed by `MarketingChart`. The refresh button reuses the existing `POST /api/ads/sync` route and the existing handler pattern from `AdAccountsClient`.
 
 **Tech Stack:** Next.js App Router, TypeScript, Prisma, Recharts, Vitest + Testing Library (jsdom), Tailwind with CSS custom properties.
 
@@ -12,13 +12,13 @@
 
 - Spec: `docs/superpowers/specs/2026-08-11-marketing-chart-and-filter-design.md`
 - Money is **minor units** (integers) everywhere. Ratios are floats or `null`.
-- **A ratio with no honest denominator is `null`, never `0`, `Infinity` or `NaN`.** It renders as `—`.
-- **POAS is `netProfit / spend`** — profit after ad spend, over ad spend. Breakeven is 0.
+- **A ratio with no honest denominator is `null`, never `0`, `Infinity` or `NaN`.** It renders as `-`.
+- **POAS is `netProfit / spend`** - profit after ad spend, over ad spend. Breakeven is 0.
 - Weekly buckets are **ISO weeks, Monday start**. Monthly buckets are calendar months.
 - **Bucket ratios are summed-then-divided, never the mean of daily ratios.**
 - Run a single test file with `npx vitest run <path>`, and one test with `-t '<name>'`. Full suite is `npm run test`. Lint is `npm run lint`.
 - Component tests need `// @vitest-environment jsdom` as line 1.
-- Do not assert on Recharts SVG paths — they need a measured container and will fail under jsdom. Assert on headings, legends and controls, which render outside `ResponsiveContainer`.
+- Do not assert on Recharts SVG paths - they need a measured container and will fail under jsdom. Assert on headings, legends and controls, which render outside `ResponsiveContainer`.
 - Never run `git stash`, `git checkout --`, `git reset --hard`, or `git restore`. If a working tree looks wrong, stop and report.
 
 ---
@@ -57,7 +57,7 @@ Append to `src/lib/ads/marketing.test.ts`, inside the existing `describe('per-pl
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/ads/marketing.test.ts -t 'net profit'`
-Expected: FAIL — `expected undefined to be 12000`
+Expected: FAIL - `expected undefined to be 12000`
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -91,7 +91,7 @@ And one line in the series map at the bottom of `buildMarketing`:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/lib/ads/marketing.test.ts`
-Expected: PASS, all tests in the file. TypeScript will now flag any other place constructing a `MarketingSeriesPoint` — fix those by adding `netProfit` (test fixtures get `netProfit: 0`).
+Expected: PASS, all tests in the file. TypeScript will now flag any other place constructing a `MarketingSeriesPoint` - fix those by adding `netProfit` (test fixtures get `netProfit: 0`).
 
 - [ ] **Step 5: Commit**
 
@@ -104,7 +104,7 @@ git commit -m "feat(marketing): carry net profit onto the series, so POAS can be
 
 ### Task 2: Platform filter, and the two ratios that cannot survive it
 
-`roas` and `cpa` divide whole-store revenue and orders by spend. Narrow spend to one platform and they do not narrow — they inflate. This task adds the filter and dashes those two out whenever it is active.
+`roas` and `cpa` divide whole-store revenue and orders by spend. Narrow spend to one platform and they do not narrow - they inflate. This task adds the filter and dashes those two out whenever it is active.
 
 **Files:**
 - Modify: `src/lib/ads/marketing.ts` (`ratios` at ~line 120, `buildMarketing` signature and body)
@@ -161,7 +161,7 @@ describe('platform filter', () => {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/lib/ads/marketing.test.ts -t 'platform filter'`
-Expected: FAIL — the first two fail because `platform` is ignored, so `meta.total.spend` equals the unfiltered total and `roas` is a number.
+Expected: FAIL - the first two fail because `platform` is ignored, so `meta.total.spend` equals the unfiltered total and `roas` is a number.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -173,7 +173,7 @@ In `src/lib/ads/marketing.ts`, give `ratios` the flag. Only two lines change ins
  *
  * `wholeStore` is false when a platform filter is active. `roas` and `cpa`
  * divide WHOLE-STORE revenue and orders by spend, so narrowing spend to one
- * platform does not narrow them — it inflates them. A 5.5x store ROAS would
+ * platform does not narrow them - it inflates them. A 5.5x store ROAS would
  * read 7.5x for no reason but a dropdown. They dash instead.
  */
 const ratios = (row: Ratioless, wholeStore = true): MarketingShopRow => ({
@@ -223,7 +223,7 @@ export function buildMarketing(args: {
   const accountById = new Map(accounts.map((a) => [a.id, a]))
 ```
 
-Change the budget loop to read the filtered list — it is the only other use of `args.accounts`:
+Change the budget loop to read the filtered list - it is the only other use of `args.accounts`:
 
 ```ts
   for (const account of accounts) {
@@ -263,7 +263,7 @@ And on `total`, as the second argument after the object literal:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/lib/ads/marketing.test.ts`
-Expected: PASS, including the pre-existing tests — the default `wholeStore = true` keeps every unfiltered caller unchanged.
+Expected: PASS, including the pre-existing tests - the default `wholeStore = true` keeps every unfiltered caller unchanged.
 
 - [ ] **Step 5: Commit**
 
@@ -313,7 +313,7 @@ Open `src/app/api/marketing/route.test.ts` and follow the mocking style already 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/app/api/marketing/route.test.ts -t 'platform'`
-Expected: FAIL — the first returns both platforms, the second returns 200 with an empty result.
+Expected: FAIL - the first returns both platforms, the second returns 200 with an empty result.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -328,7 +328,7 @@ After `accounts` is fetched (the `Promise.all` at ~line 43), validate and scope:
 
 ```ts
     // Validated against the providers actually connected. A typo must not read
-    // as a legitimate zero — the same reason google.ts refuses to treat an
+    // as a legitimate zero - the same reason google.ts refuses to treat an
     // unparseable response as an empty one.
     if (platform && !accounts.some((a) => a.provider === platform)) {
       return NextResponse.json(
@@ -336,8 +336,8 @@ After `accounts` is fetched (the `Promise.all` at ~line 43), validate and scope:
         { status: 400, headers: NO_STORE },
       )
     }
-    // One scoped list feeds every surface — totals, chart, tables and the
-    // Spend Check panel — so the page cannot show two scopes at once.
+    // One scoped list feeds every surface - totals, chart, tables and the
+    // Spend Check panel - so the page cannot show two scopes at once.
     const scopedAccounts = platform
       ? accounts.filter((a) => a.provider === platform)
       : accounts
@@ -541,7 +541,7 @@ describe('bucketSeries', () => {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/lib/ads/series-buckets.test.ts`
-Expected: FAIL — `Cannot find module './series-buckets'`
+Expected: FAIL - `Cannot find module './series-buckets'`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -682,7 +682,7 @@ Then append inside the existing `describe('MarketingChart', ...)`:
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/components/marketing/MarketingChart.test.tsx`
-Expected: FAIL — no `ROAS` text, no `tab` roles.
+Expected: FAIL - no `ROAS` text, no `tab` roles.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -698,7 +698,7 @@ under a `/* Chart series */` comment at ~line 39; add to that group, keeping the
 hex convention its two neighbours use:
 
 ```css
-  /* Chart series — validated for colour-blindness (see DESIGN.md) */
+  /* Chart series - validated for colour-blindness (see DESIGN.md) */
   --color-series-revenue: #2563a8;
   --color-series-profit: #1f7a55;
   --color-series-roas: #7c3aed;
@@ -793,7 +793,7 @@ legend so `ROAS` and `POAS` appear when they are drawn:
 ```
 
 Point the chart at `data`, add the right-hand axis, and give the money lines an
-explicit `yAxisId` — Recharts requires every line to name its axis once a second
+explicit `yAxisId` - Recharts requires every line to name its axis once a second
 one exists:
 
 ```tsx
@@ -958,7 +958,7 @@ describe('PlatformFilter', () => {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest run src/components/filters/PlatformFilter.test.tsx`
-Expected: FAIL — `Cannot find module './PlatformFilter'`
+Expected: FAIL - `Cannot find module './PlatformFilter'`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1021,7 +1021,7 @@ import { PlatformFilter } from '@/components/filters/PlatformFilter'
   const [platform, setPlatform] = useState<string | null>(null)
 ```
 
-Send it, and add it to the effect's dependencies — omitting it there is the bug
+Send it, and add it to the effect's dependencies - omitting it there is the bug
 that makes a filter appear to do nothing:
 
 ```ts
@@ -1077,7 +1077,7 @@ Finally tell the chart:
 
 In `src/app/marketing/MarketingClient.test.tsx`. This file stubs fetch per test
 with `vi.stubGlobal('fetch', fetchMock)` and flushes with
-`await act(async () => {})` — there is no shared `fetchMock`, and no
+`await act(async () => {})` - there is no shared `fetchMock`, and no
 `waitFor`. Reuse the `withPlatform` payload fixture already defined in the file
 (it carries two entries in `byPlatform`, which is what makes the dropdown
 render at all):
@@ -1109,7 +1109,7 @@ render at all):
 ```
 
 If `withPlatform` holds only one platform, give this test its own payload with
-two — a one-option `PlatformFilter` renders nothing by design, so the
+two - a one-option `PlatformFilter` renders nothing by design, so the
 `combobox` query would fail for the wrong reason.
 
 - [ ] **Step 7: Run the tests**
@@ -1141,7 +1141,7 @@ git commit -m "feat(marketing): an ad platform filter that scopes the whole page
 
 In `src/app/marketing/MarketingClient.test.tsx`:
 
-Same stubbing style as Task 6 — per-test `vi.stubGlobal`, flushed with
+Same stubbing style as Task 6 - per-test `vi.stubGlobal`, flushed with
 `await act(async () => {})`:
 
 ```tsx
@@ -1173,7 +1173,7 @@ Same stubbing style as Task 6 — per-test `vi.stubGlobal`, flushed with
 ```
 
 Use whichever payload fixture the file already defines for a healthy response
-(`payload` here stands for that fixture — check its real name before writing).
+(`payload` here stands for that fixture - check its real name before writing).
 The disabled state is asserted separately, because the click resolves inside
 the same `act` flush and the button is enabled again by the time it returns:
 
@@ -1214,7 +1214,7 @@ the same `act` flush and the button is enabled again by the time it returns:
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/marketing/MarketingClient.test.tsx -t 'syncs'`
-Expected: FAIL — `Unable to find an accessible element with the role "button" and name /refresh/i`.
+Expected: FAIL - `Unable to find an accessible element with the role "button" and name /refresh/i`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1304,7 +1304,7 @@ git commit -m "feat(marketing): refresh ad data without leaving the page"
 400 validation, every surface, the control) → Tasks 2, 3, 6. Section 3
 (granularity, sum-then-divide, ISO weeks, partial edges, Daily default) →
 Tasks 4, 5. Section 4 (right axis, dashed, both modes, POAS definition, omitted
-under a filter) → Task 5. Section 5 (refresh) → Task 7. Spec tests 1–11 map to
+under a filter) → Task 5. Section 5 (refresh) → Task 7. Spec tests 1-11 map to
 Tasks 1, 2, 2, 2, 3, 4, 4, 4, 4, 5, 7 respectively.
 
 **Verified against the codebase while writing, not assumed:**

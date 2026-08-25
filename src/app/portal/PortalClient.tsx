@@ -42,7 +42,7 @@ type Portal = {
   }[]
   /**
    * What we SENT them. Deliberately not near `productTotals`, which is what
-   * they SOLD — two different things that would read the same if either were
+   * they SOLD - two different things that would read the same if either were
    * called just "products" on screen.
    */
   products: {
@@ -57,7 +57,7 @@ type Portal = {
 /** How many orders show before "Show all". */
 const PAGE = 10
 
-/** The same stat vocabulary as the admin dashboard — one system, two audiences. */
+/** The same stat vocabulary as the admin dashboard - one system, two audiences. */
 function Stat({
   label,
   value,
@@ -110,7 +110,7 @@ export function PortalClient({
     }
 
     // loading/error are set by the date handler (and start set on mount), so the
-    // effect only clears loading — keeping setState out of the effect body.
+    // effect only clears loading - keeping setState out of the effect body.
     fetch(`/api/portal?${params}`)
       .then(async (r) => {
         // Without this check a 403 pipes {error: "..."} straight into `data`
@@ -214,7 +214,7 @@ export function PortalClient({
                       </span>
                     </span>
                   ) : data.lifetimeOrders > 0 ? (
-                    // They have sold before, just not now — never imply otherwise.
+                    // They have sold before, just not now - never imply otherwise.
                     <span className="text-[15px]">No sales this period</span>
                   ) : (
                     'No sales yet'
@@ -341,7 +341,7 @@ export function PortalClient({
                     <tr>
                       <td colSpan={5} className="px-5 py-12 text-center text-[13px] text-muted">
                         {data.lifetimeOrders > 0 ? (
-                          // They HAVE sold — just not in this window. Saying
+                          // They HAVE sold - just not in this window. Saying
                           // "share your code" here would be plainly wrong.
                           <div data-testid="quiet-period" className="space-y-2">
                             <p className="text-ink">No sales in this period.</p>

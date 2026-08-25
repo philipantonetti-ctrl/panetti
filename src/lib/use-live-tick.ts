@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
  * dependencies and an open tab keeps itself current instead of showing the
  * world as of whenever it was loaded.
  *
- * A hidden tab never ticks — background tabs do no work. Focus and
+ * A hidden tab never ticks - background tabs do no work. Focus and
  * visibilitychange often fire together, so bumps within a second collapse
  * into one: one tick, one refetch.
  */
@@ -16,7 +16,7 @@ export function useLiveTick(everyMs = 60_000): number {
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
-    // The mount itself already fetched, so the clock starts now — a focus
+    // The mount itself already fetched, so the clock starts now - a focus
     // event that races the first render must not cause a duplicate fetch.
     let last = Date.now()
 

@@ -84,7 +84,7 @@ describe('LateList', () => {
    * can go away from the Late section."
    *
    * The heading used to advertise that it kept them, and then reconcile itself
-   * with the tile above in a second sentence — a number on the page matching
+   * with the tile above in a second sentence - a number on the page matching
    * nothing under it, which is the complaint that started all of this. The rows
    * are now exactly what the tile counts, so there is nothing left to reconcile
    * and nothing left to explain away. Which orders the route sends is held in
@@ -101,8 +101,8 @@ describe('LateList', () => {
   /**
    * The empty state became far more reachable with this change: a range where
    * every late parcel has since arrived now empties the list. "No parcel is
-   * past its promise in this range" is a plain lie about such a range — some
-   * were, they simply arrived — and the on-time rate sitting above it would be
+   * past its promise in this range" is a plain lie about such a range - some
+   * were, they simply arrived - and the on-time rate sitting above it would be
    * saying so at the same time.
    */
   it('does not claim nothing was late when the late ones have merely arrived', () => {
@@ -129,8 +129,8 @@ describe('LateList', () => {
  *
  * That split gave those rows their own section, but the section only ever held
  * the ones ALSO past their promise, while the tile above counted every order
- * with no parcel. Two numbers over overlapping sets — the same shape as the
- * 155-against-8 bug — and no way at all to see the other rows. The section now
+ * with no parcel. Two numbers over overlapping sets - the same shape as the
+ * 155-against-8 bug - and no way at all to see the other rows. The section now
  * holds the whole set the tile counts, and the tile opens it.
  */
 describe('NoTracking', () => {
@@ -157,8 +157,8 @@ describe('NoTracking', () => {
     expect(screen.getByText('27345')).toBeInTheDocument()
   })
 
-  // These are the rows most likely to need a phone call — nobody can even say
-  // whether the parcel exists — so the name matters here at least as much.
+  // These are the rows most likely to need a phone call - nobody can even say
+  // whether the parcel exists - so the name matters here at least as much.
   it('names the customer once opened', () => {
     render(shut({ rows: [{ ...bare, customerName: 'Louise Nielsen' }], total: 1, open: true }))
     expect(screen.getByText('Louise Nielsen')).toBeInTheDocument()
@@ -176,7 +176,7 @@ describe('NoTracking', () => {
 
   /**
    * The widening. "Days over" is meaningless for an order still inside its
-   * promise, and those orders are most of this list — so the column has to be
+   * promise, and those orders are most of this list - so the column has to be
    * how long we have been in the dark, not how far past a deadline.
    */
   it('holds orders that are not past their promise at all', () => {
@@ -289,12 +289,12 @@ describe('Split', () => {
   /**
    * Both halves need a handover time, which only ever arrives as a carrier
    * event. Orders already delivered when first seen never record one, so this
-   * panel showed two dashes and nothing else — a blank that reads identically
+   * panel showed two dashes and nothing else - a blank that reads identically
    * to "zero days" and to "still loading".
    */
   it('says why it is blank rather than showing two dashes', () => {
     // Deliberately NOT /handover/, which the panel's own subtitle already
-    // contains — that would pass without the reason ever being added.
+    // contains - that would pass without the reason ever being added.
     const { container } = render(<Split stats={stats()} />)
     expect(container.textContent).toMatch(/no handover time/i)
   })
@@ -319,7 +319,7 @@ describe('Split', () => {
 /**
  * The strip is four positions along one journey. Its last one said "Delivered"
  * and counted every order whose clock had stopped, so a parcel still sitting
- * at a Nordic pickup point was reported as delivered — the same conflation the
+ * at a Nordic pickup point was reported as delivered - the same conflation the
  * badges had, one level up the page. Fixing the badge alone would have left
  * the two contradicting each other on one screen.
  */
@@ -347,8 +347,8 @@ describe('Pipeline', () => {
   /**
    * An order the warehouse file reports delivered, which the carrier has not
    * yet dated, is a real position on this journey. Without a stage of its own
-   * it belongs to none of the others — it is not in transit, and it cannot
-   * join `collected`, which is a population of dates — so the bar would
+   * it belongs to none of the others - it is not in transit, and it cannot
+   * join `collected`, which is a population of dates - so the bar would
    * quietly stop adding up to the orders it was given.
    */
   it('gives an arrival with no date yet its own position', () => {

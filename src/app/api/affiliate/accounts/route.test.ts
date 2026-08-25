@@ -64,7 +64,7 @@ const post = (body: unknown) =>
 
 /**
  * Addrevenue, answering: the advertiser with two markets, then two sales.
- * The FI market points at a domain no shop holds, so one sale matches no shop —
+ * The FI market points at a domain no shop holds, so one sale matches no shop -
  * which is the number the status cell exists to show.
  */
 function stubAddrevenue() {
@@ -131,7 +131,7 @@ function stubAddrevenue() {
  *
  * The pause is housekeeping, not the subject: this suite shares one dev
  * database with `sync.test.ts`, whose forced syncAllAffiliateAccounts sweeps up
- * every ACTIVE account it finds — including one of ours, mid-test.
+ * every ACTIVE account it finds - including one of ours, mid-test.
  */
 async function connect() {
   const res = await post({ token: TOKEN })
@@ -165,7 +165,7 @@ describe('POST /api/affiliate/accounts', () => {
 
   it('answers a malformed body with a 400, never a thrown SyntaxError', async () => {
     // The generic catch logs its error, and V8's SyntaxError quotes the body
-    // it choked on — on this route that can be a token. The 400 path must
+    // it choked on - on this route that can be a token. The 400 path must
     // catch the parse itself.
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -268,7 +268,7 @@ describe('GET /api/affiliate/accounts', () => {
     stubAddrevenue()
     await connect()
 
-    // A second brand, seeded directly — the per-account join in withCounts is
+    // A second brand, seeded directly - the per-account join in withCounts is
     // what this test is about, and one account cannot exercise a join.
     const other = await db.affiliateAccount.create({
       data: {
@@ -297,7 +297,7 @@ describe('GET /api/affiliate/accounts', () => {
 
     const body = await (await GET()).json()
     const rows = body.accounts as { externalId: string; transactions: number; unmatched: number }[]
-    // Distinct counts per brand — a join that summed globally would show 3/2 on both.
+    // Distinct counts per brand - a join that summed globally would show 3/2 on both.
     expect(rows.find((a) => a.externalId === ADVERTISER)).toMatchObject({ transactions: 2, unmatched: 1 })
     expect(rows.find((a) => a.externalId === `${ADVERTISER}2`)).toMatchObject({ transactions: 1, unmatched: 1 })
   })

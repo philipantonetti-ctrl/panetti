@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 /*
- * panetti-analytics design system — see DESIGN.md.
+ * panetti-analytics design system - see DESIGN.md.
  *
  * Restrained: neutral surfaces carry the page, ONE accent for interaction only.
  * Money is the only place colour is allowed to mean something, and it never means
- * it alone — a loss is red AND signed.
+ * it alone - a loss is red AND signed.
  */
 @theme {
   /* Surfaces */
@@ -17,15 +17,15 @@
   /* Ink.
      Every one of these is TEXT, so every one clears 4.5:1 on both --surface and
      --panel. Measured, not eyeballed: ink 16.4:1, muted 7.1:1, faint 4.7:1.
-     0.54 is the floor for `faint` — lighter than that and small labels fail. */
+     0.54 is the floor for `faint` - lighter than that and small labels fail. */
   --color-ink: oklch(0.24 0.012 255);
   --color-muted: oklch(0.46 0.012 255);
   --color-faint: oklch(0.54 0.012 255);
 
-  /* Decoration only — chevrons, icon strokes, bar tracks. Never text. */
+  /* Decoration only - chevrons, icon strokes, bar tracks. Never text. */
   --color-decor: oklch(0.72 0.008 255);
 
-  /* One accent — selection, focus, active nav. Never decoration. */
+  /* One accent - selection, focus, active nav. Never decoration. */
   --color-accent: oklch(0.52 0.11 233);
   --color-accent-ink: oklch(0.42 0.12 233);
   --color-accent-soft: oklch(0.962 0.02 233);
@@ -36,7 +36,7 @@
   --color-warn: oklch(0.55 0.13 75);
   --color-warn-soft: oklch(0.97 0.03 85);
 
-  /* Chart series — validated for colour-blindness (see DESIGN.md) */
+  /* Chart series - validated for colour-blindness (see DESIGN.md) */
   --color-series-revenue: #2563a8;
   --color-series-profit: #1f7a55;
   --color-series-roas: #7c3aed;
@@ -47,7 +47,7 @@
 }
 
 :root {
-  /* The interface is a light instrument read in daylight — never follow the OS
+  /* The interface is a light instrument read in daylight - never follow the OS
      into dark mode, which would put near-white text on our white cards. */
   color-scheme: light;
 
@@ -66,7 +66,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Money must align digit for digit — the highest-leverage type decision here. */
+/* Money must align digit for digit - the highest-leverage type decision here. */
 .num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
@@ -79,7 +79,7 @@ body {
   border-radius: 4px;
 }
 
-/* State conveys itself in 150–200ms, or not at all. */
+/* State conveys itself in 150-200ms, or not at all. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

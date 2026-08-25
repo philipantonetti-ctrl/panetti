@@ -1,6 +1,6 @@
 /**
  * Guess which shop an ad account advertises for, from nothing but its name.
- * "Mazzetti NO" should land on Mazzetti.no without anyone thinking about it —
+ * "Mazzetti NO" should land on Mazzetti.no without anyone thinking about it -
  * and a name that fits nothing gets no guess rather than a wrong one.
  */
 

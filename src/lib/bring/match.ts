@@ -14,7 +14,7 @@ export type MatchOutcome = { orderId: string } | { orderId: null; reason: string
  * Find the order a parcel belongs to, from the recipient email Bring returns.
  *
  * The warehouse's own `Order` column cannot do this job. It is their internal
- * counter — Bring carries it as `senderReference` — and it happens to fall in
+ * counter - Bring carries it as `senderReference` - and it happens to fall in
  * the same numeric range as Panetti Norway's order numbers, so every value
  * matches a real order and none of them match the right one. Measured on the
  * 2026-08-11 sample: 0 of 27 correct. The recipient email scored 27 of 27.

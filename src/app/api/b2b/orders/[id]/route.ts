@@ -87,10 +87,10 @@ export async function GET(_req: Request, { params }: Ctx) {
           currency: order.currency,
           shippingCharged: order.shippingCharged,
           // null means "webshop order, use the shop's rate", which a B2B order
-          // never is — but the column is nullable, so say 0 rather than null.
+          // never is - but the column is nullable, so say 0 rather than null.
           // Null travels to the form as null, so re-opening an order nobody
           // costed shows an EMPTY box. Sent as 0 it would show a zero, and
-          // saving would then store one — turning "nobody said" into "shipping
+          // saving would then store one - turning "nobody said" into "shipping
           // was free" by the act of looking at it.
           fulfillmentCost: order.fulfillmentCost,
           lines: order.items.map((i) => ({
@@ -129,7 +129,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const w = await buildOrderWrite(parsed.data)
 
     // An order's shop is fixed at creation, exactly like a B2B customer's own
-    // shop: its history was reported under it. Refuse silently re-homing it —
+    // shop: its history was reported under it. Refuse silently re-homing it -
     // the update below never writes shopId, so without this check the order
     // would keep its old shop while its customer and line items' products
     // belong to another.
@@ -147,7 +147,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const isVoided = VOIDED_STATUSES.includes(parsed.data.status as never)
     const voidedAt = isVoided ? (wasVoided ? existing.voidedAt : new Date()) : null
 
-    // Lines are rewritten, not diffed — storeOrder()'s rule. `number` and
+    // Lines are rewritten, not diffed - storeOrder()'s rule. `number` and
     // `externalId` are deliberately untouched: an edit is the same order.
     await db.$transaction(async (tx) => {
       await tx.orderItem.deleteMany({ where: { orderId: id } })

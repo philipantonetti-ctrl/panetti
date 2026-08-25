@@ -37,7 +37,7 @@ export type Row = {
  *
  * The day lead times are first entered, EVERY product is past its order date at
  * once, and twenty suggestions above a twenty-row table is the table again. The
- * ones it drops are counted out loud below — a list that quietly stops at eight
+ * ones it drops are counted out loud below - a list that quietly stops at eight
  * reads as "that is all of them", which is the same lie as a blank cell.
  */
 const MAX_TIPS = 8
@@ -101,7 +101,7 @@ const OPENS_ASCENDING: Record<Column, boolean> = {
  * A null is not a zero and never sorts as one. A product whose shops report no
  * stock figure, or that has no run-out date because nothing is selling, would
  * otherwise land at the top of a highest-first list and read as the most
- * stocked thing in the warehouse — the same "say when you don't know" rule the
+ * stocked thing in the warehouse - the same "say when you don't know" rule the
  * blank cells already follow. So nulls sit last in BOTH directions, which means
  * they cannot be sorted INTO the top either.
  */
@@ -135,7 +135,7 @@ export function InventoryClient({
    * Nobody has filled in a single lead time yet.
    *
    * This is the state the page ships in, and it used to repeat "set lead times"
-   * on every row — nineteen copies of one instruction, in the column that is
+   * on every row - nineteen copies of one instruction, in the column that is
    * supposed to answer when to order. One banner says it once and links to the
    * place it gets done; the rows go quiet. As soon as any product has lead
    * times the banner disappears and only the stragglers speak up.
@@ -339,7 +339,7 @@ export function InventoryClient({
                       // someone for, and it used to look like any other number.
                       <span className="font-semibold text-loss">Out of stock</span>
                     ) : (
-                      (r.stock.quantity ?? '—')
+                      (r.stock.quantity ?? '-')
                     )}
                     {r.stock.disagrees && (
                       <span className="ml-2 text-[11px] text-warn">
@@ -409,10 +409,10 @@ export function InventoryClient({
                       // above has already said so, and repeating it here once per
                       // product is nineteen copies of one instruction. When only
                       // some rows lack them, this is the only place that says
-                      // which — so it speaks up, and as a link rather than as
+                      // which - so it speaks up, and as a link rather than as
                       // dead text you cannot act on.
                       noLeadTimesAnywhere ? (
-                        <span className="text-muted">—</span>
+                        <span className="text-muted">-</span>
                       ) : (
                         <Link
                           href="/inventory/suppliers"
@@ -424,11 +424,11 @@ export function InventoryClient({
                     ) : (
                       // The reason already appears in the "Runs out" cell one
                       // column left; repeating it here would just be noise.
-                      <span className="text-muted">—</span>
+                      <span className="text-muted">-</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 tabular-nums">
-                    {r.forecast.quantity ?? '—'}
+                    {r.forecast.quantity ?? '-'}
                     {r.forecast.onOrderWithoutEta > 0 && (
                       <span className="ml-2 text-[11px] text-muted">
                         {r.forecast.onOrderWithoutEta} on order, no ETA
@@ -455,7 +455,7 @@ export function InventoryClient({
           <ul className="mt-3 space-y-1 text-[12px] text-muted">
             {unusable.map((u, i) => (
               <li key={`${u.shopName}-${u.sku}-${i}`}>
-                <span className="text-ink">{u.name}</span> — {u.shopName}
+                <span className="text-ink">{u.name}</span> - {u.shopName}
               </li>
             ))}
           </ul>

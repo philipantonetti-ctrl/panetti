@@ -5,7 +5,7 @@ import { db } from '../db'
 /**
  * Currency markets do not publish at weekends, so those days can NEVER be
  * filled. Treating every calendar day as a gap made each dashboard load call an
- * external API that could not help — on every request, forever. `convert()`
+ * external API that could not help - on every request, forever. `convert()`
  * already falls back to the nearest earlier rate, so a missing weekend costs
  * nothing; being genuinely BEHIND is the only thing worth a network call.
  *
@@ -13,12 +13,12 @@ import { db } from '../db'
  */
 
 // ISK and BGN: real, convertible ISO codes (src/lib/currencies.ts) that no
-// other test or seed in this repo uses — chosen so a currency that genuinely
+// other test or seed in this repo uses - chosen so a currency that genuinely
 // needs a fetch behaves like a real one, not a code the provider would
 // reject outright.
 const CUR = 'ISK'
 const OTHER = 'BGN'
-// AED: a real ISO code, but NOT in our CONVERTIBLE list — Frankfurter cannot
+// AED: a real ISO code, but NOT in our CONVERTIBLE list - Frankfurter cannot
 // quote it. This is the FIX 1 currency: a B2B order or expense in AED.
 const UNQUOTED = 'AED'
 
@@ -83,17 +83,17 @@ describe('ensureRates', () => {
   // workspace switching to SEK or GBP, which no shop or ad account trades in)
   // was ever fetched. The old freshness check looked only at `newest` and
   // skipped the provider call entirely, leaving that currency with zero rows
-  // — crossConvert then returns amounts unconverted, silently.
+  // - crossConvert then returns amounts unconverted, silently.
   it('fetches a currency that has no rows at all, even though another currency is fresh', async () => {
     // OTHER is fresh (inside FRESH_DAYS of `to`), so a shortcut that looked
-    // only at `newest` would fire and CUR — which has never been held, and is
-    // never created here — would get nothing.
+    // only at `newest` would fire and CUR - which has never been held, and is
+    // never created here - would get nothing.
     await holdOther('2027-01-20')
 
     await ensureRates(new Date('2027-01-01'), new Date('2027-01-22'), [CUR])
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    // CUR has never been held, so the WHOLE range is fetched — not just since
+    // CUR has never been held, so the WHOLE range is fetched - not just since
     // OTHER's newest day, which would leave the earlier part of the range
     // unconverted for CUR.
     expect(String(fetchMock.mock.calls[0][0])).toContain('2027-01-01..2027-01-22')
@@ -103,7 +103,7 @@ describe('ensureRates', () => {
   // row for it, no matter how many times we ask) must never keep the
   // freshness shortcut closed. Before the fix this currency alone was enough
   // to force startDay to the whole range and call the provider on EVERY
-  // request, forever — exactly the "external API that could not help, on
+  // request, forever - exactly the "external API that could not help, on
   // every request, forever" failure FRESH_DAYS exists to prevent.
   it('does not force a fetch for a currency the provider cannot quote, when other rates are fresh', async () => {
     await holdOther('2027-01-20') // some OTHER currency, fresh relative to `to`
@@ -112,7 +112,7 @@ describe('ensureRates', () => {
   })
 
   // Companion to the above: a real, CONVERTIBLE currency with no rows at all
-  // must still force a fetch — FIX 1 only exempts currencies the provider
+  // must still force a fetch - FIX 1 only exempts currencies the provider
   // cannot quote, not ordinary ones that simply have never been synced. This
   // is unaffected by FIX 1 (it already passed before it, and still does).
   it('still forces a fetch for a convertible currency that holds no rows at all', async () => {
@@ -124,7 +124,7 @@ describe('ensureRates', () => {
   // that currency's only row lands OUTSIDE the range someone views later
   // (e.g. last year). The OLD `held` check ("does this currency have ANY
   // row, EVER") found that out-of-range row and treated the currency as
-  // covered, so the shortcut fired and no fetch happened — `rateOn` then fell
+  // covered, so the shortcut fired and no fetch happened - `rateOn` then fell
   // back to the EARLIEST row it held (today's rate) for every day of the
   // viewed range, converting all of history at today's rate.
   it('forces a fetch when the only rows it holds fall OUTSIDE the range being viewed', async () => {
@@ -138,7 +138,7 @@ describe('ensureRates', () => {
 
   // FIX 3: the provider (Frankfurter/ECB) publishes nothing for non-trading
   // days. If the range being viewed STARTS on a weekend or holiday, the rows
-  // we get back begin on the first trading day AFTER the range start —
+  // we get back begin on the first trading day AFTER the range start -
   // `held`'s old "date <= start of range" test then NEVER matches, no matter
   // how many times we fetch, so every single page load re-fetches the same
   // range and re-upserts it, forever. This is the narrower survivor of FIX 2
@@ -156,7 +156,7 @@ describe('ensureRates', () => {
   // Companion to FIX 3: the tolerance that lets a weekend gap count as "held"
   // must stay narrow. A currency whose earliest row is genuinely far after
   // the range start (viewing last year, but the only row is from just now)
-  // must still force the whole-range fetch — otherwise this fix would widen
+  // must still force the whole-range fetch - otherwise this fix would widen
   // back into FIX 2's bug (history silently converted at today's rate).
   it('still forces a fetch when the earliest held row is far after the range start', async () => {
     await hold('2027-06-01') // CUR's only row, months after the viewed range

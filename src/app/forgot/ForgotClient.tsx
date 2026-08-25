@@ -6,7 +6,7 @@ import { useState } from 'react'
 /**
  * Where someone who cannot sign in asks for a way back.
  *
- * The confirmation is deliberately conditional — "if that email has a login" —
+ * The confirmation is deliberately conditional - "if that email has a login" -
  * and must stay that way. The route answers identically for a known address, an
  * unknown one and a broken mailer precisely so this form cannot be used to
  * discover which of the ambassadors has an account; wording that said "we have
@@ -31,7 +31,7 @@ export function ForgotClient() {
         body: JSON.stringify({ email }),
       })
 
-      // A proxy or a crash might not answer JSON at all, hence the fallback —
+      // A proxy or a crash might not answer JSON at all, hence the fallback -
       // the same guard InviteClient uses.
       const data = (await res.json().catch(() => null)) as { error?: string } | null
 

@@ -39,7 +39,7 @@ export type MetricsInput = {
    * currency anyone has typed one in.
    *
    * Absent, or holding nothing that covers an order, means the order keeps the
-   * flat `fulfillmentRates` figure it has always had — which is what makes this
+   * flat `fulfillmentRates` figure it has always had - which is what makes this
    * safe to ship before a single rate exists. See lib/inventory/shipping.ts.
    */
   shippingRates?: Map<string, ShippingPoint[]>
@@ -77,7 +77,7 @@ export function fulfillmentOn(points: FulfillmentPoint[], date: Date): number {
 
 /**
  * Ad spend and affiliate cost are dated by plain UTC day, the way the platforms
- * report them — unlike an order, which belongs to its shop's own calendar day.
+ * report them - unlike an order, which belongs to its shop's own calendar day.
  */
 function spendInRange(date: Date, from: Date, to: Date): boolean {
   const d = utcDay(date).getTime()
@@ -93,7 +93,7 @@ function inRange(when: Date, from: Date, to: Date, tz: string): boolean {
 /**
  * An order as the period sees it: one entry, at +1, on the day it was placed.
  *
- * An earlier version booked a refund as TWO entries — the sale standing on its
+ * An earlier version booked a refund as TWO entries - the sale standing on its
  * own day and a −1 reversal on the day the money went back. It read well as
  * accounting and failed as reporting. On 5 August 2026 Panetti Sweden took
  * three orders; a FOURTH, placed the day before, was cancelled that morning,
@@ -125,7 +125,7 @@ export function entriesIn<T extends EngineOrder>(
 
   for (const order of orders) {
     // An order that earns nothing counts nowhere. Not paid yet, or paid and
-    // given back — either way it is not a sale, and no day's figures may claim
+    // given back - either way it is not a sale, and no day's figures may claim
     // it. The same rule the ambassador leaderboard has always used.
     if (EXCLUDED_STATUSES.includes(order.status.toLowerCase() as never)) continue
 
@@ -139,7 +139,7 @@ export function entriesIn<T extends EngineOrder>(
 /**
  * THE function. Every number on every screen comes from here.
  *
- *   net sales    = gross sales - discounts          (excl VAT — VAT is never revenue)
+ *   net sales    = gross sales - discounts          (excl VAT - VAT is never revenue)
  *   net revenue  = net sales + shipping charged
  *   cogs         = qty x (cost + handling), at the cost in effect ON THE ORDER'S DATE
  *   commission   = rate x net sales, for attributed orders only
@@ -181,7 +181,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
    *
    * A SKU is not shop-scoped, so a `ShippingRate` names the currency it was
    * typed in and only the rows matching the order's own cost currency are in
-   * force for it — see `ratesInCurrency` for why the others are dropped rather
+   * force for it - see `ratesInCurrency` for why the others are dropped rather
    * than converted. Narrowed once per currency and cached, not once per order:
    * dailySeries runs this whole function for every day in the range, so work
    * done per order is work done range-length times over.
@@ -203,7 +203,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     // at the rate that applied on the day the order was placed. `crossConvert`,
     // not `convert`: displayCurrency is now an operator choice (Settings ->
     // General), not always USD, and plain `convert` multiplies by the
-    // from->USD rate regardless of what `display` actually is — correct only
+    // from->USD rate regardless of what `display` actually is - correct only
     // when display happens to be USD. See fx.ts's own doc comment on `convert`.
     const conv = (amount: number, order: EngineOrder) =>
       crossConvert(amount, order.currency, displayCurrency, order.placedAt, rates)
@@ -220,7 +220,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     const taxes = sum(shopOrders.map((e) => e.sign * conv(e.order.taxTotal, e.order)))
 
     // Fulfillment, most specific answer first: what this order actually cost to
-    // ship when it says so — a hand-entered B2B order does — then what its SKUs
+    // ship when it says so - a hand-entered B2B order does - then what its SKUs
     // cost per unit, and only then the shop's flat per-order rate on its day.
     //
     // The middle step is null, never 0, when no line has a rate: an installation
@@ -245,7 +245,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       }),
     )
 
-    // Gateway fee: % of the CHARGED total (incl. VAT — that is what the gateway
+    // Gateway fee: % of the CHARGED total (incl. VAT - that is what the gateway
     // takes its cut of) plus a fixed part crossing from the fee's own currency.
     const fee = input.processingFee
     const transactionFees = !fee
@@ -265,7 +265,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
     // Ad spend converts at ITS OWN day's rate, exactly as an order does, so a
     // rate move never rewrites last month's marketing cost. crossConvert, not
     // convert, because an account can bill in a currency that is neither the
-    // shop's nor USD — and because buildMarketing converts the same rows the
+    // shop's nor USD - and because buildMarketing converts the same rows the
     // same way, which is what keeps this page and the Marketing page agreeing.
     const marketing = sum(
       (spendByShop.get(shop.id) ?? [])
@@ -294,7 +294,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       ),
     )
 
-    // Commission is a percentage of NET SALES — after discount, before shipping, excl VAT.
+    // Commission is a percentage of NET SALES - after discount, before shipping, excl VAT.
     const commission = sum(
       shopOrders.map((e) =>
         e.order.ambassadorId ? e.sign * conv(pct(e.order.netSales, e.order.commissionRate), e.order) : 0,
@@ -316,7 +316,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
 
     // The tally reverses with the money. It is the one figure that used to
     // count the sale entries and ignore the reversals, so a store whose orders
-    // were all cancelled reported them as orders beside a revenue of zero —
+    // were all cancelled reported them as orders beside a revenue of zero -
     // "2 orders, $0.00" on the client's Dashboard. Summing the signs is the
     // same arithmetic every column above already does, which is what stops the
     // count and the money it sits next to from ever describing different sets.

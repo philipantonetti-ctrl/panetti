@@ -21,13 +21,13 @@
 - **Every new API route is admin-only:** `assertAdmin(await currentUser())` and `Cache-Control: private, no-store`, matching `src/app/api/orders/route.ts`.
 - **Money is integer minor units.** Nothing in this feature stores money, and nothing here may start.
 - **Tests are colocated** next to their subject as `<name>.test.ts`. Tests that touch the database are named `<name>.integration.test.ts`.
-- **Test data convention — this one will bite you.** Vitest runs test **files in parallel** (this repo sets no `fileParallelism`/`poolOptions`), and every file shares one local Postgres. So a test may never delete a row it did not create. Three rules, all of which the repo already follows:
+- **Test data convention - this one will bite you.** Vitest runs test **files in parallel** (this repo sets no `fileParallelism`/`poolOptions`), and every file shares one local Postgres. So a test may never delete a row it did not create. Three rules, all of which the repo already follows:
 
-  1. **Every fixture carries a tag unique to its own file**, never a tag shared between files. Existing examples: `[load-test]` in `load.integration.test.ts`, `[pf-test]` in `processing-fee/route.test.ts`. This plan's tags are `[delivery-schema-test]`, `[delivery-link-test]`, `[delivery-import-test]`, `[delivery-route-test]`, `[delivery-alerts-test]` — one per file, and no two files may share one.
-  2. **Every `deleteMany` is scoped to that tag.** A bare `db.shop.deleteMany()` or `db.order.deleteMany()` destroys the **11 seeded shops** that `src/lib/data/load.integration.test.ts:29` asserts (`toBe(11)`, excluding names matching `/\[[\w-]*test\]/`) — for every checkout sharing that database. Copy `load.integration.test.ts:86-88`, which deletes only `{ name: { contains: '[load-test]' } }`. An untagged fixture name breaks that count on the next run.
+  1. **Every fixture carries a tag unique to its own file**, never a tag shared between files. Existing examples: `[load-test]` in `load.integration.test.ts`, `[pf-test]` in `processing-fee/route.test.ts`. This plan's tags are `[delivery-schema-test]`, `[delivery-link-test]`, `[delivery-import-test]`, `[delivery-route-test]`, `[delivery-alerts-test]` - one per file, and no two files may share one.
+  2. **Every `deleteMany` is scoped to that tag.** A bare `db.shop.deleteMany()` or `db.order.deleteMany()` destroys the **11 seeded shops** that `src/lib/data/load.integration.test.ts:29` asserts (`toBe(11)`, excluding names matching `/\[[\w-]*test\]/`) - for every checkout sharing that database. Copy `load.integration.test.ts:86-88`, which deletes only `{ name: { contains: '[load-test]' } }`. An untagged fixture name breaks that count on the next run.
   3. **Rows with no shop to tag get their own per-file prefix.** A `Shipment` with `orderId: null` belongs to no shop, so scoping cleanup by `orderId: null` would delete another file's unlinked parcels. Each file therefore gives its tracking numbers a unique prefix and cleans by `{ trackingNumber: { startsWith: PREFIX } }`.
 
-  **Singleton rows** (`DeliveryConfig`, always `id: 'singleton'`) are the one thing no tag can isolate. Never `deleteMany()` then `create()` — use `upsert`, the way `src/app/api/ads/oauth.test.ts:47` does for `AdPlatformApp`. A test needing "not connected" upserts the credential fields to `null` rather than deleting the row, so two racing files cannot make each other's row vanish mid-assertion.
+  **Singleton rows** (`DeliveryConfig`, always `id: 'singleton'`) are the one thing no tag can isolate. Never `deleteMany()` then `create()` - use `upsert`, the way `src/app/api/ads/oauth.test.ts:47` does for `AdPlatformApp`. A test needing "not connected" upserts the credential fields to `null` rather than deleting the row, so two racing files cannot make each other's row vanish mid-assertion.
 
 - **The delivery integration suites must not run concurrently with each other.** Tagging cannot save them: `DeliveryConfig` is a fixed-id singleton, and `PUT /api/delivery/settings` **deletes every `DeliveryPromise` row** as its real production behaviour (promises are rewritten wholesale, not diffed), so Task 14's suite will wipe Tasks 11 and 13's promises whenever they overlap. Scoping the fixtures is still worth doing and is specified per file above, but the sequencing is what actually makes them deterministic.
 
@@ -57,21 +57,21 @@
   ],
   ```
 
-  `extends: true` inherits the root `plugins`, `env` and `environment`, so `DATABASE_URL` and `AUTH_SECRET` keep resolving exactly as they do today. Verify with `npm run test` that the file count still totals what it did before the split — a bad glob silently runs fewer tests, which looks like success.
+  `extends: true` inherits the root `plugins`, `env` and `environment`, so `DATABASE_URL` and `AUTH_SECRET` keep resolving exactly as they do today. Verify with `npm run test` that the file count still totals what it did before the split - a bad glob silently runs fewer tests, which looks like success.
 - **Test command:** `npm run test` (Vitest, `globals: true`, node environment). Single file: `npx vitest run src/lib/bring/map.test.ts`.
-- **`npx tsc --noEmit` must be clean before every commit — a green suite is not enough.** `tsconfig.json` includes `**/*.ts` with only `node_modules` excluded, so **test files are typechecked**, and `next build` typechecks by default. Vitest does not. So a type error in a test file passes every test and then **fails the deployment**. Two traps have already been hit: `vi.fn(async () => ...)` infers a zero-argument mock, making `fn.mock.calls[0][0]` an error on an empty tuple; and a static `import` of a fixture that does not exist yet is a compile error **even inside `it.skip`**, because skipping affects the runner, not the typechecker — read such fixtures at runtime with `readFile` instead.
+- **`npx tsc --noEmit` must be clean before every commit - a green suite is not enough.** `tsconfig.json` includes `**/*.ts` with only `node_modules` excluded, so **test files are typechecked**, and `next build` typechecks by default. Vitest does not. So a type error in a test file passes every test and then **fails the deployment**. Two traps have already been hit: `vi.fn(async () => ...)` infers a zero-argument mock, making `fn.mock.calls[0][0]` an error on an empty tuple; and a static `import` of a fixture that does not exist yet is a compile error **even inside `it.skip`**, because skipping affects the runner, not the typechecker - read such fixtures at runtime with `readFile` instead.
 - **Design tokens only.** OKLCH variables (`--ink`, `--ink-muted`, `--border`, `--accent`, `--gain`, `--loss`, `--warn`), Geist Sans, `font-variant-numeric: tabular-nums` on every number, cards are 1px border + 12px radius + no shadow. No new colours, no shadows.
 - **Say when you don't know.** A confident wrong number is the worst thing this product can ship. Unknown delivery state renders as an honest label, never as zero days.
 
 ---
 
-## Phase 0 probe — gates *validation*, not implementation
+## Phase 0 probe - gates *validation*, not implementation
 
 **Every one of the fourteen tasks can be built and made green without it.** Task 3's tests stub `fetch` outright, Task 8's do the same, Task 14 mocks auth, and Task 4 is synthetic apart from a single test that is skipped until the recording exists. Nothing here waits on the client.
 
 What the probe gates is whether the built thing will *work against the real Bring account*. Until it runs, two things stay unproven and must not be described as working:
 
-1. That Bring's Tracking API returns parcels booked under **another company's** customer number — the assumption the entire design rests on.
+1. That Bring's Tracking API returns parcels booked under **another company's** customer number - the assumption the entire design rests on.
 2. That the field selectors in `mapConsignments` match what Bring actually sends, rather than what its documentation says.
 
 Treat a fully green suite as "the logic is correct", never as "the integration is verified". The skipped test in Task 4 is the honest marker of the gap.
@@ -86,7 +86,7 @@ curl -s -H "X-Mybring-API-Uid: <client email>" \
      | tee src/lib/bring/__fixtures__/real-package.json
 ```
 
-**Save the response verbatim as a fixture.** Task 4's mapper is written against this file, not against remembered field names. Do not guess the JSON shape — record it.
+**Save the response verbatim as a fixture.** Task 4's mapper is written against this file, not against remembered field names. Do not guess the JSON shape - record it.
 
 While there, answer the second question at no extra cost: repeat `q` twice (`?q=A&q=B`) and see whether both come back. If they do, Task 9's batching can send several numbers per request.
 
@@ -159,10 +159,10 @@ model Shipment {
 
   /// Milestones, derived from ShipmentEvent and rewritten on every ingest.
   /// Denormalised for query speed; the events remain the source of truth.
-  bookedAt    DateTime? // PRE_NOTIFIED — label made, nothing has moved
-  handedInAt  DateTime? // HANDED_IN — the warehouse let go of it
-  availableAt DateTime? // READY_FOR_PICKUP or DELIVERED — the clock stop
-  collectedAt DateTime? // COLLECTED / DELIVERED — recorded, never judged
+  bookedAt    DateTime? // PRE_NOTIFIED - label made, nothing has moved
+  handedInAt  DateTime? // HANDED_IN - the warehouse let go of it
+  availableAt DateTime? // READY_FOR_PICKUP or DELIVERED - the clock stop
+  collectedAt DateTime? // COLLECTED / DELIVERED - recorded, never judged
   /// DELIVERED | RETURNED | CANCELLED. Null while still moving.
   outcome     String?
 
@@ -201,7 +201,7 @@ model ShipmentEvent {
 }
 
 /// What we promise, per destination country, on a timeline. The row with the
-/// latest effectiveFrom <= Order.placedAt wins — the same rule ProductCost and
+/// latest effectiveFrom <= Order.placedAt wins - the same rule ProductCost and
 /// FulfillmentRate already use. A promise changed today never rewrites last
 /// month's on-time rate.
 model DeliveryPromise {
@@ -281,7 +281,7 @@ In `model Shop`, immediately after `lastError`:
 Run: `npm run db:push`
 Expected: `Your database is now in sync with your Prisma schema.` followed by a Prisma Client regeneration.
 
-If it reports data loss on an unrelated table, **stop** — another checkout has diverged the shared local database. Do not accept the prompt.
+If it reports data loss on an unrelated table, **stop** - another checkout has diverged the shared local database. Do not accept the prompt.
 
 - [ ] **Step 4: Write the integration test**
 
@@ -309,7 +309,7 @@ async function cleanup() {
   // Events first: they hang off shipments, and the tag reaches them only
   // through a shipment that still exists.
   await db.shipmentEvent.deleteMany({ where: { shipment: { trackingNumber: { startsWith: TRACK } } } })
-  // By prefix, not by `orderId: null` — an unlinked parcel belongs to no shop,
+  // By prefix, not by `orderId: null` - an unlinked parcel belongs to no shop,
   // so `orderId: null` would delete another file's parcels too.
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: TRACK } } })
   await db.orderItem.deleteMany({ where: { order: { shop: { name: { contains: TAG } } } } })
@@ -389,7 +389,7 @@ git commit -m "feat: schema for shipments, delivery promises and tracking import
 
 **Interfaces:**
 - Consumes: `Order.shippingCountry` from Task 1.
-- Produces: `MappedOrder.shippingCountry: string` — `''` when the store has none, never null. `backfillDelivery(shopId, creds): Promise<number>`.
+- Produces: `MappedOrder.shippingCountry: string` - `''` when the store has none, never null. `backfillDelivery(shopId, creds): Promise<number>`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -439,7 +439,7 @@ In `src/lib/woo/map.ts`, extend the `WooOrder` type:
 Add to `MappedOrder`, next to `customerEmail`:
 
 ```ts
-  // ISO-2, uppercased. '' when the store has none on file — never null, so a
+  // ISO-2, uppercased. '' when the store has none on file - never null, so a
   // synced order counts as "country checked" and the backfill knows it is done.
   shippingCountry: string
 ```
@@ -468,14 +468,14 @@ In `src/lib/woo/sync.ts`, inside `storeOrder`, add to the `data` object after `c
 
 - [ ] **Step 6: Add the backfill**
 
-In `src/lib/woo/sync.ts`, directly below `backfillCustomers`, add its sibling. It is a separate function rather than a widened `backfillCustomers` because the two queues drain independently — history already has its customers filled, and reusing that queue would backfill nothing.
+In `src/lib/woo/sync.ts`, directly below `backfillCustomers`, add its sibling. It is a separate function rather than a widened `backfillCustomers` because the two queues drain independently - history already has its customers filled, and reusing that queue would backfill nothing.
 
 ```ts
 /**
  * Fill in the destination country on orders synced before it was stored. Same
  * shape as backfillCustomers: targets exactly the orders where the field is
  * still null, newest first, asks Woo for those ids only, and writes nothing
- * else. An order Woo no longer has is marked '' — checked, nothing there — so
+ * else. An order Woo no longer has is marked '' - checked, nothing there - so
  * the queue only ever shrinks and this costs zero once history is filled.
  */
 export async function backfillDelivery(shopId: string, creds: WooCredentials): Promise<number> {
@@ -510,14 +510,14 @@ Then call it inside `syncShop`, in the best-effort block, immediately after the 
       try {
         await backfillDelivery(shop.id, creds)
       } catch {
-        // The queue is durable — whatever is left fills on the next sync.
+        // The queue is durable - whatever is left fills on the next sync.
       }
 ```
 
 - [ ] **Step 7: Run the full suite**
 
 Run: `npm run test`
-Expected: all pass. `src/lib/woo/sync.test.ts` must be green without edits — this change adds a field, it does not alter behaviour.
+Expected: all pass. `src/lib/woo/sync.test.ts` must be green without edits - this change adds a field, it does not alter behaviour.
 
 - [ ] **Step 8: Commit**
 
@@ -537,7 +537,7 @@ git commit -m "feat: store the destination country on orders, and backfill histo
 
 **Interfaces:**
 - Consumes: nothing. Every test here stubs `fetch`, so this task needs no credentials and no recorded response.
-- Produces (all three exported — `requestBudgetMs` is imported directly by the tests, and Task 8 relies on its clamping):
+- Produces (all three exported - `requestBudgetMs` is imported directly by the tests, and Task 8 relies on its clamping):
   ```ts
   export type BringCredentials = { uid: string; key: string; clientUrl: string }
   export function requestBudgetMs(filter: BringFilter, now?: number): number
@@ -561,7 +561,7 @@ const creds = { uid: 'ops@example.com', key: 'secret-key', clientUrl: 'https://p
 afterEach(() => vi.unstubAllGlobals())
 
 // The signature goes in as a TYPE ARGUMENT, not as parameters the body ignores
-// — unused params would trip @typescript-eslint/no-unused-vars. `vi.fn(async
+// - unused params would trip @typescript-eslint/no-unused-vars. `vi.fn(async
 // () => ...)` alone infers a ZERO-ARG mock, which makes `fn.mock.calls[0][0]`
 // a type error (indexing an empty tuple) even though it works at runtime.
 // tsconfig includes `**/*.ts`, so test files are typechecked and `next build`
@@ -618,7 +618,7 @@ describe('fetchTracking', () => {
     // No deadline at all: the full ceiling. Task 8 calls this way whenever it
     // runs outside the cron's budget, so it is the ordinary path, and the
     // house pattern (woo/client.test.ts:196) tests all four corners for a
-    // reason — nothing else in the suite would catch a regression here,
+    // reason - nothing else in the suite would catch a regression here,
     // because the fetch stub never inspects init.signal.
     expect(requestBudgetMs({}, now)).toBe(30_000)
   })
@@ -686,7 +686,7 @@ async function bringError(res: Response): Promise<Error> {
 
 /**
  * Track several parcels in one request. Returns the raw consignment entries,
- * unparsed — mapping is map.ts's job, and keeping them apart is what lets the
+ * unparsed - mapping is map.ts's job, and keeping them apart is what lets the
  * mapper be tested against a recorded fixture with no network at all.
  *
  * A number Bring does not know simply does not come back. The caller decides
@@ -763,11 +763,11 @@ This is the task carrying the most judgement. Read the spec's "The clock" sectio
 
 - [ ] **Step 1: Note which field names you are building against, and why they are provisional**
 
-`src/bring/__fixtures__/real-package.json` **does not exist** — the Phase 0 probe has not run, because the client has not yet supplied a warehouse-booked tracking number. Build against Bring's *documented* shape: `consignmentSet[].packageSet[].eventSet[]`, with packages carrying `packageNumber` and events carrying `status`, `description`, `dateIso`, `city`, `countryCode`.
+`src/bring/__fixtures__/real-package.json` **does not exist** - the Phase 0 probe has not run, because the client has not yet supplied a warehouse-booked tracking number. Build against Bring's *documented* shape: `consignmentSet[].packageSet[].eventSet[]`, with packages carrying `packageNumber` and events carrying `status`, `description`, `dateIso`, `city`, `countryCode`.
 
 Every other test in this task is synthetic and proves the milestone logic properly, which is the part carrying real judgement. Only the last test needs the recording.
 
-**Write that one as `it.skip(...)`**, with a comment naming the missing fixture and stating that it must be enabled — and its selectors re-checked against reality — the moment the probe runs. Do not invent a fixture and do not delete the test.
+**Write that one as `it.skip(...)`**, with a comment naming the missing fixture and stating that it must be enabled - and its selectors re-checked against reality - the moment the probe runs. Do not invent a fixture and do not delete the test.
 
 When the real response does arrive: **the recording wins over the documentation.** Adjust the selectors in `mapConsignments` to match what Bring actually sent, and say so in the commit message.
 
@@ -894,15 +894,15 @@ describe('mapConsignments', () => {
   })
 
   // SKIPPED: needs src/lib/bring/__fixtures__/real-package.json, which does not
-  // exist yet — the Phase 0 probe is blocked on the client supplying a
+  // exist yet - the Phase 0 probe is blocked on the client supplying a
   // warehouse-booked tracking number. Everything above is synthetic and proves
   // the milestone rules; this is the only test that would prove our field
   // SELECTORS match what Bring actually sends. Enable it the moment the probe
   // runs, and treat the recording as authoritative over Bring's documentation.
   it.skip('maps the recorded real response', async () => {
     // Read at runtime, NOT imported. A static import of a file that does not
-    // exist is a COMPILE error even inside `it.skip` — skipping affects the
-    // runner, not the typechecker — and `next build` typechecks test files,
+    // exist is a COMPILE error even inside `it.skip` - skipping affects the
+    // runner, not the typechecker - and `next build` typechecks test files,
     // so an import here breaks the deployment while the suite stays green.
     // Same pattern parse.test.ts uses for its warehouse PDF fixture.
     const { readFile } = await import('node:fs/promises')
@@ -1253,7 +1253,7 @@ const MAX_TOKEN_DISTANCE = 12
  *
  * Deliberately loose on format and strict on shape. We do not know every
  * product Bring will ever use, but we do know a parcel number is long, mostly
- * digits, and carries no punctuation — which excludes the dates, prices and
+ * digits, and carries no punctuation - which excludes the dates, prices and
  * postcodes that share a document with it.
  */
 export function looksLikeTracking(token: string): boolean {
@@ -1268,8 +1268,8 @@ export function looksLikeTracking(token: string): boolean {
  * The layout is the warehouse's and may change without warning, so this does
  * NOT parse a table. It looks for the order numbers WE ALREADY HOLD, then takes
  * the nearest tracking-shaped token to each. That removes every assumption
- * about column order, headings and order-number format — the things most
- * likely to change — and leaves only the one assumption that cannot: that the
+ * about column order, headings and order-number format - the things most
+ * likely to change - and leaves only the one assumption that cannot: that the
  * two numbers appear near each other.
  *
  * A row that matches nothing is simply absent from the result. The caller
@@ -1357,7 +1357,7 @@ git commit -m "feat: read order and tracking numbers out of the warehouse PDF"
 
 - [ ] **Step 8: Pin the Node version**
 
-`unpdf` declares `"engines": { "node": ">=22" }`. This repo pins nothing — no `engines` field, no `.nvmrc`, and `vercel.json` sets no runtime — so production runs on whatever Vercel's project default happens to be. A mismatch surfaces as a module failure at request time rather than a failed build, which is the worst place to find it.
+`unpdf` declares `"engines": { "node": ">=22" }`. This repo pins nothing - no `engines` field, no `.nvmrc`, and `vercel.json` sets no runtime - so production runs on whatever Vercel's project default happens to be. A mismatch surfaces as a module failure at request time rather than a failed build, which is the worst place to find it.
 
 Add to `package.json`, as a sibling of `"scripts"`:
 
@@ -1371,9 +1371,9 @@ Vercel reads this and selects a matching runtime, or fails the build loudly. Lou
 
 - [ ] **Step 9: Refuse a tracking-shaped token that repeats**
 
-`looksLikeTracking` accepts any 8+ character alphanumeric token carrying 8+ digits. On a real document that also matches an unpunctuated date (`20260804`), an 8-digit phone number, invoice and registration numbers — both verified in review. Because matching is distance-based, a false positive sitting *near* an order number produces a silently **wrong** pairing, not a missing one. A wrong pairing looks like success and poisons that order's delivery figure permanently.
+`looksLikeTracking` accepts any 8+ character alphanumeric token carrying 8+ digits. On a real document that also matches an unpunctuated date (`20260804`), an 8-digit phone number, invoice and registration numbers - both verified in review. Because matching is distance-based, a false positive sitting *near* an order number produces a silently **wrong** pairing, not a missing one. A wrong pairing looks like success and poisons that order's delivery figure permanently.
 
-The format cannot be tightened responsibly without a real warehouse PDF, and guessing at lengths would be worse. But one rule is structural rather than format-based and holds regardless of layout: **a parcel number is unique per shipment, while boilerplate repeats.** So a tracking-shaped token appearing more than once in a document is ambiguous, and ambiguity is refused rather than guessed — the same rule Task 6 applies to an order number two shops both hold.
+The format cannot be tightened responsibly without a real warehouse PDF, and guessing at lengths would be worse. But one rule is structural rather than format-based and holds regardless of layout: **a parcel number is unique per shipment, while boilerplate repeats.** So a tracking-shaped token appearing more than once in a document is ambiguous, and ambiguity is refused rather than guessed - the same rule Task 6 applies to an order number two shops both hold.
 
 Add the test:
 
@@ -1436,7 +1436,7 @@ async function order(shopId: string, number: string) {
   })
 }
 
-// Both unique to THIS file — see "Test data convention" in the Global
+// Both unique to THIS file - see "Test data convention" in the Global
 // Constraints. Test files run in parallel against one database.
 const TAG = '[delivery-link-test]'
 const TRACK = 'TLINK' // every tracking number below starts with it
@@ -1445,14 +1445,14 @@ const mine = { trackingNumber: { startsWith: TRACK } }
 
 // IMPLEMENTER: the tests below are written with 'T1' and 'T2' for readability.
 // Use these two constants instead of those string literals everywhere they
-// appear — a bare 'T1' has no prefix, so cleanup() would leave it behind and
+// appear - a bare 'T1' has no prefix, so cleanup() would leave it behind and
 // the next run's unique-constraint check would fail against a stale row.
 const T1 = `${TRACK}1`
 const T2 = `${TRACK}2`
 
 async function cleanup() {
   await db.shipmentEvent.deleteMany({ where: { shipment: mine } })
-  // By prefix, not by `orderId: null` — an unlinked parcel belongs to no shop,
+  // By prefix, not by `orderId: null` - an unlinked parcel belongs to no shop,
   // so `orderId: null` would delete another file's parcels too.
   await db.shipment.deleteMany({ where: mine })
   await db.orderItem.deleteMany({ where: { order: scoped } })
@@ -1570,7 +1570,7 @@ export async function knownOrderNumbers(): Promise<Set<string>> {
 /**
  * Write one Shipment per pair.
  *
- * Order.number is NOT unique across shops — the only uniqueness on Order is
+ * Order.number is NOT unique across shops - the only uniqueness on Order is
  * [shopId, externalId]. So a number two shops both hold is ambiguous, and we
  * refuse it rather than guess: a wrong link would poison that order's delivery
  * figure permanently, and unlike a missing link nobody would ever notice.
@@ -1668,7 +1668,7 @@ import { importTrackingFile } from './import'
 
 let shopId: string
 
-// Unique to THIS file — see "Test data convention" in the Global Constraints.
+// Unique to THIS file - see "Test data convention" in the Global Constraints.
 const TAG = '[delivery-import-test]'
 const scoped = { shop: { name: { contains: TAG } } }
 
@@ -2144,7 +2144,7 @@ import type { BringCredentials } from '../bring/client'
  * The delivery integration's credentials, decrypted.
  *
  * Never throws. A missing or unreadable secret returns null, and the caller
- * reports "not connected" — the same visible-failure rule the shop sync uses
+ * reports "not connected" - the same visible-failure rule the shop sync uses
  * when AUTH_SECRET has changed under it.
  */
 export async function getDeliveryConfig(): Promise<{
@@ -2259,7 +2259,7 @@ export function nextPollFor(
  * parcels every time.
  *
  * A per-parcel failure is written to its own lastError and never thrown. One
- * dead parcel must not stop the rest — the same rule ads/sync.ts follows for
+ * dead parcel must not stop the rest - the same rule ads/sync.ts follows for
  * one broken ad account.
  */
 export async function syncShipments(
@@ -2312,7 +2312,7 @@ export async function syncShipments(
       byNumber = new Map(mapConsignments(raw).map((p) => [p.trackingNumber, p]))
     } catch (e) {
       // The whole batch failed: a network error, a bad key, a rate limit. Record
-      // it on each parcel and carry on — the next run retries.
+      // it on each parcel and carry on - the next run retries.
       const error = e instanceof Error ? e.message : 'Tracking lookup failed'
       failed += batch.length
       for (const s of batch) {
@@ -2349,7 +2349,7 @@ export async function syncShipments(
 
       const m = found.milestones
       // An unlinked parcel, or one whose country has no promise in force,
-      // simply uses the ordinary tiers. No promise means NO deadline — never a
+      // simply uses the ordinary tiers. No promise means NO deadline - never a
       // zero one, which would make every parcel look overdue and put the whole
       // backlog into the every-run tier.
       const promise = s.order
@@ -2370,7 +2370,7 @@ export async function syncShipments(
       await db.$transaction(async (tx) => {
         // One insert for the whole event set, not one per event: a parcel's
         // history is re-sent in full on every poll, so this runs constantly.
-        // skipDuplicates leans on @@unique([shipmentId, status, occurredAt]) —
+        // skipDuplicates leans on @@unique([shipmentId, status, occurredAt]) -
         // that constraint is what makes re-ingesting a restated history a no-op
         // rather than a pile of duplicates.
         await tx.shipmentEvent.createMany({
@@ -2622,7 +2622,7 @@ import { zoneDayEndUtc, zonedDayStr } from '../tz'
  * on, which is exactly the failure that makes people mute an alert channel.
  *
  * PUBLIC HOLIDAYS ARE NOT MODELLED. Constitution Day and Christmas will produce
- * a handful of false lates. That is a stated limitation, not an oversight — see
+ * a handful of false lates. That is a stated limitation, not an oversight - see
  * the spec. If it proves to matter, a holiday table goes in here and nowhere
  * else.
  */
@@ -2676,7 +2676,7 @@ export function deadlineFor(
 
 /**
  * Calendar days elapsed between two instants, counted by the DAY each falls on
- * in `tz` — not by dividing milliseconds. An order placed at 23:00 and
+ * in `tz` - not by dividing milliseconds. An order placed at 23:00 and
  * delivered at 01:00 two nights later took two days, not one and a bit.
  */
 export function daysBetween(from: Date, to: Date, tz: string): number {
@@ -2734,7 +2734,7 @@ describe('promiseOn', () => {
 
   it('returns null when nothing is in force, rather than inventing zero days', () => {
     // Zero days would make every order instantly late. No promise means no
-    // judgement — the page says so and the alert stays silent.
+    // judgement - the page says so and the alert stays silent.
     expect(promiseOn(book, 'NO', new Date('2025-01-01'))).toBeNull()
     expect(promiseOn([], 'NO', new Date('2026-08-01'))).toBeNull()
   })
@@ -2757,7 +2757,7 @@ export const ANY_COUNTRY = '*'
 /**
  * What we promised this order, at the moment it was placed.
  *
- * The latest row whose effectiveFrom is on or before the order date wins —
+ * The latest row whose effectiveFrom is on or before the order date wins -
  * exactly the rule costOn() and fulfillmentOn() already implement, so a promise
  * edited today never rewrites last month's on-time rate.
  *
@@ -2793,7 +2793,7 @@ Expected: 20 passed.
 Four collisions have already been found the hard way, each a variant of one thing: Vitest runs test **files** in parallel against one shared PostgreSQL, and the delivery suites share state that no naming convention can separate.
 
 - `DeliveryConfig` is a fixed-id singleton (`id: 'singleton'`).
-- `PUT /api/delivery/settings` **deletes every `DeliveryPromise` row** — real production behaviour, since promises are rewritten wholesale rather than diffed — so Task 14's suite wipes Tasks 11 and 13's promises.
+- `PUT /api/delivery/settings` **deletes every `DeliveryPromise` row** - real production behaviour, since promises are rewritten wholesale rather than diffed - so Task 14's suite wipes Tasks 11 and 13's promises.
 - `flushDeliveryAlerts()` (Task 13) queries **every delivery-tracked shop** with no shop filter, because that is what it must do in production. Any other delivery suite's tracked fixture shop running concurrently lands in its results and corrupts its counts.
 - Order numbers are matched **across all shops** by `linkRows`, which is why Tasks 6 and 7 collided on the literal `1001` until Task 7 renamed its fixtures.
 
@@ -2801,7 +2801,7 @@ Tagging fixtures is still worth doing and is specified per file, but sequencing 
 
 Add a second Vitest project to `vitest.config.ts` so only these files lose parallelism and the rest keep it.
 
-**Two edits, and the second is not optional.** Add the `projects` array below, **and delete the root-level `test.include`**, relocating its comment onto the `app` project's own `include`. With `extends: true`, a root `include` **leak-merges into every project's include** — the `delivery` project then matches the entire suite, runs ~245 files instead of 3, and takes 158s instead of 28s. Verified empirically on Vitest 4.1.10; the run still reports green, which is exactly why the count check below is mandatory.
+**Two edits, and the second is not optional.** Add the `projects` array below, **and delete the root-level `test.include`**, relocating its comment onto the `app` project's own `include`. With `extends: true`, a root `include` **leak-merges into every project's include** - the `delivery` project then matches the entire suite, runs ~245 files instead of 3, and takes 158s instead of 28s. Verified empirically on Vitest 4.1.10; the run still reports green, which is exactly why the count check below is mandatory.
 
 ```ts
       projects: [
@@ -2841,9 +2841,9 @@ Add a second Vitest project to `vitest.config.ts` so only these files lose paral
 
 **Verify the split changed no counts, in either direction.** Record the file and test counts from `npm run test` *before* the change; after it they must be identical.
 
-A bad glob fails in two ways and **both report green**: too narrow and it silently runs fewer tests; too wide (the `extends: true` leak above) and it runs the whole suite twice over. Check the per-project breakdown too — `delivery` should match exactly the `src/lib/{delivery,bring}/**/*.integration.test.ts` files and nothing else.
+A bad glob fails in two ways and **both report green**: too narrow and it silently runs fewer tests; too wide (the `extends: true` leak above) and it runs the whole suite twice over. Check the per-project breakdown too - `delivery` should match exactly the `src/lib/{delivery,bring}/**/*.integration.test.ts` files and nothing else.
 
-> ### ⛔ MOVED TO TASK 8 — DO NOT IMPLEMENT IN TASK 9
+> ### ⛔ MOVED TO TASK 8 - DO NOT IMPLEMENT IN TASK 9
 >
 > Everything from here to the end of this task wires per-parcel deadlines into
 > `src/lib/bring/sync.ts`, **a file Task 8 creates**. Attempting it in Task 9
@@ -3111,7 +3111,7 @@ describe('deliveryFor', () => {
     // columns: a pickup-point parcel sets availableAt on READY_FOR_PICKUP, then
     // is returned when nobody collects it. Trusting availableAt alone would
     // count this as delivered in the median AND make `late` false, so it would
-    // never alert — for an order the customer never received.
+    // never alert - for an order the customer never received.
     const v = deliveryFor(order({
       shipments: [parcel({
         handedInAt: new Date('2026-08-04T16:00:00Z'),
@@ -3231,7 +3231,7 @@ const EMPTY = {
  * Orders column and the Slack alert all read this, so they cannot drift apart
  * and tell three different stories about the same order.
  *
- * Pure. No database, no clock of its own — `now` is passed in so a test can
+ * Pure. No database, no clock of its own - `now` is passed in so a test can
  * stand anywhere in time.
  */
 export function deliveryFor(
@@ -3270,8 +3270,8 @@ export function deliveryFor(
   // The returned/cancelled guard is not belt-and-braces. `availableAt` and
   // `outcome` are separate denormalised columns, and a pickup-point parcel
   // genuinely sets availableAt (READY_FOR_PICKUP) BEFORE it is returned
-  // uncollected. Without this guard such an order would report totalDays — so it
-  // would count as delivered in the median — and `late` would be false, so it
+  // uncollected. Without this guard such an order would report totalDays - so it
+  // would count as delivered in the median - and `late` would be false, so it
   // would never alert. The customer never received it. Same rule milestonesFrom
   // applies in map.ts; the two must not drift.
   const allAvailable =
@@ -3301,7 +3301,7 @@ export function deliveryFor(
 
   // Late = past the promise and not yet in the customer's hands. One rule, and
   // it covers both a parcel crawling through Bring and an order the warehouse
-  // never booked at all — which is the worse of the two and which a
+  // never booked at all - which is the worse of the two and which a
   // shipment-driven rule would miss entirely, there being no shipment.
   const late = deadline !== null && !availableAt && now > deadline
   const daysOver = late ? daysBetween(deadline!, now, tz) : null
@@ -3490,7 +3490,7 @@ export type DeliveryStats = {
 }
 
 /**
- * The middle value. Null for nothing — never zero, which would read as
+ * The middle value. Null for nothing - never zero, which would read as
  * "delivered same day" on an empty page.
  *
  * Median rather than mean throughout: two parcels stuck in customs for a month
@@ -3592,12 +3592,12 @@ git commit -m "feat: one definition of an order's delivery, and the aggregates o
 - Create: `src/app/api/delivery/route.ts`
 - Create: `src/app/delivery/page.tsx`, `src/app/delivery/DeliveryClient.tsx`
 - Modify: `src/components/shell/AppShell.tsx`
-- Modify: `vitest.config.ts` — see the note below, do this **first**
+- Modify: `vitest.config.ts` - see the note below, do this **first**
 - Test: `src/app/api/delivery/route.integration.test.ts`
 
-**Before anything else, widen the Vitest `delivery` project's globs.** Task 9 created that project covering only `src/lib/{delivery,bring}/**/*.integration.test.ts`. This task adds the first integration test under `src/app/api/delivery/`, which that glob misses — so it would run in the parallel `app` project and race Task 14's settings test on `DeliveryPromise` and the `DeliveryConfig` singleton, exactly the collision the project split exists to prevent.
+**Before anything else, widen the Vitest `delivery` project's globs.** Task 9 created that project covering only `src/lib/{delivery,bring}/**/*.integration.test.ts`. This task adds the first integration test under `src/app/api/delivery/`, which that glob misses - so it would run in the parallel `app` project and race Task 14's settings test on `DeliveryPromise` and the `DeliveryConfig` singleton, exactly the collision the project split exists to prevent.
 
-Add `'src/app/api/delivery/**/*.integration.test.ts'` to **both** the `delivery` project's `include` and the `app` project's `exclude`. The two arrays must stay identical — that identity is what guarantees an exact partition with nothing dropped or double-counted. Confirm afterwards that `npm run test` reports the same total file and test counts as before, and that your new test file appears under the `delivery` project rather than `app`.
+Add `'src/app/api/delivery/**/*.integration.test.ts'` to **both** the `delivery` project's `include` and the `app` project's `exclude`. The two arrays must stay identical - that identity is what guarantees an exact partition with nothing dropped or double-counted. Confirm afterwards that `npm run test` reports the same total file and test counts as before, and that your new test file appears under the `delivery` project rather than `app`.
 
 **Interfaces:**
 - Consumes: `deliveryFor`, `deliveryStats`, `rangeFromQuery`, `shopIdsFromQuery`, `getSetting`.
@@ -3633,7 +3633,7 @@ export type LoadedDelivery = {
 /**
  * Every order in the window with its parcels, and what happened to each.
  *
- * Bulk-loaded in two queries, never per row — the same rule
+ * Bulk-loaded in two queries, never per row - the same rule
  * api/orders/route.ts follows for costs and rates.
  */
 export async function loadDelivery(
@@ -3694,7 +3694,7 @@ const { currentUser } = await import('@/lib/auth/current-user')
 
 let shopId: string
 
-// Tagged and scoped — see "Test data convention" in the Global Constraints.
+// Tagged and scoped - see "Test data convention" in the Global Constraints.
 // The 11 seeded shops stay put: they have no deliveryTrackingFrom, so every
 // order of theirs reads UNTRACKED and touches none of the assertions below.
 // That makes this a stronger test than deleting them would.
@@ -3792,8 +3792,8 @@ const LATE_LIMIT = 200
  * what we could not account for.
  *
  * The last part matters as much as the first. An unlinked parcel and a failed
- * import are both invisible by nature — the page simply shows fewer orders and
- * looks like a quiet week — so both are counted out loud.
+ * import are both invisible by nature - the page simply shows fewer orders and
+ * looks like a quiet week - so both are counted out loud.
  */
 export async function GET(req: Request) {
   try {
@@ -3885,13 +3885,13 @@ Create `src/app/delivery/page.tsx`, copying the server half of `src/app/products
 
 Create `src/app/delivery/DeliveryClient.tsx`, following `ProductsClient.tsx` for the fetch-and-filter shape. It renders, in this order:
 
-1. **Four tiles** — median days to delivery, on-time rate, late right now, no tracking. Each shows `—` when its figure is null. Never `0`.
+1. **Four tiles** - median days to delivery, on-time rate, late right now, no tracking. Each shows `-` when its figure is null. Never `0`.
 2. **A note when nothing is tracked at all**: if `trackedShops === 0`, the whole page is replaced by "No shop is set up for delivery tracking yet." with a link to `/settings/delivery`. Everything below would otherwise read as zeros and imply nothing was ever delivered.
-3. **The split** — two labelled bars, warehouse days against transit days, sharing one scale so the longer half is obvious at a glance.
-4. **The distribution** — one bar per day count, from `stats.distribution`. This is what shows the tail a median hides.
-5. **Per-country table** — country, delivered, median days, on-time rate. `stats.byCountry` is already sorted busiest first.
-6. **The late list** — number, shop, country, days over, promise, state, with a link to the order and one to `https://tracking.bring.com/tracking/<number>` per parcel. This is the only part anyone acts on, so it is the part with the most room.
-7. **Unlinked parcels** — collapsed by default, with its count in the heading.
+3. **The split** - two labelled bars, warehouse days against transit days, sharing one scale so the longer half is obvious at a glance.
+4. **The distribution** - one bar per day count, from `stats.distribution`. This is what shows the tail a median hides.
+5. **Per-country table** - country, delivered, median days, on-time rate. `stats.byCountry` is already sorted busiest first.
+6. **The late list** - number, shop, country, days over, promise, state, with a link to the order and one to `https://tracking.bring.com/tracking/<number>` per parcel. This is the only part anyone acts on, so it is the part with the most room.
+7. **Unlinked parcels** - collapsed by default, with its count in the heading.
 8. **`<UploadBox onImported={reload} />`** from Task 7, and the last few imports with their matched/unmatched counts.
 
 Copy rules: figures use `font-variant-numeric: tabular-nums`; cards are `rounded-[12px] border border-line`, no shadow; late values use `text-loss`, at-risk `text-warn`. Add nothing to the token set.
@@ -3919,13 +3919,13 @@ In `src/components/shell/AppShell.tsx`, add to the `Analytics` section immediate
 
 - [ ] **Step 7: See it in a browser**
 
-Run the dev server in the background — **never pipe it to `head`**, which wedges it and holds the port:
+Run the dev server in the background - **never pipe it to `head`**, which wedges it and holds the port:
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:3000/delivery`. Confirm: the empty state reads honestly with no data, the tiles show `—` rather than `0`, and the page does not scroll sideways at 1280px or at 375px.
+Open `http://localhost:3000/delivery`. Confirm: the empty state reads honestly with no data, the tiles show `-` rather than `0`, and the page does not scroll sideways at 1280px or at 375px.
 
 - [ ] **Step 8: Commit**
 
@@ -4001,7 +4001,7 @@ and extend the existing `shop` select to `{ name: true, currency: true, timezone
 Load the promise book once for the page, beside the existing bulk loads:
 
 ```ts
-    // Once per page, never per row — the same rule the costs and rates above
+    // Once per page, never per row - the same rule the costs and rates above
     // follow.
     const promises = await db.deliveryPromise.findMany()
     const now = new Date()
@@ -4042,9 +4042,9 @@ In `src/app/orders/OrdersTable.tsx`, add a `Delivery` header after `Status` and 
 | `NO_TRACKING` | `Not shipped yet` (`text-loss` if `late`) |
 | `RETURNED` | `Returned` |
 | `CANCELLED` | `Cancelled` |
-| `VOIDED` | `—` |
-| `BEFORE_TRACKING` | `—`, with `title="Placed before delivery tracking started"` |
-| `UNTRACKED` | `—`, with `title="This shop is not delivery-tracked"` |
+| `VOIDED` | `-` |
+| `BEFORE_TRACKING` | `-`, with `title="Placed before delivery tracking started"` |
+| `UNTRACKED` | `-`, with `title="This shop is not delivery-tracked"` |
 
 The day count in `In transit, day N` is `daysBetween(placedAt, now)` computed client-side from `placedAt`; it is deliberately not stored, because it changes every day on its own.
 
@@ -4151,7 +4151,7 @@ let shopId: string
 
 afterEach(() => vi.unstubAllGlobals())
 
-// Tagged and scoped — see "Test data convention" in the Global Constraints.
+// Tagged and scoped - see "Test data convention" in the Global Constraints.
 const TAG = '[delivery-alerts-test]'
 const TRACK = 'TALERT' // the parcels below carry this prefix
 const scoped = { shop: { name: { contains: TAG } } }
@@ -4163,7 +4163,7 @@ async function cleanup() {
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
   await db.deliveryPromise.deleteMany({ where: { country: { in: ['*'] } } })
-  // Never deleteMany on the singleton — blank the fields instead, so a racing
+  // Never deleteMany on the singleton - blank the fields instead, so a racing
   // file cannot find the row missing. See the Global Constraints.
   await db.deliveryConfig.upsert({
     where: { id: 'singleton' },
@@ -4398,7 +4398,7 @@ export function alertMessage(late: LateAlert[], appUrl: string): string {
       .join('')
     return (
       `• <${appUrl}/orders?q=${encodeURIComponent(l.number)}|${l.number}> ` +
-      `${l.shop}${where} — ${l.daysOver} days over${promise}. ${SAYS[l.state]}.${track}`
+      `${l.shop}${where} - ${l.daysOver} days over${promise}. ${SAYS[l.state]}.${track}`
     )
   })
 
@@ -4467,7 +4467,7 @@ export async function flushDeliveryAlerts(
       now,
     )
     // Two conditions, not one. `late` covers everything that missed its
-    // promise, INCLUDING orders that arrived late — those belong in the on-time
+    // promise, INCLUDING orders that arrived late - those belong in the on-time
     // rate, but paging someone about a parcel already in the customer's hands
     // changes nothing and trains people to ignore the channel. Alert only on
     // what is still outstanding: undelivered, or returned (availableAt is null
@@ -4494,15 +4494,15 @@ export async function flushDeliveryAlerts(
     await postSlack(slackWebhookUrl, alertMessage(late, appUrl))
   } catch (e) {
     // postSlack throws deliberately, so nothing below marks these orders
-    // alerted. Caught here rather than propagated — Slack being down is a
-    // normal result, not an unhandled rejection — and RECORDED, because a
+    // alerted. Caught here rather than propagated - Slack being down is a
+    // normal result, not an unhandled rejection - and RECORDED, because a
     // silently broken webhook is indistinguishable from a quiet week with
     // nothing late, which is the one failure this feature cannot afford.
     const reason = e instanceof Error ? e.message : 'Slack post failed'
     await db.deliveryConfig
       .update({ where: { id: 'singleton' }, data: { lastError: reason } })
       .catch(() => {
-        // Bookkeeping is never worth failing a run over — recordRun's rule.
+        // Bookkeeping is never worth failing a run over - recordRun's rule.
       })
     return { sent: 0, skipped: reason }
   }
@@ -4514,7 +4514,7 @@ export async function flushDeliveryAlerts(
     data: { deliveryAlertedAt: now },
   })
 
-  // A stale error outliving the outage is its own lie — the settings page would
+  // A stale error outliving the outage is its own lie - the settings page would
   // keep reporting a webhook that has been working for a week.
   await db.deliveryConfig
     .update({ where: { id: 'singleton' }, data: { lastError: null } })
@@ -4679,7 +4679,7 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
 const Body = z.object({
   bringApiUid: z.string().trim().optional(),
-  // Blank means "leave what is stored" — the browser never receives the secret,
+  // Blank means "leave what is stored" - the browser never receives the secret,
   // so it cannot send it back, and requiring it would wipe the key on every
   // unrelated save.
   bringApiKey: z.string().optional(),
@@ -4790,7 +4790,7 @@ Expected: 6 passed.
 
 - [ ] **Step 5: Add the test-connection route**
 
-Create `src/app/api/delivery/test/route.ts`. Admin-only, `no-store`. `{ target: 'bring' }` calls `fetchTracking` with the stored credentials and one obviously-invalid number, treating **any non-error response as success** — the point is proving the credentials are accepted, not that the parcel exists. `{ target: 'slack' }` posts a real message reading `Delivery alerts are connected. This is a test.`
+Create `src/app/api/delivery/test/route.ts`. Admin-only, `no-store`. `{ target: 'bring' }` calls `fetchTracking` with the stored credentials and one obviously-invalid number, treating **any non-error response as success** - the point is proving the credentials are accepted, not that the parcel exists. `{ target: 'slack' }` posts a real message reading `Delivery alerts are connected. This is a test.`
 
 Both return `{ ok, message }` with a sentence a human can act on, never a raw stack.
 
@@ -4800,11 +4800,11 @@ An alerting feature nobody has seen fire is an alerting feature nobody trusts. T
 
 Create `src/app/settings/delivery/page.tsx` and `DeliverySettingsClient.tsx`, following the existing `settings/ad-accounts` pages for structure. Sections:
 
-1. **Bring** — account email, API key (a password field, placeholder `Saved` when `hasBringKey`), client URL, and **Test connection**. Show `lastSyncAt` and `lastError`.
-2. **Slack** — webhook URL (password field, placeholder `Saved`) and **Send test message**, with one line of help: create an incoming webhook at `https://api.slack.com/messaging/webhooks` and paste the URL.
-3. **Delivery promises** — an editable table of country, days, business days, effective from, edited the way product costs are. A `*` row is labelled `All other countries`.
-4. **Which shops are tracked** — one date field per shop, writing `Shop.deliveryTrackingFrom`. Blank means not tracked, and the help text says so in those words: "Leave blank if this shop does not ship from the Bring warehouse."
-5. **Recent imports** — filename, when, parsed/linked/unmatched, and any error.
+1. **Bring** - account email, API key (a password field, placeholder `Saved` when `hasBringKey`), client URL, and **Test connection**. Show `lastSyncAt` and `lastError`.
+2. **Slack** - webhook URL (password field, placeholder `Saved`) and **Send test message**, with one line of help: create an incoming webhook at `https://api.slack.com/messaging/webhooks` and paste the URL.
+3. **Delivery promises** - an editable table of country, days, business days, effective from, edited the way product costs are. A `*` row is labelled `All other countries`.
+4. **Which shops are tracked** - one date field per shop, writing `Shop.deliveryTrackingFrom`. Blank means not tracked, and the help text says so in those words: "Leave blank if this shop does not ship from the Bring warehouse."
+5. **Recent imports** - filename, when, parsed/linked/unmatched, and any error.
 
 Add the nav entry to the `Setup` section of `AppShell.tsx`, after `Ad accounts`:
 
@@ -4839,7 +4839,7 @@ git commit -m "feat: delivery settings, promises per country, and test buttons f
 
 Run this against the spec before calling the plan done.
 
-**Spec coverage.** Every section of the spec maps to a task: the data model to Task 1; `shippingCountry` to Task 2; polling and the tiered cadence to Task 8; the clock and the `READY_FOR_PICKUP` stop to Task 4; the per-country promise and business days to Task 9; the median, split and distribution to Tasks 10 and 11; the alert rule, the voided-order exclusion and the stamp-after-Slack ordering to Task 13; the settings page and its test buttons to Task 14. Phases 3 (inbound email) and 4 (NYCE) are deliberately absent — the spec defers both, and Task 7's `importTrackingFile(buf, filename, source)` already takes the `'EMAIL'` source that phase 3 will pass.
+**Spec coverage.** Every section of the spec maps to a task: the data model to Task 1; `shippingCountry` to Task 2; polling and the tiered cadence to Task 8; the clock and the `READY_FOR_PICKUP` stop to Task 4; the per-country promise and business days to Task 9; the median, split and distribution to Tasks 10 and 11; the alert rule, the voided-order exclusion and the stamp-after-Slack ordering to Task 13; the settings page and its test buttons to Task 14. Phases 3 (inbound email) and 4 (NYCE) are deliberately absent - the spec defers both, and Task 7's `importTrackingFile(buf, filename, source)` already takes the `'EMAIL'` source that phase 3 will pass.
 
 **Known soft spots, stated rather than hidden:**
 

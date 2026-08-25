@@ -10,7 +10,7 @@ const Body = z.object({ email: z.string().email() })
  * The live site, never the host that asked.
  *
  * A reset link is built here and clicked hours later, so it must not inherit a
- * stale hashed deployment URL the way the ads OAuth start route does — that
+ * stale hashed deployment URL the way the ads OAuth start route does - that
  * route reads `new URL(req.url).origin` and it is exactly why pressing Connect
  * on an old deployment dies on Google's redirect_uri_mismatch. Same fixed
  * default as lib/delivery/alerts.ts uses for its Slack links.
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
   // ONE answer, returned on every path below: address known, address unknown,
   // mailer broken. Anything that varies turns this form into a way to discover
-  // which of the ambassadors has a login — the same reason the login route
+  // which of the ambassadors has a login - the same reason the login route
   // gives one message for a wrong email and a wrong password.
   const ok = NextResponse.json({ ok: true })
 
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
   } catch (e) {
     // Logged, never surfaced. An unverified sender signature or an expired
     // Postmark token shows up here, and the server log is where whoever
-    // maintains this looks — the person who pressed the button must not be
+    // maintains this looks - the person who pressed the button must not be
     // told the difference between "no such account" and "our mailer is down".
     console.error('Password reset email failed:', e)
   }

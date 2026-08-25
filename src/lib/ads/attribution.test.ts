@@ -101,8 +101,8 @@ describe('attributedSpend', () => {
 })
 
 describe('relevantAdCurrencies', () => {
-  // The whole-account version of this — an EUR account with zero AdSpend rows
-  // whose rate must still be fetched — is covered in load.integration.test.ts.
+  // The whole-account version of this - an EUR account with zero AdSpend rows
+  // whose rate must still be fetched - is covered in load.integration.test.ts.
   // This is its split-account mirror: nothing exercised that branch, so a
   // later simplification could drop it and a split account's currency would
   // silently vanish from the FX table.
@@ -183,7 +183,7 @@ describe('accountSpendRows', () => {
     const rows = await accountSpendRows([account.id], [a.id, def.id], DAY, DAY)
     expect(rows.reduce((sum, r) => sum + r.spend, 0)).toBe(1750) // nothing lost, nothing doubled
     // The unassigned campaign (c2) must land on the account's own default
-    // shop, not merely "somewhere non-dropping" — the sum alone would still
+    // shop, not merely "somewhere non-dropping" - the sum alone would still
     // pass if the fallback resolved to a wrong shop.
     expect(rows.find((r) => r.shopId === def.id)?.spend).toBe(750)
   })
@@ -192,12 +192,12 @@ describe('accountSpendRows', () => {
   // lastSyncAt: null so the next sync backfills a year of AdCampaignSpend, but
   // nothing ever deletes the OLD AdSpend rows that predate the flip. Reading
   // both tables for the same account would roughly double its spend forever.
-  // This is not "structurally impossible" — it is exactly what the PATCH
+  // This is not "structurally impossible" - it is exactly what the PATCH
   // route's own behaviour produces the moment someone ticks the box.
   it('does not double-count a split account that still has a leftover AdSpend row', async () => {
     const [a, def] = [await shop('legacy-a'), await shop('legacy-def')]
     const account = await splitAccountWith(def.id, [{ externalId: 'c1', shopId: a.id, spend: 1000 }])
-    // A pre-existing AdSpend row from before the account was split — never
+    // A pre-existing AdSpend row from before the account was split - never
     // cleaned up, exactly as the real PATCH flow leaves it.
     await db.adSpend.create({
       data: { accountId: account.id, date: DAY, spend: 99999, impressions: 0, clicks: 0 },
@@ -210,7 +210,7 @@ describe('accountSpendRows', () => {
   })
 
   // IMPORTANT: buildMarketing derives byShop/total from engine.byShop, which
-  // drops an out-of-scope shop's row — but byDay adds every SpendRow's minor
+  // drops an out-of-scope shop's row - but byDay adds every SpendRow's minor
   // spend unconditionally. Filtering Marketing to shop A on an account that
   // also runs campaigns for shop B would put B's spend into the chart while
   // the table and total both stayed correct, which is exactly the kind of
@@ -226,7 +226,7 @@ describe('accountSpendRows', () => {
       { externalId: 'c-out', shopId: outOfScope.id, spend: 5000 },
     ])
 
-    // The account is in scope (its in-scope campaign put it there — see
+    // The account is in scope (its in-scope campaign put it there - see
     // accountIdsForShops), but the caller only asked about `inScope`.
     const rows = await accountSpendRows([account.id], [inScope.id], DAY, DAY)
     expect(rows).toHaveLength(1)
@@ -265,7 +265,7 @@ describe('accountIdsForShops', () => {
 })
 
 describe('hasPartialSplitAccounts', () => {
-  // FIX 4: the exact "all stores but partial" case — nothing was filtered
+  // FIX 4: the exact "all stores but partial" case - nothing was filtered
   // (scopeIds is the full active-shop list), but a split account still has a
   // campaign mapped to a shop outside that scope (standing in for a
   // deactivated one, which the ShopFilter selection can never surface).
@@ -280,7 +280,7 @@ describe('hasPartialSplitAccounts', () => {
       { externalId: 'c-out', shopId: outside.id, spend: 500 },
     ])
 
-    // `outside` is never passed — this stands in for "all active stores",
+    // `outside` is never passed - this stands in for "all active stores",
     // which never includes a deactivated one.
     expect(await hasPartialSplitAccounts([inScope.id])).toBe(true)
   })

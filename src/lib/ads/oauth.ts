@@ -8,7 +8,7 @@ import { AdApiError } from './types'
  * calls that Standard Access, and a Business type app gets it automatically.
  *
  * There is no app-settings healing here any more. `ensureMetaApp` used to
- * prove the App ID, read the app's `app_domains` and write ours in — eighty
+ * prove the App ID, read the app's `app_domains` and write ours in - eighty
  * lines aimed at a field that was never the problem. The redirect URI was.
  */
 
@@ -31,7 +31,7 @@ async function readJson<T>(res: Response): Promise<T & { error?: { message?: str
 /**
  * adwords reads the ad accounts. The other three are what the OpenID userinfo
  * endpoint needs, and `exchangeGoogleCode` below reads the connection's label
- * from it — with adwords alone Google answers 401 there and every Google login
+ * from it - with adwords alone Google answers 401 there and every Google login
  * lands as "Google Ads". The callback dedupes connections on that label, so a
  * constant one lets a second Google login overwrite the first one's refresh
  * token. Google's own client library sends this same set.
@@ -61,7 +61,7 @@ export function buildGoogleAuthUrl(clientId: string, redirectUri: string, state:
  * The dialog BeProfit's own login popup runs on, same endpoint and version.
  *
  * No `config_id`. Meta recommends one for Facebook Login for Business, but its
- * reference calls it optional and says `scope` "can still be included" — and a
+ * reference calls it optional and says `scope` "can still be included" - and a
  * configuration id would be one more value the client has to create and paste.
  * The redirect URI is the only thing this dialog needs that no API can set.
  */

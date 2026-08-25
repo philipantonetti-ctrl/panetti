@@ -6,11 +6,11 @@
 
 **Architecture:** New `src/lib/ads/` module (pure parsers + fetchers per provider, a sync engine, a pure marketing-metrics builder), two new Prisma models (`AdAccount`, `AdSpend`), four new API routes, cron integration, a `/marketing` page and a `/settings/ad-accounts` management page. Credentials are an encrypted JSON blob per account using the existing `encryptSecret`. Order-side numbers reuse `loadMetricsInput` + `computeMetrics` so revenue/orders can never disagree with the dashboard.
 
-**Tech Stack:** Next.js 16 App Router, Prisma 6 (Postgres), zod, Vitest 4 (`vi.stubGlobal('fetch', ...)` for HTTP), Playwright, recharts. Local test DB at `%LOCALAPPDATA%\panetti-pg` — start it inside the same tool call as the command (`& pg_ctl -w start 2>$null; <cmd>`), NEVER against Neon.
+**Tech Stack:** Next.js 16 App Router, Prisma 6 (Postgres), zod, Vitest 4 (`vi.stubGlobal('fetch', ...)` for HTTP), Playwright, recharts. Local test DB at `%LOCALAPPDATA%\panetti-pg` - start it inside the same tool call as the command (`& pg_ctl -w start 2>$null; <cmd>`), NEVER against Neon.
 
 **Verified API facts (July 2026):**
 - Meta Graph v25.0: `GET https://graph.facebook.com/v25.0/act_{id}/insights?level=account&time_increment=1&time_range={"since":"YYYY-MM-DD","until":"YYYY-MM-DD"}&fields=spend,impressions,clicks&limit=500`, auth via `Authorization: Bearer <token>` header (keeps the token out of URLs and of `paging.next`). Response `{ data: [{ date_start, spend: "5339.5", impressions: "..", clicks: ".." }], paging: { next } }`. Errors: `{ error: { message } }`. Verify: `GET /act_{id}?fields=name,currency`.
-- Google Ads v25 REST: `POST https://googleads.googleapis.com/v25/customers/{cid}/googleAds:searchStream` with headers `Authorization: Bearer`, `developer-token`, optional `login-customer-id`; body `{"query": "SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks FROM customer WHERE segments.date BETWEEN 'A' AND 'B'"}`. Response: JSON array of chunks `[{ results: [...] }]`, field names camelCase (`costMicros`) — parser tolerates snake_case too. Access token minted per call: `POST https://oauth2.googleapis.com/token` form-encoded `{client_id, client_secret, refresh_token, grant_type: 'refresh_token'}`. `cost_micros` → minor units = `round(micros / 10_000)`. Verify: `SELECT customer.descriptive_name, customer.currency_code FROM customer`.
+- Google Ads v25 REST: `POST https://googleads.googleapis.com/v25/customers/{cid}/googleAds:searchStream` with headers `Authorization: Bearer`, `developer-token`, optional `login-customer-id`; body `{"query": "SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks FROM customer WHERE segments.date BETWEEN 'A' AND 'B'"}`. Response: JSON array of chunks `[{ results: [...] }]`, field names camelCase (`costMicros`) - parser tolerates snake_case too. Access token minted per call: `POST https://oauth2.googleapis.com/token` form-encoded `{client_id, client_secret, refresh_token, grant_type: 'refresh_token'}`. `cost_micros` → minor units = `round(micros / 10_000)`. Verify: `SELECT customer.descriptive_name, customer.currency_code FROM customer`.
 
 ---
 
@@ -62,11 +62,11 @@ model AdSpend {
 }
 ```
 
-- [ ] **Step 2:** Run `npx prisma generate`, then push to the LOCAL test DB inside one call: `& "$env:LOCALAPPDATA\panetti-pg\pgsql\bin\pg_ctl" -D "$env:LOCALAPPDATA\panetti-pg\data" -w start 2>$null; npx prisma db push` (read `.env`/`.env.local` handling as before — DATABASE_URL must point at the local DB for this shell).
-- [ ] **Step 3:** In `prisma/seed.ts`, following the file's existing style and wipe order: create 3 ad accounts on the first two shops (meta+google on shop[0], meta on shop[1]) with `credentials: JSON.stringify({ accessToken: 'seed' })` (plaintext passes `decryptSecret` through), `currency` = shop currency, `lastSyncAt` set; then daily `AdSpend` rows for the last 90 days with the seed's deterministic random idiom (spend 20000–150000 minor, impressions ≈ spend/3, clicks ≈ impressions/40). Re-seed local DB and eyeball counts.
+- [ ] **Step 2:** Run `npx prisma generate`, then push to the LOCAL test DB inside one call: `& "$env:LOCALAPPDATA\panetti-pg\pgsql\bin\pg_ctl" -D "$env:LOCALAPPDATA\panetti-pg\data" -w start 2>$null; npx prisma db push` (read `.env`/`.env.local` handling as before - DATABASE_URL must point at the local DB for this shell).
+- [ ] **Step 3:** In `prisma/seed.ts`, following the file's existing style and wipe order: create 3 ad accounts on the first two shops (meta+google on shop[0], meta on shop[1]) with `credentials: JSON.stringify({ accessToken: 'seed' })` (plaintext passes `decryptSecret` through), `currency` = shop currency, `lastSyncAt` set; then daily `AdSpend` rows for the last 90 days with the seed's deterministic random idiom (spend 20000-150000 minor, impressions ≈ spend/3, clicks ≈ impressions/40). Re-seed local DB and eyeball counts.
 - [ ] **Step 4:** Commit `feat: AdAccount and AdSpend tables with seed data`.
 
-### Task 2: Provider fetchers (`meta.ts`, `google.ts`) — TDD
+### Task 2: Provider fetchers (`meta.ts`, `google.ts`) - TDD
 
 **Files:**
 - Create: `src/lib/ads/types.ts`, `src/lib/ads/meta.ts`, `src/lib/ads/google.ts`
@@ -93,7 +93,7 @@ export type DailyRow = { date: Date; spend: number; impressions: number; clicks:
 
 export type VerifiedAccount = { name: string; currency: string }
 
-/** A provider's own words, surfaced to the UI — never an HTML dump. */
+/** A provider's own words, surfaced to the UI - never an HTML dump. */
 export class AdApiError extends Error {}
 ```
 
@@ -166,7 +166,7 @@ export async function verifyMeta(creds: MetaCredentials, externalId: string): Pr
 }
 ```
 
-- [ ] **Step 4:** Tests green (`npx vitest run src/lib/ads/meta.test.ts` — no DB needed).
+- [ ] **Step 4:** Tests green (`npx vitest run src/lib/ads/meta.test.ts` - no DB needed).
 - [ ] **Step 5:** Same TDD loop for `google.ts`: tests cover `microsToMinor('1234560000') === 123456`, camelCase AND snake_case results, chunk array AND single-object body, token exchange posts the right form fields and throws AdApiError with `error_description` on failure, `fetchGoogleDaily` sends all three headers (+ `login-customer-id` only when set) and the GAQL BETWEEN query, `verifyGoogle` reads `descriptiveName`/`currencyCode` (name falls back to `Google Ads {cid}`, missing currency throws).
 
 ```ts
@@ -270,7 +270,7 @@ export async function verifyGoogle(creds: GoogleCredentials, customerId: string)
 
 - [ ] **Step 6:** All ads unit tests green. Commit `feat: Meta and Google ad platform fetchers`.
 
-### Task 3: Sync engine — TDD (DB-backed)
+### Task 3: Sync engine - TDD (DB-backed)
 
 **Files:**
 - Create: `src/lib/ads/sync.ts`
@@ -362,11 +362,11 @@ export async function syncAllAdAccounts(opts: { force?: boolean } = {}): Promise
 
 - [ ] **Step 3:** Tests green (DB running in same call). Commit `feat: ad spend sync engine with restatement window`.
 
-### Task 4: Marketing metrics builder — TDD (pure)
+### Task 4: Marketing metrics builder - TDD (pure)
 
 **Files:**
 - Create: `src/lib/ads/marketing.ts`
-- Modify: `src/lib/metrics/trend.ts` — add `grossRevenue: number` to `SeriesPoint` and to the object `dailySeries` returns (`grossRevenue: total.grossRevenue`)
+- Modify: `src/lib/metrics/trend.ts` - add `grossRevenue: number` to `SeriesPoint` and to the object `dailySeries` returns (`grossRevenue: total.grossRevenue`)
 - Test: `src/lib/ads/marketing.test.ts`
 
 - [ ] **Step 1:** Failing tests: fixture with 2 shops (NOK + SEK), engine result byShop rows carrying orders/grossRevenue, one meta NOK account + one google EUR account, spend rows on known dates, hand-built RateTable. Assert: per-shop converted spend (EUR spend converts at that DAY's rate), meta/google split, ROAS = grossRevenue/spend (float, null when spend 0), CPA = round(spend/orders) (null when either 0), CPC (null when clicks 0), CTR, a shop with no accounts appears with spend 0 and null ratios, total row sums, series merges spend into the daily grossRevenue series by date.
@@ -479,7 +479,7 @@ export function buildMarketing(args: {
 
 - [ ] **Step 3:** Tests green, plus the existing trend/dashboard tests still green after the `SeriesPoint` addition (`npx vitest run src/lib/metrics`). Commit `feat: marketing metrics builder (ROAS, CPA, CPC, CTR per shop)`.
 
-### Task 5: API routes — TDD (DB-backed; mirror `src/app/api/orders/route.test.ts` auth mocking and marker scoping)
+### Task 5: API routes - TDD (DB-backed; mirror `src/app/api/orders/route.test.ts` auth mocking and marker scoping)
 
 **Files:**
 - Create: `src/app/api/ad-accounts/route.ts` (GET list, POST connect+verify+backfill)
@@ -490,8 +490,8 @@ export function buildMarketing(args: {
 - Tests: `src/app/api/ad-accounts/route.test.ts`, `src/app/api/marketing/route.test.ts`
 
 Key behaviors (write tests first for each):
-- **POST /api/ad-accounts** validates with zod base schema `{ shopId, provider: z.enum(['meta','google']) }` plus explicit per-provider field checks with readable messages; normalizes `externalId` (strip `act_`, strip dashes, digits only); 404-checks the shop; calls `verifyMeta`/`verifyGoogle` — an `AdApiError` becomes `400 { error: e.message }` and NOTHING is stored; on success creates the row with `name`/`currency` from the platform and `credentials: encryptSecret(JSON.stringify(creds))`; a duplicate `(provider, externalId)` → `409 { error: 'This ad account is already connected.' }`; then runs the initial backfill via `syncAdAccount` and returns `{ account: {…public fields}, sync: result }` with `maxDuration = 60`. Tests assert: stored credentials start with `enc:v1:` and do NOT contain the pasted token; AdSpend rows exist after connect; the 400 path stores nothing.
-- **GET /api/ad-accounts** returns `{ accounts: [{ id, provider, externalId, name, currency, shopId, shopName, active, lastSyncAt, lastError, createdAt }] }` — test asserts `JSON.stringify(body)` contains neither `credentials` nor the token value.
+- **POST /api/ad-accounts** validates with zod base schema `{ shopId, provider: z.enum(['meta','google']) }` plus explicit per-provider field checks with readable messages; normalizes `externalId` (strip `act_`, strip dashes, digits only); 404-checks the shop; calls `verifyMeta`/`verifyGoogle` - an `AdApiError` becomes `400 { error: e.message }` and NOTHING is stored; on success creates the row with `name`/`currency` from the platform and `credentials: encryptSecret(JSON.stringify(creds))`; a duplicate `(provider, externalId)` → `409 { error: 'This ad account is already connected.' }`; then runs the initial backfill via `syncAdAccount` and returns `{ account: {…public fields}, sync: result }` with `maxDuration = 60`. Tests assert: stored credentials start with `enc:v1:` and do NOT contain the pasted token; AdSpend rows exist after connect; the 400 path stores nothing.
+- **GET /api/ad-accounts** returns `{ accounts: [{ id, provider, externalId, name, currency, shopId, shopName, active, lastSyncAt, lastError, createdAt }] }` - test asserts `JSON.stringify(body)` contains neither `credentials` nor the token value.
 - **PATCH /api/ad-accounts/[id]**: body may carry `shopId` and/or credential fields; blank/absent credential fields keep the stored value (merge into the decrypted JSON, Woo-modal style); if ANY credential field changed, re-verify before saving and refresh `name`/`currency`; unknown id → 404.
 - **DELETE /api/ad-accounts/[id]**: deletes; test asserts the account's AdSpend rows are gone (cascade).
 - **POST /api/ads/sync**: admin-only, `const results = await syncAllAdAccounts({ force: true })`, returns `{ results }`, `maxDuration = 60`.
@@ -502,28 +502,28 @@ Key behaviors (write tests first for each):
 ### Task 6: Marketing page UI
 
 **Files:**
-- Modify: `src/components/shell/AppShell.tsx` — NAV: `{ href: '/marketing', label: 'Marketing', icon: <megaphone svg matching existing icon idiom> }` after Orders in Analytics; `{ href: '/settings/ad-accounts', label: 'Ad accounts', icon: <plug svg> }` after Shops in Setup.
-- Modify: `src/middleware.ts` — add `/marketing/:path*` to the matcher and to the admin-gated set (mirror how `/dashboard` is treated).
+- Modify: `src/components/shell/AppShell.tsx` - NAV: `{ href: '/marketing', label: 'Marketing', icon: <megaphone svg matching existing icon idiom> }` after Orders in Analytics; `{ href: '/settings/ad-accounts', label: 'Ad accounts', icon: <plug svg> }` after Shops in Setup.
+- Modify: `src/middleware.ts` - add `/marketing/:path*` to the matcher and to the admin-gated set (mirror how `/dashboard` is treated).
 - Create: `src/app/marketing/page.tsx` (mirror `src/app/dashboard/page.tsx` server wrapper: currentUser → redirects, load shops + `db.adAccount.count({ where: { active: true } })`, pass `hasAccounts`).
-- Create: `src/app/marketing/MarketingClient.tsx` — state/fetch idiom copied from DashboardClient (`preset/from/to/selected`, `useLiveTick`, AbortController, `shops` param with NO_SHOPS untouched). If `!hasAccounts`: render a single card "No ad accounts connected yet" + explainer + `<Link href="/settings/ad-accounts">Connect your first account</Link>` and skip fetching. Else: stats, chart, table, plus the "Converted to USD…" subtitle rule from DashboardClient.
-- Create: `src/components/marketing/MarketingStats.tsx` — one hairline-divided strip (StatStrip idiom, no deltas): AD SPEND `formatMoney`, ROAS `x.xx×` (— when null, hint "Gross revenue divided by ad spend"), CPA `formatMoney` (— when null, hint "Ad spend per paid order"), CPC `formatMoney` (— when null).
-- Create: `src/components/marketing/MarketingChart.tsx` — TrendChart clone: dataKeys `spend` ("Ad spend") and `grossRevenue` ("Gross revenue"), same colors/empty-state pattern ("No ad spend in this period." when all zero).
-- Create: `src/components/marketing/MarketingTable.tsx` — CompareTable-style (sticky first column, striping, sortable headers, default sort spend desc, localStorage NOT needed): columns Shop, Ad spend, Meta, Google, Gross revenue, ROAS (`4.20×`), CPA, Orders, CPC, CTR (`1.9%`); null → `—`; footer Total row.
+- Create: `src/app/marketing/MarketingClient.tsx` - state/fetch idiom copied from DashboardClient (`preset/from/to/selected`, `useLiveTick`, AbortController, `shops` param with NO_SHOPS untouched). If `!hasAccounts`: render a single card "No ad accounts connected yet" + explainer + `<Link href="/settings/ad-accounts">Connect your first account</Link>` and skip fetching. Else: stats, chart, table, plus the "Converted to USD…" subtitle rule from DashboardClient.
+- Create: `src/components/marketing/MarketingStats.tsx` - one hairline-divided strip (StatStrip idiom, no deltas): AD SPEND `formatMoney`, ROAS `x.xx×` (- when null, hint "Gross revenue divided by ad spend"), CPA `formatMoney` (- when null, hint "Ad spend per paid order"), CPC `formatMoney` (- when null).
+- Create: `src/components/marketing/MarketingChart.tsx` - TrendChart clone: dataKeys `spend` ("Ad spend") and `grossRevenue` ("Gross revenue"), same colors/empty-state pattern ("No ad spend in this period." when all zero).
+- Create: `src/components/marketing/MarketingTable.tsx` - CompareTable-style (sticky first column, striping, sortable headers, default sort spend desc, localStorage NOT needed): columns Shop, Ad spend, Meta, Google, Gross revenue, ROAS (`4.20×`), CPA, Orders, CPC, CTR (`1.9%`); null → `-`; footer Total row.
 - Test: `src/components/marketing/MarketingTable.test.tsx` (headers, money cells, dashes for nulls, total row), `src/app/marketing/MarketingClient.test.tsx` (jsdom + stubbed fetch: renders stats+table from payload; `hasAccounts:false` renders the connect CTA and does not fetch).
 - [ ] Commit `feat: Marketing page with ad spend, ROAS, CPA per shop`.
 
 ### Task 7: Ad accounts settings UI
 
 **Files:**
-- Create: `src/app/settings/ad-accounts/page.tsx` — server wrapper (mirror shops page): load accounts with shop include, map to rows `{ id, provider, externalId, name, currency, shopId, shopName, lastSyncAt: iso|null, lastError, connectedOk: !lastError }`, plus active shops for the modal dropdown.
-- Create: `src/app/settings/ad-accounts/AdAccountsClient.tsx` — ShopsClient idiom: PageHeader ("Ad accounts", subtitle explaining Meta + Google spend syncs itself every few hours) with "Connect account" + "Sync now" buttons; result message line; table Account | Provider ("Meta"/"Google" badge) | Shop | Currency | Status (green "Connected" / red "Error" with `title={lastError}` / muted "Never synced") | Last sync | Edit / Delete (window.confirm). `ConnectAccountModal`: provider segmented toggle; shop `<select>`; Meta fields: Ad account ID, System user access token (with help text "Meta Business settings → System users → Generate token with ads_read"); Google fields: Customer ID, Developer token, OAuth client ID, OAuth client secret, Refresh token, Manager account ID (optional); POST `/api/ad-accounts`; server error → toast + modal stays open; success → toast + `router.refresh()`. Edit reuses the modal with `saved, leave blank to keep` placeholders and PATCH.
-- Test: `src/app/settings/ad-accounts/AdAccountsClient.test.tsx` — renders rows + status badges; opening the modal and switching provider swaps the fields; a 400 from POST shows the server's message and keeps the modal open; Sync now renders per-account results line.
+- Create: `src/app/settings/ad-accounts/page.tsx` - server wrapper (mirror shops page): load accounts with shop include, map to rows `{ id, provider, externalId, name, currency, shopId, shopName, lastSyncAt: iso|null, lastError, connectedOk: !lastError }`, plus active shops for the modal dropdown.
+- Create: `src/app/settings/ad-accounts/AdAccountsClient.tsx` - ShopsClient idiom: PageHeader ("Ad accounts", subtitle explaining Meta + Google spend syncs itself every few hours) with "Connect account" + "Sync now" buttons; result message line; table Account | Provider ("Meta"/"Google" badge) | Shop | Currency | Status (green "Connected" / red "Error" with `title={lastError}` / muted "Never synced") | Last sync | Edit / Delete (window.confirm). `ConnectAccountModal`: provider segmented toggle; shop `<select>`; Meta fields: Ad account ID, System user access token (with help text "Meta Business settings → System users → Generate token with ads_read"); Google fields: Customer ID, Developer token, OAuth client ID, OAuth client secret, Refresh token, Manager account ID (optional); POST `/api/ad-accounts`; server error → toast + modal stays open; success → toast + `router.refresh()`. Edit reuses the modal with `saved, leave blank to keep` placeholders and PATCH.
+- Test: `src/app/settings/ad-accounts/AdAccountsClient.test.tsx` - renders rows + status badges; opening the modal and switching provider swaps the fields; a 400 from POST shows the server's message and keeps the modal open; Sync now renders per-account results line.
 - [ ] Commit `feat: connect and manage Meta and Google ad accounts`.
 
 ### Task 8: E2E + full green + deploy
 
 **Files:**
-- Create: `e2e/marketing.spec.ts` — sign in as `admin@ecom.test` (reuse the `signIn` helper idiom): `/marketing` shows the stats strip (AD SPEND label), the chart or table with a seeded shop name and a nonzero money cell; shop filter narrows rows; `/settings/ad-accounts` lists 3 seeded accounts with provider badges.
+- Create: `e2e/marketing.spec.ts` - sign in as `admin@ecom.test` (reuse the `signIn` helper idiom): `/marketing` shows the stats strip (AD SPEND label), the chart or table with a seeded shop name and a nonzero money cell; shop filter narrows rows; `/settings/ad-accounts` lists 3 seeded accounts with provider badges.
 
 - [ ] **Step 1:** e2e spec written, seeded local DB, full Playwright run green (`workers: 1`, DB started in the same tool call).
 - [ ] **Step 2:** Full vitest suite green (all files), `npx tsc --noEmit` green, `npx next build` green.
@@ -532,7 +532,7 @@ Key behaviors (write tests first for each):
 ## Execution notes
 
 - Local DB only. Every DB-touching command: `& pg_ctl -w start 2>$null; <command>` in ONE tool call.
-- `AUTH_SECRET` must be set for encryption tests — mirror however the shops route tests handle it.
+- `AUTH_SECRET` must be set for encryption tests - mirror however the shops route tests handle it.
 - Do not touch `Figures`/net profit: ad spend intentionally stays out of profit until the client confirms retiring manual ad expense entries (documented in the spec).
 - Zod: use the base-object + explicit per-provider checks (version-proof, readable errors).
 - After schema change: `npx prisma generate` before typechecking.

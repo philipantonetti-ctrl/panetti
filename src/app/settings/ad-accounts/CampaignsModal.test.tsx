@@ -12,7 +12,7 @@ import { CampaignsModal } from './CampaignsModal'
 
 // CampaignsModal uses the throwing useToast() hook on its save path, like
 // AccountModal and PickerModal beside it, so every render needs a real
-// ToastProvider ancestor — matching CustomerModal.test.tsx's own helper.
+// ToastProvider ancestor - matching CustomerModal.test.tsx's own helper.
 function renderWithToast(ui: ReactNode) {
   return render(<ToastProvider>{ui}</ToastProvider>)
 }
@@ -86,7 +86,7 @@ describe('CampaignsModal', () => {
   })
 
   // Despite the name this test used to have, save() posts every row's
-  // assignment on every save, not only the one the user touched — see the
+  // assignment on every save, not only the one the user touched - see the
   // unconditional `rows.map(...)` in CampaignsModal.tsx's save(). This test
   // only ever changed one row, so its own name claimed a "changed only"
   // behaviour it never actually exercised.
@@ -114,7 +114,7 @@ describe('CampaignsModal', () => {
       ]),
     )
     // FINDING 3: onSaved is the only externally observable "the save actually
-    // finished" signal here — a save that silently swallowed a successful
+    // finished" signal here - a save that silently swallowed a successful
     // response would still leave every earlier assertion green.
     expect(onSaved).toHaveBeenCalledTimes(1)
   })
@@ -123,7 +123,7 @@ describe('CampaignsModal', () => {
   // ('' -> 's2'). The '' -> null mapping is the highest-risk path in this
   // component: the API's assignments schema is `z.string().min(1).nullable()`,
   // so if this regressed and sent '' instead of null, every save touching an
-  // unassigned campaign would 400 — which is nearly every real save. Assert
+  // unassigned campaign would 400 - which is nearly every real save. Assert
   // `null` explicitly; a loose "not 's1'" check would let '' through.
   it('sends null when a campaign is unassigned back to the account store', async () => {
     const saved: unknown[] = []

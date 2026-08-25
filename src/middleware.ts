@@ -13,8 +13,8 @@ const MARKETING_PAGES = ['/ambassadors', '/account']
 /**
  * Doors only machines knock on, exempt from the one-live-host walk below.
  *
- * Vercel Cron calls the deployment's OWN generated URL — the log line reads
- * `GET 308 panetti-ec53dmxro-....vercel.app /api/cron/sync` — never the
+ * Vercel Cron calls the deployment's OWN generated URL - the log line reads
+ * `GET 308 panetti-ec53dmxro-....vercel.app /api/cron/sync` - never the
  * production domain. Cron does not follow redirects, so the 308 WAS the whole
  * invocation: the scheduled sync had not run since the host check shipped, and
  * because Vercel does not log a redirected cron as an invocation, it failed
@@ -23,8 +23,8 @@ const MARKETING_PAGES = ['/ambassadors', '/account']
  * delivery, disabling the webhook after enough of them.
  *
  * Neither cares which host it reached us on, and neither builds a URL from it.
- * Both carry their own credential — the cron its CRON_SECRET bearer token, the
- * webhook its per-shop HMAC — so the host check was never what protected them.
+ * Both carry their own credential - the cron its CRON_SECRET bearer token, the
+ * webhook its per-shop HMAC - so the host check was never what protected them.
  * Postmark's inbound webhook is the same shape again: it POSTs the URL on
  * file and carries its own `?token=` secret, never a session.
  *
@@ -40,7 +40,7 @@ const MACHINE_PATHS = ['/api/cron/', '/api/webhooks/', '/api/delivery/inbound']
  * One live host, for people: every deploy mints a hashed .vercel.app URL that
  * team members can wander onto without noticing; OAuth then carries that host
  * to Facebook, which rightly refuses it. In production, any host that is not
- * the project's production domain walks to it, path and query intact — unless
+ * the project's production domain walks to it, path and query intact - unless
  * the caller is a machine that cannot walk (see MACHINE_PATHS).
  *
  * Then a coarse session gate: no session, go to /login. It does NOT decide

@@ -19,7 +19,7 @@ type Payload = {
   range: { from: string; to: string }
 }
 
-/** Skeletons in the shape of the content — never a spinner inside a table. */
+/** Skeletons in the shape of the content - never a spinner inside a table. */
 function Skeleton() {
   return <div className="skeleton h-[420px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
 }
@@ -64,8 +64,8 @@ function MixedCurrencies({
 /**
  * The biggest group among `groups`, which `groupByCurrency` already returns
  * sorted by currency code ascending. `reduce` with a strict `>` means the
- * first group we reach wins any tie for largest — i.e. the
- * alphabetically-earliest currency — so the tiebreak rides that documented
+ * first group we reach wins any tie for largest - i.e. the
+ * alphabetically-earliest currency - so the tiebreak rides that documented
  * sort order rather than any Array.sort stability of our own.
  */
 function biggestGroup(groups: { currency: string; shops: Shop[] }[]): { currency: string; shops: Shop[] } {
@@ -73,13 +73,13 @@ function biggestGroup(groups: { currency: string; shops: Shop[] }[]): { currency
 }
 
 /**
- * Real accounts routinely span several currencies — refusing to guess is
+ * Real accounts routinely span several currencies - refusing to guess is
  * right, but opening on that refusal on every single visit is not. On first
  * load only, and only when the shops actually span more than one currency,
  * narrow silently to the single biggest currency group instead of "all
  * shops": a real, honest table appears immediately, and every other group is
  * still one filter click away. A shop list that already shares one currency
- * is left at [] ("all") — there is nothing to narrow.
+ * is left at [] ("all") - there is nothing to narrow.
  */
 function initialSelected(shops: Shop[]): string[] {
   const groups = groupByCurrency(shops)
@@ -101,7 +101,7 @@ export function ProductsClient({
   const [to, setTo] = useState('')
   const [selected, setSelected] = useState<string[]>(() => initialSelected(shops))
   // True only while `selected` is still the silent first-load narrowing above
-  // — never inferred by comparing arrays, because a user could manually land
+  // - never inferred by comparing arrays, because a user could manually land
   // back on the very same shops the auto-selection picked. An explicit flag
   // does not mistake that for "still auto-selected"; it is cleared the moment
   // ShopFilter's onChange fires at all, below, regardless of what the new
@@ -123,7 +123,7 @@ export function ProductsClient({
     // Nothing can be honestly loaded across currencies, and nothing here
     // needs to record that: every path that changes `selected` (ShopFilter's
     // onChange, MixedCurrencies' onPick, both below) already sets `loading`
-    // itself before it does, and the JSX never reads `loading` while mixed —
+    // itself before it does, and the JSX never reads `loading` while mixed -
     // MixedCurrencies renders in its place. Setting state here would just be
     // a synchronous setState in an effect body with nothing behind it.
     if (mixed) return
@@ -170,7 +170,7 @@ export function ProductsClient({
           selected={selected}
           onChange={(next) => {
             setLoading(true)
-            setAutoSelected(false) // a real choice now — no longer an assumption made for them
+            setAutoSelected(false) // a real choice now - no longer an assumption made for them
             setSelected(next)
           }}
         />

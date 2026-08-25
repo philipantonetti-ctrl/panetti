@@ -5,7 +5,7 @@ import { mapInvoices, type BringInvoice } from './invoice-map'
 /**
  * Bring's money endpoints, over HTTP.
  *
- * A different host from tracking — www.mybring.com rather than api.bring.com —
+ * A different host from tracking - www.mybring.com rather than api.bring.com -
  * and the same three headers. Shaped like src/lib/bring/client.ts on purpose:
  * a budget clamped to whatever is left of the caller's deadline, and error
  * bodies truncated so a gateway's HTML page never reaches a log line.
@@ -47,7 +47,7 @@ async function get(
  * Every customer number this login may act for.
  *
  * Through the Reports API, NOT Customer Info. Measured 2026-08-20: Customer
- * Info returned three numbers and Reports returned four — the Swedish entity
+ * Info returned three numbers and Reports returned four - the Swedish entity
  * appears only here. Enumerating through the other one loses a whole company's
  * freight with nothing on screen to say so.
  */

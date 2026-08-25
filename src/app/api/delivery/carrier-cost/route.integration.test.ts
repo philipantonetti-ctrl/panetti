@@ -8,7 +8,7 @@ vi.mock('@/lib/auth/current-user', () => ({
 const { GET, PUT } = await import('./route')
 const { currentUser } = await import('@/lib/auth/current-user')
 
-// Tagged and scoped — see "Test data convention" in the Global Constraints.
+// Tagged and scoped - see "Test data convention" in the Global Constraints.
 // CarrierCost hangs off no shop, so it is scoped by these carrier names
 // instead; a real BRING row must survive this suite untouched.
 const TRACK = 'TCOST'
@@ -73,8 +73,8 @@ describe('GET /api/delivery/carrier-cost', () => {
   })
 
   /**
-   * The whole point. Nothing here comes from a carrier API — the tracking
-   * endpoints return no money at all — so the invoice is entered and this
+   * The whole point. Nothing here comes from a carrier API - the tracking
+   * endpoints return no money at all - so the invoice is entered and this
    * divides it by parcels we counted ourselves.
    */
   it('divides the invoice by the parcels once the invoice is known', async () => {
@@ -118,7 +118,7 @@ describe('PUT /api/delivery/carrier-cost', () => {
     expect(rows[0].amount).toBe(12_000)
   })
 
-  // Zero is a real figure — "they billed us nothing" — so clearing has to be
+  // Zero is a real figure - "they billed us nothing" - so clearing has to be
   // its own instruction rather than storing a zero and hoping.
   it('clears the month when the amount is null', async () => {
     await put({ carrier: BRINGISH, month: '2026-07', amount: 10_000, currency: 'NOK' })

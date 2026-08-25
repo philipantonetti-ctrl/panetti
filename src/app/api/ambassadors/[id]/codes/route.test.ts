@@ -52,7 +52,7 @@ beforeEach(async () => {
 
 afterEach(cleanup)
 
-describe('POST — add a code', () => {
+describe('POST - add a code', () => {
   it('refuses an anonymous caller', async () => {
     cookieValue.current = undefined
     expect((await call(POST, { code: 'HACK10', shopId })).status).toBe(403)
@@ -103,7 +103,7 @@ describe('POST — add a code', () => {
   })
 })
 
-describe('DELETE — remove a code', () => {
+describe('DELETE - remove a code', () => {
   it('refuses an anonymous caller', async () => {
     await asAdmin()
     await call(POST, { code: 'SECOND20', shopId })

@@ -91,8 +91,8 @@ describe('POST /api/b2b/orders', () => {
   /**
    * "Shipping was free" and "nobody said" must not be the same value.
    *
-   * A stored 0 wins outright in the engine — `fulfillmentCost ?? perSku`
-   * short-circuits on it — so an order saved with the box left blank could
+   * A stored 0 wins outright in the engine - `fulfillmentCost ?? perSku`
+   * short-circuits on it - so an order saved with the box left blank could
    * never be costed by the per-SKU shipping rates, while a Visma-imported order
    * leaves the column null and is. This branch is what creates that pair, and
    * with a zod default of 0 there was nothing anywhere to tell them apart.
@@ -139,13 +139,13 @@ describe('POST /api/b2b/orders', () => {
   it('meets a real collision with a clean 409, not a crash', async () => {
     // nextB2bNumber() is a pure function of committed rows, so a collision it
     // cannot see its way past will be proposed again, unchanged, on the
-    // retry — this deterministically exhausts both attempts, no mocking and
+    // retry - this deterministically exhausts both attempts, no mocking and
     // no timing-dependent race required to trigger a real P2002.
     //
     // This row occupies "b2b:B-0001" without registering as a B2B order to
     // nextB2bNumber(), which reads the `number` column, not externalId: an
     // unparseable number contributes nothing to its max-scan, so it still
-    // computes "B-0001" — landing the real POST below on a genuine unique
+    // computes "B-0001" - landing the real POST below on a genuine unique
     // constraint collision on attempt 0, and again, identically, on attempt 1.
     await asAdmin()
     await db.order.create({
@@ -159,7 +159,7 @@ describe('POST /api/b2b/orders', () => {
     const res = await post({ customerId, placedAt: '2026-07-01', lines: [{ productId, quantity: 1, unitPrice: 89 }] })
 
     // Gating the P2002 catch to attempt === 0 would let this exact second
-    // collision escape uncaught into the generic 500 below — this is the
+    // collision escape uncaught into the generic 500 below - this is the
     // scenario that turns that dead branch live.
     expect(res.status).toBe(409)
     expect((await res.json()).error).toBe('Could not pick an order number. Try again.')
@@ -199,7 +199,7 @@ describe('POST /api/b2b/orders', () => {
   it('converts an AMOUNT discount to minor units, same as every other money field', async () => {
     // Every other accepted-order test here uses PERCENT, which never touches
     // toMinor at all (it is a plain number, not money). If the AMOUNT branch
-    // of that ternary lost its toMinor — storing 20 instead of 2000 — this is
+    // of that ternary lost its toMinor - storing 20 instead of 2000 - this is
     // the only test that would notice.
     await asAdmin()
     await post({
@@ -213,7 +213,7 @@ describe('POST /api/b2b/orders', () => {
     expect(saved.netSales).toBe(90000)
 
     const item = await db.orderItem.findFirstOrThrow({ where: { productId } })
-    expect(item.discountValue).toBe(2000) // minor units — 20.00, not 20
+    expect(item.discountValue).toBe(2000) // minor units - 20.00, not 20
     expect(item.discountKind).toBe('AMOUNT')
   })
 

@@ -43,12 +43,12 @@ const b2bOrder = {
   imported: false,
 }
 
-/** The same row, but imported from Visma — which makes it read-only. */
+/** The same row, but imported from Visma - which makes it read-only. */
 const importedOrder = {
   ...b2bOrder, id: 'o2', number: '123194', imported: true,
 }
 
-// The form shape `GET /api/b2b/orders/[id]` answers — what edit and void both
+// The form shape `GET /api/b2b/orders/[id]` answers - what edit and void both
 // load. Two lines, one of each discount kind, with numbers chosen so "no
 // conversion", "convert both discounts" and "swap the two branches" each
 // land on a different wrong answer than the correct one:
@@ -103,8 +103,8 @@ describe('B2bClient', () => {
     // The digits alone (14,220.00) are identical whether formatted as EUR or
     // NOK at this value, so assert the currency marker too: the EUR rendering
     // must be present AND the shop's NOK rendering must be absent. That way a
-    // regression back to the shop's currency — the exact bug this test is
-    // named for — fails loudly instead of slipping through on shared digits.
+    // regression back to the shop's currency - the exact bug this test is
+    // named for - fails loudly instead of slipping through on shared digits.
     const eurRendering = formatMoney(customer.revenue, 'EUR')
     const nokRendering = formatMoney(customer.revenue, 'NOK')
     expect(await screen.findByText(eurRendering)).toBeInTheDocument()
@@ -129,7 +129,7 @@ describe('B2bClient', () => {
     renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
 
     const message = await screen.findByText('Could not load customers')
-    // Inline, in the table body — matching the empty-row convention — not a
+    // Inline, in the table body - matching the empty-row convention - not a
     // toast that fades and leaves the table looking like zero customers.
     const cell = message.closest('td')
     expect(cell).not.toBeNull()
@@ -142,7 +142,7 @@ describe('B2bClient', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: /add customer/i })).toBeNull())
   })
 
-  it('shows a voided order’s profit as "—", never a confident zero', async () => {
+  it('shows a voided order’s profit as "-", never a confident zero', async () => {
     const liveOrder = {
       id: 'o1', number: '#1001', placedAt: '2026-05-01T00:00:00.000Z', status: 'completed',
       currency: 'EUR', netSales: 50000, customer: 'Nordic Retail AS', figures: { profit: 12000 },
@@ -158,8 +158,8 @@ describe('B2bClient', () => {
 
     const voidedRow = screen.getByText('#1002').closest('tr') as HTMLElement
     const voidedProfitCell = voidedRow.querySelectorAll('td')[5]
-    // A voided order earns nothing and says so — never a confident "0".
-    expect(voidedProfitCell.textContent).toBe('—')
+    // A voided order earns nothing and says so - never a confident "0".
+    expect(voidedProfitCell.textContent).toBe('-')
 
     const liveRow = screen.getByText('#1001').closest('tr') as HTMLElement
     const liveProfitCell = liveRow.querySelectorAll('td')[5]
@@ -172,7 +172,7 @@ describe('B2bClient', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /add customer/i }))
     // find*, not get*: CustomerModal's own product fetch resolves after the
-    // click handler returns, and fireEvent — unlike user-event — does not
+    // click handler returns, and fireEvent - unlike user-event - does not
     // wait out that microtask on its own.
     expect(await screen.findByRole('heading', { name: /add business customer/i })).toBeInTheDocument()
 
@@ -184,7 +184,7 @@ describe('B2bClient', () => {
     // Pairs with the test above: that one only proves the warning is absent
     // for a convertible default, which a deleted warning block would also
     // pass. This one proves the warning is wired to isConvertible by actually
-    // triggering it — AED is a real ISO currency but is not on the ECB list
+    // triggering it - AED is a real ISO currency but is not on the ECB list
     // src/lib/currencies.ts holds rates for, so it must switch the warning on.
     mockFetch([])
     renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
@@ -210,7 +210,7 @@ describe('B2bClient', () => {
 
   /**
    * The import's outcome lived only in the cron's JSON response, which nothing
-   * reads — so "refused on every run" and "there are simply no B2B invoices"
+   * reads - so "refused on every run" and "there are simply no B2B invoices"
    * were indistinguishable from inside the product, and so would a jump in
    * `imported` be if the allowlist ever leaked.
    */
@@ -286,13 +286,13 @@ describe('B2bClient', () => {
 
   it('voids an order by re-sending it with the new status, in major units, converted correctly per discount kind', async () => {
     // PATCH takes the whole order, so voiding loads it first and returns it
-    // unchanged but for the status. Assert the request, not just the click —
+    // unchanged but for the status. Assert the request, not just the click -
     // and specifically the money conversion, since that is the riskiest part
     // of this action: PATCH expects major units, so every minor-unit field
     // must go through toMajor, EXCEPT a PERCENT discountValue, which is a
     // plain number and must pass through untouched. Getting this backwards
     // would silently rewrite every AMOUNT discount by 100x on an action
-    // taken only to mark an order refunded — the worst possible outcome.
+    // taken only to mark an order refunded - the worst possible outcome.
     const calls: { url: string; method?: string; body?: string }[] = []
     mockFetchCapturing(calls, [customer], [b2bOrder])
     renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
@@ -322,13 +322,13 @@ describe('B2bClient', () => {
   /**
    * THE ROUND TRIP MUST NOT INVENT A COST. Voiding an order reads it back and
    * PATCHes it whole, and GET answers `null` for an order nobody costed.
-   * `toMajor` is `minor / 100`, so `toMajor(null)` is 0 — which passes
+   * `toMajor` is `minor / 100`, so `toMajor(null)` is 0 - which passes
    * validation and is stored as a REAL zero.
    *
    * That matters later rather than now: the order is voided at the moment of
    * the write and a voided order earns nothing. But PATCH clears `voidedAt`
    * when an order returns to completed, and from then on a stored zero wins
-   * outright in the engine — `fulfillmentCost ?? perSku` short-circuits — so
+   * outright in the engine - `fulfillmentCost ?? perSku` short-circuits - so
    * the order can never again be costed by the per-SKU shipping rates and its
    * profit is overstated by the flat rate, permanently.
    */
@@ -380,7 +380,7 @@ describe('B2bClient', () => {
 
   it('asks for twelve months of B2B orders, not ninety days', async () => {
     // The card is a working surface, but a business customer may order twice a
-    // year — ninety days hid orders the client knew they had placed.
+    // year - ninety days hid orders the client knew they had placed.
     const calls: { url: string; method?: string; body?: string }[] = []
     mockFetchCapturing(calls, [customer], [])
     renderWithToast(<B2bClient email="a@b.test" shops={shops} />)

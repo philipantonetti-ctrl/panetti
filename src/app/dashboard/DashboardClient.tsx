@@ -41,7 +41,7 @@ function beforeLabel(r: Range): string {
   return n === 1 ? 'vs the day before' : `vs ${n} days before`
 }
 
-/** Skeletons in the shape of the content — never a spinner in the middle of a table. */
+/** Skeletons in the shape of the content - never a spinner in the middle of a table. */
 function Skeleton() {
   return (
     <div className="space-y-4">
@@ -61,7 +61,7 @@ export function DashboardClient({
   email: string
   shops: Shop[]
   initialPreset?: Preset
-  /** The admin is also an ambassador — offer a link to their own portal. */
+  /** The admin is also an ambassador - offer a link to their own portal. */
   hasOwnAmbassador?: boolean
 }) {
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
@@ -88,7 +88,7 @@ export function DashboardClient({
     if (selected.length) params.set('shops', selected.join(','))
 
     // loading is set true by the filter handlers (and starts true on mount), so
-    // the effect only needs to clear it — keeping setState out of the effect
+    // the effect only needs to clear it - keeping setState out of the effect
     // body. A tick refetch therefore stays silent: nothing dims, data just lands.
     const ctrl = new AbortController()
     fetch(`/api/metrics?${params}`, { signal: ctrl.signal })

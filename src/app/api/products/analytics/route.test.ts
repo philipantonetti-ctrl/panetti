@@ -42,7 +42,7 @@ describe('GET /api/products/analytics', () => {
     expect(res.headers.get('cache-control')).toBe('private, no-store')
 
     const body = await res.json()
-    // Assert on the actual currencies and shops, not merely that groups is truthy —
+    // Assert on the actual currencies and shops, not merely that groups is truthy -
     // this is what lets a later page offer each group as a one-click fix.
     expect(body.groups).toEqual([
       { currency: 'EUR', shops: [{ id: 'de', name: 'Panetti Germany' }] },

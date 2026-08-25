@@ -60,14 +60,14 @@ function writtenAgo(writtenAt: string | null): string | null {
 /**
  * A failed briefing, said as something to do rather than something that broke.
  *
- * The error text is a line of status codes and a request id — it answers "what
+ * The error text is a line of status codes and a request id - it answers "what
  * broke" for whoever can trace it, and nothing at all for the person this page
  * is written for. He needs two things: that the figures below still stand, and
  * whether anything is his to fix. So the sentence leads, and the technical line
  * moves out of it (rendered separately, and only where it can help).
  *
- * A missing key is the one case Refresh cannot cure — no amount of pressing it
- * conjures an environment variable — so that case is the exception and says
+ * A missing key is the one case Refresh cannot cure - no amount of pressing it
+ * conjures an environment variable - so that case is the exception and says
  * what is actually wrong instead.
  */
 const MISSING_KEY = 'ANTHROPIC_API_KEY'
@@ -149,7 +149,7 @@ function movement(fact: Fact): string {
   const { current, previous, unit } = fact
 
   const one = (n: number | null) => {
-    if (n === null) return '—'
+    if (n === null) return '-'
     if (unit === 'money') {
       if (!fact.currency) return (n / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })
       return (n / 100).toLocaleString(undefined, {
@@ -167,7 +167,7 @@ function movement(fact: Fact): string {
   }
 
   // Every leading hyphen, including the one Intl puts before a currency CODE
-  // ("-NOK 7,382"), not just before a symbol. Only figures pass through here —
+  // ("-NOK 7,382"), not just before a symbol. Only figures pass through here -
   // a product name with a hyphen lives in the label, never in this string.
   const pair = previous === null ? one(current) : `${one(previous)} → ${one(current)}`
   return pair.replace(/-(?=\S)/g, '−')
@@ -177,7 +177,7 @@ function movement(fact: Fact): string {
  * A data-quality fact as a sentence the owner can act on.
  *
  * These say a number cannot yet be trusted, which outranks any number that
- * merely moved — so they are lifted out of the report and stated in words.
+ * merely moved - so they are lifted out of the report and stated in words.
  * The raw WooCommerce error in particular is a developer artefact: PRODUCT.md
  * is explicit that this reader is not one, and a JSON blob on his screen is
  * an unanswerable question rather than a thing to fix.
@@ -210,7 +210,7 @@ function trustSentence(fact: Fact): string {
 /**
  * Every trust warning, in words, above everything it casts doubt on.
  *
- * This band used to live inside Report — which renders ONLY when the model
+ * This band used to live inside Report - which renders ONLY when the model
  * wrote no items. So on any ordinary day it was absent, and a broken sync
  * reached the page only if the model happened to cite it, where FactLine
  * printed the raw WooCommerce error beside two empty columns. collect.ts takes
@@ -254,12 +254,12 @@ function TrustBand({ facts }: { facts: Fact[] }) {
  *
  * FIGURES ARE PRINTED FROM FACTS, NEVER FROM THE MODEL'S PROSE. This is the
  * second of the two places that guarantee the advisor cannot show a number
- * nobody computed — the first is validateItems() dropping an item that cites an
+ * nobody computed - the first is validateItems() dropping an item that cites an
  * unknown fact. The model supplies the sentence; this supplies the figure
  * beside it.
  *
  * The percentage gets the last column to itself because it is the signal. Read
- * as the tail of a sentence — "NOK 199,194 → NOK 137,595 (−30.9%)" — a card's
+ * as the tail of a sentence - "NOK 199,194 → NOK 137,595 (−30.9%)" - a card's
  * worth of them start at six different horizontal positions and cannot be
  * compared without reading every word in between. Right-aligned in a fixed
  * column they read straight down, which is what "the number is the interface"
@@ -288,7 +288,7 @@ function FactLine({
           d === null ? 'text-faint' : d.down ? 'text-loss' : 'text-gain'
         }`}
       >
-        {d?.text ?? '—'}
+        {d?.text ?? '-'}
       </span>
     </div>
   )
@@ -298,7 +298,7 @@ function Card({ item, facts }: { item: BriefItem; facts: Fact[] }) {
   // Worst first, so the figure that earned the headline is the one read first.
   // The facts arrive in whatever order the model happened to cite them.
   // Quality facts belong in the item's reasoning and the model is right to
-  // cite them — but not in this column layout. They have no from, no to and no
+  // cite them - but not in this column layout. They have no from, no to and no
   // percentage, so FactLine draws them as a movement from nothing to nothing
   // and prints the raw WooCommerce error as the label. TrustBand states them.
   const cited = facts
@@ -345,7 +345,7 @@ function Row({ fact }: { fact: Fact }) {
  * Flat, the facts arrive ranked by severity and read as twenty unrelated
  * lines: Panetti Sweden's revenue, product and ROAS land on rows 5, 7 and 14,
  * so understanding one shop means scanning the whole page and holding four
- * numbers in your head. Grouped, each shop is one story — and because a shop
+ * numbers in your head. Grouped, each shop is one story - and because a shop
  * trades in one currency, the figures inside a group are finally comparable
  * with each other.
  *
@@ -388,7 +388,7 @@ function Report({ facts }: { facts: Fact[] }) {
   return (
     <div className="flex flex-col gap-4">
       {/* The trust band is drawn by the page, above every section it casts
-          doubt on, and no longer here — this component is one of two branches,
+          doubt on, and no longer here - this component is one of two branches,
           so a band inside it was a band the reader saw only sometimes. */}
 
       {/* Counts only. Naming the biggest mover here would repeat what the
@@ -589,7 +589,7 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
             ))}
 
             {/* items is [] both for a quiet week (facts also []) and for a week
-                the model's items were all dropped by validateItems — the two
+                the model's items were all dropped by validateItems - the two
                 are indistinguishable from items alone, so this falls back to
                 the facts whenever there is nothing else on the page to show
                 them, rather than only when items is strictly null. */}

@@ -67,14 +67,14 @@ describe('expense categories', () => {
     expect(CATEGORIES).toContain('Transaction fees > Transaction Fees')
   })
 
-  it('covers every option exactly once — no duplicates, nothing dropped', () => {
+  it('covers every option exactly once - no duplicates, nothing dropped', () => {
     const expected = CATEGORY_GROUPS.reduce((n, g) => n + g.options.length, 0)
     expect(CATEGORIES).toHaveLength(expected)
     expect(new Set(CATEGORIES).size).toBe(expected)
   })
 
   it('keeps the categories the seeded expenses already use, so nothing orphans', () => {
-    // The seed created expenses under these — they must still exist.
+    // The seed created expenses under these - they must still exist.
     expect(CATEGORIES).toContain('Fulfillment > Warehouse')
     expect(CATEGORIES).toContain('Overhead > Subscriptions')
     expect(CATEGORIES).toContain('Overhead > Employees')

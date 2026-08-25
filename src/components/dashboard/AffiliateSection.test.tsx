@@ -44,7 +44,7 @@ const respondWith = (body: Payload) =>
 
 const sectionProps = { preset: 'this_month' as const, from: '', to: '', shops: [], tick: 0 }
 
-/** Exact-textContent matcher, the CompareTable.test.tsx idiom — Intl glues the
+/** Exact-textContent matcher, the CompareTable.test.tsx idiom - Intl glues the
  *  currency on with a no-break space, which trips string-matcher whitespace
  *  normalization. */
 const money = (minor: number) => (_t: string, el: Element | null) =>
@@ -52,14 +52,14 @@ const money = (minor: number) => (_t: string, el: Element | null) =>
 
 describe('AffiliateSection', () => {
   it('renders nothing before data arrives, and nothing for a workspace with no program at all', async () => {
-    // First: fetch still pending — the section has nothing it could claim yet.
+    // First: fetch still pending - the section has nothing it could claim yet.
     const never = vi.fn(() => new Promise<Response>(() => {}))
     vi.stubGlobal('fetch', never)
     const pending = render(<AffiliateSection {...sectionProps} />)
     expect(pending.container.firstChild).toBeNull()
     pending.unmount()
 
-    // Then: not connected, nothing recorded, nothing unmatched — no section.
+    // Then: not connected, nothing recorded, nothing unmatched - no section.
     vi.stubGlobal(
       'fetch',
       respondWith({
@@ -105,7 +105,7 @@ describe('AffiliateSection', () => {
     await act(async () => {})
 
     const notice = screen.getByText(/matches none of the shops/)
-    // The money, not just a count — and honest scope: every figure here
+    // The money, not just a count - and honest scope: every figure here
     // includes the headline total, not merely the per-shop rows.
     expect(notice.textContent).toContain(formatMoney(6110, 'NOK'))
     expect(notice.textContent).toContain('2 sales')
@@ -115,7 +115,7 @@ describe('AffiliateSection', () => {
   })
 
   // FIX 3: a workspace whose rows ALL failed to match a shop, with the account
-  // then paused, has connected=false and zero tracked sales — exactly the old
+  // then paused, has connected=false and zero tracked sales - exactly the old
   // gate's "does not exist" case. The warning is the one thing that MUST
   // survive that state, since it explains where the money went.
   it('still renders when every sale is unmatched and the account is paused', async () => {
@@ -155,7 +155,7 @@ describe('AffiliateSection', () => {
     expect(screen.getAllByText(money(21756)).length).toBeGreaterThan(0)
     expect(screen.queryByText(/could not be refreshed/)).toBeNull()
 
-    // A tick is the page's own refresh heartbeat — this one's fetch fails.
+    // A tick is the page's own refresh heartbeat - this one's fetch fails.
     view.rerender(<AffiliateSection {...sectionProps} tick={1} />)
     await act(async () => {})
 

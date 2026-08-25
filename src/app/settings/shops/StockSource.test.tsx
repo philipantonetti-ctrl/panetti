@@ -73,7 +73,7 @@ describe('choosing which shops report the stock', () => {
   /**
    * The checkbox must never send the Woo credentials. The PATCH route treats a
    * blank key as "keep what is saved", so a body carrying empty strings would be
-   * harmless today — but a body carrying the SHOP'S OWN wooUrl would rewrite it,
+   * harmless today - but a body carrying the SHOP'S OWN wooUrl would rewrite it,
    * and ticking a box has no business touching a store connection.
    */
   it('sends nothing but the flag, so a tick cannot disturb the connection', async () => {

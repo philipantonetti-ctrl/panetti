@@ -7,7 +7,7 @@ import { parseDhlExport } from './parse'
  *
  * Column names are the real ones. Every VALUE is invented: the real export
  * carries customer names and home addresses, and none of that goes in the repo.
- * Tracking numbers keep their real shape — exactly 10 digits — because the
+ * Tracking numbers keep their real shape - exactly 10 digits - because the
  * parser must not quietly turn one into a float.
  */
 const HEADERS = [
@@ -128,7 +128,7 @@ describe('parseDhlExport', () => {
   /**
    * Pallet freight and inbound stock ride along in the same export and are not
    * customer deliveries. They must be skipped, and skipping them must be
-   * VISIBLE — a silently shorter import is how a missing parcel goes unnoticed.
+   * VISIBLE - a silently shorter import is how a missing parcel goes unnoticed.
    */
   it.each([
     ['a warehouse reference', 'Shipment: 026408'],

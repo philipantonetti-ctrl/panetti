@@ -4,7 +4,7 @@ import { formatMoney } from '@/lib/money'
 import type { MarketingPlatformRow } from '@/lib/ads/marketing'
 
 /**
- * Where the ad money went, by platform. The bar is the share of total spend —
+ * Where the ad money went, by platform. The bar is the share of total spend -
  * a reading aid, never the number itself, which is always printed beside it.
  */
 

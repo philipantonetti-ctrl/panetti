@@ -4,11 +4,11 @@
 
 **Light.** The scene decides it: the owner reads these numbers at a desk on a large monitor in
 daylight, next to a browser full of white shop admin pages. A dark instrument panel would be a
-costume — it would look like a trading terminal for a job that is closer to reading a ledger.
+costume - it would look like a trading terminal for a job that is closer to reading a ledger.
 
 ## Color strategy
 
-**Restrained.** Neutral surfaces carry the page; one accent, used only for interaction — never
+**Restrained.** Neutral surfaces carry the page; one accent, used only for interaction - never
 decoration. Money is the only place colour is allowed to mean something.
 
 Deliberately **not purple**: BeProfit's purple chrome is the named anti-reference.
@@ -22,11 +22,11 @@ Deliberately **not purple**: BeProfit's purple chrome is the named anti-referenc
 | `--panel` | `oklch(0.972 0.004 250)` | Second neutral layer: sidebar, toolbars, table headers |
 | `--border` | `oklch(0.918 0.005 250)` | Hairlines |
 | `--ink` | `oklch(0.24 0.012 255)` | Primary text, primary buttons |
-| `--ink-muted` | `oklch(0.46 0.012 255)` | Secondary text — dark enough for 4.5:1 on surface |
+| `--ink-muted` | `oklch(0.46 0.012 255)` | Secondary text - dark enough for 4.5:1 on surface |
 | `--accent` | `oklch(0.52 0.11 233)` | Selection, focus, links, active nav. ≤10% of the surface |
 | `--accent-soft` | `oklch(0.96 0.02 233)` | Selected row / active nav background |
-| `--gain` | `oklch(0.47 0.12 155)` | Profit, positive delta — **numbers only** |
-| `--loss` | `oklch(0.52 0.17 25)` | Loss, negative delta — **numbers only** |
+| `--gain` | `oklch(0.47 0.12 155)` | Profit, positive delta - **numbers only** |
+| `--loss` | `oklch(0.52 0.17 25)` | Loss, negative delta - **numbers only** |
 | `--warn` | `oklch(0.55 0.13 75)` | Missing cost, unconvertible currency |
 
 Primary buttons are **ink**, not accent: the serious, grounded move (and it keeps the accent scarce
@@ -39,7 +39,7 @@ lose nothing.
 
 **One family: Geist Sans.** Product UI does not need a display/body pair.
 
-Fixed rem scale (no fluid clamps — the user's DPI does not change):
+Fixed rem scale (no fluid clamps - the user's DPI does not change):
 
 | Step | Size / weight | Use |
 |---|---|---|
@@ -67,22 +67,22 @@ one structural rule that fixes the original complaint.
 
 ## Components
 
-- **Cards**: 1px border, radius 12px, **no drop shadow**. Border *or* shadow — never both.
+- **Cards**: 1px border, radius 12px, **no drop shadow**. Border *or* shadow - never both.
 - **Popovers / dialogs**: shadow, no heavy border, radius 12px.
 - **Inputs**: radius 8px, 1px border, visible focus ring in `--accent`.
 - **Tables**: `--panel` header, hairline row separators, hover tint, numbers right-aligned and
   tabular. Sticky header on long tables.
-- **Stat strip**: one surface divided by hairlines — *not* a grid of identical cards. The primary
+- **Stat strip**: one surface divided by hairlines - *not* a grid of identical cards. The primary
   figure is visibly larger than the rest.
 - **Loading**: skeletons in the shape of the content. Never a spinner in the middle of a table.
-- **Empty states**: teach the next action ("No costs yet — add one and profit starts computing").
+- **Empty states**: teach the next action ("No costs yet - add one and profit starts computing").
 
 Every interactive element ships default / hover / focus / active / disabled states.
 
 ## Motion
 
-150–200ms, `ease-out`. Motion conveys state (a popover opening, a row selecting, a number
-refreshing) and nothing else. No page-load choreography — the user came to read a number.
+150-200ms, `ease-out`. Motion conveys state (a popover opening, a row selecting, a number
+refreshing) and nothing else. No page-load choreography - the user came to read a number.
 
 `prefers-reduced-motion: reduce` → transitions collapse to instant.
 

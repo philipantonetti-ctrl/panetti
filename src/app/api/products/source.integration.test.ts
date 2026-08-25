@@ -127,7 +127,7 @@ describe('GET /api/products?source=1', () => {
 /**
  * A row in source mode stands for the product in every webshop, so it must not
  * wear one shop's spelling. Mazzetti lists the shared product as
- * " csr…-shared " — leading space, lower case — and returning that raw would put
+ * " csr…-shared " - leading space, lower case - and returning that raw would put
  * stray whitespace on screen and make the row impossible to match against the
  * SKU every other part of the system keys on.
  */

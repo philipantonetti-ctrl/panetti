@@ -21,8 +21,8 @@ export type SyncResult = {
   more?: boolean
   /**
    * Orders the store had and we did not. Reported rather than fixed in
-   * silence: a hole is invisible by nature — the books look complete because
-   * the order was never there to be noticed — so the only way anyone learns it
+   * silence: a hole is invisible by nature - the books look complete because
+   * the order was never there to be noticed - so the only way anyone learns it
    * happened is if the sync says so.
    */
   added?: number
@@ -47,7 +47,7 @@ const DAY = 24 * 60 * 60 * 1000
 
 /**
  * Incremental pulls reach back this far behind the watermark. Woo is only told
- * whole seconds, and the store's clock need not agree with ours — a fetch that
+ * whole seconds, and the store's clock need not agree with ours - a fetch that
  * starts exactly at the watermark can miss an order changed a breath earlier.
  * Re-fetching five minutes twice is free: every store costs one page most
  * pulls, and the upserts are idempotent.
@@ -65,8 +65,8 @@ const UNSORTED_STORE =
 /**
  * More orders share one moment than a single run can carry, so the resume point
  * never clears the overlap we reach back through and the window would be
- * refetched forever. Nothing is skipped — the watermark refuses to move
- * backwards — but only a human can clear it.
+ * refetched forever. Nothing is skipped - the watermark refuses to move
+ * backwards - but only a human can clear it.
  */
 const STALLED_STORE =
   'This store changed more orders at once than one sync can work through, so the sync cannot move past them. Check the store for a bulk update, then sync again.'
@@ -90,7 +90,7 @@ const CUSTOMER_BACKFILL_BATCH = 500
  * and the watermark only ever moves forward. So an order missed ONCE is missed
  * FOREVER: it is never edited again, so it is never offered again. A delivery
  * lost while a deploy rolled, a run killed mid-store, a store clock that drifted
- * past OVERLAP — any of them leaves a hole in the middle of a day with the
+ * past OVERLAP - any of them leaves a hole in the middle of a day with the
  * orders on either side present, and every later sync reports success.
  *
  * Re-reading a few recent days is what closes it. Bounded on both sides, and it
@@ -129,7 +129,7 @@ export async function codeBookFor(shopId: string): Promise<CodeBook> {
 
 /**
  * Store one WooCommerce order: products discovered, ambassador resolved and
- * frozen, order and its lines written together. The one write path — the
+ * frozen, order and its lines written together. The one write path - the
  * scheduled sync and the webhook receiver both come through here, so an order
  * looks the same however it arrived.
  */
@@ -167,7 +167,7 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
   }
 
   // Was this order already voided in our own records? The stamp marks a
-  // TRANSITION, so an order that arrives already refunded keeps a null date —
+  // TRANSITION, so an order that arrives already refunded keeps a null date -
   // we do not know when it happened, and the engine leaves such an order out
   // entirely rather than reversing it on a guessed day.
   const held = await db.order.findUnique({
@@ -205,7 +205,7 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
     ambassadorId,
   }
 
-  // The order and its lines land together or not at all — a crash between the
+  // The order and its lines land together or not at all - a crash between the
   // two must never leave an order visible with nothing inside it. Lines are
   // rewritten rather than diffed: simpler and always correct.
   await db.$transaction(async (tx) => {
@@ -233,7 +233,7 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
  * How wide the repair window has to be for this shop, in days.
  *
  * Normally the last few days. But a store the sync could not reach for a week
- * has a week of possible holes, all of them outside a three-day window — and
+ * has a week of possible holes, all of them outside a three-day window - and
  * outside it FOREVER, because the incremental pull will never offer those
  * orders again. So the window stretches to cover the silence: the gap since the
  * last completed sync, plus a day either side for clock drift.
@@ -254,7 +254,7 @@ export type Reconciliation = {
    * Orders we held whose status or charged total had drifted from the store's.
    * Reported apart from `added` because the two mean opposite things to anyone
    * reading a number: a recovered order can only raise a total, while a
-   * correction can just as easily lower it — an order that quietly became
+   * correction can just as easily lower it - an order that quietly became
    * cancelled takes its revenue back out. Rolling them together produced
    * "11 orders were missing", which was not true and promised a rise that
    * might not come.
@@ -276,7 +276,7 @@ export type Reconciliation = {
  * drifted. It is the only path by which a hole heals.
  *
  * Only orders that are missing, or whose status or charged total no longer
- * match, are written — those two decide whether an order counts and for how
+ * match, are written - those two decide whether an order counts and for how
  * much. A healthy store therefore costs one request and no writes.
  *
  * Never deletes. An order the store does not return is left exactly as it is:
@@ -294,7 +294,7 @@ export async function reconcileRecent(
   const { orders, hasMore } = await fetchOrders(creds, {
     createdAfter: since,
     // Named outright. A repair pass that inherits WooCommerce's default cannot
-    // see an order sitting in a status the store invented — which is exactly
+    // see an order sitting in a status the store invented - which is exactly
     // the order most likely to be missing, since only a webhook could have
     // brought it in and a webhook is the thing that gets lost.
     statuses: opts.statuses,
@@ -330,10 +330,10 @@ export async function reconcileRecent(
 
 /**
  * Fill in the customer on orders synced before customers were stored. Targets
- * exactly the orders where customerName is still null (newest first — the ones
+ * exactly the orders where customerName is still null (newest first - the ones
  * being looked at), asks Woo for those ids only, and touches NOTHING but the
  * two customer fields. An order Woo no longer has, or one with no billing
- * details, is marked '' — checked, nothing there — so the queue only ever
+ * details, is marked '' - checked, nothing there - so the queue only ever
  * shrinks and this costs zero once history is filled.
  */
 export async function backfillCustomers(shopId: string, creds: WooCredentials): Promise<number> {
@@ -365,7 +365,7 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
  * Fill in the destination country on orders synced before it was stored. Same
  * shape as backfillCustomers: targets exactly the orders where the field is
  * still null, newest first, asks Woo for those ids only, and writes nothing
- * else. An order Woo no longer has is marked '' — checked, nothing there — so
+ * else. An order Woo no longer has is marked '' - checked, nothing there - so
  * the queue only ever shrinks and this costs zero once history is filled.
  */
 export async function backfillDelivery(shopId: string, creds: WooCredentials): Promise<number> {
@@ -405,7 +405,7 @@ export async function backfillDelivery(shopId: string, creds: WooCredentials): P
  * retried unchanged rather than skipped.
  *
  * Never throws. If the database is what broke, the caller's own error is the
- * one worth reporting — not a second, more confusing one from the bookkeeping.
+ * one worth reporting - not a second, more confusing one from the bookkeeping.
  */
 async function recordRun(
   shopId: string,
@@ -429,7 +429,7 @@ async function recordRun(
  * Write a shop's catalogue readings onto its products.
  *
  * Exported so it can be tested without running a whole sync. Only products the
- * catalogue actually mentioned are touched — a truncated page or a product the
+ * catalogue actually mentioned are touched - a truncated page or a product the
  * store no longer lists must never blank a figure we already hold.
  */
 export async function storeCatalog(
@@ -449,7 +449,7 @@ export async function storeCatalog(
     if (entry === undefined) continue // not mentioned: leave it exactly as it is
 
     // A fractional quantity cannot go into an Int column, and the caller swallows
-    // the throw — one bad value would silently freeze this shop's stock for good.
+    // the throw - one bad value would silently freeze this shop's stock for good.
     // Unknown is honest and the page says so out loud.
     const stock = entry.stock !== null && Number.isInteger(entry.stock) ? entry.stock : null
 
@@ -470,18 +470,18 @@ export async function storeCatalog(
  *
  * Two phases, decided by `lastSyncAt`:
  *
- * FIRST SYNC (lastSyncAt unset) — history arrives oldest-first in chunks of
+ * FIRST SYNC (lastSyncAt unset) - history arrives oldest-first in chunks of
  * BACKFILL_PAGES pages. Each press stores its chunk and resumes one second
  * behind the newest stored order, so a store of any size gets in without ever
  * exceeding one serverless invocation. Only when the last chunk lands does
- * lastSyncAt get set — a day in the past, so anything edited while the
+ * lastSyncAt get set - a day in the past, so anything edited while the
  * backfill ran is caught by the first incremental sync.
  *
- * INCREMENTAL (lastSyncAt set) — only orders changed since five minutes before
+ * INCREMENTAL (lastSyncAt set) - only orders changed since five minutes before
  * the last completed sync (see OVERLAP). A pull the page cap or the deadline
- * cut short stores what it fetched, then — only if the store proved it
+ * cut short stores what it fetched, then - only if the store proved it
  * honoured `orderby=modified` AND the resume point actually lands ahead of
- * where we started — moves the watermark there, so a backlog drains a little
+ * where we started - moves the watermark there, so a backlog drains a little
  * more each run instead of being handed back the same, wider window forever.
  * A cut-short pull that fails either check stops without advancing and says
  * why: an unsorted result cannot be trusted, and a resume point that never
@@ -489,9 +489,9 @@ export async function storeCatalog(
  * refetch the same page forever. On any other failure lastSyncAt is left
  * untouched so the next run retries the same window.
  *
- * - The watermark records when the FETCH began, not when storing finished — an
+ * - The watermark records when the FETCH began, not when storing finished - an
  *   order changed while the sync was running must fall inside the next window.
- * - Products are discovered from the orders themselves — anything ever sold appears
+ * - Products are discovered from the orders themselves - anything ever sold appears
  *   in Product Costs automatically, with no cost until someone enters one.
  * - Ambassador attribution is resolved HERE and frozen on the order, so renaming or
  *   reassigning a code later can never rewrite past commissions.
@@ -502,7 +502,7 @@ export async function storeCatalog(
 export async function syncShop(
   shopId: string,
   /**
-   * `backfillPages` bounds a first-sync chunk, `maxPages` an incremental one —
+   * `backfillPages` bounds a first-sync chunk, `maxPages` an incremental one -
    * the same seam for the other half of the function, and the only way a test
    * can produce a partial incremental pull without fetching 5,000 orders.
    */
@@ -512,7 +512,7 @@ export async function syncShop(
   const base = { shopId: shop.id, shopName: shop.name }
 
   // Claim the attempt BEFORE any work. Every exit below records it too, but an
-  // exit is only reached if we get there — an invocation killed mid-store, by
+  // exit is only reached if we get there - an invocation killed mid-store, by
   // the platform ceiling or a slow catalog fetch or a long storing loop, would
   // otherwise leave lastRunAt untouched. This store would then stay at the head
   // of `lastRunAt ASC NULLS FIRST` forever, re-do the same work every run, and
@@ -525,7 +525,7 @@ export async function syncShop(
   await db.shop
     .update({ where: { id: shop.id }, data: { lastRunAt: new Date() } })
     .catch(() => {
-      // Bookkeeping is never worth failing a sync over — same rule as recordRun.
+      // Bookkeeping is never worth failing a sync over - same rule as recordRun.
     })
 
   if (!shop.wooUrl || !shop.wooKey || !shop.wooSecret) {
@@ -550,7 +550,7 @@ export async function syncShop(
   try {
     const firstSync = !shop.lastSyncAt
 
-    // Mid-backfill, resume one second behind the newest stored order — the
+    // Mid-backfill, resume one second behind the newest stored order - the
     // boundary order is re-fetched, which the upserts make harmless.
     let createdAfter: Date | undefined
     if (firstSync) {
@@ -569,7 +569,7 @@ export async function syncShop(
 
     // Which statuses this store actually uses, its own inventions included.
     // Every pull below names them, because WooCommerce's default quietly omits
-    // custom statuses — a store with its own "shipping" step would otherwise
+    // custom statuses - a store with its own "shipping" step would otherwise
     // hand back windows with those orders missing and no sign anything was.
     const statuses = await fetchOrderStatuses(creds, { deadline: opts.deadline })
     const { orders, hasMore, resumeFrom, sortedByModified } = await fetchOrders(
@@ -608,7 +608,7 @@ export async function syncShop(
       // A first sync's watermark stays unset so the next run resumes the
       // backfill instead of going incremental. An incremental pull moves its
       // watermark to the last order it actually processed, when it can trust
-      // that resume point — that is what makes a backlog drain instead of
+      // that resume point - that is what makes a backlog drain instead of
       // being handed back, bigger, every run.
       //
       // Only an incremental pull has a resume point, and only a store that
@@ -619,7 +619,7 @@ export async function syncShop(
 
       // A stamp we cannot parse is not a watermark. An Invalid Date is truthy,
       // so it would reach Prisma, throw inside recordRun, and be swallowed by
-      // its own catch — losing lastRunAt too, the one thing recordRun exists to
+      // its own catch - losing lastRunAt too, the one thing recordRun exists to
       // guarantee.
       const parsed = candidate && !Number.isNaN(candidate.getTime()) ? candidate : null
 
@@ -630,7 +630,7 @@ export async function syncShop(
 
       // The watermark moves forward or not at all. If more orders share a moment
       // than one run can carry, the resume point lands inside the OVERLAP we
-      // already reach back through, and writing it would pin — or rewind — the
+      // already reach back through, and writing it would pin - or rewind - the
       // window so the same page is refetched forever. That is not a skip, but it
       // is a standstill, and a standstill reported as success is worse than the
       // refusal this replaced.
@@ -655,11 +655,11 @@ export async function syncShop(
     // These three are best-effort refinements of a sync that already succeeded.
     // When the deadline has passed there is no time for them, and running them
     // anyway risks the invocation being killed before the watermark below is
-    // written — losing the whole run's progress to work that could have waited.
+    // written - losing the whole run's progress to work that could have waited.
     if (opts.deadline === undefined || Date.now() < opts.deadline) {
       // Order data first, because it is the priority: close any hole the
       // incremental window can no longer reach. Deliberately ahead of the
-      // catalog and customer passes — if the budget runs out, it must run out
+      // catalog and customer passes - if the budget runs out, it must run out
       // on a nicety, not on a missing sale.
       try {
         const check = await reconcileRecent(shop.id, creds, {
@@ -680,7 +680,7 @@ export async function syncShop(
       }
 
       // Best-effort on a COMPLETED sync only: refresh each known product's own
-      // listed price and its stock. A failure here never fails the sync — order
+      // listed price and its stock. A failure here never fails the sync - order
       // data is the priority, and the next completed sync simply retries.
       try {
         await storeCatalog(shop.id, await fetchCatalog(creds))
@@ -692,14 +692,14 @@ export async function syncShop(
       try {
         await backfillCustomers(shop.id, creds)
       } catch {
-        // The queue is durable — whatever is left fills on the next sync.
+        // The queue is durable - whatever is left fills on the next sync.
       }
 
       // Best-effort: orders from before the country was stored get theirs filled.
       try {
         await backfillDelivery(shop.id, creds)
       } catch {
-        // The queue is durable — whatever is left fills on the next sync.
+        // The queue is durable - whatever is left fills on the next sync.
       }
 
       // Best-effort: keep the store streaming changes to us between syncs.
@@ -710,7 +710,7 @@ export async function syncShop(
       }
     }
 
-    // Only now — after everything landed — does the watermark move. It moves to
+    // Only now - after everything landed - does the watermark move. It moves to
     // when the FETCH began (a completed backfill starts a day back), so nothing
     // changed while we worked can slip between two windows.
     await recordRun(shop.id, {
@@ -741,7 +741,7 @@ export async function syncShop(
  * missed out last run any priority on the next one, so once the work outgrew the
  * budget the stores at the far end simply stopped being reached. Ordered by
  * `lastRunAt`, a run that serves K stores serves every store within ⌈N/K⌉ runs,
- * whatever N is — and because `recordRun` moves `lastRunAt` even when a store
+ * whatever N is - and because `recordRun` moves `lastRunAt` even when a store
  * fails, a permanently broken store costs one slot per run instead of holding
  * the front of the queue forever.
  *

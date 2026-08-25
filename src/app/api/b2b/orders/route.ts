@@ -30,7 +30,7 @@ export const OrderBody = z.object({
   /** MAJOR units, customer currency, ex VAT. */
   shippingCharged: z.number().min(0).default(0),
   /**
-   * MAJOR units, SHOP currency — it is a cost, and costs live there.
+   * MAJOR units, SHOP currency - it is a cost, and costs live there.
    *
    * Nullable, and NOT defaulted to 0: a stored zero wins outright in the engine
    * (`fulfillmentCost ?? perSku` short-circuits on it), so an order saved with
@@ -182,7 +182,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ order }, { headers: NO_STORE })
       } catch (e) {
-        // Any attempt may race a collision, not just the first — the loop
+        // Any attempt may race a collision, not just the first - the loop
         // bound above (attempt < 2) is what caps the retries. Gating this on
         // attempt === 0 left a second collision to re-throw uncaught into the
         // generic 500 below, when it should fall through to the honest 409.

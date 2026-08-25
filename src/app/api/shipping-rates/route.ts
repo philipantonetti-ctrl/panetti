@@ -7,7 +7,7 @@ import { isUsableSku, normaliseSku } from '@/lib/inventory/sku'
 
 /**
  * What one unit of a SKU costs us to ship. The per-SKU half of /api/fulfillment,
- * which this deliberately mirrors verb for verb — same admin guard, same
+ * which this deliberately mirrors verb for verb - same admin guard, same
  * major-units-in / minor-units-stored contract, same delete-by-query-id.
  */
 export async function GET() {
@@ -36,7 +36,7 @@ const Body = z.object({
    * Named per row, unlike FulfillmentRate: a SKU is not shop-scoped, so there is
    * no shop currency for the rate to inherit. Three letters because a rate is
    * only in force for an order whose costs are held in the SAME currency, and
-   * that comparison is against an ISO code — "kroner" would simply never match.
+   * that comparison is against an ISO code - "kroner" would simply never match.
    */
   currency: z.string().regex(/^[A-Za-z]{3}$/, 'Currency must be a 3-letter code like NOK'),
   effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick a from date'),

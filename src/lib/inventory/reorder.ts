@@ -52,7 +52,7 @@ export type ReorderTip = {
  * and a suggestion he has to find is not a suggestion.
  *
  * A row with no order-by date is never a tip. That state means nobody has
- * entered lead times, which is one settings job said once — repeating it as
+ * entered lead times, which is one settings job said once - repeating it as
  * nineteen suggestions would bury the products that genuinely need ordering.
  */
 export function reorderTips(

@@ -4,7 +4,7 @@
 
 **Goal:** Read Bring's own invoices and store what each parcel actually cost, so the Cost per parcel card stops asking a person to type the monthly total in.
 
-**Architecture:** Bring's invoice archive lists invoices per customer number; the `MASTER-SPECIFIED_INVOICE` report breaks one invoice into lines carrying `WAYBILL_NUMBER` and `AMOUNT`. `WAYBILL_NUMBER` is `Shipment.trackingNumber`, so the lines join to parcels we already hold. The report API is asynchronous, so the work is split across cron ticks — discover, request, collect — with state in `BringReportRun`. The report has no line identifier, so an invoice's lines are replaced wholesale rather than deduplicated.
+**Architecture:** Bring's invoice archive lists invoices per customer number; the `MASTER-SPECIFIED_INVOICE` report breaks one invoice into lines carrying `WAYBILL_NUMBER` and `AMOUNT`. `WAYBILL_NUMBER` is `Shipment.trackingNumber`, so the lines join to parcels we already hold. The report API is asynchronous, so the work is split across cron ticks - discover, request, collect - with state in `BringReportRun`. The report has no line identifier, so an invoice's lines are replaced wholesale rather than deduplicated.
 
 **Tech Stack:** TypeScript, Next.js 16 App Router, Prisma 6 on PostgreSQL, Vitest 4, `node:crypto` only. No new dependencies.
 
@@ -20,7 +20,7 @@
 - **All three Mybring headers on every request:** `X-Mybring-API-Uid`, `X-Mybring-API-Key`, `X-Bring-Client-URL`.
 - **Every request is deadline-clamped.** Reuse the `requestBudgetMs` shape from `src/lib/bring/client.ts:32`.
 - **Test data convention (integration tests):** test files run in parallel against one database. Every integration test file defines its own unique `TAG` and id prefix, scopes all queries to it, and cleans up after itself. See `src/lib/bring/link.integration.test.ts:20-30`.
-- **Integration tests go in the `delivery` vitest project, and need no config change.** The `delivery` project already includes `src/lib/{delivery,bring,dhl}/**/*.integration.test.ts` and the `app` project already excludes the same glob, so a new file under `src/lib/bring/` named `*.integration.test.ts` lands in the right project on its own. **Do not add it to `vitest.config.ts`** — the two lists are an exact partition of the suite and a second entry would run the file twice. A new integration test outside those three directories is the only case that needs the config touched.
+- **Integration tests go in the `delivery` vitest project, and need no config change.** The `delivery` project already includes `src/lib/{delivery,bring,dhl}/**/*.integration.test.ts` and the `app` project already excludes the same glob, so a new file under `src/lib/bring/` named `*.integration.test.ts` lands in the right project on its own. **Do not add it to `vitest.config.ts`** - the two lists are an exact partition of the suite and a second entry would run the file twice. A new integration test outside those three directories is the only case that needs the config touched.
 - **Commit after every task.** Conventional commits, e.g. `feat(delivery): ...`.
 
 ---
@@ -35,7 +35,7 @@
 - Consumes: `toMinor` from `@/lib/money`
 - Produces: `type BringInvoice`, `mapInvoices(raw: unknown): BringInvoice[]`
 
-Real response shape, measured 2026-08-20. Note the two date formats in one object — `invoiceDate` is `dd.mm.yyyy`, `dueDate` is ISO. Only `invoiceDate` is needed.
+Real response shape, measured 2026-08-20. Note the two date formats in one object - `invoiceDate` is `dd.mm.yyyy`, `dueDate` is ISO. Only `invoiceDate` is needed.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -194,7 +194,7 @@ git commit -m "feat(delivery): read Bring's invoice archive into typed rows"
 - Consumes: `toMinor` from `@/lib/money`, `type BringInvoice` from `./invoice-map`
 - Produces: `type SpecifiedLine`, `type SpecifiedInvoice`, `parseSpecifiedInvoice(xml: string): SpecifiedInvoice | null`, `linesReconcile(parsed: SpecifiedInvoice, header: BringInvoice): boolean`
 
-**The fixture.** Build it from the real report by hand: keep the `MetaData` block and **six** `Line` elements — four from one waybill (base service, toll road, fuel surcharge, notification) and two identical lines from a second waybill, so the duplicate case is in the fixture rather than only in prose. Replace every `*NAME*`, `*ADDRESS*`, `*CITY*`, `*POSTAL*`, `*POINT*`, `*COUNTRY*` and `CUST_PO_NUMBER` value with `REDACTED` — `CUST_PO_NUMBER` holds a person's name in the real file. Set the `MetaData` `NumberOfRows` to 6. Make the six `AMOUNT` values sum to exactly `2500.00`, which is the `FIXTURE_TOTAL_MINOR` of 250000 the tests assert on.
+**The fixture.** Build it from the real report by hand: keep the `MetaData` block and **six** `Line` elements - four from one waybill (base service, toll road, fuel surcharge, notification) and two identical lines from a second waybill, so the duplicate case is in the fixture rather than only in prose. Replace every `*NAME*`, `*ADDRESS*`, `*CITY*`, `*POSTAL*`, `*POINT*`, `*COUNTRY*` and `CUST_PO_NUMBER` value with `REDACTED` - `CUST_PO_NUMBER` holds a person's name in the real file. Set the `MetaData` `NumberOfRows` to 6. Make the six `AMOUNT` values sum to exactly `2500.00`, which is the `FIXTURE_TOTAL_MINOR` of 250000 the tests assert on.
 
 Regex parsing, not an XML library: the repo has no XML dependency, the document is machine-generated and flat, and this was proven against the real 580 KB file before the plan was written.
 
@@ -331,8 +331,8 @@ function ddmmyyyy(value: string): Date | null {
  * come back as null rather than as a parse exception.
  *
  * Every line is kept, duplicates included. The report carries NO line
- * identifier — TRX_NUMBER, the only candidate, is the invoice number repeated
- * on every row — so two identical charges on one parcel are two real charges
+ * identifier - TRX_NUMBER, the only candidate, is the invoice number repeated
+ * on every row - so two identical charges on one parcel are two real charges
  * and merging them loses money that was really billed.
  */
 export function parseSpecifiedInvoice(xml: string): SpecifiedInvoice | null {
@@ -370,7 +370,7 @@ export function parseSpecifiedInvoice(xml: string): SpecifiedInvoice | null {
  *
  * Measured on the real report: the 144 line AMOUNTs sum to 84 786.85, exactly
  * the header's `amount`. So exact equality is the right test, and a mismatch
- * means a truncated download, a changed format, or an invoice we half-read —
+ * means a truncated download, a changed format, or an invoice we half-read -
  * all of which look identical to a cheap month once stored.
  */
 export function linesReconcile(parsed: SpecifiedInvoice, header: BringInvoice): boolean {
@@ -529,7 +529,7 @@ import { mapInvoices, type BringInvoice } from './invoice-map'
 /**
  * Bring's money endpoints, over HTTP.
  *
- * A different host from tracking — www.mybring.com rather than api.bring.com —
+ * A different host from tracking - www.mybring.com rather than api.bring.com -
  * and the same three headers. Shaped like src/lib/bring/client.ts on purpose:
  * a budget clamped to whatever is left of the caller's deadline, and error
  * bodies truncated so a gateway's HTML page never reaches a log line.
@@ -567,7 +567,7 @@ async function get(
  * Every customer number this login may act for.
  *
  * Through the Reports API, NOT Customer Info. Measured 2026-08-20: Customer
- * Info returned three numbers and Reports returned four — the Swedish entity
+ * Info returned three numbers and Reports returned four - the Swedish entity
  * appears only here. Enumerating through the other one loses a whole company's
  * freight with nothing on screen to say so.
  */
@@ -663,7 +663,7 @@ Copy the two models verbatim from the spec's "What we store" section, including 
 - [ ] **Step 2: Push the schema to the local database**
 
 Run: `npm run db:push`
-Expected: exit 0, both tables created. `db push` refuses destructive changes without a flag, so a refusal here means something in the models collides with an existing table — read the message rather than adding the flag.
+Expected: exit 0, both tables created. `db push` refuses destructive changes without a flag, so a refusal here means something in the models collides with an existing table - read the message rather than adding the flag.
 
 - [ ] **Step 3: Verify the client regenerated**
 
@@ -679,11 +679,11 @@ git commit -m "feat(delivery): store what Bring invoiced per parcel"
 
 ---
 
-### Task 5: Discover — invoices become jobs
+### Task 5: Discover - invoices become jobs
 
 **Files:**
 - Create: `src/lib/bring/invoice-sync.ts`
-- Create: `src/lib/bring/invoice-sync.integration.test.ts` (no `vitest.config.ts` change — the `delivery` project's existing glob already claims it)
+- Create: `src/lib/bring/invoice-sync.integration.test.ts` (no `vitest.config.ts` change - the `delivery` project's existing glob already claims it)
 
 **Interfaces:**
 - Consumes: `listCustomerNumbers`, `listInvoices` from `./invoices`; `db` from `@/lib/db`
@@ -696,7 +696,7 @@ import { describe, expect, it, beforeEach, afterAll, vi, afterEach } from 'vites
 import { db } from '@/lib/db'
 import { discoverInvoices } from './invoice-sync'
 
-// Unique to THIS file — see "Test data convention" in the Global Constraints.
+// Unique to THIS file - see "Test data convention" in the Global Constraints.
 const CUST = 'ZZDISC'
 const mine = { customerNumber: { startsWith: CUST } }
 const creds = { uid: 'u', key: 'k', clientUrl: 'https://panetti.vercel.app' }
@@ -826,7 +826,7 @@ git commit -m "feat(delivery): turn every unseen Bring invoice into a job"
 
 ---
 
-### Task 6: Request — the oldest pending job gets a report
+### Task 6: Request - the oldest pending job gets a report
 
 **Files:**
 - Modify: `src/lib/bring/invoice-sync.ts`
@@ -834,7 +834,7 @@ git commit -m "feat(delivery): turn every unseen Bring invoice into a job"
 
 **Interfaces:**
 - Consumes: `generateSpecReport` from `./invoices`
-- Produces: `requestNextReport(creds, opts?): Promise<boolean>` — true when one was requested
+- Produces: `requestNextReport(creds, opts?): Promise<boolean>` - true when one was requested
 
 - [ ] **Step 1: Write the failing test**
 
@@ -902,7 +902,7 @@ Expected: FAIL, "requestNextReport is not a function"
  * without it a run that cannot reach everything starves the same rows every
  * time, forever.
  *
- * Returns whether a row was worked on at all — a failure still counts, because
+ * Returns whether a row was worked on at all - a failure still counts, because
  * the tick did its one unit of work and the row now says why.
  */
 export async function requestNextReport(
@@ -922,7 +922,7 @@ export async function requestNextReport(
       data: { state: 'REQUESTED', statusUrl, requestedAt: new Date(), error: null },
     })
   } catch (e) {
-    // Stored, never thrown. One dead invoice must not stop the rest — the same
+    // Stored, never thrown. One dead invoice must not stop the rest - the same
     // rule delivery/sync.ts follows for one dead parcel.
     await db.bringReportRun.update({
       where: { id: next.id },
@@ -947,7 +947,7 @@ git commit -m "feat(delivery): request one specified invoice report per run, old
 
 ---
 
-### Task 7: Collect — download, reconcile, replace
+### Task 7: Collect - download, reconcile, replace
 
 **Files:**
 - Modify: `src/lib/bring/invoice-sync.ts`
@@ -1054,7 +1054,7 @@ Expected: FAIL, "collectNextReport is not a function"
 /**
  * Collect one requested report.
  *
- * Null means nothing was collected — nothing requested, or not ready yet —
+ * Null means nothing was collected - nothing requested, or not ready yet -
  * which is a normal tick, not a problem.
  *
  * The invoice header is re-read here rather than remembered from discovery, so
@@ -1097,8 +1097,8 @@ export async function collectNextReport(
       )
     }
 
-    // Wholesale replace. The report carries no line identifier, so this — not a
-    // unique constraint — is what makes re-reading safe.
+    // Wholesale replace. The report carries no line identifier, so this - not a
+    // unique constraint - is what makes re-reading safe.
     const { count } = await db.$transaction(async (tx) => {
       await tx.shipmentCost.deleteMany({ where: { invoiceNumber: job.invoiceNumber } })
       return tx.shipmentCost.createMany({
@@ -1192,7 +1192,7 @@ describe('syncBringInvoices', () => {
 })
 ```
 
-**IMPLEMENTER:** `syncBringInvoices` reads credentials through `getDeliveryConfig()`. For the second test, write the `DeliveryConfig` singleton with an encrypted key via `encryptSecret` from `@/lib/secrets`, and restore it in `afterAll` — that row is shared, which is why this file belongs in the `delivery` project.
+**IMPLEMENTER:** `syncBringInvoices` reads credentials through `getDeliveryConfig()`. For the second test, write the `DeliveryConfig` singleton with an encrypted key via `encryptSecret` from `@/lib/secrets`, and restore it in `afterAll` - that row is shared, which is why this file belongs in the `delivery` project.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1297,7 +1297,7 @@ bringInvoicesError: bringInvoices.error,
 - [ ] **Step 5: Run the full suite and the typecheck**
 
 Run: `npx vitest run --testTimeout=20000`
-Expected: all files pass. 2–3 red tests in `sync.test.ts` on a loaded machine are contention, not a bug — re-run those alone before investigating.
+Expected: all files pass. 2-3 red tests in `sync.test.ts` on a loaded machine are contention, not a bug - re-run those alone before investigating.
 
 Run: `npx tsc --noEmit`
 Expected: exit 0
@@ -1313,7 +1313,7 @@ git commit -m "feat(delivery): read Bring's invoices on the scheduled sync"
 
 ## What this plan deliberately stops before
 
-Slices 3 and 4 of the spec — the Delivery page showing real cost per parcel, and the engine rung that moves profit — are **not planned here**, and not from timidity.
+Slices 3 and 4 of the spec - the Delivery page showing real cost per parcel, and the engine rung that moves profit - are **not planned here**, and not from timidity.
 
 They both depend on one number nobody can know yet: **how many invoice lines actually match a parcel we hold.** The waybills are 17 digits and pass `looksLikeTracking`, but whether production's `Shipment` rows carry those same numbers cannot be tested from a development machine, because production data lives on Neon and the local database holds seed data.
 

@@ -3,7 +3,7 @@ import { costOn } from './metrics/costs'
 
 /**
  * A product's cost is a TIMELINE: each row says "from this day on, the product
- * cost this much." Saving a new cost never overwrites history — it adds a point.
+ * cost this much." Saving a new cost never overwrites history - it adds a point.
  *
  * COGS and the handling cost are chosen in two steps (the "Update COGS (1/2)" then
  * "(2/2)" modal), so each can start from its OWN date. This file works out what the
@@ -34,7 +34,7 @@ export function resolveEffectiveFrom(choice: ApplyFrom, today: Date = new Date()
     case 'LAST_60_DAYS':
       return new Date(start.getTime() - 60 * DAY_MS)
     case 'DATE_RANGE': {
-      if (!choice.from) return start // no date given — don't guess, use today
+      if (!choice.from) return start // no date given - don't guess, use today
       const picked = new Date(choice.from)
       return Number.isNaN(picked.getTime()) ? start : utcDay(picked)
     }
@@ -50,7 +50,7 @@ export type CostChange = {
 
 /**
  * Rebuild the timeline so that, from `costFrom` onward the new COGS applies, and from
- * `handlingFrom` onward the new handling cost applies — while every earlier date keeps
+ * `handlingFrom` onward the new handling cost applies - while every earlier date keeps
  * exactly the cost it already had.
  *
  * We do that by taking every date where anything changes (the old breakpoints plus the

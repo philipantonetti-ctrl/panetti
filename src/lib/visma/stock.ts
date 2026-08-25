@@ -19,7 +19,7 @@ import type { VismaInventoryItem } from './types'
  * A list rather than "everything Visma reports" because the difference is not
  * academic: warehouse 13 holds 291 Pizzeta Primo Stones that nobody has touched
  * since February, and counting them would tell the forecast there are 351 when
- * 60 can be shipped. Warehouse 12 is named "ma sjekkes" — must be checked — by
+ * 60 can be shipped. Warehouse 12 is named "ma sjekkes" - must be checked - by
  * the people who keep it, and warehouse 2 reports a negative.
  *
  * Widening this is a business decision, not a code one. If a warehouse comes
@@ -31,7 +31,7 @@ export type MappedStock = {
   sku: string
   /** Physical count across the counted warehouses. What the forecast reads. */
   quantityOnHand: number
-  /** Visma's own available figure. Shown, never forecast on — see types.ts. */
+  /** Visma's own available figure. Shown, never forecast on - see types.ts. */
   available: number
   /** Newest warehouse timestamp among the counted ones. */
   measuredAt: Date | null
@@ -50,7 +50,7 @@ const id = (v: unknown): string => String(unwrap<string | number>(v) ?? '').trim
  * Only the warehouses named in `warehouses` are added up. Everything else about
  * an item is ignored here: this answers "how many are on the shelf", and the
  * question of which products are worth forecasting is settled elsewhere, by the
- * shops. That split matters — Visma is the ERP for the whole company and holds
+ * shops. That split matters - Visma is the ERP for the whole company and holds
  * 196 SKUs and 7 045 units the webshops never carry, from baby strollers to a
  * row called "TEST2 vare for testing mot IPB".
  */

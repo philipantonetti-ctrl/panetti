@@ -64,7 +64,7 @@ export function CustomerClient({
       body: JSON.stringify({
         name: customer.name, currency: customer.currency, vatPercent: customer.vatPercent,
         email: customer.email, note: customer.note, active,
-        // Back to major units — the shape the route takes.
+        // Back to major units - the shape the route takes.
         prices: customer.prices.map((p) => ({
           productId: p.productId,
           unitPrice: toMajor(p.unitPrice),
@@ -163,7 +163,7 @@ export function CustomerClient({
                     {customer.prices.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="px-3 py-10 text-center text-faint">
-                          <span className="font-semibold text-ink">No agreed prices yet</span> — add
+                          <span className="font-semibold text-ink">No agreed prices yet</span> - add
                           some with Edit, or type a price when you enter their first order.
                         </td>
                       </tr>

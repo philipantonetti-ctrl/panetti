@@ -39,7 +39,7 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   const save = card.getByRole('button', { name: 'Save' })
   await save.waitFor()
 
-  // The whole button must sit INSIDE its card — clipped means broken.
+  // The whole button must sit INSIDE its card - clipped means broken.
   const cardBox = (await card.boundingBox())!
   const saveBox = (await save.boundingBox())!
   expect(saveBox.x + saveBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width)
@@ -56,7 +56,7 @@ test('the fees page fits its forms and saves a fulfillment rate end to end', asy
   await page.getByRole('button', { name: 'Delete rate from 2020-01-01' }).first().click()
   await expect(page.getByText('Rate deleted')).toBeVisible()
 
-  // The fees live on their own page — the save button must fit its card.
+  // The fees live on their own page - the save button must fit its card.
   await page.goto('/settings/processing-fees')
   const feeCard = page.locator('section', { hasText: 'Dintero Checkout' })
   const saveFee = feeCard.getByRole('button', { name: 'Save fees' })

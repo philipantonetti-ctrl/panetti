@@ -22,7 +22,7 @@ export function xlsxToText(buf: Buffer): string {
   try {
     files = unzipSync(new Uint8Array(buf))
   } catch {
-    // Written for the person who uploaded it — ImportParseError passes this
+    // Written for the person who uploaded it - ImportParseError passes this
     // through to the client verbatim.
     throw new Error('This file could not be read as an Excel file.')
   }
@@ -33,8 +33,8 @@ export function xlsxToText(buf: Buffer): string {
     parts.push(strFromU8(files[name]))
   }
 
-  // Every tag becomes a space. That is what keeps two adjacent cells —
-  // `<v>111</v><v>222</v>` — from fusing into one 6-digit token that belongs to
+  // Every tag becomes a space. That is what keeps two adjacent cells -
+  // `<v>111</v><v>222</v>` - from fusing into one 6-digit token that belongs to
   // neither of them.
   return parts.join(' ').replace(/<[^>]*>/g, ' ')
 }

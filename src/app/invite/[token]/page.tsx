@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { InviteClient } from './InviteClient'
 
 /**
- * The door an ambassador walks through exactly once — and, in practice, knocks on for
+ * The door an ambassador walks through exactly once - and, in practice, knocks on for
  * months afterwards, because the invite link is the address they were given and they
  * treat it as the way in to their sales.
  *
@@ -15,7 +15,7 @@ import { InviteClient } from './InviteClient'
  *
  * The lookup here is presentation only: it greets them by name, and it turns a dead
  * link away now rather than after they have chosen a password. POST /api/invite
- * re-checks every guard on its own — through verifyInvite, which still obeys expiry —
+ * re-checks every guard on its own - through verifyInvite, which still obeys expiry -
  * so nothing on this page is load-bearing security.
  */
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
@@ -29,7 +29,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
       })
     : null
 
-  // Forged, not an invite at all, deleted, deactivated — one answer for every one of
+  // Forged, not an invite at all, deleted, deactivated - one answer for every one of
   // them. The API refuses to say which, so neither does this page.
   if (!link || !ambassador || !ambassador.active) return <InviteDead reason="invalid" />
 
@@ -40,7 +40,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   // perfectly good account away to ask for a replacement they did not need.
   if (ambassador.user) return <InviteDead reason="used" />
 
-  // The email already belongs to a login — typically the owner, who is the admin
+  // The email already belongs to a login - typically the owner, who is the admin
   // AND an ambassador on one email. A password can never be set here, so point
   // them at the login they already have instead of a form that cannot succeed.
   const taken = await db.user.findUnique({
@@ -69,12 +69,12 @@ function InviteDead({ reason }: { reason: 'invalid' | 'expired' | 'used' | 'has-
     used: {
       heading: 'This invitation link has already been used',
       message:
-        'Please go to the login page to access your account. The password you chose still works — the invitation link is only needed once.',
+        'Please go to the login page to access your account. The password you chose still works - the invitation link is only needed once.',
     },
     'has-login': {
       heading: 'You already have a login',
       message:
-        'This email already has a login. Sign in with it — your ambassador sales show on your dashboard.',
+        'This email already has a login. Sign in with it - your ambassador sales show on your dashboard.',
     },
     expired: {
       heading: 'This invitation link has expired',

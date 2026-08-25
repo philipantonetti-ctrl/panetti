@@ -1,4 +1,4 @@
-# AI advisor — design
+# AI advisor - design
 
 **Date:** 2026-08-10
 **Status:** approved, ready for an implementation plan
@@ -7,7 +7,7 @@
 
 From the client, three ideas in one message:
 
-1. **Connect the system to our ERP** so B2B orders arrive automatically — match a customer
+1. **Connect the system to our ERP** so B2B orders arrive automatically - match a customer
    number in the software to the customer number in the ERP, and match our products to the
    SKUs in WooCommerce. *Explicitly not urgent.*
 2. **An executive AI dashboard.** Instead of showing numbers, tell management what needs
@@ -25,8 +25,8 @@ with inside of the system."*
 
 | | Project | Blocked by |
 | --- | --- | --- |
-| A | ERP connector — customer numbers, SKU mapping, automatic B2B orders, and the stock / lead-time feed | Which ERP. Every vendor has a different API. |
-| **B** | **AI advisor — facts engine, morning briefing, chat. ← this spec** | **Nothing.** |
+| A | ERP connector - customer numbers, SKU mapping, automatic B2B orders, and the stock / lead-time feed | Which ERP. Every vendor has a different API. |
+| **B** | **AI advisor - facts engine, morning briefing, chat. ← this spec** | **Nothing.** |
 | C | Demand forecasting | Project A's stock feed |
 
 Decided with the client: **B first**, because it ships on data already in the database.
@@ -37,13 +37,13 @@ Decided with the client: **B first**, because it ships on data already in the da
 | --- | --- |
 | Revenue down 18% in Sweden, Meta ROAS 7.4 → 4.9 | Available |
 | Denmark shipping delays up 1.8 days | Available |
-| Germany mobile cart abandonment | **No web analytics anywhere.** Needs GA4 — Woo's REST API exposes no sessions and no device. |
+| Germany mobile cart abandonment | **No web analytics anywhere.** Needs GA4 - Woo's REST API exposes no sessions and no device. |
 | Norway needs a purchase order in 23 days | **No stock.** `Product` has no stock column; there is no supplier and no purchase-order model. |
 
 Of the seven inputs he lists for forecasting, three are absent: current stock, supplier lead
 time, and shipping time from China. `stock ÷ forecast daily demand` has no answer without the
 first. This is the reason Project A is a prerequisite for Project C rather than a nice-to-have
-— the ERP is where that data lives.
+- the ERP is where that data lives.
 
 ## Which AI, and why not OpenRouter
 
@@ -51,18 +51,18 @@ first. This is the reason Project A is a prerequisite for Project C rather than 
 
 OpenRouter's value is arbitrage across providers and automatic failover between them. Neither
 applies here: this is one model reading one company's P&L. What it costs instead is a 5.5% fee
-on credit purchases, 20–112 ms of routing overhead, day-one feature lag, and a third company in
+on credit purchases, 20-112 ms of routing overhead, day-one feature lag, and a third company in
 the path of the client's revenue data.
 
 Three first-party features carry the design:
 
-- **Structured outputs** (`client.messages.parse()` + a Zod schema) — the briefing returns
+- **Structured outputs** (`client.messages.parse()` + a Zod schema) - the briefing returns
   validated typed JSON, not prose to be parsed.
-- **Prompt caching** — the chat's system prompt and tool definitions repeat across turns.
+- **Prompt caching** - the chat's system prompt and tool definitions repeat across turns.
   Opus 5's minimum cacheable prefix is 512 tokens, so the chat prompt qualifies.
-- **Tool use** — the chat queries the metrics engine instead of guessing.
+- **Tool use** - the chat queries the metrics engine instead of guessing.
 
-Estimated cost at this volume: **$3–8/month** for daily briefings, plus a few cents per chat
+Estimated cost at this volume: **$3-8/month** for daily briefings, plus a few cents per chat
 conversation.
 
 ## The one hard problem
@@ -136,12 +136,12 @@ model Briefing {
   day       DateTime @unique
   from      DateTime // the window the facts were computed over
   to        DateTime
-  /// The computed facts, as JSON text — the same convention TrackingImport
+  /// The computed facts, as JSON text - the same convention TrackingImport
   /// uses. Stored so the page prints figures from data rather than from prose,
   /// and so a failed generation retries against the same facts rather than
   /// against a database that has since moved on.
   facts     String
-  /// The model's ordered items. Null while generating, and after a failure —
+  /// The model's ordered items. Null while generating, and after a failure -
   /// the facts still render, so the page is never blank.
   items     String?
   error     String?  // why generation failed; null when it worked
@@ -166,7 +166,7 @@ export type Fact = {
   /** Now and before. Minor units for money; plain numbers for ratios and days. */
   current: number | null
   previous: number | null
-  /** Fractional change. Null when the previous value was zero — growing from
+  /** Fractional change. Null when the previous value was zero - growing from
    *  nothing is not a percentage, exactly as deltaPct already decides. */
   deltaPct: number | null
   unit: 'money' | 'ratio' | 'days' | 'count' | 'percent'
@@ -178,7 +178,7 @@ export type Fact = {
 `Fact.severity` is a number computed by the rule below, and it decides what the model is
 even shown. The `severity` on an *item* further down is a different thing: the model's own
 judgement of how much the reader should care, in three named levels. They are deliberately
-not the same scale — one is materiality, the other is editorial.
+not the same scale - one is materiality, the other is editorial.
 
 The comparison window is **the last 7 days against `previousRange()`'s prior 7**, so the
 briefing means the same thing by "compared with before" that the Dashboard does.
@@ -192,7 +192,7 @@ A move becomes a fact only when it clears **both** gates:
 
 Severity then scales with the move's share of total revenue, saturating at 5%.
 
-Both gates are needed. The percentage alone promotes noise — a small shop tripling on three
+Both gates are needed. The percentage alone promotes noise - a small shop tripling on three
 orders would outrank a large one falling 12%. The absolute size alone hides a real collapse in
 a small market. Data-quality facts bypass both: they are about whether a number can be trusted,
 not about how large it is.
@@ -213,11 +213,11 @@ All four groups, agreed with the client.
 "Gone quiet" needs a rule of its own, because a B2B customer has no percentage to compare.
 It is: the customer has placed at least three orders, and the gap since their last one is
 now more than **twice their own median gap** between orders. Their own rhythm, not a fixed
-number of days — a customer who orders monthly and one who orders weekly are both silent at
+number of days - a customer who orders monthly and one who orders weekly are both silent at
 very different points, and a shared threshold would nag about one while missing the other.
 
 The data-quality group is the client's own *"say when you don't know"* principle applied to the
-briefing itself. It is what makes "Norway's profit is understated — three products have no cost
+briefing itself. It is what makes "Norway's profit is understated - three products have no cost
 entered" a thing the advisor says out loud rather than a silent distortion.
 
 ### The briefing's output shape
@@ -241,7 +241,7 @@ is noise; some mornings the honest answer is "this moved, and nothing needs doin
 default on this model and counts against `max_tokens`, so the ceiling is set well above the
 document's own length.
 
-`stop_reason: "refusal"` is handled explicitly — checked before reading content — and stored in
+`stop_reason: "refusal"` is handled explicitly - checked before reading content - and stored in
 `error` like any other failure. Server-side `fallbacks` is deliberately **not** enabled: it
 requires the beta messages endpoint, which would cost the `parse()` structured-output helper,
 and the refusal risk on P&L analysis is negligible. If a refusal is ever actually observed, the
@@ -249,8 +249,8 @@ stored `error` will say so and the decision can be revisited with evidence.
 
 ### The chat gets tools, not SQL
 
-Five read-only tools — `get_metrics`, `get_marketing`, `get_delivery`, `get_products`,
-`get_orders` — each calling the same loaders the pages call. Asked "why was Sweden down last
+Five read-only tools - `get_metrics`, `get_marketing`, `get_delivery`, `get_products`,
+`get_orders` - each calling the same loaders the pages call. Asked "why was Sweden down last
 week?", the model runs the engine twice and compares.
 
 SQL access was rejected. A model writing its own `SELECT` against `Order` would sooner or later
@@ -264,8 +264,8 @@ table. Persisted history is purely additive later.
 
 ### The page
 
-A new **Advisor** item in the Analytics group of the sidebar. Today's briefing as ranked cards —
-headline, then the fact figures in tabular numerals, then the explanation — with the chat below.
+A new **Advisor** item in the Analytics group of the sidebar. Today's briefing as ranked cards -
+headline, then the fact figures in tabular numerals, then the explanation - with the chat below.
 Per `DESIGN.md`: 1px border, radius 12px, no drop shadow; severity carried by position and an
 explicit label, never by colour alone. The empty state teaches the next action.
 
@@ -290,7 +290,7 @@ platform ceiling, and its own comments explain that the delivery alert at the en
 thing it cannot afford to have starved. Bolting an LLM call onto it would put an unbounded
 network call in front of that alert.
 
-05:00 UTC is 06:00 or 07:00 in `Europe/Oslo` depending on the season — before the working day in
+05:00 UTC is 06:00 or 07:00 in `Europe/Oslo` depending on the season - before the working day in
 every market, which is what "every morning" means here.
 
 ## Testing

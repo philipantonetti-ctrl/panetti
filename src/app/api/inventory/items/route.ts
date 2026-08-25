@@ -55,7 +55,7 @@ export async function PUT(req: Request) {
     }
     if ('supplierId' in body) data.supplierId = (body.supplierId as string | null) ?? null
 
-    // Hiding a product we do not buy — spare parts and the like — so the
+    // Hiding a product we do not buy - spare parts and the like - so the
     // forecast, the suppliers list and purchase orders all stop offering it.
     // Never a delete: ensureSupplyItems recreates a row per product SKU on
     // every page load, so a deleted row is back the moment anyone opens the
@@ -63,7 +63,7 @@ export async function PUT(req: Request) {
     //
     // Checked for a real boolean rather than coerced. Boolean('') is false and
     // Boolean('no') is true, so coercion here would let a stray string hide a
-    // product nobody meant to hide — and a hidden product is invisible by
+    // product nobody meant to hide - and a hidden product is invisible by
     // definition, so that mistake would never announce itself.
     if ('active' in body) {
       if (typeof body.active !== 'boolean') return fail('active must be true or false', 400)

@@ -60,7 +60,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   const windowStart = new Date(Math.min(...starts))
   const windowEnd = new Date(Math.max(...ends))
 
-  // A shop's costs are in ITS currency. An order need not share it — a B2B
+  // A shop's costs are in ITS currency. An order need not share it - a B2B
   // customer can be invoiced in EUR from a NOK store.
   const currencyByShop = new Map(shopRows.map((s) => [s.id, s.currency]))
 
@@ -74,7 +74,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     ]),
   )
 
-  // Select ONLY the columns the engine reads — a big range is thousands of rows,
+  // Select ONLY the columns the engine reads - a big range is thousands of rows,
   // so every unused column (names, prices) is wasted transfer and hydration.
   // The line's SKU is now one the engine does read: it is what a per-unit
   // shipping rate is keyed by, and a product id could not be, being shop-scoped.
@@ -126,7 +126,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     total: o.total,
     ambassadorId: o.ambassadorId,
     // The rate is read from the ambassador, so a rate change applies to future
-    // reports — but the ATTRIBUTION itself was frozen at sync time.
+    // reports - but the ATTRIBUTION itself was frozen at sync time.
     commissionRate: o.ambassadorId ? rateByAmbassador.get(o.ambassadorId) ?? 0 : 0,
     items: o.items.map((i) => ({
       productId: i.productId,
@@ -173,7 +173,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   // Per-unit shipping, keyed by the SKU it was typed against. Every row, not
   // just the SKUs on this page's orders: there are a few dozen of them against
   // thousands of order lines, so an IN clause would cost more than it saved.
-  // Keys are normalised because the resolver looks them up that way — a rate
+  // Keys are normalised because the resolver looks them up that way - a rate
   // typed as "panpizpro" must reach an order line reading "PANPIZPRO".
   const shippingRates = new Map<string, ShippingPoint[]>()
   for (const r of await db.shippingRate.findMany()) {
@@ -184,7 +184,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
   }
 
   // Ad spend, so the engine can charge marketing to profit. Resolved per
-  // campaign for split accounts and per account otherwise — see attribution.ts.
+  // campaign for split accounts and per account otherwise - see attribution.ts.
   const adSpend: EngineAdSpend[] = await attributedSpend(shopIds, from, to)
 
   // Affiliate cost, the same road ad spend travels: pre-attributed flat rows
@@ -208,11 +208,11 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     ...orders.map((o) => o.currency),
     ...expenses.map((e) => e.currency),
     // An ad account can bill in a currency no shop trades in, and its spend is
-    // now a cost against profit — an unfetched rate is real money mis-stated.
+    // now a cost against profit - an unfetched rate is real money mis-stated.
     // Sourced from every relevant account, not just today's spend rows: a
     // currency with nothing booked yet still needs a rate the moment it does.
     ...(await relevantAdCurrencies(shopIds)),
-    // Affiliate rows carry their own currency too — measured: FI sales in SEK.
+    // Affiliate rows carry their own currency too - measured: FI sales in SEK.
     ...(await relevantAffiliateCurrencies(shopIds)),
     ...(processingFee ? [processingFee.currency] : []),
   ])

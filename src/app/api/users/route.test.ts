@@ -63,7 +63,7 @@ describe('staff logins', () => {
     expect(emails).toContain(NEW_MKT)
   })
 
-  it('never lists ambassador logins — they are managed by invites', async () => {
+  it('never lists ambassador logins - they are managed by invites', async () => {
     const list = await (await GET()).json()
     expect(list.users.every((u: { role: string }) => u.role !== 'AMBASSADOR')).toBe(true)
   })
@@ -94,7 +94,7 @@ describe('staff logins', () => {
     expect(await db.user.findUnique({ where: { email: NEW_MKT } })).toBeNull()
   })
 
-  it('is closed to marketing — minting logins is the admin chair', async () => {
+  it('is closed to marketing - minting logins is the admin chair', async () => {
     cookieValue.current = await signSession({
       userId: 'mkt-users', email: 'mkt@test.local', role: 'MARKETING', ambassadorId: null,
     })

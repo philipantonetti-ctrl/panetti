@@ -100,7 +100,7 @@ describe('arriving from a delivery alert', () => {
 
   it('seeds the search from ?q and widens the range so an old order is reachable', async () => {
     // A Slack alert and the Delivery page both link here with ?q=<number>, and
-    // each order alerts exactly once — so this link is the only handle anyone
+    // each order alerts exactly once - so this link is the only handle anyone
     // gets on it. Opening on the default month would hide it, because a late
     // order is old by definition.
     withUrl('?q=10356')
@@ -160,12 +160,12 @@ describe('OrdersClient', () => {
     expect(within(refundedRow).getByText('Unfulfilled')).toBeTruthy()
   })
 
-  it('shows per-order profit, and "—" on a voided order instead of pretend money', async () => {
+  it('shows per-order profit, and "-" on a voided order instead of pretend money', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('10356')).toBeTruthy())
 
     // The voided row shows dashes in the figure columns (6 of them).
-    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(6)
+    expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(6)
     expect(screen.getByText('44.25%')).toBeTruthy() // the live order's margin
   })
 
@@ -243,14 +243,14 @@ describe('OrdersClient', () => {
     )
     await waitFor(() => expect(screen.getByText('B-0001')).toBeTruthy())
 
-    // Only the B2B row wears the badge — a "badge everything" bug would also
+    // Only the B2B row wears the badge - a "badge everything" bug would also
     // put it on the webshop row, and a "badge nothing" bug would put it on neither.
     const b2bRow = screen.getByText('B-0001').closest('tr')!
     expect(within(b2bRow).getByText('B2B')).toBeTruthy()
     const webshopRow = screen.getByText('9001').closest('tr')!
     expect(within(webshopRow).queryByText('B2B')).toBeNull()
 
-    // Narrowing the Source control must reach the server, not just re-render —
+    // Narrowing the Source control must reach the server, not just re-render -
     // the server owns the filter and the pagination counts that go with it.
     fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'b2b' } })
     await waitFor(() => expect(calls.some((u) => u.includes('source=b2b'))).toBe(true))
@@ -270,7 +270,7 @@ describe('OrdersClient', () => {
       )
 
       await waitFor(() => expect(calls.length).toBeGreaterThan(0))
-      // The very first request — not a later one after some user action — carries it.
+      // The very first request - not a later one after some user action - carries it.
       expect(calls[0]).toContain('source=b2b')
     } finally {
       window.history.pushState({}, '', '/orders')
@@ -291,7 +291,7 @@ describe('OrdersClient', () => {
       )
 
       await waitFor(() => expect(calls.length).toBeGreaterThan(0))
-      // A junk value is sent through as-is — the API is what decides both-vs-none
+      // A junk value is sent through as-is - the API is what decides both-vs-none
       // (Task 6: anything other than 'webshop'/'b2b' means both). What this test
       // guards is that the client doesn't add its own validation that would
       // silently drop the parameter or crash instead of forwarding it.
@@ -303,7 +303,7 @@ describe('OrdersClient', () => {
 })
 
 describe('live refresh', () => {
-  // A fresh Response per call — a body can only be read once.
+  // A fresh Response per call - a body can only be read once.
   function renderLive() {
     const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
@@ -332,7 +332,7 @@ describe('live refresh', () => {
       fireEvent(window, new Event('focus'))
       await act(async () => {})
 
-      // Two orders fetches — the tick also asks /api/version, so count by URL.
+      // Two orders fetches - the tick also asks /api/version, so count by URL.
       const orderCalls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0])).filter((u) => u.includes('/api/orders'))
       expect(orderCalls.length).toBe(2)
       // In place: same page size requested, and the expanded order stays open.
@@ -372,7 +372,7 @@ describe('when an order was placed', () => {
     expect(stockholm.time.format(placed)).toBe('15:40')
 
     // The old formatters carried no timeZone at all, so this same instant
-    // printed as 21:40 to anyone whose machine was set to Manila — and an
+    // printed as 21:40 to anyone whose machine was set to Manila - and an
     // evening sale printed under the following day.
     const manila = placedFormats('Asia/Manila')
     expect(manila.time.format(placed)).toBe('21:40')
@@ -464,12 +464,12 @@ describe('delivery column', () => {
     await waitFor(() => expect(screen.getByText('DLV-VD')).toBeTruthy())
     const row = (number: string) => screen.getByText(number).closest('tr')!
 
-    expect(within(row('DLV-VD')).getByText('—')).toBeTruthy()
+    expect(within(row('DLV-VD')).getByText('-')).toBeTruthy()
 
     // UNTRACKED must never look like NO_TRACKING, and BEFORE_TRACKING must
-    // never look like an order that simply has not shipped — both explain
+    // never look like an order that simply has not shipped - both explain
     // themselves rather than leaving the same bare dash as VOIDED.
-    expect(within(row('DLV-BT')).getByTitle('Placed before delivery tracking started').textContent).toBe('—')
-    expect(within(row('DLV-UT')).getByTitle('This shop is not delivery-tracked').textContent).toBe('—')
+    expect(within(row('DLV-BT')).getByTitle('Placed before delivery tracking started').textContent).toBe('-')
+    expect(within(row('DLV-UT')).getByTitle('This shop is not delivery-tracked').textContent).toBe('-')
   })
 })

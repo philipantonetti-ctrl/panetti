@@ -7,7 +7,7 @@ import type { LeaderboardRow } from '@/lib/metrics/ambassadors'
  * Who sold the most.
  *
  * A share bar behind each name makes the gap between first and fifth readable without
- * doing arithmetic — the ranking is the point, not the individual figures.
+ * doing arithmetic - the ranking is the point, not the individual figures.
  */
 export function Leaderboard({ rows, currency }: { rows: LeaderboardRow[]; currency: string }) {
   if (rows.length === 0) {

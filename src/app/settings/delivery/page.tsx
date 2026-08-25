@@ -4,7 +4,7 @@ import { DeliverySettingsClient } from './DeliverySettingsClient'
 
 /**
  * Thin on purpose, like the Delivery analytics page it sits beside: all of
- * the substance — Bring/Slack config, promises, tracked shops, imports —
+ * the substance - Bring/Slack config, promises, tracked shops, imports -
  * comes back in one shape from GET /api/delivery/settings, which the client
  * fetches itself. Duplicating that shape here via a second, parallel set of
  * db queries would be the same data contract maintained twice.

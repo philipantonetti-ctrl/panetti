@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Money and dates follow existing conventions: dates stored at UTC midnight via `utcDay` from `@/lib/dates`.
-- Staff writes and staff reads use `assertStaff` from `@/lib/auth/guard` (ADMIN **or** MARKETING). Never `assertAdmin` — marketing runs the ambassador program.
+- Staff writes and staff reads use `assertStaff` from `@/lib/auth/guard` (ADMIN **or** MARKETING). Never `assertAdmin` - marketing runs the ambassador program.
 - Portal reads take the ambassador id **from the session, never the request**.
 - A route that changes nothing must not report success: `deleteMany` + `count === 0` → 404.
 - Zod validation returns `parsed.error.issues[0]?.message` as `{ error }`.
@@ -25,7 +25,7 @@
 | File | Responsibility |
 |---|---|
 | `prisma/schema.prisma` (modify) | The `AmbassadorProduct` model + relation on `Ambassador` |
-| `src/lib/ambassador-products.ts` (create) | `summariseProducts` — the distinct-ambassador count. Pure, no Prisma |
+| `src/lib/ambassador-products.ts` (create) | `summariseProducts` - the distinct-ambassador count. Pure, no Prisma |
 | `src/lib/ambassador-products.test.ts` (create) | Its tests |
 | `src/app/api/ambassador-products/route.ts` (create) | `GET` overview + catalogue, `POST` add a gift |
 | `src/app/api/ambassador-products/route.test.ts` (create) | Route tests |
@@ -72,7 +72,7 @@ const gift = (ambassadorId: string, sku: string, name: string, quantity = 1) => 
 describe('summariseProducts', () => {
   it('counts a person once per product, however many they were sent', () => {
     // Emma got two of the same chair on two dates. That is one ambassador
-    // holding it, not two — the whole reason this is a function and not a
+    // holding it, not two - the whole reason this is a function and not a
     // groupBy in a route.
     const rows = [gift('emma', 'MACBL661', 'Advanced Comfort', 1), gift('emma', 'MACBL661', 'Advanced Comfort', 2)]
 
@@ -120,7 +120,7 @@ describe('summariseProducts', () => {
   })
 
   it('falls back to sku when everything else ties, so the order is truly total', () => {
-    // Same product name under two SKUs, same reach, same units — without the
+    // Same product name under two SKUs, same reach, same units - without the
     // sku tiebreaker this pair would come back in whatever order the caller
     // happened to supply.
     const rows = [gift('emma', 'Z-SKU', 'Same Name', 1), gift('johan', 'A-SKU', 'Same Name', 1)]
@@ -139,7 +139,7 @@ describe('summariseProducts', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/ambassador-products.test.ts`
-Expected: FAIL — cannot resolve `./ambassador-products`.
+Expected: FAIL - cannot resolve `./ambassador-products`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -228,7 +228,7 @@ Then append the new model at the end of the file:
 ```prisma
 // What we sent an ambassador: a chair, a massage gun, whatever they were given
 // to promote. Keyed on SKU, not a Product id, because Product is shop-scoped
-// and cascades away with its shop — a gift is a fact about a physical object
+// and cascades away with its shop - a gift is a fact about a physical object
 // and must outlive a store being removed. `name` is a snapshot for the same
 // reason OrderItem.name is one: a shop renaming its listing must not rewrite
 // what we already handed over.
@@ -255,7 +255,7 @@ model AmbassadorProduct {
 - [ ] **Step 6: Push the schema and regenerate the client**
 
 Run: `npm run db:push`
-Expected: "Your database is now in sync with your Prisma schema." No destructive-change prompt — the change is purely additive.
+Expected: "Your database is now in sync with your Prisma schema." No destructive-change prompt - the change is purely additive.
 
 If it asks to reset the database, STOP: something else is wrong. Do not accept.
 
@@ -273,7 +273,7 @@ git commit -m "feat: a table for what we sent each ambassador, and the count tha
 
 ---
 
-### Task 2: The staff route — overview, catalogue, and adding a gift
+### Task 2: The staff route - overview, catalogue, and adding a gift
 
 **Files:**
 - Create: `src/app/api/ambassador-products/route.ts`
@@ -351,8 +351,8 @@ describe('POST /api/ambassador-products', () => {
   it('records a gift and it shows up in the overview', async () => {
     // A SKU nothing else in the system uses. The overview aggregates EVERY
     // AmbassadorProduct row with no scoping, so asserting exact counts against
-    // a real catalogue SKU would break the moment the seed — or a developer
-    // clicking around the local app — created one of the same product. The
+    // a real catalogue SKU would break the moment the seed - or a developer
+    // clicking around the local app - created one of the same product. The
     // catalogue test below already uses a synthetic 'DUP-1' for the same
     // reason; this makes the file consistent with itself.
     const res = await post({
@@ -407,7 +407,7 @@ describe('POST /api/ambassador-products', () => {
     // An empty string is the ONLY case that discriminates. With `note` omitted,
     // `d.note` is undefined, Prisma drops the key from the INSERT, and the
     // defaultless nullable column yields null under `||`, under `??`, and under
-    // no fallback at all — so an omitted note proves nothing about the code.
+    // no fallback at all - so an omitted note proves nothing about the code.
     // An explicit '' is where they finally diverge: `'' || null` is null (what
     // we want), `'' ?? null` is '' (what the UI would then print as a blank
     // note line). This test fails the moment someone "modernises" || to ??.
@@ -426,7 +426,7 @@ describe('POST /api/ambassador-products', () => {
     expect(res.status).toBe(404)
   })
 
-  it('lets marketing record a gift — they run the program', async () => {
+  it('lets marketing record a gift - they run the program', async () => {
     await asMarketing()
     const res = await post({
       ambassadorId, sku: 'MPX-001', name: 'Pro X', quantity: 1, receivedAt: '2026-03-12',
@@ -448,7 +448,7 @@ describe('GET /api/ambassador-products', () => {
   it('offers each SKU once, however many shops sell it', async () => {
     const shopA = await db.shop.create({ data: { name: `A ${MARK}`, currency: 'NOK' } })
     const shopB = await db.shop.create({ data: { name: `B ${MARK}`, currency: 'SEK' } })
-    // The same physical product, listed in two shops — the exact situation the
+    // The same physical product, listed in two shops - the exact situation the
     // whole sku-not-productId decision exists for.
     await db.product.create({
       data: { shopId: shopA.id, externalId: '1', sku: 'DUP-1', name: 'Duplicated Chair' },
@@ -466,7 +466,7 @@ describe('GET /api/ambassador-products', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/ambassador-products/route.test.ts`
-Expected: FAIL — cannot resolve `./route`.
+Expected: FAIL - cannot resolve `./route`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -687,7 +687,7 @@ describe('DELETE /api/ambassador-products/[id]', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run "src/app/api/ambassador-products/[id]/route.test.ts"`
-Expected: FAIL — cannot resolve `./route`.
+Expected: FAIL - cannot resolve `./route`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -744,7 +744,7 @@ git commit -m "feat: a product can come back off an ambassador's record"
 
 **Interfaces:**
 - Consumes: the `AmbassadorProduct` model.
-- Produces: `GET /api/ambassadors` each ambassador gains `products: { id, sku, name, quantity, receivedAt (ISO string), note }[]`. `GET /api/portal` gains `products: { id, sku, name, quantity, receivedAt (ISO string) }[]` — **no `note`**, that is our internal record.
+- Produces: `GET /api/ambassadors` each ambassador gains `products: { id, sku, name, quantity, receivedAt (ISO string), note }[]`. `GET /api/portal` gains `products: { id, sku, name, quantity, receivedAt (ISO string) }[]` - **no `note`**, that is our internal record.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -849,7 +849,7 @@ describe('GET /api/portal', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/ambassador-products/reads.test.ts`
-Expected: FAIL — `row.products` is undefined and `body.products` is undefined.
+Expected: FAIL - `row.products` is undefined and `body.products` is undefined.
 
 - [ ] **Step 3: Add products to the ambassadors route**
 
@@ -919,7 +919,7 @@ Expected: PASS, 3 tests.
 - [ ] **Step 6: Run the full suite**
 
 Run: `npm test`
-Expected: 94 files, 667 tests, all passing. If `src/app/api/portal/*.test.ts` fails, you changed the shape of an existing field instead of adding a new one — revert that edit and add only.
+Expected: 94 files, 667 tests, all passing. If `src/app/api/portal/*.test.ts` fails, you changed the shape of an existing field instead of adding a new one - revert that edit and add only.
 
 - [ ] **Step 7: Commit**
 
@@ -949,13 +949,13 @@ Note the first line: `vitest.config.ts` sets `environment: 'node'` globally, so
 every component test in this codebase opts into jsdom with that pragma. Without
 it, `render` fails with "document is not defined".
 
-`@testing-library/user-event` is **not** a dependency here — every existing
+`@testing-library/user-event` is **not** a dependency here - every existing
 component test drives the DOM with `fireEvent`. Do not add the package.
 
 Assertions use plain `toBeTruthy()` / `toBeNull()` / `toContain()`, which is what
 every component test in this codebase already uses. Do **not** reach for
-jest-dom matchers (`toBeInTheDocument`, `toBeDisabled`): nothing wires them up —
-`vitest.config.ts` has no `setupFiles` — so they fail with "Invalid Chai
+jest-dom matchers (`toBeInTheDocument`, `toBeDisabled`): nothing wires them up -
+`vitest.config.ts` has no `setupFiles` - so they fail with "Invalid Chai
 property", and adding the import would make this the only file in the repo using
 a second assertion style.
 
@@ -1064,7 +1064,7 @@ describe('ProductLedger', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/components/ambassadors/ProductLedger.test.tsx`
-Expected: FAIL — cannot resolve `./ProductLedger`.
+Expected: FAIL - cannot resolve `./ProductLedger`.
 
 - [ ] **Step 3: Write ProductOverview**
 
@@ -1160,7 +1160,7 @@ const today = () => new Date().toISOString().slice(0, 10)
  * codes above: each is its own request the server can refuse for its own
  * reason, and a reason worth reading should not wait for a Save.
  *
- * The picked product's NAME travels with its SKU on purpose — the record keeps
+ * The picked product's NAME travels with its SKU on purpose - the record keeps
  * a snapshot, so renaming a shop's listing later never rewrites what we handed
  * over.
  */
@@ -1451,7 +1451,7 @@ In the `<tbody>` row, add this cell between the Codes cell and the Status cell:
                         {row.products.map((p) => (
                           <span
                             key={p.id}
-                            title={`${p.quantity} × ${p.name}, received ${p.receivedAt.slice(0, 10)}${p.note ? ` — ${p.note}` : ''}`}
+                            title={`${p.quantity} × ${p.name}, received ${p.receivedAt.slice(0, 10)}${p.note ? ` - ${p.note}` : ''}`}
                             className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-ink"
                           >
                             {p.name}
@@ -1459,7 +1459,7 @@ In the `<tbody>` row, add this cell between the Codes cell and the Status cell:
                           </span>
                         ))}
                         {row.products.length === 0 && (
-                          <span className="text-[11px] text-faint">—</span>
+                          <span className="text-[11px] text-faint">-</span>
                         )}
                       </div>
                     </td>
@@ -1518,9 +1518,9 @@ Inside `EditModal`, render the ledger immediately after the "Add a code on a sto
 Run: `npx vitest run src/app/ambassadors/AmbassadorsClient.test.tsx`
 Expected: PASS. Two failures are expected and correct to fix:
 
-1. A test asserting the old 5-column table — update that assertion to 6, since
+1. A test asserting the old 5-column table - update that assertion to 6, since
    the extra column is the intended change.
-2. `TypeError: Cannot read properties of undefined (reading 'map')` — the file's
+2. `TypeError: Cannot read properties of undefined (reading 'map')` - the file's
    fixtures predate Task 4's contract and carry no `products`. Add `products: []`
    to each. That is fixture INPUT, not an assertion; do not weaken any assertion
    to get green. Commit `AmbassadorsClient.test.tsx` alongside the client, since
@@ -1559,7 +1559,7 @@ In `src/app/portal/PortalClient.tsx`, add to the `Portal` type, beside `productT
 ```ts
   /**
    * What we SENT them. Deliberately not near `productTotals`, which is what
-   * they SOLD — two different things that would read the same if either were
+   * they SOLD - two different things that would read the same if either were
    * called just "products" on screen.
    */
   products: {
@@ -1619,7 +1619,7 @@ The card is hidden entirely when the list is empty: most ambassadors were sent n
 - [ ] **Step 3: Run the portal tests**
 
 Run: `npx vitest run src/app/portal/PortalClient.test.tsx`
-Expected: PASS. If the test's mock payload lacks `products`, add `products: []` to it — the component reads `data.products.length`.
+Expected: PASS. If the test's mock payload lacks `products`, add `products: []` to it - the component reads `data.products.length`.
 
 - [ ] **Step 4: Typecheck**
 
@@ -1731,7 +1731,7 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   // default, so a bare 'Product' also matches the 'Add product' submit button
   // sitting in the same section, and the locator resolves to two elements.
   // Testing Library's getByRole is exact by default, which is why the Task 5
-  // unit test uses the same words without this flag — do not "harmonise" them.
+  // unit test uses the same words without this flag - do not "harmonise" them.
   await page.getByRole('button', { name: 'Product', exact: true }).click()
   await page.getByRole('button', { name: 'Mazzetti Lite Comfort - Massasjestol (Beige)' }).click()
 
@@ -1783,14 +1783,14 @@ className="w-full max-w-md rounded-[var(--radius-card)] bg-surface p-5 shadow-xl
 ```
 
 No `max-h`, no `overflow-y-auto`, and nothing in its ancestor chain scrolls
-either. Every other modal in the app already handles this — both of
+either. Every other modal in the app already handles this - both of
 `AdAccountsClient`'s use `max-h-[90vh] ... overflow-y-auto`. The ambassadors
 modal is the outlier.
 
 It never mattered before because the modal's height was fixed. The product
 ledger grows with the data, so an ambassador holding three or more products
-makes the panel taller than the viewport, and the bottom of it — the product
-picker and the Save button — becomes genuinely unreachable. That is an admin
+makes the panel taller than the viewport, and the bottom of it - the product
+picker and the Save button - becomes genuinely unreachable. That is an admin
 being unable to use the screen, not a test artefact.
 
 Change the panel's className to match the established pattern:
@@ -1806,7 +1806,7 @@ Nothing else in that file changes.
 Run: `npx playwright test e2e/ambassador-products.spec.ts`
 Expected: 4 passed.
 
-If the dev server is not already running, Playwright starts it via `webServer` — the first run may take up to 120s while Next compiles.
+If the dev server is not already running, Playwright starts it via `webServer` - the first run may take up to 120s while Next compiles.
 
 - [ ] **Step 5: Run everything**
 
@@ -1851,7 +1851,7 @@ No gaps.
 **Placeholder scan:** No TBD, TODO, "handle edge cases", or "similar to Task N". Every code step carries real code.
 
 **Type consistency checked:**
-- `summariseProducts` returns `ProductSummary` (Task 1); the component's prop type is `ProductSummaryRow` (Task 5) with identical fields. These are two names for one shape — deliberate, because the component must not import from a server module. Verified field-for-field: `sku`, `name`, `ambassadors`, `units`.
+- `summariseProducts` returns `ProductSummary` (Task 1); the component's prop type is `ProductSummaryRow` (Task 5) with identical fields. These are two names for one shape - deliberate, because the component must not import from a server module. Verified field-for-field: `sku`, `name`, `ambassadors`, `units`.
 - `Gift.receivedAt` is an ISO **string** everywhere it crosses the wire (Tasks 4, 5, 6, 7); only Prisma holds a `Date`.
 - `send` signature `(key, url, method, body) => Promise<boolean>` matches the existing `Send` type in `AmbassadorsClient.tsx`.
 - `ProductLedger` prop names (`ambassadorId`, `gifts`, `catalogue`, `pending`, `send`) match the call site in Task 6 Step 5.
@@ -1880,7 +1880,7 @@ the gap. This is the most valuable item on this list.
 
 **A pre-existing cross-file test race, unrelated to this feature.**
 `src/app/api/orders/route.test.ts` creates a `ProcessingFee` row with gateway
-`'Dintero Checkout'` — which is `ACTIVE_GATEWAY`. That column is `@unique`, so it
+`'Dintero Checkout'` - which is `ACTIVE_GATEWAY`. That column is `@unique`, so it
 is a single global row, and `loadMetricsInput` reads it unscoped. Vitest
 parallelises test files, so `marketing/route.test.ts` can observe a foreign fee
 row, which flips `needsRates` true and fires a **live** request to

@@ -13,7 +13,7 @@ const SECRET = 'inbound-secret-for-tests'
 // Every filename this file's requests can cause the route to attach to a
 // TrackingImport row. importWarehouseFile itself is mocked, so it never
 // touches the table; only the route's own "nothing readable at all" write
-// (filename '(none)') and any filename we invent below need covering here —
+// (filename '(none)') and any filename we invent below need covering here -
 // listed anyway, defensively, so a future change to the route cannot leak a
 // row this file doesn't clean up.
 const FILES = [
@@ -42,7 +42,7 @@ const enclosure = (name: string, contentType = 'application/octet-stream') => ({
   Name: name,
   Content: Buffer.from('x').toString('base64'),
   ContentType: contentType,
-  // Some mailers do leave this empty on a genuine enclosure. Gmail does NOT —
+  // Some mailers do leave this empty on a genuine enclosure. Gmail does NOT -
   // see gmailEnclosure below, which is the shape that broke production.
   ContentID: '',
 })
@@ -118,7 +118,7 @@ describe('POST /api/delivery/inbound', () => {
   })
 
   // 'not-the-secret' above is 14 chars against a 24-char SECRET, so that test
-  // only ever exercises the length early-return in authorised() — never
+  // only ever exercises the length early-return in authorised() - never
   // reaches timingSafeEqual itself. A same-length wrong token is the only way
   // to actually run the comparison.
   it('rejects a same-length wrong token', async () => {
@@ -158,7 +158,7 @@ describe('POST /api/delivery/inbound', () => {
 
     // A slow Bring day must stop cleanly inside the platform's 60s ceiling,
     // not get killed mid-write. resolveConsignments checks this deadline
-    // before every lookup — see consignments.ts — so it has to actually reach
+    // before every lookup - see consignments.ts - so it has to actually reach
     // the call for that protection to exist.
     const opts = importWarehouseFile.mock.calls[0][3] as { deadline: number }
     expect(opts.deadline).toBeGreaterThanOrEqual(before + 49_000)
@@ -180,10 +180,10 @@ describe('POST /api/delivery/inbound', () => {
   })
 
   // Pins a regression: recording the skip in `results` (above) is not enough
-  // on its own — `results` is the JSON body handed back to Postmark, and no
+  // on its own - `results` is the JSON body handed back to Postmark, and no
   // human ever reads it. An email whose ONLY attachment is unreadable must
   // still leave a TrackingImport row, or it is exactly as invisible as
-  // before — the warehouse renames the report `eod.xls`, sends it alone, and
+  // before - the warehouse renames the report `eod.xls`, sends it alone, and
   // the delivery page shows a quiet morning that never happened.
   it('leaves a TrackingImport row when the only attachment is unreadable, not just a response entry', async () => {
     importWarehouseFile.mockReset()
@@ -197,7 +197,7 @@ describe('POST /api/delivery/inbound', () => {
     })
     expect(row).not.toBeNull()
     // The row names the file AND why it was refused. An operator reading the
-    // delivery page has to be able to act on it — "a .png arrived instead of
+    // delivery page has to be able to act on it - "a .png arrived instead of
     // the report" is actionable, "something went wrong" is not.
     expect(row?.error).toMatch(/signature\.png/)
     expect(row?.error).toMatch(/not a file type/i)
@@ -229,7 +229,7 @@ describe('POST /api/delivery/inbound', () => {
 
     // The load-bearing half. `results` goes back to Postmark and nobody reads
     // it; the delivery page reads TrackingImport. Asserting only on the body
-    // above pinned the partial fix — the renamed report still vanished from the
+    // above pinned the partial fix - the renamed report still vanished from the
     // only place a human would ever look for it.
     const row = await db.trackingImport.findFirst({
       where: { source: 'EMAIL', filename: 'eod.xls' },
@@ -247,7 +247,7 @@ describe('POST /api/delivery/inbound', () => {
    * this route can read" next to its successful import, every single day. The
    * delivery page shows the ten most recent imports: it would be permanently
    * red on good mornings and would hold about three days of history instead of
-   * ten — alarm fatigue on the exact surface this design's promise rests on.
+   * ten - alarm fatigue on the exact surface this design's promise rests on.
    */
   it('records nothing at all for a signature image riding along with a good report', async () => {
     importWarehouseFile.mockReset()
@@ -265,7 +265,7 @@ describe('POST /api/delivery/inbound', () => {
     expect(importWarehouseFile).toHaveBeenCalledOnce()
 
     // And nothing was written. Not a refusal for the logo, and not the
-    // "nothing readable arrived" row either — the report did arrive.
+    // "nothing readable arrived" row either - the report did arrive.
     expect(await rowCount()).toBe(before)
   })
 
@@ -276,7 +276,7 @@ describe('POST /api/delivery/inbound', () => {
    * Keying "is this part of the body?" on a non-empty ContentID therefore skipped
    * the warehouse report itself: `recorded` stayed 0, importWarehouseFile was
    * never called, and the delivery page showed
-   * "(none) — This email carried no readable attachment" on 2026-08-14 while the
+   * "(none) - This email carried no readable attachment" on 2026-08-14 while the
    * spreadsheet sat in the payload untouched.
    *
    * A file this route can read is never part of the message body. No email
@@ -323,7 +323,7 @@ describe('POST /api/delivery/inbound', () => {
 
   // The interaction that pulls against the test above: skipping inline images
   // must not also swallow a REAL attachment we could not read. Item 2's whole
-  // point — the report renamed eod.xls — still has to leave a durable row, and
+  // point - the report renamed eod.xls - still has to leave a durable row, and
   // a signature image in the same email must not change that.
   it('still records a genuinely unreadable attachment when a signature image rides along', async () => {
     importWarehouseFile.mockReset()
@@ -422,7 +422,7 @@ describe('POST /api/delivery/inbound', () => {
    *
    * Anyone who learns the Postmark inbound address can post a spreadsheet
    * straight into the shipment data, because until now nothing read `From` at
-   * all — the URL token authenticates POSTMARK, not the person who emailed it.
+   * all - the URL token authenticates POSTMARK, not the person who emailed it.
    * And the address has to be handed to the warehouse for any of this to work,
    * so it cannot stay secret forever.
    *
@@ -438,7 +438,7 @@ describe('POST /api/delivery/inbound', () => {
    * and anything odd about it.
    */
   describe('sender check', () => {
-    /** A real row for the route to annotate — the mock's id must point at one. */
+    /** A real row for the route to annotate - the mock's id must point at one. */
     async function seedImport() {
       const row = await db.trackingImport.create({
         data: { filename: 'eod.xlsx', source: 'EMAIL', rowsParsed: 3, rowsLinked: 3, rowsUnmatched: 0 },

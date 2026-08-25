@@ -58,13 +58,13 @@ describe('PATCH /api/shops/[id]', () => {
     expect(decryptSecret(saved.wooSecret!)).toBe('cs_live_1')
   })
 
-  it('a blank field keeps the stored value — saving must never wipe keys', async () => {
+  it('a blank field keeps the stored value - saving must never wipe keys', async () => {
     await asAdmin()
     const shop = await db.shop.create({ data: { name: 'Patch [patch-test]', currency: 'NOK' } })
     await patch(shop.id, { wooUrl: 'https://mazzetti.no', wooKey: 'ck_1', wooSecret: 'cs_1' })
 
     // The day-one bug: the edit form posts blank key fields and the old code
-    // wrote `'' || null` — erasing the connection it claimed to save.
+    // wrote `'' || null` - erasing the connection it claimed to save.
     const res = await patch(shop.id, { wooUrl: 'https://mazzetti.se', wooKey: '', wooSecret: '' })
     expect(res.status).toBe(200)
 

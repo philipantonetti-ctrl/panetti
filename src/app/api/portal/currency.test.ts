@@ -63,7 +63,7 @@ describe('the portal reports in the webshop’s own currency', () => {
     const body = await res.json()
 
     expect(body.currency).toBe('NOK')
-    // The shop's own money, untouched — not run through a USD rate.
+    // The shop's own money, untouched - not run through a USD rate.
     expect(body.sales).toBe(NET)
     expect(body.commission).toBe(Math.round(NET * 0.1))
     expect(body.recent[0].sales).toBe(NET)

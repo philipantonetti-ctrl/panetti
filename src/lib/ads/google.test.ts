@@ -155,7 +155,7 @@ describe('fetchGoogleDaily', () => {
   })
 
   // Task 4: a malformed or truncated 200 response used to be swallowed into
-  // `null`, which parseGoogleChunks reads as zero rows — the sync then
+  // `null`, which parseGoogleChunks reads as zero rows - the sync then
   // recorded success with lastError: null. Low-impact when this was one
   // request per account; this branch makes it five windowed requests per
   // sync, so one parse failure now silently discards up to 90 days of
@@ -238,7 +238,7 @@ describe('fetchGoogleBreakdown', () => {
   /**
    * The GAQL actually sent, from the request body. fetchGoogleBreakdown goes
    * through searchStream, which mints a fresh access token before every query
-   * (see the fetchGoogleDaily tests above) — so call [0] is always the token
+   * (see the fetchGoogleDaily tests above) - so call [0] is always the token
    * exchange and the query itself is call [1].
    */
   const sentQuery = (fetchMock: { mock: { calls: unknown[][] } }) =>
@@ -319,7 +319,7 @@ describe('fetchGoogleBreakdown', () => {
   })
 
   // I5: most modern ad types (responsive search, Performance Max) leave the
-  // ad's own name unset — it is an optional label, not every ad has one.
+  // ad's own name unset - it is an optional label, not every ad has one.
   // Meta's breakdown already falls back to the id for a missing name; Google
   // did neither, so this would have rendered a blank cell next to real
   // numbers.
@@ -348,7 +348,7 @@ describe('fetchGoogleBreakdown', () => {
 
   // I5, the other half: a row with no id at all (a total row, the same shape
   // Meta's own breakdown parser skips) must be dropped rather than kept with
-  // id: '' — that would collide with every other id-less row under the same
+  // id: '' - that would collide with every other id-less row under the same
   // account on BreakdownTable's `accountId:id` React key.
   it('skips a row with no id, matching Meta', async () => {
     vi.stubGlobal(

@@ -25,7 +25,7 @@ const item = (over: Partial<BriefItem>): BriefItem => ({
   ...over,
 })
 
-// generateBrief logs every failure, which is the point of it — but several
+// generateBrief logs every failure, which is the point of it - but several
 // tests here fail the model on purpose, and their stderr is not a finding.
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -59,7 +59,7 @@ describe('validateItems', () => {
 
   it('drops an item that mixes a real fact with an invented one', () => {
     // The whole game. An item resting on one real figure and one nobody
-    // computed is not partly true — it is a fabricated number wearing a
+    // computed is not partly true - it is a fabricated number wearing a
     // citation. `every`, not `some`, is what makes that impossible.
     expect(
       validateItems([item({ factIds: ['revenue:shop_se', 'revenue:invented'] })], [fact('revenue:shop_se')]),
@@ -100,7 +100,7 @@ describe('describeFailure', () => {
 
   /**
    * The point of the exercise. A JSON blob on the page is an unanswerable
-   * question rather than a thing to fix — the same rule this file already
+   * question rather than a thing to fix - the same rule this file already
    * applies to a raw WooCommerce error.
    */
   it('is one readable line, not the raw body', () => {

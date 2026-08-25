@@ -13,7 +13,7 @@ import type { RateTable } from '@/lib/metrics/types'
 /**
  * The Marketing page's Affiliate section: totals, per shop and per channel.
  *
- * Channel detail lives here rather than in the engine — the engine speaks in
+ * Channel detail lives here rather than in the engine - the engine speaks in
  * per-shop figures, and "which blog earned what" is not one of them.
  *
  * The COST figure cannot disagree with the Dashboard's Affiliate column,
@@ -28,7 +28,7 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
 type Slice = { sales: number; orderValue: number; cost: number }
 
-/** Money still in its own currency, on the day it was booked — a channel's
+/** Money still in its own currency, on the day it was booked - a channel's
  *  (channelId, day, currency) bucket, summed exactly before any conversion. */
 type ChannelBucket = {
   channelId: string
@@ -54,7 +54,7 @@ export async function GET(req: Request) {
     const params = new URL(req.url).searchParams
     const setting = await getSetting()
     // The same range and shop resolution /api/marketing uses, from the same
-    // helpers — a preset must not resolve to a different fortnight here than
+    // helpers - a preset must not resolve to a different fortnight here than
     // it does one section up the page.
     const { from, to } = rangeFromQuery(params, new Date(), setting.timezone)
     const asked = shopIdsFromQuery(params)
@@ -73,14 +73,14 @@ export async function GET(req: Request) {
 
     const connected = (await db.affiliateAccount.count({ where: { active: true } })) > 0
 
-    // THE affiliate-cost query — the one the engine's own loader uses
+    // THE affiliate-cost query - the one the engine's own loader uses
     // (src/lib/affiliate/cost.ts), at its finest (…, channel) grain so the
     // channel table can be carved from the same read.
     const groups = await affiliateGroups(shopIds, from, to)
 
     // Money whose market matched no shop. The `shopId: { in: shopIds }` filter
     // above excludes it from the headline total and the channel table too, not
-    // merely from the per-shop rows — so the client needs the AMOUNT, not just
+    // merely from the per-shop rows - so the client needs the AMOUNT, not just
     // a count, to say honestly what is missing. Same predicate otherwise,
     // grouped per (day, currency) so it converts at each day's own rate.
     const unmatchedGroups = await db.affiliateTransaction.groupBy({
@@ -91,7 +91,7 @@ export async function GET(req: Request) {
     })
 
     // A currency with no rate row converts to itself silently, which reads as
-    // a real number and is not one — so top up before converting anything.
+    // a real number and is not one - so top up before converting anything.
     // Unmatched rows count here too: an unmatched sale in a foreign currency
     // must not convert against a missing rate.
     const currencies = new Set([
@@ -107,7 +107,7 @@ export async function GET(req: Request) {
       crossConvert(amount, currency, displayCurrency, date, rates)
 
     // Shop rows and the total, from THE engine roll-up: each (shop, day,
-    // currency) slice converted at its own day's rate — the same rows, summed
+    // currency) slice converted at its own day's rate - the same rows, summed
     // by the same code, as the Dashboard's Affiliate column.
     const byShop = new Map<string, Slice>()
     const total: Slice = { sales: 0, orderValue: 0, cost: 0 }
@@ -124,7 +124,7 @@ export async function GET(req: Request) {
     }
 
     // The channel view of the same groups: re-summed to (channel, day,
-    // currency) — still exact minor units — before any conversion.
+    // currency) - still exact minor units - before any conversion.
     const channelBuckets = new Map<string, ChannelBucket>()
     // A renamed channel leaves groups under both names for one channelId; the
     // one with the most recent date carries the name the platform now uses.
@@ -176,8 +176,8 @@ export async function GET(req: Request) {
     }))
 
     // The channel partition and the shop partition sum the SAME groups under
-    // the SAME per-day rates — every bucket of a given (day, currency) shares
-    // one rate — so any difference between their converted sums is pure
+    // the SAME per-day rates - every bucket of a given (day, currency) shares
+    // one rate - so any difference between their converted sums is pure
     // rounding (each bucket rounds once, at most half a minor unit per
     // bucket). The engine-grain total is the canonical figure; adding the
     // difference to the largest channel row reconciles the table to it
@@ -198,7 +198,7 @@ export async function GET(req: Request) {
 
     // Loud, never silent: money that belongs to no shop is still money, and
     // by construction it is missing from the total, the channel table and the
-    // shop table alike. Deliberately NOT folded into `total.cost` — the whole
+    // shop table alike. Deliberately NOT folded into `total.cost` - the whole
     // point of this endpoint is quoting exactly the engine's figure.
     let unmatched = 0
     let unmatchedCost = 0

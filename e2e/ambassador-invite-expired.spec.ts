@@ -6,7 +6,7 @@ import type { Page } from '@playwright/test'
  *
  * Ambassadors treat the invite link as their way in and keep coming back to it to
  * check their sales. Until this was fixed, day eight answered "This invite link is
- * not valid. Ask for a new one." — a dead end for someone whose account was fine and
+ * not valid. Ask for a new one." - a dead end for someone whose account was fine and
  * waiting at /login, and the reason support kept hearing "my link stopped working".
  * The page could not tell the two apart because the name on the link lives inside the
  * token, and an expired token was being thrown away whole.
@@ -30,7 +30,7 @@ const CHOSEN_PASSWORD = 'chosen-by-the-ambassador-1'
 async function expiredInviteToken(ambassadorId: string): Promise<string> {
   await import('@prisma/client') // imported for that side effect alone
   const secret = process.env.AUTH_SECRET
-  if (!secret) throw new Error('AUTH_SECRET is not set — cannot mint a lapsed invite')
+  if (!secret) throw new Error('AUTH_SECRET is not set - cannot mint a lapsed invite')
 
   const { SignJWT } = await import('jose')
   const now = Math.floor(Date.now() / 1000)
@@ -59,7 +59,7 @@ async function signIn(page: Page, email: string, password: string) {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  // The click only dispatches the DOM event — wait for the real signal that the
+  // The click only dispatches the DOM event - wait for the real signal that the
   // cookie landed, which is that we have left /login.
   await page.waitForURL(/\/(dashboard|portal)/)
 }
@@ -139,7 +139,7 @@ test('a lapsed link that was never used says it expired, and does not claim it w
   await context.clearCookies()
   await page.goto(lapsed)
 
-  // Nobody set a password here, so there is no account to send them to — and saying
+  // Nobody set a password here, so there is no account to send them to - and saying
   // "already used" would be a lie that stops them asking for the new link they need.
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(/has expired/i)
   await expect(page.getByText(/already been used/i)).toHaveCount(0)
@@ -159,7 +159,7 @@ test('a forged link is still refused outright, expiry or no expiry', async ({ pa
 })
 
 test.afterAll(async () => {
-  // This spec writes to the real database — clean up after itself. The login and the
+  // This spec writes to the real database - clean up after itself. The login and the
   // discount code go with it: both cascade from the ambassador.
   const { PrismaClient } = await import('@prisma/client')
   const db = new PrismaClient()

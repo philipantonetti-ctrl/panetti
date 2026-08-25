@@ -9,7 +9,7 @@ import { zoneDayEndUtc, zonedDayStr } from '../tz'
  * on, which is exactly the failure that makes people mute an alert channel.
  *
  * PUBLIC HOLIDAYS ARE NOT MODELLED. Constitution Day and Christmas will produce
- * a handful of false lates. That is a stated limitation, not an oversight — see
+ * a handful of false lates. That is a stated limitation, not an oversight - see
  * the spec. If it proves to matter, a holiday table goes in here and nowhere
  * else.
  */
@@ -63,7 +63,7 @@ export function deadlineFor(
 
 /**
  * Calendar days elapsed between two instants, counted by the DAY each falls on
- * in `tz` — not by dividing milliseconds. An order placed at 23:00 and
+ * in `tz` - not by dividing milliseconds. An order placed at 23:00 and
  * delivered at 01:00 two nights later took two days, not one and a bit.
  */
 export function daysBetween(from: Date, to: Date, tz: string): number {

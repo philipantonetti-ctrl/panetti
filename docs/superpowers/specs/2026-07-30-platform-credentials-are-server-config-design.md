@@ -41,7 +41,7 @@ otherwise take the live site dark, whereas falling back leaves it running on
 the row the client already saved.
 
 `decryptSecret` returns any value without the `enc:v1:` prefix unchanged
-(`src/lib/secrets.ts:35`), so the accessor can run both paths through it — an
+(`src/lib/secrets.ts:35`), so the accessor can run both paths through it - an
 environment variable is plaintext and passes straight through, a database
 value decrypts.
 
@@ -81,7 +81,7 @@ export type PlatformSetup = { meta: boolean; google: boolean }
 
 `page.tsx` fills it by asking the accessor for each provider and reporting
 whether it answered. No client ID, no `hasDeveloperToken`, and nothing
-secret-shaped crosses to the browser — which is a small security improvement
+secret-shaped crosses to the browser - which is a small security improvement
 on today, where the App ID and a `hasSecret` boolean both do.
 
 ### What leaves
@@ -128,23 +128,23 @@ on an admin-only page, not something the client is expected to act on.
 | Provider configured in neither env nor database | The button explains it is not configured on the server. No redirect. |
 | Env set, no database row | Works. This is the intended production state and the case no existing test covers. |
 | Env unset, database row present | Works, unchanged from today. |
-| `AUTH_SECRET` rotated, so the fallback row cannot decrypt | `decryptSecret` throws, as it already does everywhere else — a visible failure, never a silent one. |
+| `AUTH_SECRET` rotated, so the fallback row cannot decrypt | `decryptSecret` throws, as it already does everywhere else - a visible failure, never a silent one. |
 
-Everything downstream — the state cookie, the code exchange, the picker,
-`/me/adaccounts`, bulk connect, the backfill — is untouched.
+Everything downstream - the state cookie, the code exchange, the picker,
+`/me/adaccounts`, bulk connect, the backfill - is untouched.
 
 ## Testing
 
-- **Unit** — the accessor prefers env over the row, falls back to the row
+- **Unit** - the accessor prefers env over the row, falls back to the row
   when env is absent, returns null when neither exists, passes a plaintext
   env secret through undecrypted, and decrypts an encrypted row value.
-- **Route** — the start route reaches the platform dialog with env-only
+- **Route** - the start route reaches the platform dialog with env-only
   configuration and **no** database row. That is the new production shape and
   nothing tests it today.
-- **Component** — no setup section, no App ID or developer token field
+- **Component** - no setup section, no App ID or developer token field
   anywhere, both buttons live, and the not-configured message when the server
   says a provider is missing.
-- **E2E** — the page shows two connect links and no callback URL.
+- **E2E** - the page shows two connect links and no callback URL.
 
 ## What still has to happen once, and by whom
 
@@ -163,7 +163,7 @@ API can set.
 **Facebook roles.** The app is in Development mode, and Meta's App Modes
 reference is explicit that such an app "can only request permissions from
 role users". BeProfit shows the Facebook ad accounts under **Jacob Kjos
-Hanssen**, not Philip, so Jacob needs a role on the app — Tester is enough —
+Hanssen**, not Philip, so Jacob needs a role on the app - Tester is enough -
 or his login is refused no matter what else is right. This is the constraint
 most likely to look like a bug.
 
@@ -189,6 +189,6 @@ access for all permissions and features available to the Business app type."*
 Development mode then limits who may log in to people with a role on the app,
 which is exactly the arrangement we want.
 
-Advanced Access — App Review plus Business Verification — is what BeProfit
+Advanced Access - App Review plus Business Verification - is what BeProfit
 needs because it serves thousands of merchants who are strangers to it. We
 serve one, and he is an admin on the app.

@@ -8,7 +8,7 @@ import { encryptSecret } from '@/lib/secrets'
 /**
  * Every field optional, so one PATCH can carry the whole connection form OR a
  * single toggled checkbox. A body naming only `stockSource` must not have to
- * send the Woo credentials back to be allowed through — ticking a box has no
+ * send the Woo credentials back to be allowed through - ticking a box has no
  * business restating a store connection.
  */
 const Body = z.object({

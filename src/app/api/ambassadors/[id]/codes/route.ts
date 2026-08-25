@@ -10,7 +10,7 @@ const RemoveBody = z.object({ codeId: z.string().min(1) })
 
 type Ctx = { params: Promise<{ id: string }> }
 
-// Prisma's duplicate-key code — AmbassadorCode.code is @unique.
+// Prisma's duplicate-key code - AmbassadorCode.code is @unique.
 function isUniqueViolation(e: unknown): boolean {
   return typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2002'
 }
@@ -27,7 +27,7 @@ export async function POST(req: Request, { params }: Ctx) {
     if (!ambassador) return NextResponse.json({ error: 'No such ambassador' }, { status: 404 })
 
     // Stored uppercase: sync.ts uppercases the coupon before looking it up, and
-    // Postgres uniqueness is case-sensitive — so 'save10' and 'SAVE10' would be two
+    // Postgres uniqueness is case-sensitive - so 'save10' and 'SAVE10' would be two
     // legal rows on one store collapsing to one key in sync's map, silently
     // cross-attributing commission that is then frozen onto orders forever.
     await db.ambassadorCode.create({
@@ -56,7 +56,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
 
     const { id } = await params
 
-    // An ambassador with no code can never earn again — refuse rather than strand them.
+    // An ambassador with no code can never earn again - refuse rather than strand them.
     const remaining = await db.ambassadorCode.count({ where: { ambassadorId: id } })
     if (remaining <= 1) {
       return NextResponse.json(
@@ -66,7 +66,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
     }
 
     // Scoped by ambassadorId as well as id: a code may never be deleted via someone
-    // else's ambassador. deleteMany reports how many rows it matched — zero means the
+    // else's ambassador. deleteMany reports how many rows it matched - zero means the
     // code does not exist, or belongs to another ambassador. Both are a 404 here, and
     // saying so is what stops a no-op being reported as success.
     const removed = await db.ambassadorCode.deleteMany({

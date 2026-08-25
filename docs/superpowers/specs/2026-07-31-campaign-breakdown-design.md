@@ -19,7 +19,7 @@ and the difference matters, so it is written down rather than silently absorbed.
 **In the screenshots but deliberately not built** (each confirmed with the human):
 
 - **Status toggles and pencil-editable budgets.** Those are writes. Our Meta
-  permission is `ads_read,business_management` — read only. Building them would
+  permission is `ads_read,business_management` - read only. Building them would
   need `ads_management`, a fresh consent from the person who logged in, and a
   mis-click would pause live spend. Ruled out: see-only.
 - **Two ROAS columns, NCP, CV.** Triple Whale computes these by joining Meta to
@@ -45,7 +45,7 @@ design serve both:
 
 Storing this needs **daily** rows, or an arbitrary date range cannot be summed.
 That is ads × days: fifty ads over a year is ~18,250 rows for a single account,
-which at Meta's paging is roughly 180-730 requests to backfill — per account.
+which at Meta's paging is roughly 180-730 requests to backfill - per account.
 Across nine accounts, thousands of requests against a cron whose shops budget is
 240 seconds. It would break the scheduled sync that was stabilised the same day.
 
@@ -55,7 +55,7 @@ campaign returns its ad sets; expanding an ad set returns its ads. Each response
 is tens of rows.
 
 The deciding argument is not size, though. **Meta refreshes insights every 3-6
-hours** — the existing sync says so in `src/lib/ads/sync.ts:23` — so stored
+hours** - the existing sync says so in `src/lib/ads/sync.ts:23` - so stored
 figures are never fresher than live ones, only staler and capable of drifting.
 Reading the same endpoint Ads Manager reads means the two screens agree
 permanently, which removes a whole category of "why is your number different"
@@ -63,7 +63,7 @@ from a tool a client uses to judge spend.
 
 **The cost, stated plainly:** about a second on first expansion, and no ability
 to join a campaign to our own order data. If per-campaign profit is ever wanted,
-that is when storing campaign rows earns its place — and nothing here blocks it.
+that is when storing campaign rows earns its place - and nothing here blocks it.
 
 **No cache in this version**, and that is a correction to the first draft of
 this design. An in-process cache was proposed on the reasoning that it would
@@ -73,7 +73,7 @@ while still adding a mechanism, a TTL and a staleness question to argue about.
 One request per expansion is genuinely cheap, and there is one admin using this.
 
 If the latency ever grates, the honest fix is Next's data cache with an explicit
-revalidate window, added deliberately and measured — not a Map that appears to
+revalidate window, added deliberately and measured - not a Map that appears to
 work in development and rarely fires in production.
 
 ## The route
@@ -110,7 +110,7 @@ export type BreakdownRow = {
 ```
 
 ROAS and CTR are **derived once**, at render, from those figures. They are not
-stored, not returned twice, and not computed in two places — the single most
+stored, not returned twice, and not computed in two places - the single most
 likely way for two numbers on one screen to disagree.
 
 The account fields are not decoration. A shop may have more than one ad account
@@ -118,7 +118,7 @@ on a provider, and the response is their union: without the account on the row,
 two identically-named campaigns from different accounts would collapse into one
 another, and `parentId` for the next level down would be ambiguous. The currency
 belongs to the ad account rather than the shop for the same reason the rest of
-this codebase keeps them apart — an account can bill in a currency the store
+this codebase keeps them apart - an account can bill in a currency the store
 does not trade in.
 
 ### Meta
@@ -134,7 +134,7 @@ syntax:
 
 with `time_range={"since":…,"until":…}` and the field list already used by
 `fetchMetaDaily`, minus `time_increment`. `metaJson`, `day()` and the existing
-action/action-value parsing are reused rather than rewritten — purchases and
+action/action-value parsing are reused rather than rewritten - purchases and
 purchase value are already extracted there and must keep meaning exactly what
 they mean on the Marketing page today.
 
@@ -174,8 +174,8 @@ Campaign                     Spend        ROAS   Purch.   Value          CTR
 **Numbers follow this app's convention, not Triple Whale's screenshot.** The
 first draft of this design copied `6,37` straight off the competitor's image.
 That was wrong: `src/components/marketing/MarketingTable.tsx:98-112` already
-renders ROAS as `6.28×` and percentages as `1.8%`, with an em dash `—` for
-unknown, and `MarketingStats.tsx:34` agrees — **on the same page**. Two figures
+renders ROAS as `6.28×` and percentages as `1.8%`, with an em dash `-` for
+unknown, and `MarketingStats.tsx:34` agrees - **on the same page**. Two figures
 both labelled ROAS, formatted differently on one screen, is how a client stops
 trusting the numbers. Matching a competitor's screenshot is worth far less than
 this page agreeing with itself.
@@ -207,21 +207,21 @@ so it is obvious which one broke.
 
 Four layers, matching what the repo already does.
 
-**Stubbed-fetch unit** — the built Meta URL asserted literally, including
+**Stubbed-fetch unit** - the built Meta URL asserted literally, including
 `level`, the object id it hangs off, and the encoded `time_range`; the GAQL
 string asserted literally including the `WHERE` clause; the row mapper for both
 platforms, including micros conversion and the divide-by-zero case for ROAS on a
 campaign that spent nothing.
 
-**Route, DB-backed** — the admin gate; a shop with no accounts on the chosen
+**Route, DB-backed** - the admin gate; a shop with no accounts on the chosen
 provider; parent id passed through to the driver; provider switching; and an
 expired token surfacing as readable text rather than a 500.
 
-**Component, jsdom** — expanding fetches the right level and parent; children
+**Component, jsdom** - expanding fetches the right level and parent; children
 indent under their parent; a second expansion does not refetch; the label reads
 Ad set on Meta and Ad group on Google; the empty and error states appear.
 
-**End to end, Playwright** — open Marketing, choose one store, expand a
+**End to end, Playwright** - open Marketing, choose one store, expand a
 campaign, see its ad sets, expand one, see its ads, switch to Google. Platform
 responses stubbed at the network layer so the run is deterministic and never
 touches a real ad account.

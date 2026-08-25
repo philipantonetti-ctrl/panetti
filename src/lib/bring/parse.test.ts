@@ -92,7 +92,7 @@ describe('extractPairs', () => {
 })
 
 describe('parseTrackingFile', () => {
-  // Skipped: src/lib/bring/__fixtures__/warehouse.pdf does not exist yet — the
+  // Skipped: src/lib/bring/__fixtures__/warehouse.pdf does not exist yet - the
   // client has not sent a real warehouse PDF. Do not fabricate one. The moment
   // a real file arrives: add it at that path, enable this test, and tighten
   // the assertion below from "is an array" to the actual order/tracking pairs
@@ -114,7 +114,7 @@ describe('parseTrackingFile', () => {
 
   it('reports every parcel number the file held, not just the ones it paired', async () => {
     // Two of these three parcels belong to orders we do not hold, so they are
-    // dropped entirely — there is no unmatched row to describe them. Without
+    // dropped entirely - there is no unmatched row to describe them. Without
     // `seen`, this file would report "1 row, 1 linked": a flawless import that
     // quietly lost two thirds of its parcels, and left two orders looking
     // never-shipped until the alert fired about them.
@@ -131,8 +131,8 @@ describe('parseTrackingFile', () => {
 
   it('counts a repeated parcel number once, and still refuses to pair it', async () => {
     // The support line in a footer looks like a parcel number and repeats.
-    // It counts toward what the file offered — the operator should see that
-    // something went unlinked — but it must never be paired.
+    // It counts toward what the file offered - the operator should see that
+    // something went unlinked - but it must never be paired.
     const csv = Buffer.from('21009000\n1001,370724403790000123\n1002,21009000\n', 'utf8')
     const { rows, seen } = await parseTrackingFile(csv, 'today.csv', known)
     expect(rows).toEqual([{ orderNumber: '1001', trackingNumber: '370724403790000123' }])

@@ -20,7 +20,7 @@ export async function GET(req: Request) {
      * this page was the only list where it genuinely appeared nine times: a cost
      * is stored against a per-shop `Product` row. The write already fans out
      * across every shop selling the SKU, so any one row is now enough to cost
-     * the product everywhere — this makes the LIST match that.
+     * the product everywhere - this makes the LIST match that.
      *
      * Per-shop mode stays, and is the only way to reach a product no source shop
      * sells. Ten of the sixty-two are in that position and six of them sold this
@@ -52,12 +52,12 @@ export async function GET(req: Request) {
     ])
 
     // Two source shops are two catalogues, so anything they both list would
-    // appear twice — the same complaint arriving by a different road.
+    // appear twice - the same complaint arriving by a different road.
     const products = bySource ? oneRowPerSku(found) : found
 
     /**
-     * Products the client has hidden on the Suppliers page — spare parts and the
-     * like — so this page stops asking him to cost things he never buys.
+     * Products the client has hidden on the Suppliers page - spare parts and the
+     * like - so this page stops asking him to cost things he never buys.
      *
      * Hidden, never deleted. Deleting a Product would cascade its ProductCost
      * timeline away (schema.prisma:95) and silently change the profit on orders
@@ -82,7 +82,7 @@ export async function GET(req: Request) {
      * How many usable SKUs the active shops sell that this view leaves out.
      *
      * Zero in per-shop mode, where the question does not arise. In source mode
-     * these are the products only the other webshops list — reachable by picking
+     * these are the products only the other webshops list - reachable by picking
      * that shop above, and named on the page so nobody reads a short list as a
      * complete one.
      */
@@ -106,7 +106,7 @@ export async function GET(req: Request) {
           // use. In source mode a row stands for the product in every webshop,
           // so wearing Mazzetti's " csr-shared " would put stray whitespace on
           // screen and make the row impossible to match against the SKU the rest
-          // of the system keys on. Display only — the cost is saved against
+          // of the system keys on. Display only - the cost is saved against
           // `id`, which never changes.
           sku: normaliseSku(p.sku),
           name: p.name,

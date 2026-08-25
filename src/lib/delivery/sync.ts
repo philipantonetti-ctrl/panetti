@@ -22,8 +22,8 @@ export type ShipmentSyncResult = {
   /**
    * DHL parcels that were due and went unasked for want of a key.
    *
-   * Counted because skipping them is silent by design — no error on the parcel
-   * and no change to its schedule — and DHL's credentials are an environment
+   * Counted because skipping them is silent by design - no error on the parcel
+   * and no change to its schedule - and DHL's credentials are an environment
    * variable with no settings row, no status line and no way to notice. Every
    * other integration here says whether it is connected; this is how DHL does.
    */
@@ -106,8 +106,8 @@ export function nextPollFor(
  * Ask one carrier about one parcel.
  *
  * Null means the carrier does not know the number. Both carriers are one parcel
- * per request — Bring answers about a single `q` however many are sent
- * (measured 2026-08-12), and DHL's endpoint has no batch form at all — so there
+ * per request - Bring answers about a single `q` however many are sent
+ * (measured 2026-08-12), and DHL's endpoint has no batch form at all - so there
  * is no batching to be had on either side.
  */
 type Tracker = (
@@ -126,7 +126,7 @@ const sleepFor = (ms: number) => new Promise((r) => setTimeout(r, ms))
  * DHL's per-run cap guarantees some runs cannot reach everything.
  *
  * A per-parcel failure is written to its own lastError and never thrown. One
- * dead parcel must not stop the rest — the same rule ads/sync.ts follows for
+ * dead parcel must not stop the rest - the same rule ads/sync.ts follows for
  * one broken ad account.
  */
 export async function syncShipments(
@@ -168,7 +168,7 @@ export async function syncShipments(
      *
      * `nextPollAt: { lte: now }` alone silently drops those rows: in SQL
      * `NULL <= now()` evaluates to NULL, not true, so they are not returned by
-     * any run, ever. And nothing backfills the column — the DHL import wrote
+     * any run, ever. And nothing backfills the column - the DHL import wrote
      * NULL deliberately, back when this poller asked Bring about every number
      * regardless of carrier and a due date would have sent a DHL number to
      * Bring. Those parcels were left permanently invisible.
@@ -190,8 +190,8 @@ export async function syncShipments(
      * whole fix. Oldest-scheduled-first is a fair rule between equals, and
      * these are not equals:
      *
-     * A parcel the warehouse file reports delivered is NOT terminal — only a
-     * poll makes a parcel terminal — so it stays in this rotation holding the
+     * A parcel the warehouse file reports delivered is NOT terminal - only a
+     * poll makes a parcel terminal - so it stays in this rotation holding the
      * import-time nextPollAt it was created with, which is the oldest value in
      * the table. Meanwhile nextPollFor hands a parcel near or past its promise
      * `nextPollAt: now`, the NEWEST value there is, to mean "check this one on
@@ -252,8 +252,8 @@ export async function syncShipments(
     if (opts.deadline !== undefined && Date.now() >= opts.deadline) break
 
     const track = trackers[s.carrier]
-    // A carrier we hold no credentials for. Left completely alone — no error on
-    // the parcel, no change to nextPollAt — so that connecting it later picks
+    // A carrier we hold no credentials for. Left completely alone - no error on
+    // the parcel, no change to nextPollAt - so that connecting it later picks
     // these up exactly where they were. Recording a failure here would fill the
     // delivery page with red for a carrier nobody has connected yet.
     //
@@ -276,7 +276,7 @@ export async function syncShipments(
         // The wait is checked against the deadline BEFORE it is taken, for the
         // same reason the lookup above is: sleeping through the deadline and
         // then asking anyway buys a one-millisecond request budget, an abort,
-        // and a healthy parcel recorded as failed — the poller inventing a
+        // and a healthy parcel recorded as failed - the poller inventing a
         // failure out of its own waiting.
         if (opts.deadline !== undefined && Date.now() + RATE_LIMIT_GAP_MS >= opts.deadline) break
         await sleep(RATE_LIMIT_GAP_MS)
@@ -289,7 +289,7 @@ export async function syncShipments(
       found = await track(s.trackingNumber, { deadline: opts.deadline })
     } catch (e) {
       // A network error, a bad key, a rate limit. Record it on the parcel and
-      // carry on — the next run retries.
+      // carry on - the next run retries.
       const error = e instanceof Error ? e.message : 'Tracking lookup failed'
       failed++
       await db.shipment
@@ -321,7 +321,7 @@ export async function syncShipments(
 
     const m = found.milestones
     // An unlinked parcel, or one whose country has no promise in force, simply
-    // uses the ordinary tiers. No promise means NO deadline — never a zero one,
+    // uses the ordinary tiers. No promise means NO deadline - never a zero one,
     // which would make every parcel look overdue and put the whole backlog into
     // the every-run tier.
     const promise = s.order
@@ -343,7 +343,7 @@ export async function syncShipments(
       await db.$transaction(async (tx) => {
         // One insert for the whole event set, not one per event: a parcel's
         // history is re-sent in full on every poll, so this runs constantly.
-        // skipDuplicates leans on @@unique([shipmentId, status, occurredAt]) —
+        // skipDuplicates leans on @@unique([shipmentId, status, occurredAt]) -
         // that constraint is what makes re-ingesting a restated history a no-op
         // rather than a pile of duplicates.
         await tx.shipmentEvent.createMany({
@@ -369,8 +369,8 @@ export async function syncShipments(
       updated++
     } catch (e) {
       // One parcel's write must not end the run. Without this, a single bad
-      // row — a connection blip, or a transaction timeout on a parcel with a
-      // long history — aborts every parcel still queued behind it. Worse under
+      // row - a connection blip, or a transaction timeout on a parcel with a
+      // long history - aborts every parcel still queued behind it. Worse under
       // oldest-first ordering: a persistently-failing row holds the head of the
       // queue and starves everything else on every later run too, which is the
       // exact outage syncAllShops's lastRunAt rule exists to prevent.
@@ -394,13 +394,13 @@ export async function syncShipments(
   // Same silent-success seam that slackLastError already closed for the alert
   // half; this is the carrier half of it.
   //
-  // A partial failure still counts as a sync — parcels that did poll are
+  // A partial failure still counts as a sync - parcels that did poll are
   // genuinely fresh, and their own lastError carries the detail. Only a run
   // that reached nothing at all is a failed run.
   //
   // A carrier we were never able to ASK is the third case, and it used to fall
   // through here as a success. DHL's key is an environment variable: no
-  // settings row, no status line, nothing to notice — so with it unset the
+  // settings row, no status line, nothing to notice - so with it unset the
   // poller skipped every DHL parcel, wrote nothing anywhere, and stamped the
   // sync healthy. That is how three parcels DHL had delivered on 2026-08-13
   // were still being reported as in transit and a week overdue on the 21st.
@@ -414,7 +414,7 @@ export async function syncShipments(
   // poll is last in the cron behind a shop sync allowed 240s of a 275s budget
   // and three Visma imports carrying no deadline, so the loop's first deadline
   // check can break before one parcel is asked about. polled and failed are
-  // then both zero — which is also exactly what a run with nothing due looks
+  // then both zero - which is also exactly what a run with nothing due looks
   // like, and why it was read as healthy. The number of parcels that WERE due
   // is the only thing separating the two, so it is what decides.
   const reachedNothing = polled === 0 && failed > 0

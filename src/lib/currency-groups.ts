@@ -4,7 +4,7 @@ import { NO_SHOPS } from '@/components/filters/ShopFilter'
  * Adding two stores' money together is only honest when they trade in the same
  * currency. This is the rule the product page is gated on: `Shop` records a
  * currency and no country, and currency is what protects the arithmetic anyway
- * — Finland and Germany are different countries, both EUR, and EUR + EUR is
+ * - Finland and Germany are different countries, both EUR, and EUR + EUR is
  * correct.
  */
 

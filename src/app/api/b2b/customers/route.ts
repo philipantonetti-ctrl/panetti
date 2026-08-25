@@ -31,7 +31,7 @@ const Body = z.object({
  * Trimmed, or null when there is nothing there.
  *
  * A trailing space would match no Visma customer and look exactly like a
- * customer who simply has no invoices — the failure the import cannot report,
+ * customer who simply has no invoices - the failure the import cannot report,
  * because "no invoices for them" is the normal case.
  */
 export function cleanVismaNumber(raw: string | null | undefined): string | null {
@@ -119,7 +119,7 @@ export async function GET(req: Request) {
             active: c.active,
             priceCount: c._count.prices,
             orderCount: t?._count._all ?? 0,
-            // Net revenue in the customer's OWN currency — every one of their
+            // Net revenue in the customer's OWN currency - every one of their
             // orders is in it, so nothing here needs converting.
             revenue: (t?._sum.netSales ?? 0) + (t?._sum.shippingCharged ?? 0),
           }

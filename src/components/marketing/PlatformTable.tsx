@@ -47,11 +47,11 @@ export function PlatformTable({
                 <td className="num px-5 py-3 text-right text-muted">{count(r.impressions)}</td>
                 <td className="num px-5 py-3 text-right text-muted">{count(r.clicks)}</td>
                 <td data-testid={`cpc-${r.provider}`} className="num px-5 py-3 text-right text-muted">
-                  {r.cpc === null ? '—' : formatMoney(r.cpc, currency)}
+                  {r.cpc === null ? '-' : formatMoney(r.cpc, currency)}
                 </td>
                 <td className="num px-5 py-3 text-right text-muted">{count(r.conversions)}</td>
                 <td className="num px-5 py-3 text-right text-muted">
-                  {r.platformRoas === null ? '—' : `${r.platformRoas.toFixed(2)}×`}
+                  {r.platformRoas === null ? '-' : `${r.platformRoas.toFixed(2)}×`}
                 </td>
               </tr>
             ))}

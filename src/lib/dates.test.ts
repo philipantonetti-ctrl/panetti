@@ -6,7 +6,7 @@ describe('dates', () => {
     expect(utcDay(new Date('2026-07-14T23:59:59Z')).toISOString()).toBe('2026-07-14T00:00:00.000Z')
   })
 
-  it('counts days in a range inclusively — a single day is 1 day, not 0', () => {
+  it('counts days in a range inclusively - a single day is 1 day, not 0', () => {
     expect(daysInRange(new Date('2026-07-01'), new Date('2026-07-01'))).toBe(1)
     expect(daysInRange(new Date('2026-07-01'), new Date('2026-07-31'))).toBe(31)
   })

@@ -28,7 +28,7 @@ beforeAll(async () => {
   await cleanup()
 
   // Two shops on the SAME currency, so the fan-out can be tested without
-  // writing to the shared FxRate table — the conversion arithmetic itself is
+  // writing to the shared FxRate table - the conversion arithmetic itself is
   // covered by cost-spread.test.ts, which needs no database at all.
   const [no, se, dk] = await Promise.all([
     db.shop.create({ data: { name: `Panetti Norway ${TAG}`, currency: 'NOK' } }),
@@ -43,7 +43,7 @@ beforeAll(async () => {
       data: { shopId: no.id, externalId: 'x-no', sku: SKU, name: 'Pizzaovn Pro' },
     }),
     // Deliberately lower case with stray spaces. Product stores the SKU exactly
-    // as the shop spelled it, and comparing raw is how a sibling gets missed —
+    // as the shop spelled it, and comparing raw is how a sibling gets missed -
     // which would silently leave one webshop on the old cost.
     db.product.create({
       data: { shopId: se.id, externalId: 'x-se', sku: ` ${SKU.toLowerCase()} `, name: 'Pizzaugn' },

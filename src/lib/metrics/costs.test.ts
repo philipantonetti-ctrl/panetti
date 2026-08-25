@@ -19,7 +19,7 @@ describe('costOn', () => {
     expect(costOn(history, new Date('2026-06-01'))).toEqual({ costPerItem: 12000, handlingCost: 200 })
   })
 
-  it('returns zero when the order predates every known cost — never guesses', () => {
+  it('returns zero when the order predates every known cost - never guesses', () => {
     expect(costOn(history, new Date('2025-12-31'))).toEqual({ costPerItem: 0, handlingCost: 0 })
   })
 
@@ -32,7 +32,7 @@ describe('costOn', () => {
     expect(costOn(shuffled, new Date('2026-07-15'))).toEqual({ costPerItem: 12000, handlingCost: 200 })
   })
 
-  it('ignores the time of day — an order at 23:59 uses that day cost', () => {
+  it('ignores the time of day - an order at 23:59 uses that day cost', () => {
     expect(costOn(history, new Date('2026-06-01T23:59:59Z'))).toEqual({ costPerItem: 12000, handlingCost: 200 })
   })
 })

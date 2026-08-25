@@ -21,7 +21,7 @@ export default async function PurchaseOrdersPage() {
     // What the stock-source shops call each product, as the Forecast and
     // lead-times tabs both read it. `SupplyItem.name` is a snapshot taken from
     // whichever shop synced first and never updated, so without this the picker
-    // offers Norwegian products under their Finnish and Swedish names — the same
+    // offers Norwegian products under their Finnish and Swedish names - the same
     // complaint, one tab along.
     db.product.findMany({
       where: { shop: { active: true, stockSource: true } },
@@ -32,7 +32,7 @@ export default async function PurchaseOrdersPage() {
 
   const catalogue = sourceShops > 0 ? catalogueOf(sourceProducts) : null
   // Not gated on `sourceShops` the way the catalogue is. A missing name has a
-  // fallback worth reaching for — the stored one — so that decision has to be
+  // fallback worth reaching for - the stored one - so that decision has to be
   // made deliberately; a missing photo has none, and with no source shops this
   // query returns nothing anyway, so the map is empty and every row draws the
   // placeholder. Same rule the Forecast and Stock tabs already use.
@@ -40,7 +40,7 @@ export default async function PurchaseOrdersPage() {
 
   // Deliberately NOT scoped to what those shops carry, unlike the lead-times
   // list. A purchase order for something only Sweden lists is a real purchase
-  // order — PC-AF-BOWL sold this quarter — and putting it behind a drawer would
+  // order - PC-AF-BOWL sold this quarter - and putting it behind a drawer would
   // add friction to recording an order without preventing a single mistake. The
   // names are the whole fix here.
   const named = namedFromSource(items, catalogue)
@@ -49,7 +49,7 @@ export default async function PurchaseOrdersPage() {
     <AppShell email={user.email}>
       {/* "What is on the water" until 2026-08-18, which was wrong about most of
           the page and jargon besides. Measured that day: of 271 rows, 246 were
-          already received and 25 still coming — so the old subtitle described
+          already received and 25 still coming - so the old subtitle described
           9% of what the reader was looking at, in a trade phrase for goods in
           transit that means nothing to someone reading English as a second
           language. The three sibling tabs each say plainly what their page is

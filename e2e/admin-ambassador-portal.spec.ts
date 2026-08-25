@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client'
 /**
  * The owner is both the admin AND an ambassador on the same email. They can open
  * their OWN ambassador portal from the dashboard, on top of the admin view. A
- * regular ambassador gains nothing — they still cannot reach any admin page.
+ * regular ambassador gains nothing - they still cannot reach any admin page.
  */
 
 const ADMIN = 'admin@ecom.test'
@@ -31,7 +31,7 @@ test.beforeAll(async () => {
     })
 
     // A real sale, dated today so it falls inside the portal's default period,
-    // carrying a product line — so the page must render what was sold.
+    // carrying a product line - so the page must render what was sold.
     const product = await db.product.create({
       data: { shopId: shop.id, externalId: PRODUCT_EXT, sku: 'E2E-1', name: PRODUCT_NAME, lastPrice: 100000 },
     })
@@ -77,7 +77,7 @@ test('the owner signing in at the AMBASSADOR door lands straight on their portal
   await expect(page.getByText('Your sales')).toBeVisible()
   await expect(page.getByText(CODE)).toBeVisible()
 
-  // The real page must show WHAT was sold on the order, with its quantity —
+  // The real page must show WHAT was sold on the order, with its quantity -
   // rendered from the live database, not a mocked payload.
   await expect(page.getByRole('columnheader', { name: 'Products' })).toBeVisible()
   await expect(page.getByText(PRODUCT_NAME)).toBeVisible()

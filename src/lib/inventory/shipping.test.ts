@@ -36,7 +36,7 @@ describe('shippingRateOn', () => {
     expect(shippingRateOn(rates, JULY)?.perUnit).toBe(15000)
   })
 
-  it('breaks a tie the way fulfillmentOn does — the first row given wins', () => {
+  it('breaks a tie the way fulfillmentOn does - the first row given wins', () => {
     const rates = [
       point({ perUnit: 10000, effectiveFrom: new Date('2026-06-01') }),
       point({ perUnit: 20000, effectiveFrom: new Date('2026-06-01') }),
@@ -131,7 +131,7 @@ describe('shippingCostOf', () => {
   })
 
   it('charges a zero-quantity line nothing but still counts as known', () => {
-    // A rate exists, so the answer is knowledge rather than absence — 0 here is
+    // A rate exists, so the answer is knowledge rather than absence - 0 here is
     // an answer, and the caller must not fall back to the per-order figure.
     expect(shippingCostOf([{ sku: 'PANPIZPRO', quantity: 0 }], rates, JULY)).toBe(0)
   })
@@ -152,7 +152,7 @@ describe('ratesInCurrency', () => {
   })
 
   it('drops a SKU whose every rate is in another currency', () => {
-    // A 900 EUR rate read as 9 kr — or as 900 øre — is the tenfold cost error
+    // A 900 EUR rate read as 9 kr - or as 900 øre - is the tenfold cost error
     // this whole split exists to prevent. We never guess an exchange rate for a
     // figure someone typed against a named currency.
     expect(ratesInCurrency(mixed, 'NOK').has('MAZADVCOM')).toBe(false)

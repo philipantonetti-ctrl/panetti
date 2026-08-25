@@ -43,7 +43,7 @@ describe('RowMenu', () => {
 
   it('stays open when the page scrolls, and follows the row instead', () => {
     // The bug this guards: the menu used to close on ANY scroll, and the
-    // browser fires one the moment focus lands on the first item — so it shut
+    // browser fires one the moment focus lands on the first item - so it shut
     // in the same frame it opened and the button read as dead. jsdom does not
     // scroll on focus, so the event is raised here directly.
     setup()
@@ -88,7 +88,7 @@ describe('RowMenu', () => {
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Edit' }))
 
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
-    // Deactivate is disabled, so Delete is next — indexing by the action's own
+    // Deactivate is disabled, so Delete is next - indexing by the action's own
     // position would have landed on the item nobody can press.
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Delete' }))
 

@@ -17,7 +17,7 @@ The same four fields belong in the "Add an ambassador" card.
 `POST /api/ambassadors` gains an optional `products[]`, and the ambassador and
 their gifts are created in **one nested Prisma write**.
 
-The alternative — create the ambassador, then POST each gift — can strand a
+The alternative - create the ambassador, then POST each gift - can strand a
 half-made ambassador when the second call fails. It also gets the failure order
 wrong: a duplicate code already returns 409, and gifts written before that point
 would survive an ambassador who was never created.
@@ -78,12 +78,12 @@ add, because the ambassador it belongs to does not exist yet. The button says
 
 ## Testing
 
-- **Route** — products stored on create; a bad quantity is refused; a create
+- **Route** - products stored on create; a bad quantity is refused; a create
   with no products still works; and the atomic case: **a duplicate code returns
   409 with zero `AmbassadorProduct` rows left behind**.
-- **Component** — the toggle reveals the fields, adding appends a chip,
+- **Component** - the toggle reveals the fields, adding appends a chip,
   removing drops it, and submitting sends `products` in the body.
-- **End to end** — create an ambassador with two products, see the chips on the
+- **End to end** - create an ambassador with two products, see the chips on the
   roster and the count in the overview, then delete them so the spec re-runs.
 
 ## Deliberately not built

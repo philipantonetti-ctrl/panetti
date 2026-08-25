@@ -1,4 +1,4 @@
-# Platform Credentials Become Server Config — Implementation Plan
+# Platform Credentials Become Server Config - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -14,7 +14,7 @@
 - **Environment first, database row second.** The fallback is deliberate, not tidiness: a mistyped Vercel variable would otherwise take the live site dark, and falling back leaves it running on the row the client already saved. Never invert this order.
 - Run both sources through `decryptSecret`. It returns any value without the `enc:v1:` prefix unchanged (`src/lib/secrets.ts:35`), so a plaintext environment variable passes straight through and a database value decrypts. Do not branch on which source it came from.
 - An environment variable set to an empty string counts as **unset**. Vercel produces these.
-- **Any test that depends on the `AdPlatformApp` row must stub the five variables empty first.** Two files do — `src/app/api/ads/oauth.test.ts` and `src/app/api/ads/connections/meta/route.test.ts` — and neither is protected today. They pass right now only because nobody has these variables in their local `.env` yet. The day somebody does, they would silently read the environment instead of the row they seeded, and fail for a reason that looks nothing like its cause. Stub in `beforeEach`, `vi.unstubAllEnvs()` in `afterEach`.
+- **Any test that depends on the `AdPlatformApp` row must stub the five variables empty first.** Two files do - `src/app/api/ads/oauth.test.ts` and `src/app/api/ads/connections/meta/route.test.ts` - and neither is protected today. They pass right now only because nobody has these variables in their local `.env` yet. The day somebody does, they would silently read the environment instead of the row they seeded, and fail for a reason that looks nothing like its cause. Stub in `beforeEach`, `vi.unstubAllEnvs()` in `afterEach`.
 - Nothing secret-shaped may cross to the browser. `PlatformSetup` becomes two booleans. No client ID, no `hasSecret`, no `hasDeveloperToken`.
 - The `AdPlatformApp` **model stays**, unchanged. It is still read as the fallback. No schema change in this plan at all.
 - The per-account "Advanced: paste credentials manually" path stays untouched for both providers.
@@ -40,7 +40,7 @@
   - `export async function platformApp(provider: 'meta' | 'google'): Promise<PlatformCredentials | null>`
   - `export async function configuredProviders(): Promise<{ meta: boolean; google: boolean }>`
 
-  Tasks 2 and 3 import these. Note the type is named `PlatformCredentials`, **not** `PlatformApp` — `src/lib/ads/oauth.ts` already exports `PlatformApp` and the two must not collide.
+  Tasks 2 and 3 import these. Note the type is named `PlatformCredentials`, **not** `PlatformApp` - `src/lib/ads/oauth.ts` already exports `PlatformApp` and the two must not collide.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -110,7 +110,7 @@ describe('platformApp', () => {
 
   it('decrypts an environment secret too, so a value copied out of the database still works', async () => {
     // The deployment step is "copy the values already in the database", and a
-    // row's clientSecret is stored encrypted — so what somebody reads out and
+    // row's clientSecret is stored encrypted - so what somebody reads out and
     // pastes into Vercel is enc:v1: ciphertext. This is the case that fails if
     // the env path skips decryptSecret, and the previous version of this test
     // could not catch it: asserting plaintext-in-plaintext-out passes whether
@@ -223,7 +223,7 @@ describe('configuredProviders', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/lib/ads/platform-app.test.ts`
-Expected: FAIL — `./platform-app` does not exist.
+Expected: FAIL - `./platform-app` does not exist.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -239,8 +239,8 @@ import { decryptSecret } from '@/lib/secrets'
  * The environment first, the AdPlatformApp row second. That order is the whole
  * point: these used to be a form the client filled in, which made him register
  * a Facebook app and apply for a Google developer token before he could press
- * a button. They are server configuration, and BeProfit — the tool he compared
- * us to — has always treated them that way.
+ * a button. They are server configuration, and BeProfit - the tool he compared
+ * us to - has always treated them that way.
  *
  * The row survives as a fallback rather than being dropped, so a mistyped
  * variable name on Vercel cannot take the live site dark.
@@ -286,7 +286,7 @@ export async function platformApp(provider: Provider): Promise<PlatformCredentia
 
   // One decrypt for both sources, deliberately. decryptSecret returns a value
   // without the enc:v1: prefix unchanged, so a plaintext variable is untouched
-  // — and the deployment step for this change is "copy the values already in
+  // - and the deployment step for this change is "copy the values already in
   // the database", where what you read out of a row IS enc:v1: ciphertext.
   // Branching here would turn that instruction into a trap.
   return {
@@ -402,7 +402,7 @@ and `vi.unstubAllEnvs()` to `afterEach` in `route.test.ts` too. The three new ca
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/app/api/ads/oauth.test.ts`
-Expected: FAIL — the routes still read the row directly, so deleting it produces "Fill in the platform setup below first." rather than reading the environment.
+Expected: FAIL - the routes still read the row directly, so deleting it produces "Fill in the platform setup below first." rather than reading the environment.
 
 - [ ] **Step 3: Move the start route**
 
@@ -443,7 +443,7 @@ In `src/app/api/ads/oauth/[provider]/callback/route.ts`, same import swap, then:
     const platformCredentials = { clientId: app.clientId, clientSecret: app.clientSecret }
 ```
 
-Then use `platformCredentials` where the old `platformApp` local object was passed to `exchangeMetaCode` / `exchangeGoogleCode`. **Rename the local** — the old code names it `platformApp`, which now collides with the imported function. The `decryptSecret` calls on `app.clientSecret` go: the accessor already decrypted.
+Then use `platformCredentials` where the old `platformApp` local object was passed to `exchangeMetaCode` / `exchangeGoogleCode`. **Rename the local** - the old code names it `platformApp`, which now collides with the imported function. The `decryptSecret` calls on `app.clientSecret` go: the accessor already decrypted.
 
 - [ ] **Step 5: Move sync.ts**
 
@@ -463,7 +463,7 @@ In `src/lib/ads/sync.ts`, add the import and replace lines 68-78:
     }
 ```
 
-The message changes because "Fill it in under Ad accounts" now points at a form that does not exist. `decryptSecret` stays for `account.connection.secret`, which is a connection token and still encrypted — only the app credentials came pre-decrypted.
+The message changes because "Fill it in under Ad accounts" now points at a form that does not exist. `decryptSecret` stays for `account.connection.secret`, which is a connection token and still encrypted - only the app credentials came pre-decrypted.
 
 - [ ] **Step 6: Move the accounts route**
 
@@ -502,7 +502,7 @@ This route is unreachable from the UI and tracked for deletion, but leaving one 
 - [ ] **Step 8: Run the tests**
 
 Run: `npx vitest run src/app/api/ads/oauth.test.ts src/lib/ads/sync.test.ts src/app/api/ads/connections/meta/route.test.ts`
-Expected: PASS. `sync.test.ts` needs no change — it was checked, and it never asserted the old "Google platform setup is missing" wording, so renaming that message breaks nothing.
+Expected: PASS. `sync.test.ts` needs no change - it was checked, and it never asserted the old "Google platform setup is missing" wording, so renaming that message breaks nothing.
 
 - [ ] **Step 9: Run the full suite and typecheck**
 
@@ -527,7 +527,7 @@ git commit -m "refactor: every credential read goes through one accessor"
 
 **Interfaces:**
 - Consumes: `configuredProviders` from Task 1.
-- Produces: `export type PlatformSetup = { meta: boolean; google: boolean }` — the same exported name, a narrower shape. `AdAccountsClient.test.tsx` imports it.
+- Produces: `export type PlatformSetup = { meta: boolean; google: boolean }` - the same exported name, a narrower shape. `AdAccountsClient.test.tsx` imports it.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -584,7 +584,7 @@ Add in their place:
   })
 ```
 
-Update `'still offers the manual path behind Advanced, with provider fields switching'` at line 132 — the Google setup card was the page's other "Developer token" label, so the count before opening the modal is now zero:
+Update `'still offers the manual path behind Advanced, with provider fields switching'` at line 132 - the Google setup card was the page's other "Developer token" label, so the count before opening the modal is now zero:
 
 ```ts
   it('still offers the manual path behind Advanced, with provider fields switching', () => {
@@ -604,7 +604,7 @@ Update `'still offers the manual path behind Advanced, with provider fields swit
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/app/settings/ad-accounts/AdAccountsClient.test.tsx`
-Expected: FAIL — `PlatformSetup` still wants objects, so the fixture is a type error, and "Platform setup" still renders.
+Expected: FAIL - `PlatformSetup` still wants objects, so the fixture is a type error, and "Platform setup" still renders.
 
 - [ ] **Step 3: Narrow the type and the buttons**
 
@@ -662,7 +662,7 @@ Delete the whole `PlatformSetupSection` function and its doc comment, the whole 
 
 Deleting `PlatformCard` may leave imports or style constants unused. Do not assume which: run `npx tsc --noEmit` and `npx eslint` and remove only what they actually name.
 
-(An earlier version of this plan claimed `PlatformCard` was the only user of the `field` and `label` constants and of `useEffect`. That was wrong — `AccountModal` uses those constants sixteen times and two other effects use `useEffect`. All three stay. The claim was checked and corrected during execution, by the tools rather than by inspection, which is why the instruction says to let them name it.)
+(An earlier version of this plan claimed `PlatformCard` was the only user of the `field` and `label` constants and of `useEffect`. That was wrong - `AccountModal` uses those constants sixteen times and two other effects use `useEffect`. All three stay. The claim was checked and corrected during execution, by the tools rather than by inspection, which is why the instruction says to let them name it.)
 
 Update the empty-table copy, which still points at a setup that is gone:
 
@@ -700,7 +700,7 @@ Expected: PASS.
 - [ ] **Step 7: Typecheck and lint**
 
 Run: `npx tsc --noEmit && npx eslint src/app/settings/ad-accounts/AdAccountsClient.tsx src/app/settings/ad-accounts/page.tsx`
-Expected: clean. `src/app/settings/costs/CostsClient.tsx` has eslint errors that predate this work — do not fix them.
+Expected: clean. `src/app/settings/costs/CostsClient.tsx` has eslint errors that predate this work - do not fix them.
 
 - [ ] **Step 8: Commit**
 
@@ -736,12 +736,12 @@ In `e2e/marketing.spec.ts`, inside `'the ad accounts page offers one-click conne
   await expect(page.getByText('Meta app', { exact: true })).toHaveCount(0)
 ```
 
-Keep the two `Connect with …` link assertions and the seeded-account assertions exactly as they are — they must still pass, which is the point.
+Keep the two `Connect with …` link assertions and the seeded-account assertions exactly as they are - they must still pass, which is the point.
 
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx playwright test e2e/marketing.spec.ts`
-Expected: FAIL — the setup heading and callback URLs are still on the page until Task 3's changes are in. If Task 3 is already committed this passes immediately; that is fine, note it and continue.
+Expected: FAIL - the setup heading and callback URLs are still on the page until Task 3's changes are in. If Task 3 is already committed this passes immediately; that is fine, note it and continue.
 
 - [ ] **Step 3: Delete the route and its tests**
 
@@ -788,10 +788,10 @@ Append to `.env.example`, matching the explanatory tone of the entries already t
 
 Run each and report real output:
 
-1. `npx vitest run` — full suite.
-2. `npx tsc --noEmit` — must be clean.
-3. `npx next build` — must compile. On `EPERM: operation not permitted, unlink '.next/...'`, a dev server holds a Windows file lock: stop it, delete `.next`, rebuild. Never report success on a red build.
-4. `npx playwright test` — all specs.
+1. `npx vitest run` - full suite.
+2. `npx tsc --noEmit` - must be clean.
+3. `npx next build` - must compile. On `EPERM: operation not permitted, unlink '.next/...'`, a dev server holds a Windows file lock: stop it, delete `.next`, rebuild. Never report success on a red build.
+4. `npx playwright test` - all specs.
 
 - [ ] **Step 6: Commit**
 
@@ -804,13 +804,13 @@ git commit -m "refactor: nothing writes the platform app rows any more"
 
 ## After the plan
 
-**Set the five variables on Vercel**, pasting the plaintext value straight from Facebook's and Google's own dashboards — the Meta app's App ID and App Secret, the Google OAuth client's ID and secret, the Google Ads developer token from the API Center. A value copied straight out of the database is accepted too, for compatibility, but it is `enc:v1:` ciphertext tied to whichever `AUTH_SECRET` encrypted it: it breaks if pasted somewhere that key differs, and breaks here too the day `AUTH_SECRET` is rotated. Plaintext has neither problem. Until the variables are set the fallback keeps the site working, so this is not urgent — but the point of the change is unmet until it is done.
+**Set the five variables on Vercel**, pasting the plaintext value straight from Facebook's and Google's own dashboards - the Meta app's App ID and App Secret, the Google OAuth client's ID and secret, the Google Ads developer token from the API Center. A value copied straight out of the database is accepted too, for compatibility, but it is `enc:v1:` ciphertext tied to whichever `AUTH_SECRET` encrypted it: it breaks if pasted somewhere that key differs, and breaks here too the day `AUTH_SECRET` is rotated. Plaintext has neither problem. Until the variables are set the fallback keeps the site working, so this is not urgent - but the point of the change is unmet until it is done.
 
 **The Facebook app still needs its redirect URI.** Open `https://developers.facebook.com/apps/1526277315425302/`, add the **Facebook Login for Business** product, paste `https://panetti.vercel.app/api/ads/oauth/meta/callback` under Valid OAuth Redirect URIs, save. No API can do this, and nothing else works until it is done.
 
 **Jacob needs a role on the Facebook app.** Meta's App Modes reference: a Development-mode app "can only request permissions from role users". BeProfit shows the Facebook ad accounts under Jacob Kjos Hanssen, not Philip, so Jacob needs at least Tester on that app or his login is refused for a reason no error message will explain. This is the likeliest remaining thing to look like a bug.
 
-**Check the Google client's publishing status.** It must be *In production*. Unverified is fine — one "Google hasn't verified this app" screen, clicked past, with a 100-account lifetime cap that does not concern us. On *Testing* status Google issues refresh tokens that expire after **seven days**, and the sync would die weekly for a reason nothing in our code could report.
+**Check the Google client's publishing status.** It must be *In production*. Unverified is fine - one "Google hasn't verified this app" screen, clicked past, with a 100-account lifetime cap that does not concern us. On *Testing* status Google issues refresh tokens that expire after **seven days**, and the sync would die weekly for a reason nothing in our code could report.
 
 **The legacy Meta connection rename**, carried from `2026-07-30-meta-oauth-like-beprofit.md`, still applies and still has to happen before the first real login.
 

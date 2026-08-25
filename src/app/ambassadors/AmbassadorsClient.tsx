@@ -79,7 +79,7 @@ const INPUT =
   'rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint'
 
 /**
- * The API answers `{ error }` and those messages are written to be read — so show them.
+ * The API answers `{ error }` and those messages are written to be read - so show them.
  * A proxy or a crash might not answer JSON at all, hence the fallback.
  */
 async function errorFrom(res: Response, fallback: string): Promise<string> {
@@ -87,7 +87,7 @@ async function errorFrom(res: Response, fallback: string): Promise<string> {
   return data?.error ?? fallback
 }
 
-/** A percent field that says so — 10 means 10%, never 0.1. */
+/** A percent field that says so - 10 means 10%, never 0.1. */
 function PercentField({
   id,
   ariaLabel,
@@ -137,7 +137,7 @@ function StatusPill({ row }: { row: Row }) {
     )
   }
   // Their email is already a login (usually the owner, who is admin too), so
-  // there is no invite to send — they sign in with the account they have.
+  // there is no invite to send - they sign in with the account they have.
   if (row.emailHasLogin) {
     return (
       <span
@@ -155,7 +155,7 @@ function StatusPill({ row }: { row: Row }) {
   )
 }
 
-/** The period choices for the statistics — the everyday ones, nothing exotic. */
+/** The period choices for the statistics - the everyday ones, nothing exotic. */
 const STAT_PRESETS: Preset[] = ['this_month', 'last_month', 'last_30_days', 'last_90_days', 'this_year']
 
 type Stats = {
@@ -371,7 +371,7 @@ export function AmbassadorsClient({
 
   /**
    * Delete is for mistakes and test entries only. It takes their codes and login with
-   * it and cannot be undone, so ask first — and the server refuses outright for anyone
+   * it and cannot be undone, so ask first - and the server refuses outright for anyone
    * who has actually sold, whose history must survive them. That refusal is worth
    * reading, so it goes through `send` like every other write.
    */
@@ -392,12 +392,12 @@ export function AmbassadorsClient({
     const link = `${window.location.origin}${row.invitePath}`
     try {
       await navigator.clipboard.writeText(link)
-      // The button label itself flips to "Copied" for 2s — that confirmation is
+      // The button label itself flips to "Copied" for 2s - that confirmation is
       // already co-located with the click. A toast here would only repeat it.
       setCopied(row.id)
       setTimeout(() => setCopied(null), 2000)
     } catch {
-      // No clipboard (old browser, insecure origin) — show the link rather than lose it.
+      // No clipboard (old browser, insecure origin) - show the link rather than lose it.
       toast.error(`Could not reach the clipboard. The invite link is ${link}`)
     }
   }
@@ -596,7 +596,7 @@ export function AmbassadorsClient({
                             <span className="ml-1 font-normal text-faint">· {c.shopName}</span>
                           </span>
                         ))}
-                        {row.codes.length === 0 && <span className="text-[11px] text-faint">—</span>}
+                        {row.codes.length === 0 && <span className="text-[11px] text-faint">-</span>}
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
@@ -604,13 +604,13 @@ export function AmbassadorsClient({
                         {row.products.map((p) => (
                           <span
                             key={p.id}
-                            title={`${p.quantity} × ${p.name}, received ${p.receivedAt.slice(0, 10)}${p.note ? ` — ${p.note}` : ''}`}
+                            title={`${p.quantity} × ${p.name}, received ${p.receivedAt.slice(0, 10)}${p.note ? ` - ${p.note}` : ''}`}
                             className="rounded-full bg-panel px-2 py-0.5 text-[11px] font-semibold text-ink"
                           >
                             {p.name}
                             {/* Only when it is more than one. Every new record
                                 is a single product, so a chip of ×1 on all of
-                                them is noise — but the rows already carrying 2
+                                them is noise - but the rows already carrying 2
                                 must not quietly start reading as 1. */}
                             {p.quantity > 1 && (
                               <span className="ml-1 font-normal text-faint">×{p.quantity}</span>
@@ -618,7 +618,7 @@ export function AmbassadorsClient({
                           </span>
                         ))}
                         {row.products.length === 0 && (
-                          <span className="text-[11px] text-faint">—</span>
+                          <span className="text-[11px] text-faint">-</span>
                         )}
                       </div>
                     </td>

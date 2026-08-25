@@ -2,7 +2,7 @@ import { googleAccessToken } from './google'
 import { AdApiError, type GoogleCredentials } from './types'
 
 /**
- * "Which ad accounts can this login see?" — the checkbox list in the picker.
+ * "Which ad accounts can this login see?" - the checkbox list in the picker.
  */
 
 export type ListedAccount = {

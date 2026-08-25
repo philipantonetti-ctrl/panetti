@@ -26,7 +26,7 @@ import type {
  * each and needs no date filter.
  *
  * If Visma ever returns exactly this many, the page is full and orders beyond it
- * were silently dropped — which would look identical to a company that simply
+ * were silently dropped - which would look identical to a company that simply
  * has no more. That case reports itself; see `truncated` below. The fix when it
  * fires is paging, not a bigger number.
  */
@@ -56,7 +56,7 @@ const nothing = (over: Partial<VismaImportResult> = {}): VismaImportResult => ({
  * Pull purchase orders from Visma into our own table.
  *
  * Never throws. The scheduled sync calls this alongside the store pull, and
- * Visma being down must never fail that — the next run simply tries again.
+ * Visma being down must never fail that - the next run simply tries again.
  *
  * Idempotent: every row is keyed on Visma's `orderNbr-lineNbr`, so a re-run
  * updates rather than duplicates. Rows someone typed here have no externalId and
@@ -171,7 +171,7 @@ const noStock = (over: Partial<VismaStockResult> = {}): VismaStockResult => ({
  * store pull down with it. A failed run leaves the previous snapshot in place
  * and the forecast keeps using it.
  *
- * Written as a SNAPSHOT — one transaction that clears the table and refills it —
+ * Written as a SNAPSHOT - one transaction that clears the table and refills it -
  * rather than 414 upserts and a prune. It is one round trip instead of hundreds
  * against a database in another country, it is atomic so no reader ever catches
  * the table half-empty, and it makes a SKU disappearing from Visma disappear
@@ -221,14 +221,14 @@ export const RECEIVABLES_PAGE_SIZE = 1000
 /**
  * A ceiling on the loop, not an expectation. Ten pages is ten thousand open
  * documents against a company that had a little over a thousand when this was
- * written — reaching it means something has gone wrong, and the run reports
+ * written - reaching it means something has gone wrong, and the run reports
  * itself partial rather than pretending it saw everything.
  */
 const MAX_RECEIVABLE_PAGES = 10
 
 /**
  * Between pages. Visma refuses at roughly ten calls in quick succession, and a
- * refused second page costs the whole run — so the pause is cheaper than the
+ * refused second page costs the whole run - so the pause is cheaper than the
  * retry it avoids.
  */
 const PAGE_PAUSE_MS = 2_000
@@ -241,7 +241,7 @@ export type VismaReceivablesResult = {
   stored: number
   /**
    * Webshop house accounts dropped. Logged on every run precisely because the
-   * filter is a name test — if those accounts are ever renamed this number
+   * filter is a name test - if those accounts are ever renamed this number
    * falls off a cliff, and a number that changes is noticed where silence is not.
    */
   excluded: number
@@ -272,7 +272,7 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
  *
  * **The partial read is the whole design problem here.** Unlike inventory and
  * purchase orders, this collection does not fit one request: `pageSize` caps at
- * 1000 and `pageNumber` is the only paging that works — `skip` is accepted and
+ * 1000 and `pageNumber` is the only paging that works - `skip` is accepted and
  * silently returns page one again. Worse, the rate limit is a rolling window
  * that a burst exhausts for minutes: measured 2026-08-18, six consecutive
  * attempts at a single page with backoff of 20, 40, 60, 80, 100 and 120 seconds
@@ -281,7 +281,7 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
  * So a refusal partway through is expected, not exceptional, and it must not
  * replace the snapshot. Writing a half-read ledger would delete every invoice
  * living on the pages we never reached, and the finance page would quietly show
- * less debt than exists — the one error mode that must never happen here. A
+ * less debt than exists - the one error mode that must never happen here. A
  * partial run keeps yesterday's answer and says so; the next run tries again.
  */
 export async function importVismaReceivables(): Promise<VismaReceivablesResult> {
@@ -346,7 +346,7 @@ export async function importVismaReceivables(): Promise<VismaReceivablesResult> 
 }
 
 /**
- * Visma caps `customerinvoice` at this, the same as `customerdocument` — and
+ * Visma caps `customerinvoice` at this, the same as `customerdocument` - and
  * scoped to one customer it is a ceiling nothing is expected to reach.
  *
  * Measured 2026-08-18: `customer=10681&pageSize=1000` returned 31 rows, all JPK
@@ -361,7 +361,7 @@ export type VismaB2bSalesResult = {
   configured: boolean
   /**
    * B2B customers carrying a Visma number. Reported because zero is the
-   * difference between "nothing to import" and "the import is broken" — and on
+   * difference between "nothing to import" and "the import is broken" - and on
    * the day this shipped, zero imports was the expected honest answer.
    */
   linked: number
@@ -392,7 +392,7 @@ const noSales = (over: Partial<VismaB2bSalesResult> = {}): VismaB2bSalesResult =
  * Deliberately the shape `storeOrder` uses for a WooCommerce order: the order
  * and its lines land in ONE transaction, so a crash between them can never
  * leave an order visible with nothing inside it, and the lines are rewritten
- * rather than diffed — simpler and always correct. The metrics engine then
+ * rather than diffed - simpler and always correct. The metrics engine then
  * reads these rows exactly as it reads a webshop order's, with no special case.
  *
  * Reports how many lines named a product this shop does not have, so the run
@@ -482,8 +482,8 @@ async function storeB2bSale(
  * **This is the import that can double every revenue figure in the product, so
  * read the filter before changing anything here.** Visma raises an invoice for
  * every WEBSHOP order too, against house accounts named "Panetti Norge -
- * Webkunde" and seven more — 994 of the first 1000 open documents on
- * 2026-08-18 — and those same orders already arrive from WooCommerce. So the
+ * Webkunde" and seven more - 994 of the first 1000 open documents on
+ * 2026-08-18 - and those same orders already arrive from WooCommerce. So the
  * filter is an ALLOWLIST: an invoice becomes a sale only when its Visma
  * customer number matches a `B2bCustomer.vismaCustomerNumber` somebody
  * deliberately typed. Everything else is ignored, counted, and never stored.
@@ -493,13 +493,13 @@ async function storeB2bSale(
  * import, so a request that could not possibly match anything would cost that
  * import its own page in the same run.
  *
- * Never throws, like the other three imports — the scheduled sync calls them
+ * Never throws, like the other three imports - the scheduled sync calls them
  * all and one ERP hiccup must not cost the store pull.
  *
  * Idempotent, which is why this upserts rather than snapshotting: an order is
  * keyed on `visma-<referenceNumber>` within its shop, so a re-run updates it.
  * That is also why a PARTIAL read is safe to write here where it is not for
- * receivables — the pages we did reach are simply correct, and the rest arrive
+ * receivables - the pages we did reach are simply correct, and the rest arrive
  * next run rather than deleting anything.
  *
  * **It reads one customer at a time, and the parameter is `customer`.** Measured
@@ -518,15 +518,15 @@ async function storeB2bSale(
  * Scoping the request to the customer is also what makes the history COMPLETE.
  * This once read the whole ledger through a `lastModifiedDateTime` window
  * floored at a fixed start date, which quietly meant anything older than that
- * floor could never be imported at all — and JPK's invoices begin 2024-08-07,
+ * floor could never be imported at all - and JPK's invoices begin 2024-08-07,
  * so roughly eighteen months of real B2B sales would have been permanently
  * invisible in the feature built to show them. Per customer there is no floor
  * and no watermark: `customer=10681&pageSize=1000` returned that customer's
  * entire history, 31 rows, in one request. A newly linked customer's whole past
  * therefore arrives on the very next run.
  *
- * The cost of a run now follows how many customers are linked — three or four
- * today, one bounded request each — instead of how big the ledger is.
+ * The cost of a run now follows how many customers are linked - three or four
+ * today, one bounded request each - instead of how big the ledger is.
  */
 export async function importVismaB2bSales(
   opts: { deadline?: number; sleep?: (ms: number) => Promise<unknown> } = {},
@@ -584,7 +584,7 @@ async function readVismaB2bSales(
       // Ordered, because the read below is one request per customer and a
       // deadline or a 429 cuts it off partway: a stable order makes a truncated
       // run reproducible instead of leaving which customers arrived to chance.
-      // Worth revisiting only if refusals ever become routine here — a fixed
+      // Worth revisiting only if refusals ever become routine here - a fixed
       // order would then always starve the same names.
       orderBy: { vismaCustomerNumber: 'asc' },
       select: {
@@ -618,7 +618,7 @@ async function readVismaB2bSales(
       // rolling window shared with the other three Visma imports and a burst
       // exhausts it for minutes, so arriving on the heels of whatever the run
       // just did is how this import comes to lose the same customers every
-      // time — and it is the one whose loss is a wrong revenue picture rather
+      // time - and it is the one whose loss is a wrong revenue picture rather
       // than a stale operational one.
       //
       // The wait counts toward the deadline: starting one we already know will
@@ -635,7 +635,7 @@ async function readVismaB2bSales(
           creds,
           // `customer`, NOT `customerNumber`. Measured 2026-08-18:
           // customer=10681 returned 5 rows all JPK Trading Kft, while
-          // customerNumber=10681 returned 5 rows of Kitch'n — HTTP 200, someone
+          // customerNumber=10681 returned 5 rows of Kitch'n - HTTP 200, someone
           // else's invoices, no error. Encoded because the field this comes
           // from is free text, not a validated number.
           `controller/api/v1/customerinvoice?customer=${encodeURIComponent(number)}` +
@@ -650,7 +650,7 @@ async function readVismaB2bSales(
         // 429 only, exactly as the receivables import treats it: the limit is a
         // rolling window that a burst exhausts for minutes, so a refusal
         // partway through is expected rather than exceptional. It stops the
-        // whole loop rather than skipping one customer — the window is spent,
+        // whole loop rather than skipping one customer - the window is spent,
         // not that customer's luck. Anything else is a real failure: a 500 or a
         // bad token is not something waiting fifteen minutes fixes, and
         // swallowing it would hide a broken integration behind an import that
@@ -667,7 +667,7 @@ async function readVismaB2bSales(
       invoices.push(...rows)
 
       // A full page is a ceiling, not an end. One customer's entire history
-      // measured 31 invoices, so this should never fire — and if it does, part
+      // measured 31 invoices, so this should never fire - and if it does, part
       // of somebody's sales is missing and the run has to say so rather than
       // report a confident number built on a fraction of their invoices.
       if (rows.length >= B2B_SALES_PAGE_SIZE) partial = true

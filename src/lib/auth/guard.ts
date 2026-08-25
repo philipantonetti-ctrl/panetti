@@ -22,12 +22,12 @@ export function canViewAmbassador(user: SessionUser | null, ambassadorId: string
   return user?.ambassadorId === ambassadorId
 }
 
-/** Company-wide figures — costs, profit, every shop — are admin-only. */
+/** Company-wide figures - costs, profit, every shop - are admin-only. */
 export function assertAdmin(user: SessionUser | null): asserts user is SessionUser {
   if (!user || user.role !== 'ADMIN') throw new AuthError('Admins only')
 }
 
-/** Ambassador management and statistics — the marketing half of the house. */
+/** Ambassador management and statistics - the marketing half of the house. */
 export function assertStaff(user: SessionUser | null): asserts user is SessionUser {
   if (!isStaff(user)) throw new AuthError('Staff only')
 }

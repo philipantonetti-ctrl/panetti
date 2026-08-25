@@ -88,7 +88,7 @@ describe('leaderboard', () => {
   it('converts a DKK order into a NOK display currency using the true cross rate', () => {
     // Same defect class as engine.ts: NOK 0.10 USD, DKK 0.15 USD, so the true
     // DKK->NOK cross rate is 1.5. Plain `convert` would instead apply the bare
-    // DKK->USD rate (0.15) and call the result NOK — a tenfold undercount.
+    // DKK->USD rate (0.15) and call the result NOK - a tenfold undercount.
     const dkRates = buildRateTable([
       { date: new Date('2026-07-01'), currency: 'NOK', rate: 0.1 },
       { date: new Date('2026-07-01'), currency: 'DKK', rate: 0.15 },

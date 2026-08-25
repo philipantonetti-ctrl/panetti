@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     const iso = (r: { from: Date; to: Date }) => ({ from: r.from.toISOString(), to: r.to.toISOString() })
 
     // No leaderboard here. The Dashboard's Top ambassadors card is gone, and
-    // the Ambassadors page builds its own from /api/ambassadors/stats — so
+    // the Ambassadors page builds its own from /api/ambassadors/stats - so
     // computing one here cost every dashboard load a roster query and a pass
     // over the period's orders for a figure nothing read.
     return NextResponse.json({

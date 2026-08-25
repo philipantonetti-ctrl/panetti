@@ -21,7 +21,7 @@ export type Preset =
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-/** Strip the time — the UTC midnight that starts this date's day. */
+/** Strip the time - the UTC midnight that starts this date's day. */
 export function utcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }

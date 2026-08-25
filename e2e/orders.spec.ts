@@ -23,7 +23,7 @@ test('admin can browse orders and open one to see what was bought', async ({ pag
   const firstRow = page.locator('tbody tr').first()
   await expect(firstRow).toBeVisible({ timeout: 10_000 })
 
-  // Opening it reveals the line items — the whole point of the page.
+  // Opening it reveals the line items - the whole point of the page.
   await firstRow.click()
   await expect(page.getByText('WHAT WAS BOUGHT')).toBeVisible()
 })
@@ -60,7 +60,7 @@ test('searching narrows the list to the one order asked for', async ({ page }) =
   await expect(page.locator('tbody tr').first()).toContainText('#1000')
 })
 
-test('a single day can be picked on its own — one click, apply, done', async ({ page }) => {
+test('a single day can be picked on its own - one click, apply, done', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
   await page.goto('/orders')
 

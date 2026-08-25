@@ -20,7 +20,7 @@ export type SpecifiedInvoice = {
    * TRX_DATE or INVOICE_CURRENCY_CODE, so not added to `lines`. Surfaced so a
    * reconciliation failure can say which cause it was: a truncated download
    * drops trailing lines outright and leaves this at 0, while one unparseable
-   * line — an invoice-level charge carrying no waybill, say — drops a single
+   * line - an invoice-level charge carrying no waybill, say - drops a single
    * line from the middle and leaves this non-zero. The two must not read
    * identically in an error a person has to act on.
    */
@@ -46,8 +46,8 @@ function ddmmyyyy(value: string): Date | null {
  * come back as null rather than as a parse exception.
  *
  * Every line is kept, duplicates included. The report carries NO line
- * identifier — TRX_NUMBER, the only candidate, is the invoice number repeated
- * on every row — so two identical charges on one parcel are two real charges
+ * identifier - TRX_NUMBER, the only candidate, is the invoice number repeated
+ * on every row - so two identical charges on one parcel are two real charges
  * and merging them loses money that was really billed.
  */
 export function parseSpecifiedInvoice(xml: string): SpecifiedInvoice | null {
@@ -89,7 +89,7 @@ export function parseSpecifiedInvoice(xml: string): SpecifiedInvoice | null {
  *
  * Measured on the real report: the 144 line AMOUNTs sum to 84 786.85, exactly
  * the header's `amount`. So exact equality is the right test, and a mismatch
- * means a truncated download, a changed format, or an invoice we half-read —
+ * means a truncated download, a changed format, or an invoice we half-read -
  * all of which look identical to a cheap month once stored.
  */
 export function linesReconcile(parsed: SpecifiedInvoice, header: BringInvoice): boolean {

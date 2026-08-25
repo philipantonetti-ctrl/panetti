@@ -38,7 +38,7 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   // default, so a bare 'Product' also matches the 'Add product' submit button
   // sitting in the same section, and the locator resolves to two elements.
   // Testing Library's getByRole is exact by default, which is why the Task 5
-  // unit test uses the same words without this flag — do not "harmonise" them.
+  // unit test uses the same words without this flag - do not "harmonise" them.
   await page.getByRole('button', { name: 'Product', exact: true }).click()
   // exact: true matters here too, for a state-dependent reason a first read of
   // this file won't reveal: once this spec has run once against the shared
@@ -46,7 +46,7 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   // 'Remove Mazzetti Lite Comfort - Massasjestol (Beige) received <date>'
   // button whose accessible name CONTAINS this product's full name as a
   // substring. Without exact: true, that Remove button and this picker option
-  // both match, and the locator resolves to two elements — but only from the
+  // both match, and the locator resolves to two elements - but only from the
   // second run onward.
   await page.getByRole('button', { name: 'Mazzetti Lite Comfort - Massasjestol (Beige)', exact: true }).click()
 
@@ -66,7 +66,7 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
 
   // Clean up what we just added. AmbassadorProduct carries no unique
   // constraint, so a spec that adds and never removes would keep growing this
-  // shared table by one row on every run forever — not re-runnable in any
+  // shared table by one row on every run forever - not re-runnable in any
   // real sense. This also gives DELETE /api/ambassador-products/[id] its only
   // end-to-end coverage; it otherwise has unit tests but no browser-level proof.
   await johan.getByRole('button', { name: 'Edit' }).click()

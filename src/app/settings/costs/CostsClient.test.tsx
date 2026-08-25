@@ -18,12 +18,12 @@ vi.mock('next/link', () => ({
 }))
 
 describe('CostsClient with no shops (the live production state)', () => {
-  // This page shows no "Loading…" text — it loads as four skeleton rows.
+  // This page shows no "Loading…" text - it loads as four skeleton rows.
   const skeletons = (container: HTMLElement) => container.querySelectorAll('.skeleton')
 
   /**
    * There are no products to fetch without a shop, but the shipping-rates
-   * section fetches its list unconditionally — so without a stub these two
+   * section fetches its list unconditionally - so without a stub these two
    * tests fire a real request at the jsdom origin and quietly depend on nothing
    * answering there. Stubbed the way every other describe in this file does.
    */
@@ -106,7 +106,7 @@ function mockFetch() {
   })
 }
 
-describe('CostsClient — a rejected save', () => {
+describe('CostsClient - a rejected save', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -138,18 +138,18 @@ describe('CostsClient — a rejected save', () => {
     )
     expect(reloadCalls).toHaveLength(1)
 
-    // 3. The modal did NOT close — the user's numbers are still in it.
+    // 3. The modal did NOT close - the user's numbers are still in it.
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeNull()
   })
 })
 
 /**
  * A cost entered on one webshop's row is now written to that SKU in every
- * webshop. That is what the client asked for — one product, one cost, not the
- * same figure typed nine times — but a fan-out nobody can see is a fan-out
+ * webshop. That is what the client asked for - one product, one cost, not the
+ * same figure typed nine times - but a fan-out nobody can see is a fan-out
  * nobody trusts, so the save says how far it reached.
  */
-describe('CostsClient — a cost that reaches every webshop', () => {
+describe('CostsClient - a cost that reaches every webshop', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -234,12 +234,12 @@ describe('CostsClient — a cost that reaches every webshop', () => {
 })
 
 /**
- * "We only need to see the product one time in the list" — the last clause of
+ * "We only need to see the product one time in the list" - the last clause of
  * the client's message, on the last page where it was not true. The dropdown
  * stays, because ten of the sixty-two products are sold only outside Norway and
  * six of those sold this quarter: removing it would make them uncostable.
  */
-describe('CostsClient — one row per product', () => {
+describe('CostsClient - one row per product', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -286,7 +286,7 @@ describe('CostsClient — one row per product', () => {
 
   /**
    * A page showing 52 of 62 products and saying nothing reads as "that is all of
-   * them" — the same lie as a blank cell. Six of the ten it leaves out sold this
+   * them" - the same lie as a blank cell. Six of the ten it leaves out sold this
    * quarter.
    */
   it('says how many products it is not showing, and where to find them', async () => {
@@ -330,10 +330,10 @@ describe('CostsClient — one row per product', () => {
 
 /**
  * "Maybe its easier if we just add an average unit cost we pay per shipping
- * depending on the supplier" — the client's own words. This section is where
+ * depending on the supplier" - the client's own words. This section is where
  * that figure gets typed, on the page he already types costs on.
  */
-describe('CostsClient — shipping cost per unit', () => {
+describe('CostsClient - shipping cost per unit', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -394,7 +394,7 @@ describe('CostsClient — shipping cost per unit', () => {
 
   /**
    * The advice above the list is "give every product on an order a rate, or
-   * none of them" — and for six live products it cannot be followed. They all
+   * none of them" - and for six live products it cannot be followed. They all
    * carry the SKU "0", spanning a pizza oven and a massage chair, and the route
    * refuses a rate against a key like that because one product's shipping would
    * be charged to a completely different one.

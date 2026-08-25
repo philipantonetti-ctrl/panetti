@@ -1,4 +1,4 @@
-# ecom-analytics — Toast Notifications Design
+# ecom-analytics - Toast Notifications Design
 
 **Date:** 2026-07-17
 **Status:** Approved for implementation
@@ -36,7 +36,7 @@ Audited on 2026-07-17. Ten client components write to the server:
 ### Specific defects this closes
 
 - **`CostsClient.save()`** never inspects `res.ok` and has no `catch`. A rejected save closes the modal, reloads the old value, and shows nothing. Flagged in the first audit; still live.
-- **`AppShell.signOut()`** navigates to `/login` whether or not the logout succeeded. The user believes they are signed out while their session cookie is still valid — on a shared machine, that is not cosmetic.
+- **`AppShell.signOut()`** navigates to `/login` whether or not the logout succeeded. The user believes they are signed out while their session cookie is still valid - on a shared machine, that is not cosmetic.
 - **`PortalClient`** does `.then((r) => r.json()).then(setData)` with no `res.ok` and no `.catch()`. A 403 pipes `{error: "…"}` into state as though it were metrics; a network drop is an unhandled rejection.
 - **`AmbassadorsClient`** renders its error at the top of the page. With a long table the message lands ~1600px above the viewport, so a refusal reads as "nothing happened". A `window.scrollTo` was added as a stopgap. The toast is the real fix, and that stopgap is deleted here.
 
@@ -70,18 +70,18 @@ toast.success('Invite link copied')
 toast.error(serverMessage)
 ```
 
-Two methods. That is the entire surface. `useToast()` outside a provider throws — a missing provider must fail loudly at development time, not silently swallow messages in production.
+Two methods. That is the entire surface. `useToast()` outside a provider throws - a missing provider must fail loudly at development time, not silently swallow messages in production.
 
 ---
 
 ## 6. Behaviour
 
-- **Position:** bottom-right — clear of the sidebar and of the table rows being acted on.
+- **Position:** bottom-right - clear of the sidebar and of the table rows being acted on.
 - **Success: 4 seconds. Error: 10 seconds.** Errors carry the server's own wording, and *"This ambassador has sales on record, so deleting them would erase that history. Deactivate them instead."* is not a four-second read.
 - Both are **dismissible by click**.
 - Toasts **stack**, newest at the bottom. A feedback system that drops messages under rapid clicks is the disease it was built to cure.
 - The region carries `role="status"` and `aria-live="polite"`.
-- Timers are cleared on unmount — a dismiss timer firing after unmount is a state update on a dead component.
+- Timers are cleared on unmount - a dismiss timer firing after unmount is a state update on a dead component.
 
 ---
 
@@ -91,7 +91,7 @@ There are **three** kinds of message, not two:
 
 | Kind | Where it lives | Which |
 |---|---|---|
-| **Action result** — the user clicked something | **Toast** | Ambassadors, Account, Shops, Costs, Expenses, sign-out |
+| **Action result** - the user clicked something | **Toast** | Ambassadors, Account, Shops, Costs, Expenses, sign-out |
 | **Form validation** | **Inline, unchanged** | `SignInForm`, `InviteClient` |
 | **Page-load failure** | **Inline, unchanged** | `DashboardClient`, `PortalClient` |
 
@@ -105,12 +105,12 @@ The rule in one line: **a toast reports what an action did; it never carries the
 
 ## 8. Making every button honest
 
-A toast can only show a failure that something caught. Wiring toasts into the four silent components changes nothing on its own — their failures are discarded before anything can notice. So each gets its missing check:
+A toast can only show a failure that something caught. Wiring toasts into the four silent components changes nothing on its own - their failures are discarded before anything can notice. So each gets its missing check:
 
-- **`CostsClient.save()`** — check `res.ok`; **do not close the modal on failure**; toast the server's error. Use `try`/`finally` so the button cannot stick on "Saving…".
-- **`ExpensesClient`** — three unchecked fetches (load, delete, save). Add checks; toast action results.
-- **`PortalClient`** — add `res.ok` and `.catch()`. Its failure is a **load** failure, so it renders **inline**, not as a toast.
-- **`AppShell.signOut()`** — **do not navigate if the logout failed.** Toast instead. Navigating on failure is the actual bug; the missing toast is only how it stayed invisible.
+- **`CostsClient.save()`** - check `res.ok`; **do not close the modal on failure**; toast the server's error. Use `try`/`finally` so the button cannot stick on "Saving…".
+- **`ExpensesClient`** - three unchecked fetches (load, delete, save). Add checks; toast action results.
+- **`PortalClient`** - add `res.ok` and `.catch()`. Its failure is a **load** failure, so it renders **inline**, not as a toast.
+- **`AppShell.signOut()`** - **do not navigate if the logout failed.** Toast instead. Navigating on failure is the actual bug; the missing toast is only how it stayed invisible.
 
 The three components with their own message shapes (`AccountClient`'s `infoNote`, `ShopsClient`'s `message`, `AmbassadorsClient`'s `error`) migrate to the toast for **action results**. `AmbassadorsClient`'s `window.scrollTo` stopgap is deleted.
 
@@ -119,7 +119,7 @@ The three components with their own message shapes (`AccountClient`'s `infoNote`
 ## 9. Testing
 
 - **Provider** (`ToastProvider.test.tsx`, jsdom + fake timers): a toast appears; success auto-dismisses at 4s; error persists to 10s; click dismisses; two toasts stack rather than replace; timers are cleared on unmount.
-- **Per fixed button:** a test proving a **failed** request now surfaces a message. Each pinned by a mutant that removes the `res.ok` check — the test must fail without it, or it is worth nothing.
+- **Per fixed button:** a test proving a **failed** request now surfaces a message. Each pinned by a mutant that removes the `res.ok` check - the test must fail without it, or it is worth nothing.
 - **`AppShell.signOut`:** a failed logout must **not** navigate. This is the one where a passing test matters most.
 - Component tests use the pattern established on 2026-07-17: `// @vitest-environment jsdom` per-file docblock (the global environment stays `node`), mocking `next/navigation` and `next/link`.
 
@@ -127,14 +127,14 @@ The three components with their own message shapes (`AccountClient`'s `infoNote`
 
 ## 10. Explicitly out of scope
 
-No toast library. No positioning options, themes, or per-call duration overrides. No promise/loading toasts. No undo actions. No queue limit or de-duplication — with one admin and ten call sites, neither earns its complexity yet.
+No toast library. No positioning options, themes, or per-call duration overrides. No promise/loading toasts. No undo actions. No queue limit or de-duplication - with one admin and ten call sites, neither earns its complexity yet.
 
-**`ShopsClient.syncAll()` is deliberately left alone.** It reads `data.results ?? []` without checking `res.ok`, so a failed sync reports *"Synced 0 orders from 0 shop(s)"* — a total failure presented as a successful sync of nothing. This was offered and explicitly deferred. It wants fixing before the first real WooCommerce sync, but not here.
+**`ShopsClient.syncAll()` is deliberately left alone.** It reads `data.results ?? []` without checking `res.ok`, so a failed sync reports *"Synced 0 orders from 0 shop(s)"* - a total failure presented as a successful sync of nothing. This was offered and explicitly deferred. It wants fixing before the first real WooCommerce sync, but not here.
 
 ---
 
 ## 11. Risks
 
-- **Toasts vanish.** Anything a user must act on, or read at their own pace, does not belong in one — which is exactly why sections 7 keeps form and load errors inline. If a future message is important enough to need re-reading, it is not a toast.
-- **The toast must clear the modals.** Verified: `globals.css:55-57` declares `--z-backdrop: 40`, `--z-modal: 50`, `--z-toast: 60`, so the scale is already right. But all three modals (`CostsClient.tsx:318`, `ExpensesClient.tsx:423`, `AmbassadorsClient.tsx:430`) **hardcode the Tailwind class `z-50` rather than `var(--z-modal)`** — the tokens are declared and unused, and only happen to agree. The `Toaster` uses `var(--z-toast)`, which is what the token was declared for, and a test must pin that a toast reporting a modal's own save failure renders **above** it. Migrating the modals onto their token is a separate, unrelated tidy-up and is not done here.
+- **Toasts vanish.** Anything a user must act on, or read at their own pace, does not belong in one - which is exactly why sections 7 keeps form and load errors inline. If a future message is important enough to need re-reading, it is not a toast.
+- **The toast must clear the modals.** Verified: `globals.css:55-57` declares `--z-backdrop: 40`, `--z-modal: 50`, `--z-toast: 60`, so the scale is already right. But all three modals (`CostsClient.tsx:318`, `ExpensesClient.tsx:423`, `AmbassadorsClient.tsx:430`) **hardcode the Tailwind class `z-50` rather than `var(--z-modal)`** - the tokens are declared and unused, and only happen to agree. The `Toaster` uses `var(--z-toast)`, which is what the token was declared for, and a test must pin that a toast reporting a modal's own save failure renders **above** it. Migrating the modals onto their token is a separate, unrelated tidy-up and is not done here.
 - **Timing is not covered by fake timers alone.** The auto-dismiss durations are asserted with fake timers, which proves the logic, not the feel. Real durations need a human to judge.

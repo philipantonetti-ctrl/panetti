@@ -5,7 +5,7 @@
 ## Why
 
 The breakdown table under Ads by shop shows Spend, ROAS, Purch., Value and CTR.
-The client asked for three more: CPA, CPM and Impressions — the set he already
+The client asked for three more: CPA, CPM and Impressions - the set he already
 reads in Ads Manager.
 
 All three are arithmetic on numbers the table already has. `BreakdownEntry`
@@ -30,8 +30,8 @@ section already wraps its table in `overflow-x-auto`, so a narrow screen scrolls
 rather than crushing the numbers. No metric picker: he named the exact set he
 wants, and a picker would be one more thing to discover for no gain.
 
-`COLUMNS` — the `colSpan` behind the "Loading…", "Ad set"/"Ad group" and
-per-account error rows — goes from 6 to 9. Missing it leaves those rows short of
+`COLUMNS` - the `colSpan` behind the "Loading…", "Ad set"/"Ad group" and
+per-account error rows - goes from 6 to 9. Missing it leaves those rows short of
 the table's real width.
 
 ### The three helpers
@@ -53,7 +53,7 @@ thing `src/lib/money.ts` asks of every caller. Impressions never dash: zero
 impressions is a true answer about delivery, not a division with nothing to
 divide by.
 
-CPA here means spend per attributed purchase — what Ads Manager calls "Cost per
+CPA here means spend per attributed purchase - what Ads Manager calls "Cost per
 purchase", and what `marketing.ts` calls `costPerPurchase`. It is deliberately
 NOT the `cpa` of the Ads-by-shop table, which is spend per paid *store* order:
 a store order carries no campaign id, so that figure cannot be computed for one
@@ -71,30 +71,30 @@ down picks the new columns up with no separate change.
 Two existing tests need touching, for two different reasons:
 
 - The CTR dash test reads `children[5]`. CPA and CPM sit ahead of CTR now, so
-  it becomes `children[7]`. (The ROAS test's `children[2]` is unaffected —
+  it becomes `children[7]`. (The ROAS test's `children[2]` is unaffected -
   CPA goes in at index 3, behind it.)
 - `lists the campaigns it was given` asserts `getByText('$1,200.00')` for
   spend. The shared fixture has 1,000 impressions, which makes CPM come out to
   exactly the same money as spend, so that query starts matching two cells.
-  It becomes a positional read of the spend cell — the coincidence is in the
+  It becomes a positional read of the spend cell - the coincidence is in the
   fixture, not in the code, and the test should fail on spend being wrong
   rather than on two cells agreeing.
 
 A `cellsOf(name)` helper reads a row's cells as an array of strings, so new
 tests assert a value and its column in one line instead of reaching for
-`children[n]` — that reach is what made a column insertion break tests that
+`children[n]` - that reach is what made a column insertion break tests that
 had nothing to say about it.
 
 New cases:
 
 - CPA is spend divided by purchases, formatted as money.
-- CPA dashes when purchases is 0 — never `Infinity`, never `NaN`.
+- CPA dashes when purchases is 0 - never `Infinity`, never `NaN`.
 - CPA dashes when spend is 0, matching `ratios()`.
 - CPM is spend per thousand impressions, formatted as money.
 - CPM dashes when impressions is 0.
 - Impressions print with a thousands separator, and 0 prints `0`, not a dash.
 - The header reads in the client's order.
-- An expanded ad-set row carries the new columns too — the drill-down is the
+- An expanded ad-set row carries the new columns too - the drill-down is the
   half of this table a positional test would otherwise never touch.
 
 ## Out of scope

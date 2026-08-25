@@ -16,7 +16,7 @@
 
 Two things were spiked and deleted; this plan depends on both:
 
-1. **Component tests work** (established 2026-07-17): `// @vitest-environment jsdom` docblock per file, mocking `next/navigation` and `next/link`. The global `environment` stays `node` — do NOT change `vitest.config.ts`.
+1. **Component tests work** (established 2026-07-17): `// @vitest-environment jsdom` docblock per file, mocking `next/navigation` and `next/link`. The global `environment` stays `node` - do NOT change `vitest.config.ts`.
 2. **Fake timers drive React state**, verified with React 19 + @testing-library/react:
    ```tsx
    vi.useFakeTimers()
@@ -25,13 +25,13 @@ Two things were spiked and deleted; this plan depends on both:
    ```
    Advancing to 3999ms leaves it visible; 4000ms dismisses it. The assertion is precise, not approximate.
 
-## House facts, verified — do not re-derive
+## House facts, verified - do not re-derive
 
-- `globals.css:55-57`: `--z-backdrop: 40`, `--z-modal: 50`, **`--z-toast: 60`** — already declared, never used.
+- `globals.css:55-57`: `--z-backdrop: 40`, `--z-modal: 50`, **`--z-toast: 60`** - already declared, never used.
 - All three modals hardcode Tailwind's `z-50` (`CostsClient.tsx:318`, `ExpensesClient.tsx:423`, `AmbassadorsClient.tsx:430`), not `var(--z-modal)`. Do not "fix" them; out of scope.
 - Tones: `--color-gain` (green, success), `--color-loss` (red, error). Classes `text-gain` / `text-loss`.
 - Surfaces: `bg-surface`, `border-line`, `text-ink`, `text-muted`, `rounded-[var(--radius-card)]`.
-- Every API error response is `{ error: string }`. **Render that string** — the messages are written to be shown.
+- Every API error response is `{ error: string }`. **Render that string** - the messages are written to be shown.
 
 ## File structure
 
@@ -155,10 +155,10 @@ describe('ToastProvider', () => {
 })
 ```
 
-- [ ] **Step 2: Run it — CONFIRM IT FAILS**
+- [ ] **Step 2: Run it - CONFIRM IT FAILS**
 
 Run: `npx vitest run src/components/toast/ToastProvider.test.tsx`
-Expected: FAIL — cannot resolve `./ToastProvider`.
+Expected: FAIL - cannot resolve `./ToastProvider`.
 
 - [ ] **Step 3: Write `useToast.ts`**
 
@@ -295,7 +295,7 @@ export function Toaster({
 
 - [ ] **Step 6: Mount it in `src/app/layout.tsx`**
 
-Wrap the body's children — NOT inside `AppShell`, because `/login` and `/invite/[token]` have no `AppShell` and both need feedback:
+Wrap the body's children - NOT inside `AppShell`, because `/login` and `/invite/[token]` have no `AppShell` and both need feedback:
 
 ```tsx
 import { ToastProvider } from "@/components/toast/ToastProvider";
@@ -305,9 +305,9 @@ import { ToastProvider } from "@/components/toast/ToastProvider";
 </body>
 ```
 
-- [ ] **Step 7: Run the tests — CONFIRM ALL 8 PASS**
+- [ ] **Step 7: Run the tests - CONFIRM ALL 8 PASS**
 
-- [ ] **Step 8: Prove the tests have teeth — THREE mutants**
+- [ ] **Step 8: Prove the tests have teeth - THREE mutants**
 
 For each: apply, run, record which test fails, revert, confirm green.
 
@@ -328,7 +328,7 @@ git commit -m "feat: one toast system for every button that acts"
 
 ---
 
-## Task 2: AmbassadorsClient — migrate, and delete the scrollTo hack
+## Task 2: AmbassadorsClient - migrate, and delete the scrollTo hack
 
 **Files:** Modify `src/app/settings/ambassadors/AmbassadorsClient.tsx`
 
@@ -342,13 +342,13 @@ This screen already checks `res.ok` properly. The problem is *where* the message
 - In `send()`, replace `setError(...)` with `toast.error(...)`
 - Remove the `error` state, the `ErrorNote` render, **and the `window.scrollTo` line in `remove()`**
 - Add success toasts for action results whose outcome is not self-evident:
-  - Copy invite link → `toast.success('Invite link copied')` (replaces the transient "Copied" button label ONLY if that label is removed — otherwise keep the label and skip the toast; do not do both)
-  - Delete → `toast.success(\`${name} deleted\`)` — the row vanishing is visible, but the confirmation matters after a destructive act
+  - Copy invite link → `toast.success('Invite link copied')` (replaces the transient "Copied" button label ONLY if that label is removed - otherwise keep the label and skip the toast; do not do both)
+  - Delete → `toast.success(\`${name} deleted\`)` - the row vanishing is visible, but the confirmation matters after a destructive act
 - Do NOT toast Add/Deactivate: the row appearing and the pill changing already say so. Redundant toasts train people to ignore them.
 
 - [ ] **Step 3: Verify the 409 still reaches the user**
 
-`npm test` — the existing ambassador tests must still pass. If a test asserted the `ErrorNote`'s presence, update it to assert the toast — **do not delete the assertion**.
+`npm test` - the existing ambassador tests must still pass. If a test asserted the `ErrorNote`'s presence, update it to assert the toast - **do not delete the assertion**.
 
 - [ ] **Step 4: Commit**
 
@@ -356,15 +356,15 @@ This screen already checks `res.ok` properly. The problem is *where* the message
 git add src/app/settings/ambassadors/AmbassadorsClient.tsx
 git commit -m "feat: ambassadors screen reports through the toast
 
-Deletes the window.scrollTo stopgap — the error landed ~1600px above the
+Deletes the window.scrollTo stopgap - the error landed ~1600px above the
 viewport on a long table, so a refusal read as nothing happening."
 ```
 
 ---
 
-## Task 3: CostsClient — the day-one bug
+## Task 3: CostsClient - the day-one bug
 
-**Files:** Modify `src/app/settings/costs/CostsClient.tsx`; test `src/app/settings/costs/CostsClient.test.tsx` (exists — read it first)
+**Files:** Modify `src/app/settings/costs/CostsClient.tsx`; test `src/app/settings/costs/CostsClient.test.tsx` (exists - read it first)
 
 Current `save()` (~line 281):
 ```ts
@@ -384,9 +384,9 @@ Add to `CostsClient.test.tsx`. Mock `fetch` to reject with a 400 `{error: 'Inval
 2. `onSaved` was NOT called
 3. The modal did NOT close
 
-Read the existing test file for its render/mocking shape. You will need the component wrapped in `<ToastProvider>` — if a test helper doesn't exist, write a small local `renderWithToast()`.
+Read the existing test file for its render/mocking shape. You will need the component wrapped in `<ToastProvider>` - if a test helper doesn't exist, write a small local `renderWithToast()`.
 
-- [ ] **Step 2: Run — confirm it FAILS** (currently the message never appears and `onSaved` fires anyway)
+- [ ] **Step 2: Run - confirm it FAILS** (currently the message never appears and `onSaved` fires anyway)
 
 - [ ] **Step 3: Fix `save()`**
 
@@ -410,7 +410,7 @@ async function save() {
   } catch {
     toast.error('Could not reach the server')
   } finally {
-    setBusy(false) // always — the button must never stick on "Saving…"
+    setBusy(false) // always - the button must never stick on "Saving…"
   }
 }
 ```
@@ -431,17 +431,17 @@ old value, and showed nothing at all."
 
 ---
 
-## Task 4: ExpensesClient — three unchecked fetches
+## Task 4: ExpensesClient - three unchecked fetches
 
 **Files:** Modify `src/app/settings/expenses/ExpensesClient.tsx`; extend `src/app/settings/expenses/ExpensesClient.test.tsx`
 
 Three fetches, none checked: `load()` (~line 78), the bulk delete (~line 94), and the modal's `save()` (~line 373).
 
-- [ ] **Step 1: Write failing tests** — a failed save shows the server's message and does not close the modal; a failed bulk-delete says so rather than silently leaving rows.
+- [ ] **Step 1: Write failing tests** - a failed save shows the server's message and does not close the modal; a failed bulk-delete says so rather than silently leaving rows.
 
 - [ ] **Step 2: Confirm RED**
 
-- [ ] **Step 3: Fix all three.** Same shape as Task 3: check `res.ok`, toast the `{error}`, `try`/`finally`. `load()`'s failure is a **load** failure — render it inline in the table body (matching the existing "No expenses." empty row), NOT as a toast.
+- [ ] **Step 3: Fix all three.** Same shape as Task 3: check `res.ok`, toast the `{error}`, `try`/`finally`. `load()`'s failure is a **load** failure - render it inline in the table body (matching the existing "No expenses." empty row), NOT as a toast.
 
 - [ ] **Step 4: Mutant per fix. Report honestly.**
 
@@ -454,7 +454,7 @@ git commit -m "fix: the expenses screen must notice when a request fails"
 
 ---
 
-## Task 5: AppShell — a failed sign-out must not pretend
+## Task 5: AppShell - a failed sign-out must not pretend
 
 **Files:** Modify `src/components/shell/AppShell.tsx`; create `src/components/shell/AppShell.test.tsx`
 
@@ -469,10 +469,10 @@ async function signOut() {
 
 **The missing toast is not the bug. Navigating on failure is.** The user lands on the sign-in page believing they are signed out while their session cookie is still valid. On a shared machine that is not cosmetic.
 
-- [ ] **Step 1: Write the failing test — this is the important one**
+- [ ] **Step 1: Write the failing test - this is the important one**
 
 ```tsx
-it('does NOT navigate when the logout fails — the session may still be live', async () => {
+it('does NOT navigate when the logout fails - the session may still be live', async () => {
   const push = vi.fn()
   // ...mock useRouter to return { push, refresh: vi.fn() }
   // ...mock fetch to resolve { ok: false, status: 500 }
@@ -482,7 +482,7 @@ it('does NOT navigate when the logout fails — the session may still be live', 
 })
 ```
 
-- [ ] **Step 2: Confirm RED** — `push` IS called today.
+- [ ] **Step 2: Confirm RED** - `push` IS called today.
 
 - [ ] **Step 3: Fix**
 
@@ -504,7 +504,7 @@ async function signOut() {
 }
 ```
 
-- [ ] **Step 4: Mutant** — restore the unconditional `router.push`. The test MUST fail.
+- [ ] **Step 4: Mutant** - restore the unconditional `router.push`. The test MUST fail.
 
 - [ ] **Step 5: Verify + commit**
 
@@ -518,7 +518,7 @@ signed out when they are not."
 
 ---
 
-## Task 6: PortalClient — inline, not a toast
+## Task 6: PortalClient - inline, not a toast
 
 **Files:** Modify `src/app/portal/PortalClient.tsx`; create `src/app/portal/PortalClient.test.tsx`
 
@@ -529,31 +529,31 @@ fetch(`/api/portal?${params}`)
   .then(setData)        // a 403 pipes {error: "..."} in as if it were metrics
   .finally(() => setLoading(false))
 ```
-No `res.ok`, no `.catch()` — a network drop is an unhandled rejection.
+No `res.ok`, no `.catch()` - a network drop is an unhandled rejection.
 
 **This is a page-load failure, so it renders INLINE, not as a toast.** A toast that fades leaves an ambassador staring at a blank portal with no explanation.
 
-- [ ] **Step 1: Write the failing test** — a 403 must show an inline message, and must NOT pipe the error object into `data`.
+- [ ] **Step 1: Write the failing test** - a 403 must show an inline message, and must NOT pipe the error object into `data`.
 
 - [ ] **Step 2: Confirm RED**
 
-- [ ] **Step 3: Fix** — add `res.ok` and `.catch()`; render an inline error where the figures would be. Match `DashboardClient`'s inline load-error shape (read it first).
+- [ ] **Step 3: Fix** - add `res.ok` and `.catch()`; render an inline error where the figures would be. Match `DashboardClient`'s inline load-error shape (read it first).
 
-- [ ] **Step 4: Mutant** — remove the `res.ok` check; the test MUST fail.
+- [ ] **Step 4: Mutant** - remove the `res.ok` check; the test MUST fail.
 
 - [ ] **Step 5: Verify + commit**
 
 ---
 
-## Task 7: AccountClient + ShopsClient — retire the bespoke shapes
+## Task 7: AccountClient + ShopsClient - retire the bespoke shapes
 
 **Files:** Modify `src/app/account/AccountClient.tsx`, `src/app/settings/shops/ShopsClient.tsx`
 
 Both already check `res.ok`; both invented their own message shape (`infoNote({tone, text})`, `message`). Migrate **action results** to the toast and delete the bespoke state.
 
-- [ ] **Step 1:** `AccountClient` — `setInfoNote({tone:'ok'|'bad'})` → `toast.success` / `toast.error`. Password change → `toast.success('Your password has been changed.')`.
-- [ ] **Step 2:** `ShopsClient` — the `ConnectModal` save → toast.
-- [ ] **Step 3: LEAVE `syncAll()` ALONE.** It is explicitly out of scope (spec §10). It reads `data.results ?? []` without checking `res.ok`, so a failed sync reports *"Synced 0 orders from 0 shop(s)"*. **Do not fix it, do not toast it — it needs its own change.** If you touch it by accident, revert.
+- [ ] **Step 1:** `AccountClient` - `setInfoNote({tone:'ok'|'bad'})` → `toast.success` / `toast.error`. Password change → `toast.success('Your password has been changed.')`.
+- [ ] **Step 2:** `ShopsClient` - the `ConnectModal` save → toast.
+- [ ] **Step 3: LEAVE `syncAll()` ALONE.** It is explicitly out of scope (spec §10). It reads `data.results ?? []` without checking `res.ok`, so a failed sync reports *"Synced 0 orders from 0 shop(s)"*. **Do not fix it, do not toast it - it needs its own change.** If you touch it by accident, revert.
 - [ ] **Step 4:** Existing tests must still pass; update any that asserted the old shapes rather than deleting them.
 - [ ] **Step 5: Verify + commit**
 
@@ -561,18 +561,18 @@ Both already check `res.ok`; both invented their own message shape (`infoNote({t
 
 ## Task 8: Full verification
 
-- [ ] `npm test` — all green, including every new test
-- [ ] `npx tsc --noEmit` — exit 0
-- [ ] `npm run build` — exit 0
-- [ ] `npx playwright test` — **all** specs. The `ToastProvider` now wraps every page; if any E2E asserted an inline error that is now a toast, **update the assertion, do not delete it**.
-- [ ] **Grep proof:** every `fetch(` in `src/app` and `src/components` is followed by a `res.ok` check — except `syncAll()`, which is knowingly deferred. List any other exception you find.
+- [ ] `npm test` - all green, including every new test
+- [ ] `npx tsc --noEmit` - exit 0
+- [ ] `npm run build` - exit 0
+- [ ] `npx playwright test` - **all** specs. The `ToastProvider` now wraps every page; if any E2E asserted an inline error that is now a toast, **update the assertion, do not delete it**.
+- [ ] **Grep proof:** every `fetch(` in `src/app` and `src/components` is followed by a `res.ok` check - except `syncAll()`, which is knowingly deferred. List any other exception you find.
 
 ---
 
 ## Definition of done
 
 - [ ] Four suites green: test, tsc, build, playwright
-- [ ] No button that acts can fail silently — **`CostsClient.save()` above all**
+- [ ] No button that acts can fail silently - **`CostsClient.save()` above all**
 - [ ] A failed sign-out does **not** navigate
 - [ ] Login and invite validation still render **inline** and still persist while retyping
 - [ ] Dashboard and Portal load failures still render **inline**

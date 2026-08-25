@@ -16,7 +16,7 @@ import type { ProductRow, ProductTotals } from '@/lib/metrics/products'
  * as `ratios()` in marketing.ts and the dash in BreakdownTable.
  */
 function marginText(netSales: number, margin: number): string {
-  if (netSales === 0) return '—'
+  if (netSales === 0) return '-'
   return `${(margin * 100).toFixed(1)}%`
 }
 
@@ -26,7 +26,7 @@ function countText(n: number): string {
 
 /**
  * `costOn` returns zero when no cost was ever entered, which makes an uncosted
- * product report a 100% margin — a lie that looks like a triumph. Every such
+ * product report a 100% margin - a lie that looks like a triumph. Every such
  * row says so.
  */
 function CostWarning() {
@@ -84,7 +84,7 @@ export function ProductsTable({
           <tbody>
             {rows.map((row) => {
               const isOpen = openKeys.has(row.key)
-              // One store is not a breakdown — there is nothing to reveal.
+              // One store is not a breakdown - there is nothing to reveal.
               const expandable = row.stores.length > 1
 
               return (

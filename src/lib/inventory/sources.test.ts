@@ -111,7 +111,7 @@ describe('splitBySource', () => {
 describe('namedFromSource', () => {
   /**
    * The bug this exists to fix. `SupplyItem` snapshots its name once, from
-   * whichever shop the database returned first, and never updates it — which is
+   * whichever shop the database returned first, and never updates it - which is
    * why Norwegian products are listed under their Finnish and Swedish names.
    * Reading the name from the source shop fixes every existing row with no
    * migration, exactly as the Forecast tab already does.
@@ -170,7 +170,7 @@ describe('nameOf', () => {
   })
 
   /**
-   * The purchase-order list has to name a product whatever its provenance —
+   * The purchase-order list has to name a product whatever its provenance -
    * including one the source shops stopped carrying after the order was placed.
    * A blank there would be an order you cannot identify.
    */
@@ -200,7 +200,7 @@ describe('oneRowPerSku', () => {
   })
 
   /**
-   * Six live products share the SKU "0" and are not one product — a pizza oven
+   * Six live products share the SKU "0" and are not one product - a pizza oven
    * and a massage chair among them. Collapsing them would hide five products
    * that each need a cost, which is worse than showing a duplicate.
    */
@@ -298,7 +298,7 @@ describe('imageOf', () => {
  * Not hypothetical: one live product on a source shop stores an empty string
  * rather than null for its photo. Prisma reports that as a value, so a guard
  * written as `!== null` would put '' in the map and the page would render an
- * img with no src — a broken image where the placeholder belongs.
+ * img with no src - a broken image where the placeholder belongs.
  */
 describe('imagesOf, on the empty string a live shop actually stores', () => {
   it('treats an empty photo as no photo', () => {

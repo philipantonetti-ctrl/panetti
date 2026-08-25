@@ -48,7 +48,7 @@ describe('syncWindow', () => {
     expect((first.to.getTime() - first.from.getTime()) / DAY_MS).toBe(365)
 
     // Synced yesterday: one day of gap plus the 35-day restate window. The
-    // extra day costs nothing — every write is an upsert keyed on (account, date).
+    // extra day costs nothing - every write is an upsert keyed on (account, date).
     const later = syncWindow(new Date('2026-07-28T00:00:00Z'), now)
     expect((later.to.getTime() - later.from.getTime()) / DAY_MS).toBe(36)
   })

@@ -48,7 +48,7 @@ function units(o: Order) {
 
   // Finished, per Visma. It closes some orders without ever booking a receipt
   // against them, so "0 landed" on a closed row is the paperwork rather than the
-  // pallet — and "none landed yet" there would imply we are still waiting.
+  // pallet - and "none landed yet" there would imply we are still waiting.
   if (o.receivedAt) {
     return o.receivedQuantity === 0
       ? `${o.quantity} ordered · closed with no receipt`
@@ -93,7 +93,7 @@ const OPENS_ASCENDING: Record<Column, boolean> = {
  *
  * A null is not a zero and never sorts as one. An order with no ETA is not the
  * soonest thing arriving, so nulls sit last in BOTH directions and cannot be
- * sorted INTO the top either — the same rule the Forecast tab's sort follows,
+ * sorted INTO the top either - the same rule the Forecast tab's sort follows,
  * and the same "say when you don't know" rule the row itself already follows
  * when it prints "no ETA, so it moves no date".
  */
@@ -115,14 +115,14 @@ function sortRows(rows: Order[], by: Column, ascending: boolean): Order[] {
  * What is on order and when it lands.
  *
  * An order with no ETA is listed with the reason spelled out, because it is
- * doing nothing for the forecast until someone sets one — counting stock whose
+ * doing nothing for the forecast until someone sets one - counting stock whose
  * arrival nobody knows would push a run-out date out on a guess.
  *
  * OPENS FILTERED, which is unusual here and deliberate. Measured against
  * production on 2026-08-18: 271 orders on this page and 246 of them had already
  * arrived. The 25 still coming are the reason anyone opens it, and they were
  * buried under ten times their number in history. So the page starts on those
- * and says "showing 25 of 271" beside the filter — the count is what stops a
+ * and says "showing 25 of 271" beside the filter - the count is what stops a
  * hidden row reading as a missing one, which is the whole risk of opening
  * filtered at all.
  */
@@ -174,7 +174,7 @@ export function PurchaseOrdersClient({
           supplyItemId: form.itemId,
           quantity,
           // An <input type="date"> yields YYYY-MM-DD, which the API parses as
-          // UTC midnight — consistent with the forecast's documented UTC-day basis.
+          // UTC midnight - consistent with the forecast's documented UTC-day basis.
           orderedAt: form.orderedAt,
           // A blank Expected must send null, not be blocked: an order whose
           // arrival nobody knows must not push out a run-out date, so null is
@@ -228,7 +228,7 @@ export function PurchaseOrdersClient({
       if (product !== 'all' && o.item.sku !== product) return false
       if (needle === '') return true
       // Name AND code, because he knows some products by one and some by the
-      // other — the same reason the orders page searches both.
+      // other - the same reason the orders page searches both.
       return (
         o.item.name.toLowerCase().includes(needle) || o.item.sku.toLowerCase().includes(needle)
       )

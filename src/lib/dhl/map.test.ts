@@ -20,7 +20,7 @@ describe('mapShipments', () => {
   /**
    * The recording wins over the documentation. This is a real response from
    * api-eu.dhl.com, captured 2026-08-17 with the client's own key and scrubbed
-   * of addresses — so these selectors are proven, not assumed.
+   * of addresses - so these selectors are proven, not assumed.
    */
   it('maps the recorded real response', () => {
     const [parcel] = mapShipments(real)
@@ -40,7 +40,7 @@ describe('mapShipments', () => {
   /**
    * DHL sends "2026-08-17T12:19:54" with no zone at all. Handed to `new Date()`
    * as-is that is parsed as LOCAL time, so the same parcel would sit at 12:19 on
-   * Vercel and 04:19 on a machine in Manila — a delivery median that changes
+   * Vercel and 04:19 on a machine in Manila - a delivery median that changes
    * with the reader's laptop. Read as UTC it is the same everywhere, and it is
    * exactly right in production, where the server clock is UTC.
    */
@@ -81,7 +81,7 @@ describe('mapShipments', () => {
 
   /**
    * A failed delivery attempt is not a return and not a delivery. It is
-   * recorded so it can be seen, and moves no milestone — claiming either would
+   * recorded so it can be seen, and moves no milestone - claiming either would
    * be inventing an outcome we were not told.
    */
   it('records a failure without calling it delivered or returned', () => {
@@ -114,8 +114,8 @@ describe('mapShipments', () => {
 
   /**
    * KNOWN GAP, deliberately unmapped. `returnFlag` sits on the shipment and is
-   * false in the only real response we hold, so what a true one looks like — and
-   * whether the return also arrives as an event — is undetermined. Guessing
+   * false in the only real response we hold, so what a true one looks like - and
+   * whether the return also arrives as an event - is undetermined. Guessing
    * would risk marking a live parcel returned, which nulls its availableAt and
    * removes it from the late list. Unskip when a returned DHL parcel has been
    * recorded.

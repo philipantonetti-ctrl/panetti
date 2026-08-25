@@ -18,28 +18,28 @@ Three client requests, verbatim:
 WooCommerce's own meaning of the statuses: `pending` = order placed, payment
 not received; `on-hold` = stock reserved, payment awaited (bank transfer and
 the like). Money exists in neither. `processing` and `completed` mean payment
-received. The client's rule — no revenue until paid — therefore excludes both
+received. The client's rule - no revenue until paid - therefore excludes both
 unpaid statuses, not just `pending`.
 
 `src/lib/metrics/types.ts` splits the one status list into three:
 
-- `VOIDED_STATUSES` = refunded, cancelled, failed, trash — dead ends that
+- `VOIDED_STATUSES` = refunded, cancelled, failed, trash - dead ends that
   earn nothing, ever.
-- `UNPAID_STATUSES` = pending, on-hold — earn nothing YET; the webhook flips
+- `UNPAID_STATUSES` = pending, on-hold - earn nothing YET; the webhook flips
   them to `processing` the moment Woo records payment, and from that second
   they count.
-- `EXCLUDED_STATUSES` = both lists — everything the money engine ignores.
+- `EXCLUDED_STATUSES` = both lists - everything the money engine ignores.
 
 Because the engine, the daily trend, the ambassador leaderboard and the
 portal all already filter on `EXCLUDED_STATUSES`, widening that list carries
 the rule everywhere at once: revenue, profit, orders count, commission,
 charts, portal earnings. No pending order can earn an ambassador commission
-and then unearn it — commission simply starts at payment.
+and then unearn it - commission simply starts at payment.
 
 The Orders list is the one place that differs: a pending order is a LIVE
 order and must stay visible. The list's hide-by-default filter narrows to
 `VOIDED_STATUSES` only, while the per-order figures (COGS, fee, commission,
-profit, margin) go `null` for the whole excluded set — a pending row shows
+profit, margin) go `null` for the whole excluded set - a pending row shows
 its amber "Pending" badge and dashes, and the dashes turn into money the
 moment payment lands.
 
@@ -55,14 +55,14 @@ button always says "Select all". New behavior:
   clear, the trigger label reads "No shops", the button flips back to
   **Select all** (which restores `[]` = all).
 - The sentinel rides the existing `shops=` query param unchanged; it matches
-  no rows, so Orders shows "Total 0 found" and the dashboard shows zeros —
-  the honest picture of "no shops selected" — until the user ticks the shops
+  no rows, so Orders shows "Total 0 found" and the dashboard shows zeros -
+  the honest picture of "no shops selected" - until the user ticks the shops
   they actually want. Ticking a shop from the none state selects just it.
 - No API changes at all.
 
 ## 3. One "gross", not two
 
-"Gross sales" (before discounts, excl. VAT — the Shopify sense) and "Gross
+"Gross sales" (before discounts, excl. VAT - the Shopify sense) and "Gross
 revenue" (what customers actually paid, incl. VAT) reading side by side is a
 genuine source of confusion, and gross sales is derivable from the columns
 that stay (net sales + discounts). The **Gross sales column is removed** from

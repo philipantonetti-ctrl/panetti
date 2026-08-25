@@ -72,7 +72,7 @@ function Select({
   )
 }
 
-/** BeProfit-style per-webshop Shop Settings — always shows the shop's actual values. */
+/** BeProfit-style per-webshop Shop Settings - always shows the shop's actual values. */
 export function ShopSettingsClient({
   email,
   shop,

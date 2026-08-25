@@ -38,7 +38,7 @@ describe('fetchOrders', () => {
   })
 
   it('stops at maxPages and says more is behind', async () => {
-    // A fresh Response per call — a Response body can only be read once, and
+    // A fresh Response per call - a Response body can only be read once, and
     // mockResolvedValue would replay the exact same (already-consumed) instance.
     const fetchMock = vi.fn().mockImplementation(async () => page(100))
     vi.stubGlobal('fetch', fetchMock)
@@ -108,7 +108,7 @@ describe('fetchOrders', () => {
   })
 
   // The guard that stops a future call site inside this loop being added
-  // without a timeout — one unresponsive store must never spend the budget of
+  // without a timeout - one unresponsive store must never spend the budget of
   // every store waiting behind it.
   it('gives every request a signal', async () => {
     const fetchMock = vi.fn().mockResolvedValue(page(0))
@@ -194,13 +194,13 @@ describe('bounded pulls', () => {
     expect(requestBudgetMs({ deadline: now + 5_000 }, now)).toBe(5_000)
     // No deadline at all: the ceiling.
     expect(requestBudgetMs({}, now)).toBe(30_000)
-    // Never zero or negative — an already-expired budget must still be a valid
+    // Never zero or negative - an already-expired budget must still be a valid
     // timeout, and the page loop is what actually stops.
     expect(requestBudgetMs({ deadline: now - 10_000 }, now)).toBe(1)
   })
 
   // requestBudgetMs deliberately leaves the LAST request only whatever time is
-  // left of the deadline — sometimes a couple hundred ms — so a timeout here is
+  // left of the deadline - sometimes a couple hundred ms - so a timeout here is
   // this clamp's NORMAL outcome. Discarding the pages already fetched would
   // turn a merely-slow store into a reported failure with zero progress.
   it('returns the pages already fetched when a request times out, instead of throwing', async () => {
@@ -297,7 +297,7 @@ describe('asking for statuses by name', () => {
     await fetchOrders(CREDS, { statuses: ['processing', 'completed', 'shipping'] })
 
     // Sending no status leaves WooCommerce on `any`, which becomes WP's
-    // `post_status => 'any'` — and that omits statuses registered with
+    // `post_status => 'any'` - and that omits statuses registered with
     // exclude_from_search, exactly how plugins add their own. A store with a
     // "shipping" step then answers with those orders silently absent.
     const url = new URL(String(fetchMock.mock.calls[0][0]))
@@ -388,8 +388,8 @@ describe('fetchCatalog', () => {
 
 /**
  * A WordPress fatal error answers with a whole HTML page, not JSON. Truncating
- * that to 300 characters keeps only the <head> — doctype, three metas and the
- * opening of <title> — so the error we stored and put on the owner's dashboard
+ * that to 300 characters keeps only the <head> - doctype, three metas and the
+ * opening of <title> - so the error we stored and put on the owner's dashboard
  * was markup, and the one sentence explaining the failure never survived.
  */
 describe('a store that answers with an error page', () => {
@@ -441,7 +441,7 @@ describe('a store that answers with an error page', () => {
  * input". That is V8's message for JSON.parse(''), and it reached the owner's
  * settings page verbatim: no store, no endpoint, nothing to act on.
  *
- * Probed against this Node before fixing anything — ONLY an empty or
+ * Probed against this Node before fixing anything - ONLY an empty or
  * whitespace-only body produces that exact string. Truncated JSON says
  * "Expected ',' or '}'"; an HTML page says "Unexpected token '<'". So the
  * store answered with a genuinely empty body, and every res.json() in this
@@ -471,7 +471,7 @@ describe('a store that answers with nothing', () => {
 
   /**
    * An empty body is not an empty shop. fetchOrderStatuses falls back to []
-   * for exactly this case and is right to — statuses are optional. Doing it
+   * for exactly this case and is right to - statuses are optional. Doing it
    * here would advance the watermark past orders nobody read and report a
    * healthy sync, which is the one failure worse than a bad error message.
    */

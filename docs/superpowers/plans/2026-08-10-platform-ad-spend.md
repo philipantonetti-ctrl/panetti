@@ -14,34 +14,34 @@
 - **Test command:** `npx vitest run <path>` from the worktree root. Full suite: `npx vitest run`.
 - **DOM tests must start with `// @vitest-environment jsdom` as the literal first line.** The repo default env is `node`.
 - **Every DOM test file must `import '@testing-library/jest-dom/vitest'`.** There is no global setup file, so without that line `toBeInTheDocument`, `toHaveStyle` and `toHaveTextContent` fail with `Invalid Chai property`. Verified by probe on 2026-08-10.
-- **Use `fireEvent` from `@testing-library/react`.** `@testing-library/user-event` is NOT installed — do not import it.
-- **Recharts needs no size mocking for these tests.** Verified by probe: the legend, heading and toggle render outside the `ResponsiveContainer`, so they are queryable under jsdom without stubbing `clientWidth`. Do not assert on SVG paths — those genuinely do not render at zero size.
+- **Use `fireEvent` from `@testing-library/react`.** `@testing-library/user-event` is NOT installed - do not import it.
+- **Recharts needs no size mocking for these tests.** Verified by probe: the legend, heading and toggle render outside the `ResponsiveContainer`, so they are queryable under jsdom without stubbing `clientWidth`. Do not assert on SVG paths - those genuinely do not render at zero size.
 - **Never `git add -A`.** It sweeps `next-env.d.ts`. Always `git add <explicit paths>`.
 - **Never run `git stash`, `git checkout -- .`, `git reset`, or `git restore`.** They silently destroy work in this repo.
 - **Never edit files with PowerShell `Get-Content`/`Set-Content`.** PS 5.1 mojibakes UTF-8. Use the Edit/Write tools.
-- **Local Postgres only.** Tests run against `%LOCALAPPDATA%\panetti-pg`. Never point tests at the live Neon database. Never run `npm run db:seed` — it wipes all data.
+- **Local Postgres only.** Tests run against `%LOCALAPPDATA%\panetti-pg`. Never point tests at the live Neon database. Never run `npm run db:seed` - it wipes all data.
 - **Schema changes:** run `npx prisma db push` then `npx prisma generate` after editing `prisma/schema.prisma`.
 - DB-backed tests scope their rows with a per-file marker string (see `sync.test.ts`'s `MARKER = '[ads-test]'`) so parallel files never collide.
-- A ratio with a zero denominator renders as `—`, never as `0`.
+- A ratio with a zero denominator renders as `-`, never as `0`.
 
 ---
 
 ## File Structure
 
 **Modified:**
-- `src/lib/ads/sync.ts` — `syncWindow` gap fix (Task 1)
-- `prisma/schema.prisma` — `Setting.displayCurrency` (Task 2)
-- `src/lib/settings.ts` — default + allowed list (Task 2)
-- `src/app/api/settings/route.ts` — validation (Task 2)
-- `src/app/settings/general/GeneralClient.tsx`, `page.tsx` — the picker (Task 2)
-- `src/lib/data/load.ts` — read the setting (Task 2)
-- `src/lib/ads/marketing.ts` — `byPlatform` + per-platform series (Task 3)
-- `src/app/api/marketing/route.ts` — widen account select, return `spendCheck` (Task 4)
-- `src/components/marketing/MarketingChart.tsx` — by-platform toggle (Task 7)
-- `src/app/marketing/MarketingClient.tsx` — mount the new pieces (Task 8)
+- `src/lib/ads/sync.ts` - `syncWindow` gap fix (Task 1)
+- `prisma/schema.prisma` - `Setting.displayCurrency` (Task 2)
+- `src/lib/settings.ts` - default + allowed list (Task 2)
+- `src/app/api/settings/route.ts` - validation (Task 2)
+- `src/app/settings/general/GeneralClient.tsx`, `page.tsx` - the picker (Task 2)
+- `src/lib/data/load.ts` - read the setting (Task 2)
+- `src/lib/ads/marketing.ts` - `byPlatform` + per-platform series (Task 3)
+- `src/app/api/marketing/route.ts` - widen account select, return `spendCheck` (Task 4)
+- `src/components/marketing/MarketingChart.tsx` - by-platform toggle (Task 7)
+- `src/app/marketing/MarketingClient.tsx` - mount the new pieces (Task 8)
 
 **Created:**
-- `src/lib/ads/spend-check.ts` + test — pure per-account reconciliation (Task 4)
+- `src/lib/ads/spend-check.ts` + test - pure per-account reconciliation (Task 4)
 - `src/components/marketing/PlatformCard.tsx` + test (Task 5)
 - `src/components/marketing/PlatformTable.tsx` + test (Task 6)
 - `src/components/marketing/SpendCheck.tsx` + test (Task 8)
@@ -58,7 +58,7 @@ A sync that stops for more than 35 days currently leaves a permanent hole. `sync
 
 **Interfaces:**
 - Consumes: nothing
-- Produces: `syncWindow(lastSyncAt: Date | null, now: Date): { from: Date; to: Date }` — signature unchanged
+- Produces: `syncWindow(lastSyncAt: Date | null, now: Date): { from: Date; to: Date }` - signature unchanged
 
 - [ ] **Step 1: Write the failing test**
 
@@ -100,7 +100,7 @@ Add to `src/lib/ads/sync.test.ts`, inside the existing `describe('syncWindow', .
 
 Run: `npx vitest run src/lib/ads/sync.test.ts -t "reaches back to the last successful sync"`
 
-Expected: FAIL — `expected 35 to be 95`. If it passes, stop: the test is not exercising the bug and something is wrong with the setup.
+Expected: FAIL - `expected 35 to be 95`. If it passes, stop: the test is not exercising the bug and something is wrong with the setup.
 
 - [ ] **Step 3: Fix `syncWindow`**
 
@@ -125,7 +125,7 @@ export function syncWindow(lastSyncAt: Date | null, now: Date): { from: Date; to
 
 Run: `npx vitest run src/lib/ads/sync.test.ts`
 
-Expected: PASS, all tests including the pre-existing `backfills a year on first sync, 35 days after that`. Note that test asserts `36` is not expected — check it. It passes `lastSyncAt` one day before `now`, so `daysSince` is 1 and `back` is 36, and the existing assertion `.toBe(35)` will now FAIL.
+Expected: PASS, all tests including the pre-existing `backfills a year on first sync, 35 days after that`. Note that test asserts `36` is not expected - check it. It passes `lastSyncAt` one day before `now`, so `daysSince` is 1 and `back` is 36, and the existing assertion `.toBe(35)` will now FAIL.
 
 Update that pre-existing assertion to `36` and extend its comment:
 
@@ -137,7 +137,7 @@ Update that pre-existing assertion to `36` and extend its comment:
     expect((first.to.getTime() - first.from.getTime()) / DAY_MS).toBe(365)
 
     // Synced yesterday: one day of gap plus the 35-day restate window. The
-    // extra day costs nothing — every write is an upsert keyed on (account, date).
+    // extra day costs nothing - every write is an upsert keyed on (account, date).
     const later = syncWindow(new Date('2026-07-28T00:00:00Z'), now)
     expect((later.to.getTime() - later.from.getTime()) / DAY_MS).toBe(36)
   })
@@ -195,7 +195,7 @@ In `src/lib/settings.ts`, add `displayCurrency: 'USD'` to `SETTING_DEFAULTS`, an
 ```ts
 /**
  * What the workspace may consolidate into. Restricted to what the rate
- * provider (Frankfurter, see fx/rates.ts) actually quotes — an unquoted
+ * provider (Frankfurter, see fx/rates.ts) actually quotes - an unquoted
  * currency would leave crossConvert with no rate and silently return the
  * amount unconverted, which reads as a real number and is not one.
  */
@@ -270,7 +270,7 @@ describe('display currency', () => {
 
 Run: `npx vitest run src/lib/data/load.test.ts`
 
-Expected: the first test FAILS with `expected 'USD' to be 'NOK'`. The second already passes — that is the behaviour being protected, not added.
+Expected: the first test FAILS with `expected 'USD' to be 'NOK'`. The second already passes - that is the behaviour being protected, not added.
 
 - [ ] **Step 7: Read the setting in the loader**
 
@@ -328,7 +328,7 @@ In `src/app/settings/general/page.tsx`, add `displayCurrency: setting.displayCur
 
 - [ ] **Step 10: Write the settings component test**
 
-`src/app/settings/general/GeneralClient.test.tsx` already exists and already has the machinery for this. Do NOT write a fresh `render()` call — the component uses `useToast` and would throw outside a provider, and saving triggers `window.location.reload`. The file's own `renderWith` helper (line 32) handles both.
+`src/app/settings/general/GeneralClient.test.tsx` already exists and already has the machinery for this. Do NOT write a fresh `render()` call - the component uses `useToast` and would throw outside a provider, and saving triggers `window.location.reload`. The file's own `renderWith` helper (line 32) handles both.
 
 Two edits to that file:
 
@@ -373,13 +373,13 @@ git commit -m "feat(settings): choose the currency several stores consolidate in
 **Interfaces:**
 - Consumes: `SpendRow`, `MarketingAccount` (unchanged shapes)
 - Produces:
-  - `MarketingPlatformRow` — exported type, fields listed in Step 3
+  - `MarketingPlatformRow` - exported type, fields listed in Step 3
   - `MarketingResult.byPlatform: MarketingPlatformRow[]`
   - `MarketingSeriesPoint` gains `metaSpend: number` and `googleSpend: number`
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `src/lib/ads/marketing.test.ts`. The file already defines `rates`, `engine`, `accounts`, `TO` and `spendRow` — reuse them.
+Add to `src/lib/ads/marketing.test.ts`. The file already defines `rates`, `engine`, `accounts`, `TO` and `spendRow` - reuse them.
 
 ```ts
 describe('byPlatform', () => {
@@ -477,7 +477,7 @@ describe('per-platform series', () => {
         spendRow({ accountId: 'acc-google', date: new Date('2026-07-01T00:00:00Z'), spend: 50_00 }),
       ],
       engine,
-      // A full SeriesPoint (trend.ts:32) — netRevenue and netProfit are
+      // A full SeriesPoint (trend.ts:32) - netRevenue and netProfit are
       // required and unused here, so they are zero rather than cast away.
       series: [{ date: '2026-07-01', grossRevenue: 500_00, netRevenue: 0, netProfit: 0 }],
       rates,
@@ -496,7 +496,7 @@ describe('per-platform series', () => {
 
 Run: `npx vitest run src/lib/ads/marketing.test.ts`
 
-Expected: FAIL — `result.byPlatform is undefined`.
+Expected: FAIL - `result.byPlatform is undefined`.
 
 - [ ] **Step 3: Add the types**
 
@@ -586,7 +586,7 @@ Replace the `byDay` write at the end of the loop with:
     platformByDay.set(day, split)
 ```
 
-Note the `else if`: the chart plots two named lines, so a third platform contributes to `spend` but to neither line. That is honest — it is counted in the total and in `byPlatform`, just not drawn as a line that does not exist.
+Note the `else if`: the chart plots two named lines, so a third platform contributes to `spend` but to neither line. That is honest - it is counted in the total and in `byPlatform`, just not drawn as a line that does not exist.
 
 - [ ] **Step 5: Build the platform rows and extend the series**
 
@@ -646,7 +646,7 @@ git commit -m "feat(marketing): total ad spend by platform, in the pass that alr
 
 ## Task 4: Spend check data
 
-Per-account reconciliation from rows already fetched. The native total is UNCONVERTED, in the account's own currency — the number that can be held against Ads Manager directly.
+Per-account reconciliation from rows already fetched. The native total is UNCONVERTED, in the account's own currency - the number that can be held against Ads Manager directly.
 
 **Files:**
 - Create: `src/lib/ads/spend-check.ts`
@@ -656,7 +656,7 @@ Per-account reconciliation from rows already fetched. The native total is UNCONV
 **Interfaces:**
 - Consumes: `SpendRow` from `./marketing`, `RateTable` from `../metrics/types`, `crossConvert` from `../metrics/fx`
 - Produces:
-  - `SpendCheckAccount` — exported type, fields in Step 3
+  - `SpendCheckAccount` - exported type, fields in Step 3
   - `SpendCheckResult = { accounts: SpendCheckAccount[]; needsAttention: boolean }`
   - `buildSpendCheck(args): SpendCheckResult`
 
@@ -795,7 +795,7 @@ describe('buildSpendCheck', () => {
 
 Run: `npx vitest run src/lib/ads/spend-check.test.ts`
 
-Expected: FAIL — cannot resolve `./spend-check`.
+Expected: FAIL - cannot resolve `./spend-check`.
 
 - [ ] **Step 3: Write the module**
 
@@ -1057,7 +1057,7 @@ describe('PlatformCard', () => {
 
 Run: `npx vitest run src/components/marketing/PlatformCard.test.tsx`
 
-Expected: FAIL — cannot resolve `./PlatformCard`.
+Expected: FAIL - cannot resolve `./PlatformCard`.
 
 - [ ] **Step 3: Write the component**
 
@@ -1070,7 +1070,7 @@ import { formatMoney } from '@/lib/money'
 import type { MarketingPlatformRow } from '@/lib/ads/marketing'
 
 /**
- * Where the ad money went, by platform. The bar is the share of total spend —
+ * Where the ad money went, by platform. The bar is the share of total spend -
  * a reading aid, never the number itself, which is always printed beside it.
  */
 
@@ -1156,7 +1156,7 @@ git commit -m "feat(marketing): ad spend card split by platform"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/components/marketing/PlatformTable.test.tsx`. Reuse the same `row` helper shape as Task 5 (repeat it in this file — the two tests are independent).
+Create `src/components/marketing/PlatformTable.test.tsx`. Reuse the same `row` helper shape as Task 5 (repeat it in this file - the two tests are independent).
 
 ```tsx
 // @vitest-environment jsdom
@@ -1192,7 +1192,7 @@ describe('PlatformTable', () => {
       />,
     )
     // 'en-US' grouping, matching MarketingTable's own count cells: 5,560,745.
-    // Verified against the repo convention at MarketingTable.tsx:110 — do not
+    // Verified against the repo convention at MarketingTable.tsx:110 - do not
     // switch to a space-grouped locale, the two tables sit on the same page.
     const cells = within(screen.getByRole('row', { name: /Meta/ })).getAllByRole('cell')
     expect(cells.map((c) => c.textContent)).toEqual(
@@ -1204,7 +1204,7 @@ describe('PlatformTable', () => {
     // A platform with no clicks has no cost per click. Printing 0 would claim
     // clicks were free.
     render(<PlatformTable rows={[row({ spend: 100_00, clicks: 0, cpc: null })]} currency="NOK" />)
-    expect(screen.getByTestId('cpc-meta')).toHaveTextContent('—')
+    expect(screen.getByTestId('cpc-meta')).toHaveTextContent('-')
   })
 
   it('renders nothing at all when there are no platforms', () => {
@@ -1218,7 +1218,7 @@ describe('PlatformTable', () => {
 
 Run: `npx vitest run src/components/marketing/PlatformTable.test.tsx`
 
-Expected: FAIL — cannot resolve `./PlatformTable`.
+Expected: FAIL - cannot resolve `./PlatformTable`.
 
 - [ ] **Step 3: Write the component**
 
@@ -1274,11 +1274,11 @@ export function PlatformTable({
                 <td className="num px-5 py-3 text-right text-muted">{count(r.impressions)}</td>
                 <td className="num px-5 py-3 text-right text-muted">{count(r.clicks)}</td>
                 <td data-testid={`cpc-${r.provider}`} className="num px-5 py-3 text-right text-muted">
-                  {r.cpc === null ? '—' : formatMoney(r.cpc, currency)}
+                  {r.cpc === null ? '-' : formatMoney(r.cpc, currency)}
                 </td>
                 <td className="num px-5 py-3 text-right text-muted">{count(r.conversions)}</td>
                 <td className="num px-5 py-3 text-right text-muted">
-                  {r.platformRoas === null ? '—' : `${r.platformRoas.toFixed(2)}×`}
+                  {r.platformRoas === null ? '-' : `${r.platformRoas.toFixed(2)}×`}
                 </td>
               </tr>
             ))}
@@ -1313,7 +1313,7 @@ git commit -m "feat(marketing): per-platform spend table"
 
 **Interfaces:**
 - Consumes: `MarketingSeriesPoint` (now carrying `metaSpend`, `googleSpend`) from Task 3
-- Produces: `<MarketingChart series currency />` — unchanged props, new internal toggle
+- Produces: `<MarketingChart series currency />` - unchanged props, new internal toggle
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1328,7 +1328,7 @@ import { MarketingChart } from './MarketingChart'
 
 // No container-size mocking needed: the heading, legend and toggle live
 // OUTSIDE the ResponsiveContainer, so they render under jsdom at zero size.
-// Verified by probe. Do not add assertions on SVG paths — those really do
+// Verified by probe. Do not add assertions on SVG paths - those really do
 // need a measured container and would fail.
 
 const series = [
@@ -1358,7 +1358,7 @@ describe('MarketingChart', () => {
 
 Run: `npx vitest run src/components/marketing/MarketingChart.test.tsx`
 
-Expected: FAIL — no button named "By platform".
+Expected: FAIL - no button named "By platform".
 
 - [ ] **Step 3: Add the toggle**
 
@@ -1531,7 +1531,7 @@ describe('SpendCheck', () => {
 
 Run: `npx vitest run src/components/marketing/SpendCheck.test.tsx`
 
-Expected: FAIL — cannot resolve `./SpendCheck`.
+Expected: FAIL - cannot resolve `./SpendCheck`.
 
 - [ ] **Step 3: Write the component**
 
@@ -1605,7 +1605,7 @@ export function SpendCheck({ data, currency }: { data: SpendCheckResult; currenc
             <thead>
               <tr className="border-b border-line text-[11px] font-semibold tracking-wide text-faint">
                 <th scope="col" className="px-5 py-3 text-left">ACCOUNT</th>
-                <th scope="col" className="px-5 py-3 text-right" title="The account's own currency, unconverted — compare this against Ads Manager">
+                <th scope="col" className="px-5 py-3 text-right" title="The account's own currency, unconverted - compare this against Ads Manager">
                   NATIVE TOTAL
                 </th>
                 <th scope="col" className="px-5 py-3 text-right">IN {currency}</th>
@@ -1755,6 +1755,6 @@ git commit -m "feat(marketing): spend check panel and platform sections on the p
 | Sync gap fix | 1 |
 | All 11 listed test cases | 1, 2, 3, 4, 5, 6, 7, 8 |
 
-**Known consequence, called out for the implementer:** Task 1 Step 4 changes a pre-existing assertion from 35 to 36. That is a deliberate behaviour change (one extra day re-fetched on every sync), not a test being bent to fit — every write is an upsert keyed on `(accountId, date)`, so re-fetching a day costs one overwritten row.
+**Known consequence, called out for the implementer:** Task 1 Step 4 changes a pre-existing assertion from 35 to 36. That is a deliberate behaviour change (one extra day re-fetched on every sync), not a test being bent to fit - every write is an upsert keyed on `(accountId, date)`, so re-fetching a day costs one overwritten row.
 
 **Out of scope, recorded in the spec:** an ad account on an inactive shop still contributes zero silently. The spend check panel surfaces it as an absence rather than a message. Left for a separate change.

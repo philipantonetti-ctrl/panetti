@@ -53,13 +53,13 @@ async function dhlError(res: Response): Promise<Error> {
 }
 
 /**
- * Track one parcel. Returns the raw body, unparsed — mapping is map.ts's job,
+ * Track one parcel. Returns the raw body, unparsed - mapping is map.ts's job,
  * and keeping them apart is what lets the mapper be tested against a recorded
  * response with no network at all.
  *
  * Null means DHL does not know this number. That is an ordinary answer for a
  * parcel the warehouse has booked but not yet handed over, so it is not an
- * error and the caller decides what it means. Every other non-2xx throws —
+ * error and the caller decides what it means. Every other non-2xx throws -
  * 429 especially, which must never be mistaken for "unknown": that would push a
  * rate-limited parcel into the slow tier and quietly lose a day of tracking.
  */

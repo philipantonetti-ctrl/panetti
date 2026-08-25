@@ -22,7 +22,7 @@ const row = (over: Partial<Row> & { sku: string }): Row => ({
  * Read by test id, not by cell text and not by "the first span": the name and
  * the SKU sit in adjacent spans with no whitespace between them, so the cell
  * reads "MIDMID" and splitting on a space finds nothing to split. Position is
- * no better — the product cell now leads with a thumbnail, whose placeholder is
+ * no better - the product cell now leads with a thumbnail, whose placeholder is
  * itself a span, so "first span" silently returned an empty string.
  */
 function order(container: HTMLElement): string[] {
@@ -49,7 +49,7 @@ const ROWS = [
 
 describe('sorting the forecast', () => {
   it('leaves the soonest run-out first until a column is chosen', () => {
-    // The page's whole promise is "when do you run out" — that has to stay the
+    // The page's whole promise is "when do you run out" - that has to stay the
     // opening view, not whatever the last click was.
     const { container } = render(<InventoryClient rows={ROWS} unusable={[]} />)
     expect(order(container)).toEqual(['MID', 'HIGH', 'LOW'])

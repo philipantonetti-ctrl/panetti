@@ -13,7 +13,7 @@ const label = 'mt-3 block text-xs font-medium text-muted'
 
 /**
  * Admin and Marketing logins. Admins see everything; Marketing sees the
- * ambassador program and nothing else. Ambassador logins are not here —
+ * ambassador program and nothing else. Ambassador logins are not here -
  * they are minted by invites and belong to their ambassador.
  */
 export function UsersClient({ email, myUserId }: { email: string; myUserId: string }) {
@@ -163,8 +163,8 @@ export function UsersClient({ email, myUserId }: { email: string; myUserId: stri
               onChange={(e) => setNewRole(e.target.value as StaffUser['role'])}
               className={field}
             >
-              <option value="MARKETING">Marketing — ambassadors only</option>
-              <option value="ADMIN">Admin — everything</option>
+              <option value="MARKETING">Marketing - ambassadors only</option>
+              <option value="ADMIN">Admin - everything</option>
             </select>
 
             <label className={label} htmlFor="new-user-password">Starter password</label>

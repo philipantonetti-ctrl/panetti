@@ -115,7 +115,7 @@ parser reads `actions[omni_purchase ?? purchase]` → conversions, `action_value
   - connection + google → needs `AdPlatformApp` google row (`db.adPlatformApp.findUnique`) else AdApiError('Google platform setup is missing.'); creds from app + refresh token + `account.loginCustomerId`
   - no connection → parse `credentials` as before; `credentials` null too → AdApiError('No credentials. Reconnect this account.')
   - `storeDaily` upserts all new columns.
-- [ ] Update existing tests (DailyRow literals get the six new zeros — helper `daily(over)` keeps them short), new tests: meta actions parsing, google conversions, connection-resolved sync (create connection + account with `credentials: null`, stub fetch, expect rows), expired meta connection sets lastError with the plain words.
+- [ ] Update existing tests (DailyRow literals get the six new zeros - helper `daily(over)` keeps them short), new tests: meta actions parsing, google conversions, connection-resolved sync (create connection + account with `credentials: null`, stub fetch, expect rows), expired meta connection sets lastError with the plain words.
 - [ ] Commit `feat: purchases, conversion value and video metrics sync daily; connections feed the sync`.
 
 ### Task 4: Routes
@@ -149,7 +149,7 @@ parser reads `actions[omni_purchase ?? purchase]` → conversions, `action_value
   - `Platform setup` section: two cards (Meta app / Google app) each showing the exact redirect URI (`${window.location.origin}/api/ads/oauth/meta/callback` etc. with a note to paste it into the app), inputs (Meta: App ID, App secret; Google: Client ID, Client secret, Developer token; secrets password-typed, placeholder 'saved, leave blank to keep' when `hasSecret`), Save → PUT → toast + refresh. Short help line under each (from the spec's "what the client does" steps).
   - Table row shows `via {connectionLabel}` under the name when connected by OAuth.
 - [ ] `MarketingStats` cards: AD SPEND, PURCHASE ROAS (`platformRoas`, hint 'Attributed conversion value divided by spend, as the platform reports it'), COST PER PURCHASE, CONV. VALUE.
-- [ ] `MarketingTable`: columns become (order) Shop, Ad spend, Purchases (`conversions`, 1 decimal when fractional), Conv. value, P. ROAS, Cost/purchase, Store ROAS (`roas`), Gross revenue, Orders, CPA, Meta, Google, CPM, Cost/link click, Link CTR, CPC, CTR, Hold rate, 3s plays, ThruPlays, Clicks — with a visibility dropdown copied from CompareTable's idiom (localStorage `marketing-columns`; default hidden = everything after CPA). Kinds extend with `plays`/`decimal` as needed.
+- [ ] `MarketingTable`: columns become (order) Shop, Ad spend, Purchases (`conversions`, 1 decimal when fractional), Conv. value, P. ROAS, Cost/purchase, Store ROAS (`roas`), Gross revenue, Orders, CPA, Meta, Google, CPM, Cost/link click, Link CTR, CPC, CTR, Hold rate, 3s plays, ThruPlays, Clicks - with a visibility dropdown copied from CompareTable's idiom (localStorage `marketing-columns`; default hidden = everything after CPA). Kinds extend with `plays`/`decimal` as needed.
 - [ ] Update/extend component tests: stats show PURCHASE ROAS and dashes; table default columns + toggling one hidden column on; AdAccountsClient: connect buttons disabled without apps and live with them, platform setup save flow (PUT called, blank secret kept), picker happy path (mocked listing → pre-ticked suggestion → bulk POST body correct) and error path keeps the modal.
 - [ ] Commit `feat: connect with Facebook or Google, pick accounts, and the client's Meta metrics on the page`.
 
@@ -158,7 +158,7 @@ parser reads `actions[omni_purchase ?? purchase]` → conversions, `action_value
 **Files:** Modify `e2e/marketing.spec.ts`.
 
 - [ ] Marketing spec: stat card assertions → `AD SPEND` + `PURCHASE ROAS`; table assertions unchanged plus `P. ROAS` header visible. Ad-accounts spec: `Platform setup` heading visible, `Connect with Facebook` link enabled (seeded app), manual modal now behind `Advanced: paste credentials manually` (update the modal-opening steps), picker NOT exercised end-to-end (no real platform); seeded `via` label visible.
-- [ ] Full: `npx tsc --noEmit`, full `npx vitest run`, full `npx playwright test`, `npx next build` — all green (pg in-call each time).
+- [ ] Full: `npx tsc --noEmit`, full `npx vitest run`, full `npx playwright test`, `npx next build` - all green (pg in-call each time).
 - [ ] Push, poll `gh api …/commits/<sha>/status` to success, `Invoke-RestMethod /api/version` equals sha.
 - [ ] Client message: one-time 5-minute setup per platform (with my walkthrough), then log in and tick accounts exactly like his screenshots; new metrics listed; frequency + average play time honestly deferred.
 

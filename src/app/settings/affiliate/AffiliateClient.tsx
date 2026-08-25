@@ -53,7 +53,7 @@ export function AffiliateClient({
         // and clearing the box would make them fetch it from Addrevenue again.
         toast.error(json?.error ?? 'Could not connect')
         // A failure part-way through (the first import runs inside this
-        // request) can still have created the account — show what now exists
+        // request) can still have created the account - show what now exists
         // rather than leaving a hidden row behind an error toast.
         await reload()
         return
@@ -61,7 +61,7 @@ export function AffiliateClient({
       setToken('')
       toast.success(
         json.sync?.ok
-          ? `${json.account.name} connected — ${json.sync.rows} sales imported`
+          ? `${json.account.name} connected - ${json.sync.rows} sales imported`
           : `${json.account.name} connected, but the first import failed. See its status below.`,
       )
       await reload()
@@ -92,7 +92,7 @@ export function AffiliateClient({
       }[]
       const failed = results.filter((r) => !r.ok).map((r) => r.name)
       if (failed.length > 0) {
-        toast.error(`Sync failed for ${failed.join(' and ')} — see the status below.`)
+        toast.error(`Sync failed for ${failed.join(' and ')} - see the status below.`)
       } else {
         toast.success('Affiliate sales refreshed')
       }
@@ -129,7 +129,7 @@ export function AffiliateClient({
     // vanishes from every past figure too. Say that, and name the alternative.
     if (
       !window.confirm(
-        `Remove ${account.name}? Its ${account.transactions.toLocaleString('en-US')} imported sales are deleted with it, so their cost disappears from every figure — this month's and last year's. To stop syncing but keep the history, pause it instead.`,
+        `Remove ${account.name}? Its ${account.transactions.toLocaleString('en-US')} imported sales are deleted with it, so their cost disappears from every figure - this month's and last year's. To stop syncing but keep the history, pause it instead.`,
       )
     )
       return
@@ -260,7 +260,7 @@ export function AffiliateClient({
 /**
  * The one cell worth reading twice.
  *
- * A failing sync says so in Addrevenue's own words, in full — a "Error" pill
+ * A failing sync says so in Addrevenue's own words, in full - a "Error" pill
  * with the reason hidden in a tooltip is how a dead token goes unnoticed for
  * weeks while the affiliate cost quietly stops moving. Sales matching no shop
  * are the other silent failure: they are real money that lands in no per-shop
@@ -277,7 +277,7 @@ function Status({ account }: { account: PublicAffiliateAccount }) {
   if (!account.active) {
     return (
       <span className="block text-muted">
-        Paused — nothing is fetched. The sales already imported still count.
+        Paused - nothing is fetched. The sales already imported still count.
       </span>
     )
   }
@@ -286,7 +286,7 @@ function Status({ account }: { account: PublicAffiliateAccount }) {
       <span className="block text-muted">
         <span className="font-semibold text-ink">OK.</span> {account.unmatched}{' '}
         {account.unmatched === 1 ? 'sale matches' : 'sales match'} no shop, so their cost is
-        missing from every per-shop figure — check the shops’ web addresses under Setup → Shops
+        missing from every per-shop figure - check the shops’ web addresses under Setup → Shops
         against the markets in Addrevenue.
       </span>
     )

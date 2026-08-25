@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mapOrder, type WooOrder } from './map'
 
 // A realistic WooCommerce order. Woo gives strings, and line `total` is
-// ALREADY after discount and EXCLUDING tax — which is exactly our net sales.
+// ALREADY after discount and EXCLUDING tax - which is exactly our net sales.
 const woo: WooOrder = {
   id: 501,
   number: '501',
@@ -86,7 +86,7 @@ describe('mapOrder', () => {
     expect(o.customerEmail).toBe('tino@example.dk')
   })
 
-  it("records '' — checked, nothing there — when the store has no billing details", () => {
+  it("records '' - checked, nothing there - when the store has no billing details", () => {
     // '' and not null: null means "never looked", and the backfill relies on
     // that difference to know when it is finished.
     const o = mapOrder(woo)
@@ -101,7 +101,7 @@ describe('mapOrder', () => {
   })
 
   it('survives a missing or malformed number without crashing', () => {
-    // Line items here must imply zero discount (subtotal === total) — otherwise
+    // Line items here must imply zero discount (subtotal === total) - otherwise
     // discountTotal would be derived from the lines regardless of discount_total,
     // and this test would not actually exercise the malformed-field fallback path.
     const o = mapOrder({

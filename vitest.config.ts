@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 // Tests use the same one database as the app: PostgreSQL, from .env (one source
-// of truth). The fallback is that same local Postgres — never a second kind of DB.
+// of truth). The fallback is that same local Postgres - never a second kind of DB.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
     //
     // vite-tsconfig-paths resolves through `unrs-resolver`, which ships a
     // NATIVE binary installed by a postinstall script. Where that script is
-    // blocked — a sandbox, a locked-down CI, `npm ci --ignore-scripts` — the
+    // blocked - a sandbox, a locked-down CI, `npm ci --ignore-scripts` - the
     // binary is absent and the plugin then fails to resolve `@/*` SILENTLY:
     // every test importing `@/lib/...` dies with "Cannot find package", which
     // reads as a broken repo rather than a missing binary. Vite 8 resolves
@@ -58,7 +58,7 @@ export default defineConfig(({ mode }) => {
             // (displayCurrency) mid-test; load.integration.test.ts READS it
             // through getSetting() and asserts it defaults to USD. Run in the
             // `app` project's normal parallelism, the two race on one
-            // un-taggable row — same shape of problem the `delivery` project
+            // un-taggable row - same shape of problem the `delivery` project
             // below already solves, and the same fix: run them one at a time.
             include: ['src/lib/data/load.test.ts', 'src/lib/data/load.integration.test.ts'],
             fileParallelism: false,
@@ -69,7 +69,7 @@ export default defineConfig(({ mode }) => {
           test: {
             name: 'delivery',
             // Together with the `setting` project's own include list just above,
-            // this must stay exactly the `app` project's exclude list — the
+            // this must stay exactly the `app` project's exclude list - the
             // three projects partition the suite exactly, with no file run
             // twice and none skipped. The API-route half matters as much as
             // the lib half: those tests write DeliveryPromise and the
@@ -80,8 +80,8 @@ export default defineConfig(({ mode }) => {
               // Not an integration-test filename, and deliberately listed anyway:
               // the Orders route test now creates a DeliveryPromise row for its
               // Delivery column. PUT /api/delivery/settings deletes EVERY promise
-              // row — that is real production behaviour, since promises are
-              // rewritten wholesale rather than diffed — so left in the parallel
+              // row - that is real production behaviour, since promises are
+              // rewritten wholesale rather than diffed - so left in the parallel
               // `app` project this file's fixture could be wiped mid-test,
               // flipping `late` from true to false. Membership here follows the
               // state a file touches, not what it is called.
@@ -91,7 +91,7 @@ export default defineConfig(({ mode }) => {
               // Shop.stockSource is workspace-wide: the moment ANY shop carries
               // it, every caller of loadInventory is scoped to that shop's
               // catalogue. This file flags shops mid-test, and the advisor
-              // collector above now reads the inventory too — so left in the
+              // collector above now reads the inventory too - so left in the
               // parallel `app` project, its flag could empty the rows the
               // briefing's fixture is asserting on. Membership follows the state
               // a file touches, not what it is called.

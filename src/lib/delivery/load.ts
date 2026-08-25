@@ -7,7 +7,7 @@ export type LoadedDelivery = {
   order: DeliveryOrder
   /**
    * Who bought it. Null when we hold no name, '' when the shop was checked and
-   * had none — see the schema comment on Order.customerName.
+   * had none - see the schema comment on Order.customerName.
    *
    * Beside DeliveryOrder rather than inside it, because `deliveryFor` has no
    * use for a name and DeliveryOrder is its input contract. Putting it there
@@ -21,7 +21,7 @@ export type LoadedDelivery = {
 /**
  * Every order in the window with its parcels, and what happened to each.
  *
- * Bulk-loaded in two queries, never per row — the same rule
+ * Bulk-loaded in two queries, never per row - the same rule
  * api/orders/route.ts follows for costs and rates.
  */
 export async function loadDelivery(

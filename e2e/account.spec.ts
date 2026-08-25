@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 /**
  * Your own account: your details, and your password.
- * The password flow is the one that must never be broken — get it wrong and a real
+ * The password flow is the one that must never be broken - get it wrong and a real
  * person is locked out of their earnings.
  */
 

@@ -7,7 +7,7 @@ const { resolveConsignments } = await import('./consignments')
 
 const CREDS = { uid: 'a@b.test', key: 'k', clientUrl: 'https://example.test/' }
 
-/** Shaped like Bring's real reply — see src/lib/bring/__fixtures__/. */
+/** Shaped like Bring's real reply - see src/lib/bring/__fixtures__/. */
 const reply = (
   consignmentId: string,
   packages: { packageNumber: string; recipientEmailAddress?: string }[],
@@ -17,7 +17,7 @@ const reply = (
 beforeEach(() => fetchTracking.mockReset())
 
 describe('resolveConsignments', () => {
-  it('asks for exactly one number per request — Bring answers about only one', async () => {
+  it('asks for exactly one number per request - Bring answers about only one', async () => {
     fetchTracking.mockResolvedValue([])
     await resolveConsignments(CREDS, ['111111111111111', '222222222222222'])
     expect(fetchTracking).toHaveBeenCalledTimes(2)
@@ -67,7 +67,7 @@ describe('resolveConsignments', () => {
   // bare list of numbers was indistinguishable between them, and the operator
   // reading the delivery page is exactly the person who has to tell "the
   // warehouse put a number in the file that is not a Bring parcel" apart from
-  // "Bring was down for a moment" — one needs a conversation with the
+  // "Bring was down for a moment" - one needs a conversation with the
   // warehouse, the other needs nothing at all.
   it('reports a number Bring knows nothing about instead of inventing one', async () => {
     fetchTracking.mockResolvedValue([])

@@ -6,7 +6,7 @@ export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
   // One worker, deliberately: every spec shares the one seeded database, and
   // admin-ambassador-portal.spec MUTATES the shared admin account mid-test.
-  // Parallel workers race that mutation — a concurrent sign-in lands on the
+  // Parallel workers race that mutation - a concurrent sign-in lands on the
   // portal instead of the dashboard and times out hunting for admin nav.
   workers: 1,
   use: { baseURL: 'http://localhost:3000' },

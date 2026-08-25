@@ -38,7 +38,7 @@ describe('ShopsClient', () => {
     expect(screen.queryByText('Sample data')).toBeNull()
   })
 
-  it('a failed sync says so — never "Synced 0 orders"', async () => {
+  it('a failed sync says so - never "Synced 0 orders"', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: 'Woo is down' }), { status: 500 }),
     ))
@@ -176,7 +176,7 @@ describe('ShopsClient', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 
-    // The name reached the server TRIMMED — not with the surrounding spaces typed in.
+    // The name reached the server TRIMMED - not with the surrounding spaces typed in.
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/shops')
     expect(JSON.parse(init.body as string)).toEqual({ name: 'Panetti Norway', currency: 'NOK' })

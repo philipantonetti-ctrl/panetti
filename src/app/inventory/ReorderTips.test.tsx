@@ -98,7 +98,7 @@ describe('the reorder tips', () => {
 
   /**
    * Every product is overdue the day lead times are first entered, so this list
-   * can arrive twenty long. It shortens, and it SAYS it shortened — a list that
+   * can arrive twenty long. It shortens, and it SAYS it shortened - a list that
    * quietly stops at eight reads as "that is all of them".
    */
   it('says how many it left out rather than quietly showing a shorter list', () => {

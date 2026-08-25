@@ -68,7 +68,7 @@ Your job is to decide what deserves his attention, in what order, and to say why
 
 Rules:
 - Never state a figure that is not in the facts you were given. You cannot compute.
-- Do not put numbers in "headline" or "why" — the interface prints them from the
+- Do not put numbers in "headline" or "why" - the interface prints them from the
   facts, beneath your words. Refer to direction and cause instead: "fell sharply",
   "in step with advertising efficiency".
 - Cite every fact an item rests on in factIds. An item citing an id you were not
@@ -79,7 +79,7 @@ Rules:
   invent advice to fill the field.
 - Order items so the most consequential is first.
 - Data-quality facts mean a number on his dashboard cannot yet be trusted. Say that
-  plainly — it outranks a move he can see for himself.
+  plainly - it outranks a move he can see for himself.
 - A REORDER_DUE fact means a product has reached the date it must be ordered by if it
   is to arrive before the shelf empties. Its figure is how many to order, already at
   the supplier's minimum. Combine them into one item and put the order in "action".
@@ -91,7 +91,7 @@ export type BriefingModel = (
 ) => Promise<{ items: BriefItem[]; model: string }>
 
 /**
- * The real one, or null when no key is configured — which is a state the page
+ * The real one, or null when no key is configured - which is a state the page
  * shows plainly rather than an error it throws.
  */
 export function anthropicModel(): BriefingModel | null {
@@ -99,7 +99,7 @@ export function anthropicModel(): BriefingModel | null {
   if (!apiKey) return null
 
   // The SDK's default timeout for this model/token combination is 600s, with
-  // 2 retries on top — nearly 30 minutes against a 300s platform ceiling.
+  // 2 retries on top - nearly 30 minutes against a 300s platform ceiling.
   // Bounded well under that ceiling, and one retry rather than the default
   // two, so an overloaded model fails inside the window write.ts still has
   // left to record the error, rather than the platform killing it first.
@@ -161,7 +161,7 @@ export function validateItems(items: BriefItem[], facts: Fact[]): BriefItem[] {
  * and took an afternoon to chase, because the stored text was the raw body and
  * nothing was logged. The body says everything except the three things that
  * actually help: what the status was, what KIND of failure it was, and the
- * request id — the only handle by which a request can be traced afterwards.
+ * request id - the only handle by which a request can be traced afterwards.
  *
  * One line, and no JSON. A blob on the page is an unanswerable question rather
  * than a thing to fix, which is the same rule `trustSentence` already applies
@@ -217,7 +217,7 @@ export async function generateBrief(
     return { items: validateItems(result.items, collected.facts), model: result.model, error: null }
   } catch (e) {
     // The whole error, where the platform keeps it. What gets STORED is one
-    // short line, so this is the only place the detail survives — and without
+    // short line, so this is the only place the detail survives - and without
     // it a failure is a mystery rather than a five-minute job.
     console.error('advisor briefing failed', e)
     // Stored, never thrown: the facts are still worth showing, and a silent

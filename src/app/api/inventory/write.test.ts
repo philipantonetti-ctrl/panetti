@@ -187,7 +187,7 @@ describe('inventory write routes', () => {
   it('refuses an `active` that is not a boolean, rather than coercing it', async () => {
     // Boolean('') is false and Boolean('no') is true. Coercing here would let a
     // stray string hide a product nobody meant to hide, and a hidden product is
-    // invisible by definition — the mistake would not announce itself.
+    // invisible by definition - the mistake would not announce itself.
     admin()
     await db.supplyItem.create({ data: { sku: `${TAG}-H3`, name: 'Spare part' } })
     const res = await putItem(

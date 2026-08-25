@@ -5,8 +5,8 @@ import type { SpendRow } from './marketing'
 /**
  * Stored ad spend, resolved to the shop that actually paid for it.
  *
- * `currency` is the AD ACCOUNT's, not the shop's — a Norwegian store can run a
- * EUR ad account — so the caller converts at read time like everything else.
+ * `currency` is the AD ACCOUNT's, not the shop's - a Norwegian store can run a
+ * EUR ad account - so the caller converts at read time like everything else.
  */
 export type AttributedSpend = {
   shopId: string
@@ -15,7 +15,7 @@ export type AttributedSpend = {
   currency: string
 }
 
-// Whole accounts: chosen on their own shopId — exactly the query that used to
+// Whole accounts: chosen on their own shopId - exactly the query that used to
 // live in load.ts.
 function wholeAccountsFor(shopIds: string[]) {
   return db.adAccount.findMany({
@@ -37,7 +37,7 @@ function campaignsInShops(shopIds: string[]) {
 
 // Split accounts: their campaigns are chosen on where THEY land, not on the
 // account's own shopId. An account whose default store sits outside the
-// selection can still hold campaigns that belong inside it — filtering on the
+// selection can still hold campaigns that belong inside it - filtering on the
 // account would drop them.
 function splitCampaignsFor(shopIds: string[]) {
   return db.adCampaign.findMany({
@@ -105,7 +105,7 @@ export async function attributedSpend(
 }
 
 /**
- * Currencies of every ad account that could contribute spend to these shops —
+ * Currencies of every ad account that could contribute spend to these shops -
  * whether or not it has any spend rows yet in a given window. A rate has to be
  * on hand the moment spend for that currency lands, not fetched retroactively
  * once it has; a currency with zero rows today is not one FX can ignore.
@@ -120,7 +120,7 @@ export async function relevantAdCurrencies(shopIds: string[]): Promise<string[]>
  * Which ad accounts have spend belonging to these shops.
  *
  * A whole account qualifies on its own shopId. A split account qualifies on
- * where its CAMPAIGNS resolve — its own shop may sit outside the selection
+ * where its CAMPAIGNS resolve - its own shop may sit outside the selection
  * while its campaigns sit inside it. Filtering on the account alone is the bug
  * this exists to prevent, and it is the same rule attributedSpend follows, so
  * the Marketing page and the Dashboard agree on which accounts are in scope.
@@ -133,7 +133,7 @@ export async function accountIdsForShops(shopIds: string[]): Promise<string[]> {
 
 /**
  * True when at least one in-scope split account has a campaign that resolves
- * OUTSIDE this scope — the account is "whole" in Ads Manager, but its
+ * OUTSIDE this scope - the account is "whole" in Ads Manager, but its
  * nativeTotal here only ever covers the part inside `shopIds`.
  *
  * Needed because "all stores" (an empty ShopFilter selection) still only
@@ -158,7 +158,7 @@ export async function hasPartialSplitAccounts(shopIds: string[]): Promise<boolea
 }
 
 /**
- * How many of these accounts' campaigns still have no store — the design's
+ * How many of these accounts' campaigns still have no store - the design's
  * "loudly" half of the fallback. A campaign with shopId: null attributes to
  * the account's default shop, which is correct but silent unless this count
  * is shown; excluding that spend instead would understate ad cost and make
@@ -184,8 +184,8 @@ export async function unassignedCampaignCount(accountIds: string[]): Promise<num
  *
  * `shopIds` is the caller's OWN filter (Marketing's `scopeIds`), not derived
  * from `accountIds`. An in-scope split account can still run campaigns for a
- * shop the caller did not ask about — `accountIds` only says the account
- * belongs in the response, not that every one of its campaigns does — so the
+ * shop the caller did not ask about - `accountIds` only says the account
+ * belongs in the response, not that every one of its campaigns does - so the
  * campaign query is narrowed with the same `campaignsInShops` condition
  * `splitCampaignsFor` uses, or an out-of-scope campaign's spend would leak
  * into `byDay` (buildMarketing drops it from `byShop`/`total` but not there).
@@ -201,7 +201,7 @@ export async function accountSpendRows(
 
   const [whole, campaigns] = await Promise.all([
     db.adSpend.findMany({
-      // A split account writes only AdCampaignSpend — see the double-counting
+      // A split account writes only AdCampaignSpend - see the double-counting
       // rule in attributedSpend above. Without this guard, an account ticked
       // "split by campaign" that still has a year of pre-split AdSpend rows
       // (nothing ever deletes them) would have BOTH tables read here, roughly
@@ -230,7 +230,7 @@ export async function accountSpendRows(
       })
     : []
 
-  // Rolled up per account, day and resolved shop — the Marketing page groups by
+  // Rolled up per account, day and resolved shop - the Marketing page groups by
   // account, so one row per campaign would multiply its row count for nothing.
   const rolled = new Map<string, SpendRow>()
   for (const r of campaignRows) {

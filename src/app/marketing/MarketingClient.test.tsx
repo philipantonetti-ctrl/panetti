@@ -8,10 +8,10 @@ import { MarketingClient } from './MarketingClient'
 import type { MarketingShopRow } from '@/lib/ads/marketing'
 
 // The refresh button (Task 7) calls the real useToast(), which throws without
-// a ToastProvider ancestor — production gets one from the root layout, so
+// a ToastProvider ancestor - production gets one from the root layout, so
 // every render here needs the same wrapper rather than a per-test one-off.
 // Named to match the sibling convention (AdAccountsClient.test.tsx's
-// renderPage), not aliased onto testing-library's own `render` — that alias
+// renderPage), not aliased onto testing-library's own `render` - that alias
 // reads as the real thing and hides the wrapping from anyone skimming a test.
 function renderPage(ui: ReactElement) {
   return render(<ToastProvider>{ui}</ToastProvider>)
@@ -24,7 +24,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
 }))
-// BreakdownTable's own fetch/expand/error behaviour is Task 4's ground — 13
+// BreakdownTable's own fetch/expand/error behaviour is Task 4's ground - 13
 // tests in BreakdownTable.test.tsx already cover it. Standing in for itself
 // here means these tests prove only what MarketingClient controls: which
 // provider and which single shop it mounts the table with.
@@ -132,7 +132,7 @@ describe('MarketingClient', () => {
     expect(screen.getAllByText('$1,200.00').length).toBeGreaterThan(0)
     expect(screen.getAllByText('6.28×').length).toBeGreaterThan(0)
     expect(screen.getByText('Panetti Norway')).toBeTruthy()
-    // MarketingChart is the only place this exact sentence renders now —
+    // MarketingChart is the only place this exact sentence renders now -
     // PlatformCard's empty state says "No spend to break down." instead, so
     // the two surfaces state different, true things rather than echoing.
     expect(screen.getByText('No ad spend in this period.')).toBeTruthy()
@@ -175,13 +175,13 @@ describe('MarketingClient', () => {
     )
     await act(async () => {})
 
-    // PlatformCard and PlatformTable both print the label, so there are two —
+    // PlatformCard and PlatformTable both print the label, so there are two -
     // this test only cares that the platform data made it onto the page.
     expect((await screen.findAllByText('Meta')).length).toBeGreaterThan(0)
   })
 
   // Task 6: the design requires the unassigned-campaign fallback to be
-  // visible, matching ProductsClient's uncosted-products notice — a count, a
+  // visible, matching ProductsClient's uncosted-products notice - a count, a
   // plain sentence and a link, never rendered when the count is zero (proven
   // by the previous test's own assertion against the same payload shape).
   it('shows a count and a link when campaigns still need a store', async () => {
@@ -318,7 +318,7 @@ describe('MarketingClient', () => {
 
   // Three shops, not one: "all shops" (the default, an empty selection) and
   // "several shops" (two of the three, explicitly) are different sentences in
-  // the brief and must both be provably distinct from "exactly one" — with
+  // the brief and must both be provably distinct from "exactly one" - with
   // only two shops total, ticking every box collapses back to the empty-array
   // "all" state (ShopFilter's own normalisation), which would make "several"
   // untestable as its own case.
@@ -347,14 +347,14 @@ describe('MarketingClient', () => {
     renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
     await act(async () => {})
 
-    // Default selection is every shop — neither the switcher nor the table,
+    // Default selection is every shop - neither the switcher nor the table,
     // and the one-sentence reason instead.
     expect(screen.queryByTestId('breakdown-table')).toBeNull()
     expect(screen.queryByRole('tab', { name: 'Meta' })).toBeNull()
     expect(screen.getByText(/campaigns belong to one ad account/i)).toBeTruthy()
 
     // Several, but not all: still hidden. Unchecking Denmark from "all" (every
-    // box ticked) leaves Norway and Sweden both selected — a genuine
+    // box ticked) leaves Norway and Sweden both selected - a genuine
     // two-shop array, not the empty-array "all" state under another name.
     fireEvent.click(screen.getByRole('button', { name: 'Shops' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Panetti Denmark' }))
@@ -375,7 +375,7 @@ describe('MarketingClient', () => {
   // Beyond the required three: NO_SHOPS ('none', reached via "Deselect all")
   // is also a one-element array, but it names no real shop. The gate must
   // read it as "not exactly one store", not hand a fake shopId to
-  // BreakdownTable — which would fetch a real /api/marketing/breakdown
+  // BreakdownTable - which would fetch a real /api/marketing/breakdown
   // request for a shop that does not exist and print a misleading "no
   // account" sentence instead of the actual reason (nothing is selected).
   it('treats "no shops" as not exactly one, not as a shop named none', async () => {
@@ -406,13 +406,13 @@ describe('MarketingClient', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Google' }))
 
     expect(breakdownProps().provider).toBe('google')
-    expect(breakdownProps().shopId).toBe('a') // same store — only the platform moved
+    expect(breakdownProps().shopId).toBe('a') // same store - only the platform moved
   })
 
   // FINDING 2: `provider` (the drill-down's own Meta/Google switcher) never
   // reacted to the page's `platform` filter, so filtering the page to Google
   // still left the drill-down open on Meta campaigns underneath a header
-  // claiming a Google-only scope — two scopes on one screen. Locking the
+  // claiming a Google-only scope - two scopes on one screen. Locking the
   // drill-down to the active filter, and hiding the switcher rather than
   // leaving a control that offers a contradictory choice, is chosen over
   // merely seeding it: a visible Meta/Google tablist would still let the
@@ -470,7 +470,7 @@ describe('MarketingClient', () => {
   })
 
   // The platform list is now a server-supplied prop (workspace configuration,
-  // src/app/marketing/page.tsx), not derived from the response's byPlatform —
+  // src/app/marketing/page.tsx), not derived from the response's byPlatform -
   // so this test drives PlatformFilter via that prop directly. The base
   // `payload` fixture (byPlatform: []) is enough; only the prop needs two
   // entries for the combobox to render at all.
@@ -504,12 +504,12 @@ describe('MarketingClient', () => {
     expect(calls.some((u) => u.includes('platform=meta'))).toBe(true)
   })
 
-  // FINDING 1: `platform` is pending client state — it flips the instant the
+  // FINDING 1: `platform` is pending client state - it flips the instant the
   // user picks a new option, before the refetch it triggers has resolved.
   // `data` only changes on fetch SUCCESS. So gating the chart on `platform`
   // (rather than on the platform that produced `data`) makes the ROAS/POAS
   // lines reappear the moment "All platforms" is picked, even though `data`
-  // still holds a Meta-only fetch's numbers — worse, permanently, if the
+  // still holds a Meta-only fetch's numbers - worse, permanently, if the
   // refetch then fails, since nothing ever clears `loading` back onto fresh
   // data. This test drives exactly that sequence and must still find the
   // ratio lines absent once the "All platforms" refetch has failed.
@@ -528,7 +528,7 @@ describe('MarketingClient', () => {
     const allPayload = { ...payload, platform: null, series: seriesWithSpend }
 
     // The route echoes back whichever platform it actually applied
-    // (src/app/api/marketing/route.ts) — the mock mirrors that contract so
+    // (src/app/api/marketing/route.ts) - the mock mirrors that contract so
     // this test exercises the same shape production sends.
     let sawMeta = false
     const fetchMock = vi.fn((url: string) => {
@@ -538,7 +538,7 @@ describe('MarketingClient', () => {
         return Promise.resolve(new Response(JSON.stringify(metaPayload), { status: 200 }))
       }
       if (sawMeta) {
-        // The refetch triggered by picking "All platforms" back off Meta —
+        // The refetch triggered by picking "All platforms" back off Meta -
         // simulated as failing outright, so `data` never updates.
         return Promise.reject(new Error('network down'))
       }
@@ -570,7 +570,7 @@ describe('MarketingClient', () => {
     await act(async () => {})
 
     // The refetch failed: `data` is still the Meta-only fetch's payload, so
-    // the chart must still treat this as filtered — the pending selection
+    // the chart must still treat this as filtered - the pending selection
     // (now "All platforms") must not leak into what is actually on screen.
     expect(screen.queryByText('ROAS')).not.toBeInTheDocument()
     expect(screen.queryByText('POAS')).not.toBeInTheDocument()
@@ -665,7 +665,7 @@ describe('MarketingClient', () => {
     await act(async () => {})
 
     expect(screen.getByText('Meta token expired')).toBeTruthy()
-    // A failed sync must not silently re-pull as though it worked — the
+    // A failed sync must not silently re-pull as though it worked - the
     // database never changed, so there is nothing new to fetch.
     const marketingCallsAfter = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes('/api/marketing'),

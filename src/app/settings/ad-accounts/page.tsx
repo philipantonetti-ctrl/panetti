@@ -10,8 +10,8 @@ type LoginRow = { provider: string; label: string; expiresAt: Date | null }
  * The login in force for one platform, or null when there has never been one.
  *
  * At module scope, and reading the clock itself, deliberately. A component may
- * not read the clock while it renders — the answer would change under a
- * re-render nobody asked for — and whether a token has expired is a question
+ * not read the clock while it renders - the answer would change under a
+ * re-render nobody asked for - and whether a token has expired is a question
  * only the server can answer honestly anyway: the browser receives a rendered
  * answer, not a live one. `now` is a parameter so a test can pin it.
  */

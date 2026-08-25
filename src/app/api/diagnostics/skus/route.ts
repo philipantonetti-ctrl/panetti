@@ -21,7 +21,7 @@ const RECENT_DAYS = 90
  * Both halves rest on an assumption nobody has ever checked: that Sweden sells
  * the same SKU string Norway does. If it does not, Swedish demand never reaches
  * the Norwegian row, and the forecast is quietly ordering for one country while
- * five sell — under-ordering, which is the exact failure the forecast exists to
+ * five sell - under-ordering, which is the exact failure the forecast exists to
  * prevent, reached by another road.
  *
  * Read-only, and it answers in the live data rather than in an argument: the
@@ -31,7 +31,7 @@ const RECENT_DAYS = 90
  *
  * Every shop, active or not. A switched-off shop is never synced again, but the
  * SKUs it once listed still carry purchasing rows, and those rows are part of
- * why the lead-times list is longer than the forecast — so they are named here
+ * why the lead-times list is longer than the forecast - so they are named here
  * rather than filtered out of the explanation.
  */
 export async function GET() {

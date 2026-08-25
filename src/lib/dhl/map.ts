@@ -2,7 +2,7 @@
  * DHL's Shipment Tracking JSON into our own shape.
  *
  * Pure: no database, no network. What the resulting events MEAN is decided in
- * src/lib/delivery/milestones.ts, which this file feeds — DHL's words are
+ * src/lib/delivery/milestones.ts, which this file feeds - DHL's words are
  * translated into that vocabulary here so a DHL parcel and a Bring parcel are
  * measured by one rule. A carrier that kept its own words would make the
  * delivery median mean something different per carrier.
@@ -29,7 +29,7 @@ import {
  *
  * FAILURE especially. A failed delivery attempt is neither a delivery nor a
  * return, and calling it either would either stop the clock early or drop the
- * parcel out of the late list — both of which hide a parcel that needs chasing.
+ * parcel out of the late list - both of which hide a parcel that needs chasing.
  */
 const STATUS: Record<string, string> = {
   'pre-transit': 'PRE_NOTIFIED',
@@ -40,7 +40,7 @@ const STATUS: Record<string, string> = {
 }
 
 /**
- * DHL sends "2026-08-17T12:19:54" — no offset, no Z.
+ * DHL sends "2026-08-17T12:19:54" - no offset, no Z.
  *
  * Handed to `new Date()` unchanged, that string is parsed as the READER's local
  * time: the same parcel would sit at 12:19 on Vercel and 04:19 on a laptop in
@@ -49,19 +49,19 @@ const STATUS: Record<string, string> = {
  *
  * UNVERIFIED ASSUMPTION, stated plainly rather than dressed up as a decision:
  * we do not know that DHL MEANS UTC. Checked against a full live response
- * 2026-08-18 — there is no zone field anywhere in the payload (no offset, no
+ * 2026-08-18 - there is no zone field anywhere in the payload (no offset, no
  * tz key, nothing on the event or the shipment), so it cannot be read off the
  * data. If DHL is reporting local time at the event's location, every one of
  * these is two hours early for a European summer parcel.
  *
  * Impact is bounded: everything downstream is measured in DAYS, so a two-hour
  * error only changes an answer for a parcel whose event falls within two hours
- * of midnight. Worth knowing, not worth guessing a correction for — applying a
+ * of midnight. Worth knowing, not worth guessing a correction for - applying a
  * +2 that turns out to be wrong is worse than a known 2-hour uncertainty.
  *
  * To settle it: fetch a parcel that is moving RIGHT NOW and compare its newest
  * event to the current UTC time. A timestamp AHEAD of UTC proves local time in
- * one observation. Could not be done on 2026-08-18 — every DHL parcel we hold
+ * one observation. Could not be done on 2026-08-18 - every DHL parcel we hold
  * was already delivered, so no event was recent enough to discriminate.
  *
  * A timestamp that already carries a zone is left alone.
@@ -85,7 +85,7 @@ function occurredAt(raw: unknown): Date | null {
  * an event is determined. Left unmapped rather than guessed: marking a live
  * parcel returned nulls its availableAt and takes it off the late list, so a
  * wrong guess hides the parcel most worth chasing. See the skipped test in
- * map.test.ts — unskip it the day a returned DHL parcel is recorded.
+ * map.test.ts - unskip it the day a returned DHL parcel is recorded.
  */
 export function mapShipments(raw: unknown): MappedPackage[] {
   const shipments = (raw as { shipments?: unknown })?.shipments
@@ -113,7 +113,7 @@ export function mapShipments(raw: unknown): MappedPackage[] {
 
       // The normalised code decides the milestone. DHL's own `status` ("ACT-2")
       // is a per-service code that means nothing outside its service, so it is
-      // never used to judge — only the description is kept, for reading.
+      // never used to judge - only the description is kept, for reading.
       const code = str(raw?.statusCode)?.toLowerCase()
       const status = (code && STATUS[code]) ?? 'UNKNOWN'
 

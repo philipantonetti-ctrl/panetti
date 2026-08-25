@@ -27,7 +27,7 @@ describe('which login is in force', () => {
   })
 
   // A Google refresh token lives as long as the client stays published, so it
-  // has no expiry — and a missing expiry must never read as a lapsed one.
+  // has no expiry - and a missing expiry must never read as a lapsed one.
   it('never calls a token without an expiry expired', () => {
     expect(loginFor(LOGINS, 'google', at('2099-01-01T00:00:00.000Z'))?.expired).toBe(false)
   })

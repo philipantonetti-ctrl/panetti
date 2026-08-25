@@ -11,14 +11,14 @@
 ## Global Constraints
 
 - All money is INTEGER MINOR UNITS. Never a float. Convert for display only, via `formatMoney(minor, currency)` from `@/lib/money`.
-- Profit is `netSales - cogs`. Nothing is apportioned — no shipping, fees, fulfillment, commission or ad spend.
+- Profit is `netSales - cogs`. Nothing is apportioned - no shipping, fees, fulfillment, commission or ad spend.
 - `Figures.marketing` (ad spend, added in `037c96b`) is a SHOP-level figure. No column on this page consumes it.
 - Multi-store view requires a single shared currency. A mixed selection is refused, never converted.
 - Display currency is the group's own currency, never USD.
 - Products merge on `sku`, EXCEPT where `sku === externalId` (the no-SKU fallback at `map.ts:101`), which never merge.
 - `orders` means DISTINCT orders, counting sale entries only (`sign === 1`).
-- Costs resolve through `costOn(history, order.placedAt)` — dated, never "current".
-- Ratios with a zero denominator return `0` from the lib and render `—` in the UI, matching `ratios()` in `marketing.ts`.
+- Costs resolve through `costOn(history, order.placedAt)` - dated, never "current".
+- Ratios with a zero denominator return `0` from the lib and render `-` in the UI, matching `ratios()` in `marketing.ts`.
 - Tests run against the local portable Postgres. NEVER against live Neon. `npm run db:seed` WIPES ALL DATA.
 - Do NOT use `git stash`, `git checkout --`, `git restore`, or `git reset --hard` at any point. Commit forward only.
 - Before every commit, run `git branch --show-current` and confirm it is `feat/product-analytics`. A background sync worktree has moved this checkout before.
@@ -27,7 +27,7 @@
 
 ### Task 1: Export the refund-reversal helper from the engine
 
-Making `entriesIn` shared, and generic so it preserves richer item types. No behaviour changes — the existing engine tests passing unchanged is the proof.
+Making `entriesIn` shared, and generic so it preserves richer item types. No behaviour changes - the existing engine tests passing unchanged is the proof.
 
 **Files:**
 - Modify: `src/lib/metrics/engine.ts:70-96`
@@ -84,7 +84,7 @@ import { computeMetrics, entriesIn } from './engine'
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: FAIL — `entriesIn is not exported by ./engine` (or `entriesIn is not a function`).
+Expected: FAIL - `entriesIn is not exported by ./engine` (or `entriesIn is not a function`).
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -119,7 +119,7 @@ export function entriesIn<T extends EngineOrder>(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: PASS, including every pre-existing test in the file. If any pre-existing test now fails, the export changed behaviour — revert the body change, keep only the signature.
+Expected: PASS, including every pre-existing test in the file. If any pre-existing test now fails, the export changed behaviour - revert the body change, keep only the signature.
 
 - [ ] **Step 5: Commit**
 
@@ -145,7 +145,7 @@ Small, pure, and used by both the client and the API route. Built first so both 
   - `export type ShopLike = { id: string; name: string; currency: string }`
   - `export function groupByCurrency<T extends ShopLike>(shops: T[]): { currency: string; shops: T[] }[]`
   - `export function selectedShops<T extends ShopLike>(shops: T[], selected: string[]): T[]`
-  - `export const NO_SHOPS = 'none'` is NOT redefined here — import it from `@/components/filters/ShopFilter`
+  - `export const NO_SHOPS = 'none'` is NOT redefined here - import it from `@/components/filters/ShopFilter`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -200,7 +200,7 @@ describe('selectedShops', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/currency-groups.test.ts`
-Expected: FAIL — cannot resolve `./currency-groups`.
+Expected: FAIL - cannot resolve `./currency-groups`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -213,7 +213,7 @@ import { NO_SHOPS } from '@/components/filters/ShopFilter'
  * Adding two stores' money together is only honest when they trade in the same
  * currency. This is the rule the product page is gated on: `Shop` records a
  * currency and no country, and currency is what protects the arithmetic anyway
- * — Finland and Germany are different countries, both EUR, and EUR + EUR is
+ * - Finland and Germany are different countries, both EUR, and EUR + EUR is
  * correct.
  */
 
@@ -259,7 +259,7 @@ git commit -m "feat: currency grouping helpers for the product page's multi-stor
 
 ---
 
-### Task 3: `productFigures` — the aggregation
+### Task 3: `productFigures` - the aggregation
 
 The core of the feature. Pure, no database.
 
@@ -518,7 +518,7 @@ function sumOf<T>(rows: T[], field: keyof T): number {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/metrics/products.test.ts`
-Expected: FAIL — cannot resolve `./products`.
+Expected: FAIL - cannot resolve `./products`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -538,7 +538,7 @@ import type { CostBook, EngineOrder, EngineOrderItem, EngineShop, RateTable } fr
  * fulfillment and ambassador commission sit on the ORDER, not the product;
  * splitting them by share of line value would turn every figure on the page
  * into an estimate. Ad spend is per campaign and is excluded for the same
- * reason, more strongly — no data we hold ties a campaign to a product.
+ * reason, more strongly - no data we hold ties a campaign to a product.
  *
  * Refund handling is not reimplemented here. `entriesIn` is the engine's own,
  * so a refund comes off this page on exactly the day it comes off the
@@ -771,7 +771,7 @@ export function productFigures(input: ProductInput): ProductResult {
 Run: `npx vitest run src/lib/metrics/products.test.ts`
 Expected: PASS, 16 tests.
 
-If `sku` comes out wrong on merged rows, simplify that line to `sku: group[0].meta.sku` — the defensive expression above is redundant and should be reduced to that.
+If `sku` comes out wrong on merged rows, simplify that line to `sku: group[0].meta.sku` - the defensive expression above is redundant and should be reduced to that.
 
 - [ ] **Step 5: Commit**
 
@@ -783,7 +783,7 @@ git commit -m "feat: per-product figures, merged on SKU, refunds reversed via th
 
 ---
 
-### Task 4: `loadProductsInput` — the loader and the currency guard
+### Task 4: `loadProductsInput` - the loader and the currency guard
 
 **Files:**
 - Create: `src/lib/data/load-products.ts`
@@ -875,7 +875,7 @@ describe('loadProductsInput', () => {
 Make sure the local Postgres is running and seeded first. Then:
 
 Run: `npx vitest run src/lib/data/load-products.integration.test.ts`
-Expected: FAIL — cannot resolve `./load-products`.
+Expected: FAIL - cannot resolve `./load-products`.
 
 If instead it fails with `Can't reach database server at 127.0.0.1:5432`, the local Postgres is not running. Start it (see `docs/` or the project's local DB notes), reseed with `npm run db:seed`, and re-run. Never point `DATABASE_URL` at Neon to make a test pass.
 
@@ -901,7 +901,7 @@ import type { ProductInput, ProductMeta, ProductOrder } from '../metrics/product
  * name and unit price. Widening the shared select would make every Dashboard
  * request haul three unused columns across thousands of rows.
  *
- * The display currency is the selected shops' shared currency — not USD.
+ * The display currency is the selected shops' shared currency - not USD.
  * Mixing currencies is refused rather than converted, because a product table
  * that silently consolidates is one a client cannot check against his own till.
  */
@@ -1032,7 +1032,7 @@ export async function loadProductsInput(args: LoadProductsArgs): Promise<Product
   }
 
   // Every shop shares one currency here, so the only thing that can still need
-  // a rate is an order invoiced in a different one — a B2B order, typically.
+  // a rate is an order invoiced in a different one - a B2B order, typically.
   const inPlay = new Set([displayCurrency, ...orders.map((o) => o.currency)])
   if (inPlay.size > 1) await ensureRates(from, to, [...inPlay])
 
@@ -1100,7 +1100,7 @@ describe('GET /api/products/analytics', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/products/analytics/route.test.ts`
-Expected: FAIL — cannot resolve `./route`.
+Expected: FAIL - cannot resolve `./route`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -1166,7 +1166,7 @@ git commit -m "feat: admin-only product analytics endpoint"
 
 ### Task 6: The table component
 
-Presentational only — it receives rows, it does not fetch. Expansion is local state.
+Presentational only - it receives rows, it does not fetch. Expansion is local state.
 
 **Files:**
 - Create: `src/components/Thumb.tsx`
@@ -1183,8 +1183,8 @@ Presentational only — it receives rows, it does not fetch. Expansion is local 
 
 **Why the extraction:** `Thumb` is currently defined identically in two files. This
 task would make a third copy. Extract it once, to `src/components/Thumb.tsx`, and
-point all three at it. Copy the existing body VERBATIM — including its
-eslint-disable comment and its placeholder branch — so the two existing pages
+point all three at it. Copy the existing body VERBATIM - including its
+eslint-disable comment and its placeholder branch - so the two existing pages
 cannot change appearance. Their existing tests passing unchanged is the proof.
 
 - [ ] **Step 1: Write the failing test**
@@ -1275,7 +1275,7 @@ describe('ProductsTable', () => {
   it('shows no margin rather than 0.0% when nothing was sold', () => {
     const dead = row({ netSales: 0, profit: 0, margin: 0, cogs: 0 })
     render(<ProductsTable rows={[dead]} total={TOTAL} currency="EUR" />)
-    expect(cellsOf('Elektrischer Pizzaofen')[7]).toBe('—')
+    expect(cellsOf('Elektrischer Pizzaofen')[7]).toBe('-')
   })
 
   it('says so plainly when nothing sold in the period', () => {
@@ -1303,7 +1303,7 @@ describe('ProductsTable', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/products/ProductsTable.test.tsx`
-Expected: FAIL — cannot resolve `./ProductsTable`.
+Expected: FAIL - cannot resolve `./ProductsTable`.
 
 - [ ] **Step 3a: Extract the shared thumbnail**
 
@@ -1320,7 +1320,7 @@ export function Thumb({ src, alt }: { src: string | null; alt: string }) {
 
 In `src/app/orders/OrdersClient.tsx` AND `src/app/portal/PortalClient.tsx`: delete
 the local `Thumb` function and add `import { Thumb } from '@/components/Thumb'`.
-Change nothing else in either file — every existing call site keeps its props.
+Change nothing else in either file - every existing call site keeps its props.
 
 Run `npx vitest run src/app/orders/ src/app/portal/` before continuing. Both
 suites must pass unchanged; if either fails, the extraction altered behaviour
@@ -1349,7 +1349,7 @@ import type { ProductRow, ProductTotals } from '@/lib/metrics/products'
  * as `ratios()` in marketing.ts and the dash in BreakdownTable.
  */
 function marginText(netSales: number, margin: number): string {
-  if (netSales === 0) return '—'
+  if (netSales === 0) return '-'
   return `${(margin * 100).toFixed(1)}%`
 }
 
@@ -1359,7 +1359,7 @@ function countText(n: number): string {
 
 /**
  * `costOn` returns zero when no cost was ever entered, which makes an uncosted
- * product report a 100% margin — a lie that looks like a triumph. Every such
+ * product report a 100% margin - a lie that looks like a triumph. Every such
  * row says so.
  */
 function CostWarning() {
@@ -1417,7 +1417,7 @@ export function ProductsTable({
           <tbody>
             {rows.map((row) => {
               const isOpen = openKeys.has(row.key)
-              // One store is not a breakdown — there is nothing to reveal.
+              // One store is not a breakdown - there is nothing to reveal.
               const expandable = row.stores.length > 1
 
               return (
@@ -1507,7 +1507,7 @@ export function ProductsTable({
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/app/products/ProductsTable.test.tsx src/app/orders/ src/app/portal/`
-Expected: PASS — 10 new table tests, plus the orders and portal suites unchanged.
+Expected: PASS - 10 new table tests, plus the orders and portal suites unchanged.
 
 - [ ] **Step 5: Commit**
 
@@ -1628,7 +1628,7 @@ describe('ProductsClient', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/products/ProductsClient.test.tsx`
-Expected: FAIL — cannot resolve `./ProductsClient`.
+Expected: FAIL - cannot resolve `./ProductsClient`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -1656,7 +1656,7 @@ type Payload = {
   range: { from: string; to: string }
 }
 
-/** Skeletons in the shape of the content — never a spinner inside a table. */
+/** Skeletons in the shape of the content - never a spinner inside a table. */
 function Skeleton() {
   return <div className="skeleton h-[420px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
 }
@@ -1761,7 +1761,7 @@ export function ProductsClient({
     <AppShell email={email}>
       <PageHeader
         title="Products"
-        subtitle="Revenue, cost and profit per product. Every figure is exact — nothing is split across products."
+        subtitle="Revenue, cost and profit per product. Every figure is exact - nothing is split across products."
       >
         <ShopFilter
           shops={shops}
@@ -1878,7 +1878,7 @@ In `src/components/shell/AppShell.tsx`, add to the Analytics `items` array, imme
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/app/products/`
-Expected: PASS — 8 table tests plus 6 client tests.
+Expected: PASS - 8 table tests plus 6 client tests.
 
 - [ ] **Step 5: Run the full suite and the linter**
 
@@ -1886,7 +1886,7 @@ Expected: PASS — 8 table tests plus 6 client tests.
 npx vitest run
 npm run lint
 ```
-Expected: every test passes, no lint errors. If DB tests fail with `Can't reach database server`, start the local Postgres and reseed — do not point at Neon.
+Expected: every test passes, no lint errors. If DB tests fail with `Can't reach database server`, start the local Postgres and reseed - do not point at Neon.
 
 - [ ] **Step 6: Commit**
 
@@ -1910,7 +1910,7 @@ Tests passing is not the same as the page being right. This task produces a scre
 npm run dev
 ```
 
-Run it in the BACKGROUND and BARE. Never pipe it through `head` or `tail` — `head` exits after N lines, closes the pipe, and Next then blocks forever on its next write while still holding port 3000.
+Run it in the BACKGROUND and BARE. Never pipe it through `head` or `tail` - `head` exits after N lines, closes the pipe, and Next then blocks forever on its next write while still holding port 3000.
 
 - [ ] **Step 2: Sign in and open the page**
 
@@ -1930,7 +1930,7 @@ Save to the scratchpad directory, not the repo.
 
 - [ ] **Step 5: Fix anything wrong, then commit**
 
-If a defect appears, use superpowers:systematic-debugging — find the root cause before changing anything, and add a failing test for it first.
+If a defect appears, use superpowers:systematic-debugging - find the root cause before changing anything, and add a failing test for it first.
 
 ```bash
 git branch --show-current   # must print feat/product-analytics
@@ -1965,4 +1965,4 @@ git commit -m "fix: <whatever the browser found>"
 
 **No open gaps.** An earlier draft carried `imageUrl` without rendering it; the thumbnail is now rendered in Task 6 through a shared `Thumb` component, which also removes an existing duplication between `OrdersClient` and `PortalClient`.
 
-**Type consistency:** `ProductTotals` is the shared shape; `ProductRow` and `ProductStoreRow` both extend it, so `formatMoney(row.netSales)` and `formatMoney(store.netSales)` take the same path in Task 6. `mergeKey` is used in Task 3 only and tested there. `MixedCurrencyError.groups` has the same shape in Task 4 (thrown), Task 5 (serialised) and Task 7 (the client's own `groupByCurrency` result) — `{ currency, shops }` throughout.
+**Type consistency:** `ProductTotals` is the shared shape; `ProductRow` and `ProductStoreRow` both extend it, so `formatMoney(row.netSales)` and `formatMoney(store.netSales)` take the same path in Task 6. `mergeKey` is used in Task 3 only and tested there. `MixedCurrencyError.groups` has the same shape in Task 4 (thrown), Task 5 (serialised) and Task 7 (the client's own `groupByCurrency` result) - `{ currency, shops }` throughout.

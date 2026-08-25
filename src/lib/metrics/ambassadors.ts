@@ -8,7 +8,7 @@ export type LeaderboardRow = {
   rank: number
   ambassadorId: string
   name: string
-  shops: string[] // where their codes live — their shops, shown beside the name
+  shops: string[] // where their codes live - their shops, shown beside the name
   orders: number
   sales: number // net sales, display currency
   commission: number // display currency
@@ -28,7 +28,7 @@ export type LeaderboardInput = {
  * Who sold the most. Same rules as the engine: refunded orders count for nothing,
  * commission is a percentage of net sales.
  *
- * Ambassadors with no sales in the range are still listed (with zeroes) — an empty
+ * Ambassadors with no sales in the range are still listed (with zeroes) - an empty
  * row is information; a missing row looks like a bug.
  */
 export function leaderboard(input: LeaderboardInput): LeaderboardRow[] {

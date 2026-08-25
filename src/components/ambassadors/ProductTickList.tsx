@@ -13,7 +13,7 @@ const LABEL = 'block text-[11px] font-medium text-muted'
  * Quantity is not asked for: a gift is one product, and an ambassador who also
  * got accessories ticks the accessories. One date and one note cover the whole
  * batch, which is right at the moment of creation because it all goes out
- * together — the Edit window keeps a date and a note per gift, because a chair
+ * together - the Edit window keeps a date and a note per gift, because a chair
  * sent in March and an accessory sent in June are two facts.
  *
  * Controlled, so the store that decides this list and the ticks it produces

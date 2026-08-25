@@ -4,7 +4,7 @@ import { AdApiError } from './types'
  * Proving a pasted Meta system user token.
  *
  * Two questions, in order. `debug_token` asks what Facebook already knows
- * about the token — the app it belongs to, the permissions on it, when it
+ * about the token - the app it belongs to, the permissions on it, when it
  * dies. `/me` asks the only question that truly matters: does it work.
  *
  * The first is a courtesy and never blocks: neither `expires_at: 0` meaning
@@ -13,7 +13,7 @@ import { AdApiError } from './types'
  * and speaks Facebook's own words when it fails.
  *
  * Unreachable from the UI on purpose, same as its only caller,
- * `POST /api/ads/connections/meta` — see that route's header for why it is
+ * `POST /api/ads/connections/meta` - see that route's header for why it is
  * still here and when it goes.
  */
 
@@ -53,8 +53,8 @@ export async function metaAppToken(app: MetaApp): Promise<string> {
 }
 
 /**
- * What `debug_token` said, turned into a decision. `null` — an unreadable or
- * failed answer — is silence, and silence blocks nothing.
+ * What `debug_token` said, turned into a decision. `null` - an unreadable or
+ * failed answer - is silence, and silence blocks nothing.
  */
 export function tokenVerdict(data: DebugTokenData | null, clientId: string): TokenVerdict {
   if (!data) return { ok: true, expiresAt: null }
@@ -65,7 +65,7 @@ export function tokenVerdict(data: DebugTokenData | null, clientId: string): Tok
   if (data.app_id && data.app_id !== clientId) {
     return { ok: false, reason: 'This token belongs to a different Facebook app.' }
   }
-  // An absent or empty scope list is silence too — only a populated list that
+  // An absent or empty scope list is silence too - only a populated list that
   // leaves ads_read out is evidence the permission was never ticked.
   if (data.scopes?.length && !data.scopes.includes('ads_read')) {
     return {
@@ -82,7 +82,7 @@ export function tokenVerdict(data: DebugTokenData | null, clientId: string): Tok
  * `app` is optional, and that is the point: demanding an App ID and secret
  * before a token is accepted puts one more wall in front of someone who only
  * wants to connect an ad account. Without them we skip `debug_token` and
- * lose the expiry date and the scope check — never the connection itself.
+ * lose the expiry date and the scope check - never the connection itself.
  */
 export async function inspectMetaToken(
   app: MetaApp | null,

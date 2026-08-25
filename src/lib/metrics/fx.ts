@@ -19,7 +19,7 @@ export function buildRateTable(rows: RateRow[]): RateTable {
 
 /**
  * Per-currency, the days we hold a rate for (ascending) and the matching rates.
- * `rateOn` runs for every money conversion — tens of thousands per request — so
+ * `rateOn` runs for every money conversion - tens of thousands per request - so
  * a per-call scan of the whole table dominated the compute. This index is built
  * once and binary-searched instead. The table is rebuilt per request, so a
  * WeakMap keyed on it caches for exactly that long.
@@ -53,7 +53,7 @@ function currencyIndex(rates: RateTable): CurrencyIndex {
  *
  * Missing that exact day we walk backwards to the most recent earlier rate; if the
  * date predates every rate we hold, we use the earliest one. An entirely unknown
- * currency is returned unchanged rather than zeroed — an unconverted number is
+ * currency is returned unchanged rather than zeroed - an unconverted number is
  * honest, a zero would hide real money.
  */
 /** The USD rate for `currency` on `date`: that day's, else the nearest earlier, else the earliest known. */
@@ -91,7 +91,7 @@ export function convert(
 ): number {
   if (from === display) return amount
   const chosen = rateOn(from, date, rates)
-  if (chosen === undefined) return amount // unknown currency — never zero it out
+  if (chosen === undefined) return amount // unknown currency - never zero it out
   return mulRate(amount, chosen)
 }
 
@@ -101,7 +101,7 @@ export function convert(
  *
  * The strict form, for callers that must not accept a guess. `crossConvert`
  * below passes an amount through UNCHANGED when a leg is missing, which is right
- * for a figure on a screen — never zero out money someone is reading — and wrong
+ * for a figure on a screen - never zero out money someone is reading - and wrong
  * for anything being STORED. A cost entered in NOK and saved into a Swedish
  * product as though it were SEK is close enough to look plausible while
  * overstating profit permanently, so the cost writer needs to be able to refuse.
@@ -120,7 +120,7 @@ export function crossFactor(
 }
 
 /**
- * Convert between two arbitrary currencies via their USD legs — needed when a
+ * Convert between two arbitrary currencies via their USD legs - needed when a
  * fee fixed in EUR lands on a NOK order shown in NOK. Missing either leg, the
  * amount passes through unchanged (honest, never zeroed).
  */

@@ -67,7 +67,7 @@ describe('GET /api/diagnostics/counted', () => {
     await order('13753', '2026-08-05T07:36:00Z', 'completed', 569800)
     await order('13754', '2026-08-05T13:40:00Z', 'completed', 569800)
     await order('13755', '2026-08-05T18:31:00Z', 'completed', 1049700)
-    // Placed just before midnight in Stockholm the night before — the case
+    // Placed just before midnight in Stockholm the night before - the case
     // that reads as "an order went missing" when it is simply another day.
     await order('13751', '2026-08-04T21:10:00Z', 'completed', 569800)
     // Paid for by bank transfer and not yet cleared: real, but not revenue.
@@ -90,7 +90,7 @@ describe('GET /api/diagnostics/counted', () => {
 
     // 13751 was placed at 23:10 Stockholm the night before, so the range never
     // loads it at all. Absence would read as a lost order; it is shown as what
-    // it is — the same order, one day earlier on this shop's clock.
+    // it is - the same order, one day earlier on this shop's clock.
     const outside = Object.fromEntries(
       shop.justOutside.map((n: { order: string; dayOnShopClock: string }) => [
         n.order,
@@ -110,7 +110,7 @@ describe('GET /api/diagnostics/counted', () => {
     await asAdmin()
     // Placed on the 4th, cancelled on the 5th. The live case: the 5th saw
     // three sales and reported two, because this order's reversal was booked
-    // here — a day it was never part of.
+    // here - a day it was never part of.
     await order('13751', '2026-08-04T20:15:00Z', 'cancelled', 569800, '2026-08-05T08:00:00Z')
     await order('13753', '2026-08-05T07:36:00Z', 'completed', 569800)
 

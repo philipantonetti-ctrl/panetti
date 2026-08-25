@@ -69,11 +69,11 @@ export function dailySeries(input: MetricsInput): SeriesPoint[] {
   // Bucket every order onto its own day(s) ONCE, in the very zone the engine uses.
   // Then each day is computed from only its own orders. Without this, every day
   // re-scanned every order in the range (an expensive Intl call per order), so a
-  // year was O(days x orders) — hundreds of thousands of scans. The per-day
+  // year was O(days x orders) - hundreds of thousands of scans. The per-day
   // compute still runs the real engine, so the numbers are byte-for-byte the same.
   //
   // A refund is two entries in the engine (+1 on placedAt, -1 on voidedAt), so an
-  // order that was voided must be present in BOTH day buckets — otherwise the
+  // order that was voided must be present in BOTH day buckets - otherwise the
   // reversal has nowhere to appear and the chart disagrees with the header total.
   // The sign itself is never decided here: each per-day call below runs the real
   // `computeMetrics` with from = to = that day, and `entriesIn` inside it picks

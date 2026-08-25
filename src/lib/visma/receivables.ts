@@ -18,7 +18,7 @@ export type MappedReceivable = {
  * Is this one of the collective accounts the webshops are booked against?
  *
  * Visma raises an invoice for every webshop order and books it to a per-country
- * house account — "Panetti Norge - Webkunde", "Mazzetti Norge - Webkunde" and
+ * house account - "Panetti Norge - Webkunde", "Mazzetti Norge - Webkunde" and
  * six more. Those invoices are paid at the checkout by card, and this ledger is
  * never reconciled for them: 994 of the first 1000 open documents were one,
  * 993 of them with a due date equal to their document date and a median age of
@@ -29,8 +29,8 @@ export type MappedReceivable = {
  * Logistics" is a customer like any other.
  *
  * This is a name test, and a name test is fragile if the accounts are ever
- * renamed. It is chosen anyway because the robust alternative — reading
- * `creditTerms`, which is absent from the list form — costs one HTTP request
+ * renamed. It is chosen anyway because the robust alternative - reading
+ * `creditTerms`, which is absent from the list form - costs one HTTP request
  * per document against an API that refuses after roughly ten. The importer logs
  * how many rows this excludes on every run, so a rename shows up as a sudden
  * jump rather than as silence.
@@ -43,8 +43,8 @@ const str = (v: unknown): string => String(unwrap<string | number>(v) ?? '').tri
 
 const money = (v: unknown): number => {
   const raw = unwrap<unknown>(v)
-  // Rounded, not truncated. Visma really does send fractions — 9257.5 DKK on a
-  // live open credit note — and `Math.trunc` would quietly lose 50 øre a row.
+  // Rounded, not truncated. Visma really does send fractions - 9257.5 DKK on a
+  // live open credit note - and `Math.trunc` would quietly lose 50 øre a row.
   return typeof raw === 'number' && Number.isFinite(raw) ? Math.round(raw * 100) : 0
 }
 
@@ -61,7 +61,7 @@ const date = (v: unknown): Date | null => {
  * Deliberately NOT every open document. Three things are dropped, each for its
  * own reason: a webshop house account is not a debtor, a zero balance is not a
  * debt, and a document Visma has closed is settled whatever else it says. What
- * survives is the handful a person can act on — six, when this was written.
+ * survives is the handful a person can act on - six, when this was written.
  *
  * Keyed by reference number, last reading wins, so a page overlapping another
  * cannot produce two rows for one invoice.

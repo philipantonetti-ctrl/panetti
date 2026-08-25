@@ -58,7 +58,7 @@ describe('deltaPct', () => {
     expect(deltaPct(90, 100)).toBeCloseTo(-0.1, 6)
   })
 
-  it('is null when there is nothing to compare against — never Infinity', () => {
+  it('is null when there is nothing to compare against - never Infinity', () => {
     // Growing from zero is not "+∞%", it is simply not a percentage.
     expect(deltaPct(500, 0)).toBeNull()
     expect(deltaPct(0, 0)).toBeNull()
@@ -173,7 +173,7 @@ describe('dailySeries', () => {
     expect(byDate['2026-07-02']).toBe(0)
   })
 
-  // A refunded order is not a sale on any day, so the chart shows it nowhere —
+  // A refunded order is not a sale on any day, so the chart shows it nowhere -
   // no spike on the sale day, no trough on the refund day.
   it('leaves no mark at all for an order that was refunded', () => {
     const range = { from: new Date('2026-07-01'), to: new Date('2026-07-10') }
@@ -192,7 +192,7 @@ describe('dailySeries', () => {
 
   // The case that forced the rule: an order placed OUTSIDE the visible window
   // and refunded inside it. Booking the reversal on its own day dragged the
-  // chart — and the header — below zero for a day whose own orders were fine.
+  // chart - and the header - below zero for a day whose own orders were fine.
   it('never dips a day for a refund belonging to an order outside the window', () => {
     const range = { from: new Date('2026-07-01'), to: new Date('2026-07-10') }
     const refundInput = { ...input, ...range, orders: [order('r', '2026-04-02', '2026-07-03')] }

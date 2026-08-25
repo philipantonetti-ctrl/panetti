@@ -17,9 +17,9 @@ const Apply = z.object({
 
 const Body = z.object({
   costPerItem: z.number().min(0),
-  costApply: Apply, // step 1 of 2 — when the new COGS starts applying
+  costApply: Apply, // step 1 of 2 - when the new COGS starts applying
   handlingCost: z.number().min(0),
-  handlingApply: Apply, // step 2 of 2 — when the new handling cost starts applying
+  handlingApply: Apply, // step 2 of 2 - when the new handling cost starts applying
 })
 
 /**
@@ -31,7 +31,7 @@ const Body = z.object({
  *
  * The fan-out is the point. `ProductCost` hangs off a `Product` and `Product` is
  * per shop, so the same physical item carried nine separate costs and the page
- * asked for the same figure nine times — the client's "we only need to see the
+ * asked for the same figure nine times - the client's "we only need to see the
  * product one time" complaint, in the one place it was literally true. A unit
  * costs what it costs regardless of which store sold it: one warehouse, one
  * supplier invoice. So it is entered once and converted outward.
@@ -58,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * Every shop's row for this SKU, the source product's own included.
      *
      * Filtered in JavaScript rather than in SQL because `Product.sku` holds
-     * whatever the shop typed — ` pzo-500 ` and `PZO-500` are one product — and a
+     * whatever the shop typed - ` pzo-500 ` and `PZO-500` are one product - and a
      * case-sensitive `where` would silently leave a webshop on its old cost,
      * which is the failure this whole change exists to end. A few hundred rows
      * on a human-initiated save is not a cost worth being clever about.
@@ -130,7 +130,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     )
 
     // Every shop's timeline rewritten as one unit, so a half-applied cost can
-    // never be read — one webshop on the new figure and eight on the old is
+    // never be read - one webshop on the new figure and eight on the old is
     // worse than none of them moving.
     await db.$transaction([
       db.productCost.deleteMany({ where: { productId: { in: writes.map((w) => w.productId) } } }),

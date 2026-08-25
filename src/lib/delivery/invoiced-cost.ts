@@ -5,8 +5,8 @@ import type { RateTable } from '../metrics/types'
 /**
  * What a carrier billed in a month, as one figure in the currency on screen.
  *
- * This exists because the obvious design — a person types the monthly invoice
- * into a box — does not survive contact with the data. Measured against Bring's
+ * This exists because the obvious design - a person types the monthly invoice
+ * into a box - does not survive contact with the data. Measured against Bring's
  * live invoice archive on 2026-08-21, July 2026 alone is twelve invoices across
  * three Bring legal entities in two currencies. There is no single number for
  * anyone to type, and the box was quietly asking for one.
@@ -43,12 +43,12 @@ export type InvoicedMonth = {
  * `crossFactor`, not `crossConvert`: the strict one. crossConvert passes an
  * amount through UNCHANGED when it cannot find a rate, which is the right
  * behaviour for a number being read on a screen and the wrong one for a number
- * being stored — 500.00 DKK counted as 500.00 NOK is a wrong total that looks
+ * being stored - 500.00 DKK counted as 500.00 NOK is a wrong total that looks
  * perfectly reasonable, and it would then be divided by a parcel count and
  * quoted. fx.ts makes exactly this distinction in crossFactor's own comment.
  *
  * A month whose invoices ALL failed to convert is omitted rather than reported
- * as zero. Zero is a real answer here — "they billed us nothing" — and must
+ * as zero. Zero is a real answer here - "they billed us nothing" - and must
  * stay distinguishable from "we cannot say".
  */
 export function monthlyInvoiceTotals(

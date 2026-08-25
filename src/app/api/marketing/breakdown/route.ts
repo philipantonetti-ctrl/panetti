@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     const provider = params.get('provider') ?? 'meta'
     // Optional: BreakdownTable.tsx sends it on every child request (the row
     // being expanded knows its own account) and omits it at campaign level on
-    // purpose — see loadBreakdown for why that omission is what keeps the
+    // purpose - see loadBreakdown for why that omission is what keeps the
     // union across a shop's accounts working.
     const accountId = params.get('accountId')
 

@@ -18,7 +18,7 @@ export default async function MarketingPage() {
   })
 
   // Which platforms exist is workspace configuration, not filtered response
-  // data — it must not come from a /api/marketing payload, whose byPlatform
+  // data - it must not come from a /api/marketing payload, whose byPlatform
   // narrows to whatever platform filter is currently selected. One query
   // both replaces the old count() (hasAccounts is just "any row came back")
   // and gives PlatformFilter its permanent option list.

@@ -19,7 +19,7 @@ export const MAX_EXCHANGES = 6
 /**
  * Roughly 15k tokens, about $0.075 of input per question at the ceiling.
  * Tool results are JSON and dominate the size, so this is the limit that
- * usually bites first — the exchange count is the backstop, not the reverse.
+ * usually bites first - the exchange count is the backstop, not the reverse.
  */
 export const MAX_CHARS = 60_000
 
@@ -40,7 +40,7 @@ export function trimTranscript(
   if (starts.length === 0) return turns
 
   let first = Math.max(0, starts.length - maxExchanges)
-  // Whole exchanges, never messages — and never the last one, however big,
+  // Whole exchanges, never messages - and never the last one, however big,
   // because a conversation with no current question is worth nothing.
   while (
     first < starts.length - 1 &&

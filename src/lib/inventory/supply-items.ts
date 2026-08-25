@@ -9,8 +9,8 @@ import { isUsableSku, normaliseSku } from './sku'
  * list, so it has to tolerate concurrent callers, not just a single sync.
  *
  * Never updates and never deletes. A product whose shops stop listing it keeps
- * its lead times and its open orders — `active` is what hides a row, not
- * absence from a catalogue — and settings someone has entered are never
+ * its lead times and its open orders - `active` is what hides a row, not
+ * absence from a catalogue - and settings someone has entered are never
  * overwritten by a name discovered later.
  */
 export async function ensureSupplyItems(): Promise<number> {

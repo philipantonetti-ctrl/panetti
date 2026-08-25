@@ -7,7 +7,7 @@ const URL = 'postgresql://user:pw@host/db'
  * Captured verbatim from the push that blocked every deploy from 2026-08-07:
  * swapping DeliveryPromise's unique from [country, effectiveFrom] to
  * [shopId, country, effectiveFrom]. Reproduced against a scratch database
- * seeded with three rows — all three survived the retry.
+ * seeded with three rows - all three survived the retry.
  */
 const CONSTRAINT_ADDED = `
 ⚠️  There might be data loss when applying the changes:
@@ -57,7 +57,7 @@ describe('which builds may change the schema', () => {
 
   it('skips a preview build even when a database IS reachable', () => {
     // The whole point. One database, and `db push` rewrites its shape to match
-    // whatever schema it is handed — so an unmerged branch must never be the
+    // whatever schema it is handed - so an unmerged branch must never be the
     // thing holding the pen.
     expect(decide({ vercelEnv: 'preview', databaseUrl: URL }).action).toBe('skip')
   })
@@ -79,7 +79,7 @@ describe('which builds may change the schema', () => {
   it('still pushes locally when DATABASE_URL is absent from process.env', () => {
     // Locally the URL lives in .env, which Prisma reads for itself and node
     // does not. Gating on process.env here would silently stop applying schema
-    // on every developer machine — the exact failure mode this script exists
+    // on every developer machine - the exact failure mode this script exists
     // to prevent, moved one environment to the left.
     expect(decide({ vercelEnv: undefined, databaseUrl: undefined }).action).toBe('push')
   })
@@ -104,7 +104,7 @@ describe('which builds may change the schema', () => {
  * time anyone noticed would be a column that did not come back.
  */
 describe('which refusals may be retried with --accept-data-loss', () => {
-  it('retries a unique constraint being added — it can fail, but it cannot delete', () => {
+  it('retries a unique constraint being added - it can fail, but it cannot delete', () => {
     expect(retryable(CONSTRAINT_ADDED)).toBe(true)
   })
 
@@ -128,7 +128,7 @@ describe('which refusals may be retried with --accept-data-loss', () => {
   })
 
   it('refuses a failure that carries no warnings at all', () => {
-    // No warning means the push failed for some other reason — a bad
+    // No warning means the push failed for some other reason - a bad
     // connection string, a syntax error. Retrying with a data-loss flag would
     // just fail again, having told the operator nothing.
     expect(retryable('Error: P1001 Can\'t reach database server at `host:5432`')).toBe(false)

@@ -14,7 +14,7 @@ export const CURRENCY_FORMATS = ['symbol-after', 'code-after', 'symbol-before']
 
 /**
  * What the workspace may consolidate into. Restricted to what the rate
- * provider (Frankfurter, see fx/rates.ts) actually quotes — an unquoted
+ * provider (Frankfurter, see fx/rates.ts) actually quotes - an unquoted
  * currency would leave crossConvert with no rate and silently return the
  * amount unconverted, which reads as a real number and is not one.
  */

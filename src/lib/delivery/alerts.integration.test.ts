@@ -9,17 +9,17 @@ let shopId: string
 
 afterEach(() => vi.unstubAllGlobals())
 
-// Tagged and scoped — see "Test data convention" in the Global Constraints.
+// Tagged and scoped - see "Test data convention" in the Global Constraints.
 const TAG = '[delivery-alerts-test]'
 const TRACK = 'TALERT' // every tracking number below starts with it
 const scoped = { shop: { name: { contains: TAG } } }
 
 // IMPLEMENTER: every shipment this file persists uses one of these instead of
-// a bare 'T1' literal — a bare literal has no TALERT prefix, so cleanup()'s
+// a bare 'T1' literal - a bare literal has no TALERT prefix, so cleanup()'s
 // trackingNumber-prefix branch could not find it (see link.integration.test.ts's
 // IMPLEMENTER note and route.integration.test.ts's UNLINKED comment for the
 // exact same trap). Each of these shipments is also linked via orderId to a
-// scoped order, so cleanup()'s `order: scoped` branch already covers them —
+// scoped order, so cleanup()'s `order: scoped` branch already covers them -
 // but the prefix is kept so every persisted row is self-describing and the
 // two cleanup branches agree with what the constants claim.
 const T1 = `${TRACK}1`
@@ -31,7 +31,7 @@ async function cleanup() {
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
   await db.deliveryPromise.deleteMany({ where: { country: { in: ['*'] } } })
-  // Never deleteMany on the singleton — blank the fields instead, so a racing
+  // Never deleteMany on the singleton - blank the fields instead, so a racing
   // file cannot find the row missing. See the Global Constraints.
   await db.deliveryConfig.upsert({
     where: { id: 'singleton' },
@@ -61,7 +61,7 @@ beforeEach(async () => {
     data: { country: '*', days: 3, businessDays: true, effectiveFrom: new Date('2026-01-01') },
   })
   // Upsert, not create: cleanup() above already leaves the singleton row in
-  // place — blanked, never deleted, per the Global Constraints — so a plain
+  // place - blanked, never deleted, per the Global Constraints - so a plain
   // create() here would collide with its own primary key on every test after
   // the first. Matches sync.integration.test.ts's established convention.
   await db.deliveryConfig.upsert({
@@ -89,7 +89,7 @@ async function order(number: string, over: Record<string, unknown> = {}) {
 const ok = () => {
   // Typed as a type argument, not inferred: `vi.fn(async () => ...)` alone
   // infers a ZERO-ARG mock, which makes `fn.mock.calls[0][1]` below a type
-  // error — indexing an empty tuple — even though it works at runtime.
+  // error - indexing an empty tuple - even though it works at runtime.
   const fn = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>(
     async () => new Response('ok', { status: 200 }),
   )
@@ -212,7 +212,7 @@ describe('flushDeliveryAlerts', () => {
   /**
    * COLLECTED stops the clock in milestones.ts, but only READY_FOR_PICKUP and
    * DELIVERED write `availableAt`. A parcel whose feed carried the collection
-   * and neither of those has a `collectedAt` and no `availableAt` at all — and
+   * and neither of those has a `collectedAt` and no `availableAt` at all - and
    * a rule reading `availableAt` alone paged somebody about a box the customer
    * had already walked home with.
    */
@@ -239,7 +239,7 @@ describe('flushDeliveryAlerts', () => {
   })
 
   it('says it is not configured rather than failing, when there is no webhook', async () => {
-    // Blank the field in place rather than deleteMany() on the singleton —
+    // Blank the field in place rather than deleteMany() on the singleton -
     // forbidden by the Global Constraints ("never deleteMany() ... blank the
     // fields rather than deleting the row"). getDeliveryConfig() reads exactly
     // the same "not connected" state from a row with a null webhook as it does
@@ -268,7 +268,7 @@ describe('flushDeliveryAlerts', () => {
     //
     // DEVIATION FROM BRIEF: the brief asserted a bare, whole-table
     // `db.order.count({ where: { deliveryAlertedAt: null } })`. Scoped to this
-    // file's own shop instead — the same fix sync.integration.test.ts already
+    // file's own shop instead - the same fix sync.integration.test.ts already
     // made for shipmentEvent, for the same reason: a bare query over a shared
     // table reads the 11 seeded shops' orders and every other suite's fixtures
     // too, not just this file's 30.
@@ -279,7 +279,7 @@ describe('flushDeliveryAlerts', () => {
     // The starvation bug this test exists to catch: an on-time delivery is
     // never stamped, so deliveryAlertedAt stays null forever. Ordered oldest
     // first under CANDIDATE_LIMIT, a big enough backlog of old, delivered
-    // orders would permanently occupy every slot — the run would report
+    // orders would permanently occupy every slot - the run would report
     // alertsSent: 0 while looking perfectly healthy. More than CANDIDATE_LIMIT
     // of them here (bulk-inserted for speed), all older than the one order
     // that is genuinely late right now.
@@ -311,7 +311,7 @@ describe('flushDeliveryAlerts', () => {
   it('does not alert an order placed before the alert window, even if still outstanding', async () => {
     // Without a floor, an order that never shipped and never alerted
     // accumulates the same way an on-time delivery does. It alerted when it
-    // first went late, or the feature was not running yet — either way,
+    // first went late, or the feature was not running yet - either way,
     // paging someone about it today changes nothing.
     await order('1001', { placedAt: new Date('2026-01-01T08:00:00Z') }) // ~230 days before NOW, well past the 90-day window
     expect((await flushDeliveryAlerts({ now: NOW })).sent).toBe(0)
@@ -343,7 +343,7 @@ describe('alertMessage', () => {
   })
 
   /**
-   * The alert is the link the client actually clicks — he reads Slack, not the
+   * The alert is the link the client actually clicks - he reads Slack, not the
    * delivery page. So this is the one that mattered most: every late DHL parcel
    * was sending him to Bring's site, which has never heard of the number.
    */

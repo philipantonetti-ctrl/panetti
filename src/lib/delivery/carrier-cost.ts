@@ -5,7 +5,7 @@
  * `api-eu.dhl.com/track/shipments` return where a parcel is, never what it
  * cost, and neither our Bring nor our DHL key reaches a rating endpoint. The
  * carriers' rate APIs would answer with a QUOTE computed from weight,
- * dimensions and service — none of which we store — and a quote drifts from
+ * dimensions and service - none of which we store - and a quote drifts from
  * the invoice on every fuel surcharge, volumetric rounding and remote-area fee.
  *
  * So the money comes from the invoice, which is the only figure that is
@@ -13,7 +13,7 @@
  *
  * The one rule everything here follows: THE MONEY AND THE PARCELS MUST DESCRIBE
  * THE SAME MONTHS. A month whose invoice has not been entered is dropped from
- * both sides and named, never counted on one side only — 400 parcels divided by
+ * both sides and named, never counted on one side only - 400 parcels divided by
  * an invoice covering 300 of them reads as a saving nobody made.
  */
 
@@ -57,7 +57,7 @@ export type CarrierCostRow = {
 
 export type CarrierAverage = {
   carrier: string
-  /** Parcels in the months that ALSO have an invoice — the divisor. */
+  /** Parcels in the months that ALSO have an invoice - the divisor. */
   shipments: number
   /**
    * Every parcel in the range, invoiced or not. Reported separately because it
@@ -112,7 +112,7 @@ export function carrierAverages(
     const mixedCurrency = currencies.length > 1
 
     // Adding NOK to EUR would need a rate this page never showed, so it
-    // refuses instead — the same rule every other figure here follows.
+    // refuses instead - the same rule every other figure here follows.
     const cost = used.length > 0 && !mixedCurrency ? used.reduce((n, c) => n + c.amount, 0) : null
 
     return {

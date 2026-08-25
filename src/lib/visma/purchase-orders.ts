@@ -6,7 +6,7 @@ export type { VismaOrder, VismaOrderLine, VismaReceipt, VismaReceiptRef } from '
 export type MappedOrder = {
   externalId: string
   sku: string
-  /** What was ordered. Never the outstanding amount — see the design doc. */
+  /** What was ordered. Never the outstanding amount - see the design doc. */
   quantity: number
   /** What Visma says has landed. Subtracted at the one place that counts arrivals. */
   receivedQuantity: number
@@ -29,7 +29,7 @@ export type MapResult = {
   skipped: { reason: SkipReason; count: number }[]
 }
 
-/** Visma wraps most scalars as `{ value: x }` — but not all of them. */
+/** Visma wraps most scalars as `{ value: x }` - but not all of them. */
 export function unwrap<T>(v: unknown): T | null {
   if (v === null || v === undefined) return null
   if (typeof v === 'object' && 'value' in (v as Record<string, unknown>)) {
@@ -70,7 +70,7 @@ export function receiptDatesByNumber(receipts: VismaReceipt[]): Map<string, Date
  * The latest of its receipts, because an order delivered in two shipments is
  * done when the last one lands. Falls back to `lastModifiedDateTime` for the
  * seven closed orders that carry no receipt at all, and to the order date if
- * even that is missing — all three are real dates Visma recorded, which is why
+ * even that is missing - all three are real dates Visma recorded, which is why
  * the page labels the column "recorded" rather than "received".
  *
  * Never the clock. `lastModifiedDateTime` alone would have been badly wrong:
@@ -105,7 +105,7 @@ function finishedOn(
  * could never show what arrived. The subtraction happens once, in load.ts.
  *
  * Completion is `line.completed`, NOT a quantity comparison. Visma closes orders
- * without booking receipts against them — 59 closed lines in the live company
+ * without booking receipts against them - 59 closed lines in the live company
  * have fewer receipts than they ordered, and order 500148 has none at all. A
  * quantity test leaves those counting as incoming stock forever.
  *
@@ -137,7 +137,7 @@ export function mapVismaOrders(
     }
 
     // An order on hold has not been placed with the supplier. Counting it would
-    // push a run-out date out on stock that may never be ordered — the same
+    // push a run-out date out on stock that may never be ordered - the same
     // reason an order with no ETA moves no date.
     if (status === 'hold' || truthy(order.hold)) {
       skip('order on hold', lines.length)

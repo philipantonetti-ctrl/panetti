@@ -53,9 +53,9 @@ beforeAll(async () => {
     },
   })
 
-  // Previous window (27 Jul – 2 Aug): 1_000_000 NOK.
+  // Previous window (27 Jul - 2 Aug): 1_000_000 NOK.
   await order('A1', day('2026-07-29'), 1_000_000)
-  // Current window (3 – 9 Aug): 400_000 NOK — a 60% fall.
+  // Current window (3 - 9 Aug): 400_000 NOK - a 60% fall.
   await order('A2', day('2026-08-05'), 400_000)
 })
 

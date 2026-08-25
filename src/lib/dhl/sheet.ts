@@ -5,8 +5,8 @@
  * `lib/bring/xlsx.ts` does for the Bring path. The two are deliberately
  * different readers: Bring's flattens the whole archive to text because that
  * path only wants long digit runs and must not care about layout. DHL's export
- * is the opposite — 61 named columns, and the answer lives in two specific ones
- * — so here the columns are exactly what we need.
+ * is the opposite - 61 named columns, and the answer lives in two specific ones
+ * - so here the columns are exactly what we need.
  *
  * Everything is returned as a STRING. `Shipment Number` is a 10-digit id that
  * JavaScript would happily hold as a float and hand back in a form nobody can
@@ -17,7 +17,7 @@ import { unzipSync, strFromU8 } from 'fflate'
 /**
  * Both cell forms, and matching both is load-bearing.
  *
- * Excel writes an unused-but-styled cell as `<c r="B2" s="1"/>` — self-closing,
+ * Excel writes an unused-but-styled cell as `<c r="B2" s="1"/>` - self-closing,
  * no value. Matching only the paired `<c ...>…</c>` form makes the regex run
  * past such a cell and consume the NEXT cell's `<v>`, filing that value under
  * the empty cell's column. Every column after it shifts by one.

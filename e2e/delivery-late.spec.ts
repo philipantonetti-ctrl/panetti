@@ -6,8 +6,8 @@ import bcrypt from 'bcryptjs'
  * The Late section is a to-do list, in a real browser against the real page.
  *
  * The client's words: "when order is delivered or ready for collection, it can
- * go away from the Late section." It used to keep both — and say so in its own
- * heading — so the rows anyone could act on sat among rows nobody could, under
+ * go away from the Late section." It used to keep both - and say so in its own
+ * heading - so the rows anyone could act on sat among rows nobody could, under
  * a tile counting a third number again.
  *
  * Three orders, all placed 30 days ago against a 3-day promise, so all three
@@ -179,7 +179,7 @@ test('the section no longer advertises that it keeps arrived orders', async ({ p
 /**
  * The relationship, not a number: whatever else is in the database, the tile
  * and the rows under it are one set. Two numbers over overlapping sets is the
- * fault this page has now had twice — 155 against 8, then 13 against 16.
+ * fault this page has now had twice - 155 against 8, then 13 against 16.
  */
 test('the tile counts exactly the rows the list shows', async ({ page }) => {
   const late = await openDelivery(page)

@@ -31,7 +31,7 @@ const asAdmin = async () => {
 async function wipe() {
   await db.affiliateAccount.deleteMany({ where: { name: { contains: MARK } } })
   await db.shop.deleteMany({ where: { name: { contains: MARK } } })
-  // Fake, non-ECB currencies used by the conversion tests below — no other
+  // Fake, non-ECB currencies used by the conversion tests below - no other
   // suite (and no real sync) ever writes these bases.
   await db.fxRate.deleteMany({ where: { base: { in: ['XTA', 'XTB'] } } })
 }
@@ -71,7 +71,7 @@ beforeEach(async () => {
   }
   await db.affiliateTransaction.createMany({
     data: [
-      // Two sales, one channel, one day, one currency — one converted bucket.
+      // Two sales, one channel, one day, one currency - one converted bucket.
       { ...base, externalId: 's1', date: new Date('2026-04-02'), commission: 12835, brokerageFee: 1925, orderValue: 85564 },
       { ...base, externalId: 's2', date: new Date('2026-04-02'), commission: 5988, brokerageFee: 898, orderValue: 40000 },
       // A second channel on a second day.
@@ -116,12 +116,12 @@ describe('GET /api/affiliate/summary', () => {
       { channelId: '22', channelName: 'Blogg B', sales: 1, orderValue: 1000, cost: 110 },
     ])
 
-    // One shop asked for, one shop answered — the client hides this table.
+    // One shop asked for, one shop answered - the client hides this table.
     expect(body.byShop).toHaveLength(1)
     expect(body.byShop[0]).toMatchObject({ shopId: shopA, shopName: `Shop A ${MARK}`, cost: 21756 })
 
-    // Money that belongs to no shop is missing from every figure above —
-    // including the total — and is said so rather than quietly dropped: the
+    // Money that belongs to no shop is missing from every figure above -
+    // including the total - and is said so rather than quietly dropped: the
     // count AND the money (s6: 5555 commission + 555 brokerage, already NOK).
     expect(body.unmatched).toBe(1)
     expect(body.unmatchedCost).toBe(5555 + 555)
@@ -183,13 +183,13 @@ describe('GET /api/affiliate/summary', () => {
 
   // FIX 2: the unmatched rows' currencies must join the set that decides
   // whether rates are needed at all. Here the matched side is empty, so ONLY
-  // an unmatched row is foreign — if its currency were left out, the route
+  // an unmatched row is foreign - if its currency were left out, the route
   // would build no rate table and crossConvert would pass 100 through
   // unchanged, printing a figure in the wrong currency as though converted.
   it("converts unmatched money at each day's own rate", async () => {
     // Fake, non-ECB currencies: isConvertible() is false for both, so
     // ensureRates never asks the provider for them, and the seeded fxRate row
-    // on the range's own day keeps its freshness check satisfied — the test
+    // on the range's own day keeps its freshness check satisfied - the test
     // controls every rate deterministically, offline.
     const shopC = await db.shop.create({ data: { name: `Shop C ${MARK}`, currency: 'XTA' } })
     await db.fxRate.createMany({
@@ -224,7 +224,7 @@ describe('GET /api/affiliate/summary', () => {
 
   // FIX 4: byChannel partitions the same groups differently from the total
   // ((channel, day, currency) vs the engine's (shop, day, currency)), and each
-  // converted bucket rounds once — so the two sums can drift by rounding. The
+  // converted bucket rounds once - so the two sums can drift by rounding. The
   // residual is allocated to the largest channel row, so the channel table
   // tallies exactly to the headline figure the engine also reports.
   it('makes the channel rows tally exactly to the total when per-partition rounding disagrees', async () => {
@@ -246,7 +246,7 @@ describe('GET /api/affiliate/summary', () => {
     await db.affiliateTransaction.createMany({
       data: [
         // 1 minor unit per channel at rate 0.5: each channel bucket rounds its
-        // 0.5 half away to 1, but the shop-grain total is round(2 * 0.5) = 1 —
+        // 0.5 half away to 1, but the shop-grain total is round(2 * 0.5) = 1 -
         // a guaranteed one-unit residual between the two partitions.
         { ...base, externalId: 'r1', channelId: '55', channelName: 'Round A', commission: 1, brokerageFee: 0, orderValue: 1 },
         { ...base, externalId: 'r2', channelId: '66', channelName: 'Round B', commission: 1, brokerageFee: 0, orderValue: 1 },
@@ -254,7 +254,7 @@ describe('GET /api/affiliate/summary', () => {
     })
 
     const body = await (await get(`from=2026-04-20&to=2026-04-20&shops=${shopD.id}`)).json()
-    // The headline stays the engine's own figure — the residual moves a
+    // The headline stays the engine's own figure - the residual moves a
     // channel row, never the total.
     expect(body.total.cost).toBe(1)
     expect(body.total.orderValue).toBe(1)
@@ -266,7 +266,7 @@ describe('GET /api/affiliate/summary', () => {
   })
 
   // FIX 5: channelName participates in the grouping, so a renamed channel
-  // yields several groups for one channelId — the displayed name must be the
+  // yields several groups for one channelId - the displayed name must be the
   // most recent one, not whichever group an unordered result listed last.
   it('shows a renamed channel under its most recent name', async () => {
     const base = {
@@ -288,7 +288,7 @@ describe('GET /api/affiliate/summary', () => {
 
     const body = await (await get(`${RANGE}&shops=${shopA}`)).json()
     const row = body.byChannel.find((r: { channelId: string }) => r.channelId === '33')
-    // One row for the channel — both days' money under the newest name.
+    // One row for the channel - both days' money under the newest name.
     expect(row).toMatchObject({ channelName: 'New name', sales: 2, cost: 330 })
   })
 

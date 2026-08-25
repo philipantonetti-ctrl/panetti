@@ -1,7 +1,7 @@
 /**
  * How a hand-entered order is identified.
  *
- * B2B orders carry their own sequence — B-0001, B-0002 — rather than borrowing
+ * B2B orders carry their own sequence - B-0001, B-0002 - rather than borrowing
  * the webshop's numbers, and their `externalId` is namespaced `b2b:`. A
  * WooCommerce `externalId` is always `String(woo.id)`, plain digits, so the
  * `@@unique([shopId, externalId])` that the sync and the webhook upsert on can
@@ -33,7 +33,7 @@ export function b2bExternalId(number: string): string {
  * The next number for this shop.
  *
  * Reads every B2B number the shop holds and takes the highest, rather than
- * `orderBy: { number: 'desc' }` — string ordering puts "B-9999" above
+ * `orderBy: { number: 'desc' }` - string ordering puts "B-9999" above
  * "B-10000" and would hand back a number already taken. These are typed by
  * hand, so the list is small enough that reading it costs nothing.
  *

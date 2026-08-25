@@ -19,7 +19,7 @@ const asAdmin = async () => {
 
 /**
  * A ShippingRate hangs off a SKU, not a shop, so there is no shop name to tag it
- * with — this prefix is the tag. Swept by prefix rather than by id so a run that
+ * with - this prefix is the tag. Swept by prefix rather than by id so a run that
  * dies before its afterEach heals itself on the next one, and case-insensitively
  * because a SKU is matched that way everywhere else and this file types one in
  * lower case on purpose.
@@ -77,7 +77,7 @@ describe('/api/shipping-rates', () => {
   it('refuses a SKU that cannot identify one product', async () => {
     // Six live products carry the SKU "0", spanning a pizza oven and a massage
     // chair. A shipping rate typed against it would charge one product's
-    // shipping to the other — see isUsableSku.
+    // shipping to the other - see isUsableSku.
     await asAdmin()
     expect((await post({ ...valid, sku: '0' })).status).toBe(400)
     expect((await post({ ...valid, sku: '   ' })).status).toBe(400)

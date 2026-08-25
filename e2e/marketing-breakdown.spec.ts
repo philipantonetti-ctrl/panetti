@@ -9,13 +9,13 @@ async function signIn(page: import('@playwright/test').Page, email: string) {
 }
 
 /**
- * The browser never talks to Meta or Google — the Next.js server does, from
+ * The browser never talks to Meta or Google - the Next.js server does, from
  * inside `/api/marketing/breakdown` (src/lib/ads/breakdown.ts). So this stubs
  * OUR endpoint, keyed on the same `level`/`provider`/`parentId` the route
  * reads (src/app/api/marketing/breakdown/route.ts), and proves the journey a
  * unit test cannot: the page renders, a single store gates the table in, a
  * campaign opens into ad sets, an ad set into ads, and the switcher moves to
- * Google. It does NOT prove the route handler or the two platform drivers —
+ * Google. It does NOT prove the route handler or the two platform drivers -
  * those already have DB-backed tests (loadBreakdown, Task 3) and
  * stubbed-fetch tests (the Meta/Google drivers, Tasks 1-2). This spec owns
  * the browser; those own the server.
@@ -84,7 +84,7 @@ type CapturedRequest = { level: string | null; provider: string | null; parentId
  * Deliberately not "generous": an unrecognised (level, provider, parentId)
  * combination gets an empty-but-valid response, never a plausible-looking
  * guess. If the page ever asked for the wrong thing, the row it expected
- * would simply never render — the assertion on that row fails instead of
+ * would simply never render - the assertion on that row fails instead of
  * being quietly satisfied by a stub that answered a different question.
  */
 function fixtureFor(level: string | null, provider: string | null, parentId: string | null) {
@@ -132,29 +132,29 @@ test('a single store unlocks the breakdown; a campaign opens into ad sets, an ad
   await expect(page.getByRole('heading', { name: 'Marketing' })).toBeVisible()
 
   // Gate: this deployment seeds 11 shops, so the default selection is "all"
-  // of them — campaigns belong to one ad account, so the breakdown must not
+  // of them - campaigns belong to one ad account, so the breakdown must not
   // guess at a total across stores. Neither the switcher nor a table exists.
   await expect(page.getByText(/Campaigns belong to one ad account/)).toBeVisible({ timeout: 10_000 })
   await expect(page.getByRole('tab', { name: 'Meta' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Shops' }).click()
   await page.getByRole('button', { name: 'Only Panetti Sweden' }).click()
-  // ShopFilter's "Only" does not close its own panel — by design, so more
+  // ShopFilter's "Only" does not close its own panel - by design, so more
   // boxes can be ticked afterward. Its full-viewport click-away backdrop is
   // still up, and being position:fixed with a z-index above the static page
   // (globals.css --z-dropdown), it sits above everything, including a normal
-  // click target — Playwright's own actionability check would correctly
+  // click target - Playwright's own actionability check would correctly
   // refuse a plain .click() here as "obscured" and time out. `force: true`
   // is required to reach past the backdrop, not a shortcut: do NOT "tidy"
   // this into a plain click. The target is the page heading, chosen because
-  // it is inert (no handler of its own) — if ShopFilter is ever fixed to
+  // it is inert (no handler of its own) - if ShopFilter is ever fixed to
   // close its own panel, this simply clicks a heading that does nothing,
   // rather than a fixed pixel that might land on something live (e.g. the
   // sidebar's Wordmark link, one screen-corner over). Either way the click
   // lands on whichever element is actually topmost at that point, exactly
   // like a real user's click, which is what dismisses the backdrop.
   await page.getByRole('heading', { name: 'Marketing' }).click({ force: true })
-  // Confirms the click actually closed the panel, rather than assuming it —
+  // Confirms the click actually closed the panel, rather than assuming it -
   // this button only exists while ShopFilter's panel is open.
   await expect(page.getByRole('button', { name: 'Only Panetti Sweden' })).toHaveCount(0)
 
@@ -166,12 +166,12 @@ test('a single store unlocks the breakdown; a campaign opens into ad sets, an ad
   await expect(campaignRow.getByText('1.8%')).toBeVisible()
   assertRequested(requests, { level: 'campaign', provider: 'meta', parentId: null })
 
-  // Press the campaign — its ad sets appear beneath it, fetched for its id.
+  // Press the campaign - its ad sets appear beneath it, fetched for its id.
   await page.getByRole('button', { name: 'Meta Summer Sale' }).click()
   await expect(page.getByRole('button', { name: 'Meta Ad Set A' })).toBeVisible()
   assertRequested(requests, { level: 'adset', provider: 'meta', parentId: META_CAMPAIGN.id })
 
-  // Press the ad set — its ads appear beneath it, fetched for ITS id, not
+  // Press the ad set - its ads appear beneath it, fetched for ITS id, not
   // the campaign's. Ads are the last level: this row renders as plain text,
   // never a button, because there is nothing further beneath it to expand.
   await page.getByRole('button', { name: 'Meta Ad Set A' }).click()

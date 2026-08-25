@@ -40,7 +40,7 @@ describe('ShopFilter', () => {
     expect(onChange).toHaveBeenCalledWith(['s1'])
   })
 
-  it('un-ticking the last chosen shop means none — not suddenly all again', () => {
+  it('un-ticking the last chosen shop means none - not suddenly all again', () => {
     const onChange = open(['s1'])
     fireEvent.click(screen.getByRole('checkbox', { name: 'Panetti Norway' }))
     expect(onChange).toHaveBeenCalledWith([NO_SHOPS])

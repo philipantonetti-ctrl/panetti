@@ -20,7 +20,7 @@ stop using the dialog.
 **The handshake does not match the app.** The card tells the client to
 create a **Business type** app. Meta's own documentation for Facebook Login
 for Business states that `config_id` **has replaced** `scope`, "which should
-not be used" — and a Business type app is served Facebook Login for
+not be used" - and a Business type app is served Facebook Login for
 Business. `buildMetaAuthUrl` sends `scope=ads_read,business_management` and
 no `config_id`. So our instructions and our code disagree, and following the
 instructions perfectly still produces that screen. The error text names App
@@ -75,7 +75,7 @@ column in the accounts table all keep working with no changes at all.
 
 **`POST /api/ads/connections/meta` (admin).** Body `{ token }`. In order:
 the Meta `AdPlatformApp` is loaded (missing → 400, fill in the app first);
-an app access token is minted by `client_credentials` — the same call
+an app access token is minted by `client_credentials` - the same call
 `ensureMetaApp` already makes, extracted as `metaAppToken()`; then
 `GET /debug_token` inspects the pasted token; then `GET /me?fields=name`
 proves it and supplies the label; then the connection is upserted on
@@ -124,8 +124,8 @@ per-account "Advanced: paste credentials manually" modal stays exactly as it
 is: it works today, it is the fallback for a single odd account, and nothing
 about it needs to change.
 
-**Migration: none.** Production has no Meta ad accounts connected — the
-settings page reads "Nothing connected yet" — so there is nothing to move.
+**Migration: none.** Production has no Meta ad accounts connected - the
+settings page reads "Nothing connected yet" - so there is nothing to move.
 
 ## Testing
 

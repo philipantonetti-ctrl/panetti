@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     assertAdmin(await currentUser())
 
     // A malformed body dies here as a 400. Letting req.json() throw would land
-    // it in the generic catch, whose console.error prints V8's SyntaxError —
+    // it in the generic catch, whose console.error prints V8's SyntaxError -
     // and that error quotes a snippet of the body it choked on, which on this
     // route can be a token.
     const raw = await req.json().catch(() => null)

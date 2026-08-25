@@ -16,7 +16,7 @@ export type ForecastInput = {
   /** Null = no shop reported a figure. NOT zero. */
   stock: number | null
   /**
-   * The daily rate with the season taken OUT of it — `seasonalLevel`, not
+   * The daily rate with the season taken OUT of it - `seasonalLevel`, not
    * `dailyBurn`. It is multiplied by `index` below, so handing it a rate that
    * still carries its own season would apply the season twice.
    */
@@ -115,7 +115,7 @@ export function forecast(input: ForecastInput, today: Date): Forecast {
 
   const landing = new Map<number, number>()
   for (const a of input.arrivals) {
-    if (!a.eta) continue // no date, no effect — a guessed arrival is worse than none
+    if (!a.eta) continue // no date, no effect - a guessed arrival is worse than none
     const k = startOfDay(a.eta).getTime()
     if (k < from.getTime()) continue // overdue: reported above, never counted
     landing.set(k, (landing.get(k) ?? 0) + a.quantity)

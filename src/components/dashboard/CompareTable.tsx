@@ -7,7 +7,7 @@ import type { EngineResult, Figures, ShopFigures } from '@/lib/metrics/types'
 /**
  * Every shop, side by side.
  *
- * Numbers are right-aligned and tabular so columns line up digit for digit — the whole
+ * Numbers are right-aligned and tabular so columns line up digit for digit - the whole
  * point of the table is comparing them at a glance. A loss is red AND signed, so the
  * meaning survives colour-blindness and a black-and-white printout.
  */
@@ -17,7 +17,7 @@ type Row = ShopFigures & { roas: number | null }
 
 /**
  * Gross revenue per unit of ad spend. Derived here, not in the engine, because
- * it is a ratio of two figures already on the row — and because the footer IS
+ * it is a ratio of two figures already on the row - and because the footer IS
  * the totals row, which makes its cell the blended ROAS for free: all gross
  * revenue over all spend. No spend is not "0.00x", it is nothing to divide by,
  * so it prints a dash; spend with nothing sold really is 0.00x, and prints.
@@ -32,18 +32,18 @@ type Column = {
   hint?: string
   money?: boolean
   percent?: boolean
-  roas?: boolean // "4.75×" — and a dash where there is nothing to divide by
+  roas?: boolean // "4.75×" - and a dash where there is nothing to divide by
   tone?: boolean // colour by sign
-  shareOfNetRevenue?: boolean // append "(26.10%)" — this figure as a share of the row's net revenue
+  shareOfNetRevenue?: boolean // append "(26.10%)" - this figure as a share of the row's net revenue
 }
 
 const COLUMNS: Column[] = [
   { key: 'orders', label: 'Orders' },
   { key: 'grossRevenue', label: 'Gross revenue', money: true, hint: 'What customers actually paid: net revenue + VAT (Nordic "brutto")' },
   { key: 'discounts', label: 'Discounts', money: true, hint: 'Coupon and code discounts, excl. VAT' },
-  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base, excl. VAT' },
+  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts - the commission base, excl. VAT' },
   { key: 'fulfillment', label: 'Fulfillment', money: true, hint: 'What shipping actually cost us: the per-order rate from Settings, or a B2B order’s own shipping cost' },
-  { key: 'taxes', label: 'VAT', money: true, hint: 'VAT collected (25% NO/SE/DK, 25.5% FI, 19% DE) — remitted to the tax office, never income or cost' },
+  { key: 'taxes', label: 'VAT', money: true, hint: 'VAT collected (25% NO/SE/DK, 25.5% FI, 19% DE) - remitted to the tax office, never income or cost' },
   { key: 'transactionFees', label: 'Transaction fees', money: true, hint: 'Payment gateway: % of the charged total + fixed part' },
   { key: 'cogs', label: 'COGS', money: true, shareOfNetRevenue: true, hint: 'Product cost + handling, and its share of net revenue' },
   { key: 'marketing', label: 'Marketing', money: true, hint: 'Meta and Google ad spend, converted at each day’s own rate' },
@@ -61,7 +61,7 @@ const STORAGE_KEY = 'compare-columns'
 function useVisibleColumns() {
   // Read the saved choice lazily. This table only ever mounts on the client (the
   // dashboard shows a skeleton until its data arrives), so localStorage is safe
-  // here — and doing it in the initializer keeps setState out of an effect.
+  // here - and doing it in the initializer keeps setState out of an effect.
   // Unknown keys are dropped, so a renamed metric can never wedge the table.
   const [hidden, setHidden] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set()
@@ -112,10 +112,10 @@ function Cell({
   // A ratio with nothing to divide by is not a number, and printing one would
   // lie. The dash is muted so a column of them reads as absence, not as data.
   if (value === null) {
-    return <td className={`num px-4 py-2.5 text-right text-faint ${stripe}`}>—</td>
+    return <td className={`num px-4 py-2.5 text-right text-faint ${stripe}`}>-</td>
   }
 
-  // "$3,843.74 (26.10%)" — the share only exists when there is revenue to share.
+  // "$3,843.74 (26.10%)" - the share only exists when there is revenue to share.
   const share =
     column.shareOfNetRevenue && row.netRevenue > 0
       ? ` (${((value / row.netRevenue) * 100).toFixed(2)}%)`

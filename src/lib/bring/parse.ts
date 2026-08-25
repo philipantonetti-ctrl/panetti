@@ -15,7 +15,7 @@ const MAX_TOKEN_DISTANCE = 12
  *
  * Deliberately loose on format and strict on shape. We do not know every
  * product Bring will ever use, but we do know a parcel number is long, mostly
- * digits, and carries no punctuation — which excludes the dates, prices and
+ * digits, and carries no punctuation - which excludes the dates, prices and
  * postcodes that share a document with it.
  */
 export function looksLikeTracking(token: string): boolean {
@@ -30,11 +30,11 @@ export function looksLikeTracking(token: string): boolean {
  * The layout is the warehouse's and may change without warning, so this does
  * NOT parse a table. It looks for the order numbers WE ALREADY HOLD, then takes
  * the nearest tracking-shaped token to each. That removes every assumption
- * about column order, headings and order-number format — the things most
- * likely to change — and leaves only the one assumption that cannot: that the
+ * about column order, headings and order-number format - the things most
+ * likely to change - and leaves only the one assumption that cannot: that the
  * two numbers appear near each other.
  *
- * A row that matches nothing is simply ABSENT from the result — there is no
+ * A row that matches nothing is simply ABSENT from the result - there is no
  * "unmatched" entry for it, because a row we could not read leaves nothing to
  * describe. That is why `countParcelNumbers` exists: it is the only way the
  * caller can tell a file we read completely from one we half-understood.
@@ -56,7 +56,7 @@ export function extractPairs(text: string, knownOrderNumbers: Set<string>): Pars
       // A parcel number is unique to one shipment; boilerplate (a support
       // line, a phone number) repeats. A tracking-shaped token seen more than
       // once in the document is therefore ambiguous, so it is refused rather
-      // than guessed at — a missing pair shows up in the unmatched count, a
+      // than guessed at - a missing pair shows up in the unmatched count, a
       // wrong pair silently poisons an order's delivery figure.
       if ((tokenCounts.get(t) ?? 0) > 1) return
       trackingIndices.push(i)
@@ -111,7 +111,7 @@ export function extractPairs(text: string, knownOrderNumbers: Set<string>): Pars
  *
  * This is what makes a shortfall visible. `extractPairs` returns only its
  * successes, so a file whose layout we half-understood reads as a complete
- * success while most of its parcels are silently dropped — and each dropped
+ * success while most of its parcels are silently dropped - and each dropped
  * parcel leaves its order looking never-shipped, which eventually fires a Slack
  * alert about a parcel that shipped perfectly normally.
  *
@@ -129,7 +129,7 @@ export function countParcelNumbers(text: string, knownOrderNumbers: Set<string>)
 
 export type ParseResult = {
   rows: ParsedRow[]
-  /** Distinct parcel-shaped numbers in the document — see countParcelNumbers. */
+  /** Distinct parcel-shaped numbers in the document - see countParcelNumbers. */
   seen: number
 }
 

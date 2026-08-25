@@ -31,7 +31,7 @@ describe('parseB2bNumber', () => {
 
 describe('b2bExternalId', () => {
   it('namespaces the id so a WooCommerce order can never collide with it', () => {
-    // Woo external ids are always String(woo.id) — plain digits.
+    // Woo external ids are always String(woo.id) - plain digits.
     expect(b2bExternalId('B-0007')).toBe('b2b:B-0007')
   })
 })

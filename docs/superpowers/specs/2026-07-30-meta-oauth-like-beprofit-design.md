@@ -11,16 +11,16 @@ The client showed us BeProfit, the analytics tool he already uses, doing the
 exact thing we gave up on. Three screenshots settle it:
 
 - **Google:** a modal headed *"Connecting Google Ad Accounts"*, "Philip
-  Antonetti — Logged in with Google ads", then a searchable checkbox list of
+  Antonetti - Logged in with Google ads", then a searchable checkbox list of
   five ad accounts. Tick, Save.
 - **Facebook:** the same modal, *"Connecting Facebook Ad Accounts"*, "Jacob
-  Kjos Hanssen — Logged in with Facebook", then a checkbox list of five
+  Kjos Hanssen - Logged in with Facebook", then a checkbox list of five
   accounts with `act_` ids.
 - **The popup mid-login**, with its URL visible:
   `https://www.facebook.com/v25.0/dialog/oauth?encrypted_query_s...`
 
 That last one is the finding. Our deleted `buildMetaAuthUrl` built
-`https://www.facebook.com/v25.0/dialog/oauth?...` — the same endpoint, the
+`https://www.facebook.com/v25.0/dialog/oauth?...` - the same endpoint, the
 same Graph version. BeProfit is not doing anything exotic, and neither were
 we.
 
@@ -51,7 +51,7 @@ never the cause.
 **The only cause was that no login product had been added to the app.** With
 no product there is nowhere for a Valid OAuth Redirect URI to live, so
 Facebook fell back to its legacy App Domains check and printed *"Can't load
-URL: the domain of this URL isn't included in the app's domains"* — a message
+URL: the domain of this URL isn't included in the app's domains"* - a message
 that names the wrong field. Four designs chased App Domains because the error
 told them to.
 
@@ -61,7 +61,7 @@ former.
 
 ## What was actually over-engineered
 
-`ensureMetaApp` — eighty lines that proved the App ID and secret, read the
+`ensureMetaApp` - eighty lines that proved the App ID and secret, read the
 app's `app_domains` over the Graph API, wrote our domain into them when
 missing, and returned `healed`. `start/route.ts` then told the admin to
 "press Connect with Facebook again", and `ensureMetaApp` could return
@@ -82,7 +82,7 @@ Meta's Marketing API authorization reference:
 > permissions and features available to the Business app type.
 
 Philip owns his ad accounts, and the app is his. Standard Access covers it.
-BeProfit needs Advanced Access — App Review plus Business Verification —
+BeProfit needs Advanced Access - App Review plus Business Verification -
 only because it serves thousands of merchants who are strangers to it.
 
 This is also why we cannot use *our own* Meta app to hide the App ID and
@@ -110,34 +110,34 @@ instruction.
 
 It was already correct.
 
-- `buildMetaAuthUrl(clientId, redirectUri, state)` — builds
+- `buildMetaAuthUrl(clientId, redirectUri, state)` - builds
   `https://www.facebook.com/v25.0/dialog/oauth` with
   `scope=ads_read,business_management`. No `config_id`: it is optional, and
   requiring one would mean the client creating a configuration and pasting a
   second id into our app, which buys nothing when we read `/me/adaccounts`
   regardless.
-- `exchangeMetaCode(app, redirectUri, code)` — code to short-lived token, then
+- `exchangeMetaCode(app, redirectUri, code)` - code to short-lived token, then
   `grant_type=fb_exchange_token` for the ~60-day token, then `/me?fields=name`
   for the label. Falls back to the short token if the exchange is silent.
 - `META_TOKEN_DAYS = 60` and the `readJson` helper.
 
 ### Changed
 
-1. `start/route.ts` and `callback/route.ts` — the `provider !== 'google'`
+1. `start/route.ts` and `callback/route.ts` - the `provider !== 'google'`
    gate becomes `provider !== 'meta' && provider !== 'google'`, branching to
    the right builder and exchange. Both routes were always provider-generic;
    the gate was bolted on.
 2. Meta connections store a real `expiresAt` (~60 days from the exchange).
    Google keeps `null`.
-3. `AdAccountsClient.tsx` — Meta gets its `ConnectButton` back;
+3. `AdAccountsClient.tsx` - Meta gets its `ConnectButton` back;
    `MetaTokenCard` is deleted; "Google setup" returns to "Platform setup"
    with both provider cards, Meta's showing its callback URL.
-4. `sync.ts` — the expiry message points at the button again.
+4. `sync.ts` - the expiry message points at the button again.
 
 ### Kept
 
 The per-account "Advanced: paste credentials manually" path stays, unchanged,
-for both providers — it already exists, it costs nothing, and it is the only
+for both providers - it already exists, it costs nothing, and it is the only
 recovery route if a platform login breaks or a login cannot see an account.
 
 `inspectMetaToken` and `POST /api/ads/connections/meta` also stay, and this
@@ -172,10 +172,10 @@ still in the database, so the card should come back pre-filled.
 
 Press Connect with Facebook, and:
 
-1. `GET /api/ads/oauth/meta/start` — `assertAdmin`, stamp the state cookie,
+1. `GET /api/ads/oauth/meta/start` - `assertAdmin`, stamp the state cookie,
    redirect to Facebook's dialog.
 2. Facebook asks whoever is logged in to approve `ads_read`.
-3. `GET /api/ads/oauth/meta/callback?code=&state=` — verify the cookie,
+3. `GET /api/ads/oauth/meta/callback?code=&state=` - verify the cookie,
    `exchangeMetaCode`, upsert `AdConnection` by provider plus label.
 4. Redirect to `?picker=<connectionId>`.
 5. The picker calls `/api/ads/connections/<id>/accounts`, which calls
@@ -187,7 +187,7 @@ Steps 4 through 6 already exist and are tested. That is why this change is
 small.
 
 A full-page redirect, not BeProfit's popup. Their own troubleshooting panel
-lists *"Enable Pop-ups", "Disable ad blockers", "Exit Incognito"* — warnings
+lists *"Enable Pop-ups", "Disable ad blockers", "Exit Incognito"* - warnings
 that exist because popups get blocked. The redirect lands in the same place
 with none of those failure modes.
 
@@ -208,21 +208,21 @@ shows its own screen before our code runs. The setup card showing the exact
 callback URL is the mitigation.
 
 `/me/adaccounts` returning an empty list is not an error. It means the person
-who logged in has no ad accounts, which is real information — the picker
+who logged in has no ad accounts, which is real information - the picker
 already says so.
 
 ## Testing
 
-- **Unit** — the auth URL's shape; `exchangeMetaCode` on success, on a silent
+- **Unit** - the auth URL's shape; `exchangeMetaCode` on success, on a silent
   exchange falling back to the short token, and on a refusal carrying
   Facebook's message.
-- **Route** — start redirects to `facebook.com` and sets the state cookie;
+- **Route** - start redirects to `facebook.com` and sets the state cookie;
   callback upserts the connection and redirects to the picker; a mismatched
   state is rejected; a second login with the same label refreshes rather than
   duplicates.
-- **Component** — Meta links to `/api/ads/oauth/meta/start` when set up and
+- **Component** - Meta links to `/api/ads/oauth/meta/start` when set up and
   warns when not; `MetaTokenCard` is gone; the Advanced modal still works.
-- **E2E** — `marketing.spec.ts` expects Connect with Facebook and the Meta
+- **E2E** - `marketing.spec.ts` expects Connect with Facebook and the Meta
   callback URL again.
 
 ## Open question, not a blocker

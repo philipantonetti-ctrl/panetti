@@ -1,4 +1,4 @@
-# Orders page (BeProfit-style) + live webhook sync — design
+# Orders page (BeProfit-style) + live webhook sync - design
 
 Date: 2026-07-27
 Requested by the client, with a BeProfit screenshot as the reference:
@@ -12,15 +12,15 @@ Requested by the client, with a BeProfit screenshot as the reference:
 > correct? Most important is that it doesn't affect our WooCommerce webshop
 > speed at all."
 
-## Part A — Orders page brought up to the reference
+## Part A - Orders page brought up to the reference
 
 The Orders page shipped in `1fdfb1a` already filters by day/range and expands to
 show products. What the reference has that ours lacks:
 
-1. **Two status badges per order** — payment state and fulfillment state
+1. **Two status badges per order** - payment state and fulfillment state
    (BeProfit shows "Voided"+"Unfulfilled", "Paid"+"Fulfilled"). Ours shows the
    raw Woo status once. We derive both from the one Woo status, using precise
-   words (Refunded / Cancelled / Failed, not a generic "Voided" — more useful):
+   words (Refunded / Cancelled / Failed, not a generic "Voided" - more useful):
    - payment: refunded→Refunded, cancelled→Cancelled, failed→Failed,
      trash→Voided (red); pending→Pending, on-hold→On hold (amber);
      checkout-draft→Draft (muted); processing|completed→Paid (green).
@@ -33,7 +33,7 @@ show products. What the reference has that ours lacks:
    Cancelled / Failed).
 3. **Customer column.** Requires storing it: `Order.customerName`,
    `Order.customerEmail` (nullable). Mapped from Woo's `billing` object. `''`
-   means "checked, Woo has none"; `null` means "synced before this feature" —
+   means "checked, Woo has none"; `null` means "synced before this feature" -
    the distinction is what lets the backfill terminate.
 4. **Per-order money columns** matching the reference: Items, Paid (incl VAT),
    Shipping, Tax, Fulfillment, Fee, COGS, Commission, **Profit**, **Margin**
@@ -42,21 +42,21 @@ show products. What the reference has that ours lacks:
    - fulfillment = shop's rate in force on the order's date (`fulfillmentOn`,
      exported from the engine)
    - fee = round(total × percent/100) + fixed part cross-converted from the
-     fee's currency at the order's date (no `ensureRates` call here — the cron
+     fee's currency at the order's date (no `ensureRates` call here - the cron
      tops rates up; `crossConvert` falls back to nearest earlier rate)
    - cogs = Σ qty × (costPerItem + handlingCost) at the order's date (`costOn`)
    - commission = pct(netSales, ambassador's current rate) for attributed orders
    - profit = netSales + shippingCharged − cogs − fulfillment − fee − commission
    - margin = profit / (netSales + shippingCharged)
    - Voided orders (EXCLUDED_STATUSES) get `null` for every figure → shown as
-     "—". They contribute nothing, and pretending otherwise (as BeProfit does)
+     "-". They contribute nothing, and pretending otherwise (as BeProfit does)
      misleads.
 5. **Search + "Total N found"**, like the reference toolbar. Server-side `q`
    across order number, customer name/email, coupon code and product names.
 6. **Expanded row becomes a proper sub-table**: thumbnail, SKU, product name,
    unit price, qty, line total (reference shows SKU | Product Name | … | Items).
    Plus the existing shipping/coupon facts, now joined by net sales & discount.
-7. **Sync now button** on the toolbar — POST /api/sync, then refetch. Answers
+7. **Sync now button** on the toolbar - POST /api/sync, then refetch. Answers
    "can it also be synced when I want it to?" with a literal button.
 8. Date column shows date + time on two lines, as in the reference.
 
@@ -65,12 +65,12 @@ show products. What the reference has that ours lacks:
 (`cogs`, `fulfillment`, `fee`, `commission`, `profit`, `margin`); each product
 line gains `imageUrl`, `unitPrice`, `lineNetTotal`.
 
-## Part B — live sync: webhooks + reconciliation + on-demand
+## Part B - live sync: webhooks + reconciliation + on-demand
 
 Three layers, so "always up to date" holds without ever touching storefront speed:
 
 1. **Webhooks (instant).** `POST /api/webhooks/woo/[shopId]`:
-   - Verifies `x-wc-webhook-signature` — base64 HMAC-SHA256 of the RAW body
+   - Verifies `x-wc-webhook-signature` - base64 HMAC-SHA256 of the RAW body
      with a per-shop secret stored encrypted (`Shop.wooWebhookSecret`), compared
      timing-safely. Invalid → 401. Unknown/inactive shop → 404.
    - Woo's activation ping (`webhook_id=N`, unsigned) → 200 without touching
@@ -80,7 +80,7 @@ Three layers, so "always up to date" holds without ever touching storefront spee
      `storeOrder()`), so refunds, cancellations and edits land the second Woo
      fires. `order.deleted` (trash) → status set to `trash` by externalId, which
      the metrics already exclude.
-   - Never moves `lastSyncAt` — that watermark belongs to the reconciliation
+   - Never moves `lastSyncAt` - that watermark belongs to the reconciliation
      sync alone.
 2. **Self-registration.** After each COMPLETED sync, best-effort
    `ensureWebhooks()`: lists the store's webhooks via the same REST credentials,
@@ -88,19 +88,19 @@ Three layers, so "always up to date" holds without ever touching storefront spee
    (generating + storing the secret on first run), reactivates any Woo disabled.
    Self-heals if someone deletes them. Skipped silently when no public app URL
    is configured (local dev). One extra GET per shop per sync.
-3. **Reconciliation cron every 15 minutes** (was hourly) — `vercel.json`
+3. **Reconciliation cron every 15 minutes** (was hourly) - `vercel.json`
    schedule `*/15 * * * *`. With webhooks doing the instant work this is purely
    a safety net for missed deliveries.
 
 **Why the webshop stays fast:** WooCommerce delivers webhooks asynchronously via
 its background queue (Action Scheduler), after the customer's request has
-finished — checkout never waits on us. Our registration and sync calls hit the
+finished - checkout never waits on us. Our registration and sync calls hit the
 WP REST API server-to-server, not the storefront. Nothing runs on shop pages.
 
 ### Sync reliability fixes (found in the audit, required for "always updates")
 
 1. **Watermark = fetch start, not completion.** `lastSyncAt` was set to
-   `new Date()` AFTER the store loop — orders modified during the sync run fell
+   `new Date()` AFTER the store loop - orders modified during the sync run fell
    in a permanent blind spot. Now the timestamp is taken before `fetchOrders`.
 2. **5-minute overlap on incremental windows.** `modified_after` is sent
    truncated to whole seconds, and the shop server's clock may drift from ours.
@@ -111,14 +111,14 @@ WP REST API server-to-server, not the storefront. Nothing runs on shop pages.
    lines. (A whole-run transaction would be wrong: 5,000 upserts in one
    transaction on serverless Postgres is its own outage.)
 4. **Woo error bodies truncated** to 300 chars before entering our error
-   messages — a WordPress HTML error page doesn't belong in a toast.
+   messages - a WordPress HTML error page doesn't belong in a toast.
 
 ### Customer backfill (historical orders)
 
 Incremental sync only touches CHANGED orders, so history would show a blank
 Customer column forever. After each completed sync, best-effort: take up to 500
 of the shop's orders where `customerName IS NULL` (newest first), fetch them
-from Woo by id (`include=` batches of 100), update ONLY the customer fields —
+from Woo by id (`include=` batches of 100), update ONLY the customer fields -
 attribution, items and totals untouched. Orders Woo no longer has, and orders
 with no billing data, get `''` so they leave the NULL set: the process strictly
 converges and then costs zero.
@@ -153,7 +153,7 @@ Seed gains deterministic customer names/emails so dev and e2e look real.
 - Webhooks make it LIVE: new orders, refunds, cancellations and edits appear
   seconds after they happen, on every connected store.
 - The 15-minute scheduled sync is a safety net (Philip already told the client
-  15 min — this makes that true), and "Sync now" is on the Orders page for
+  15 min - this makes that true), and "Sync now" is on the Orders page for
   sync-on-demand. A plain refresh always shows the newest already-synced data.
 - Webshop speed is untouched: Woo sends webhooks in the background after the
   customer's page has already loaded; we never run code on the storefront.

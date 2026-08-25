@@ -3,7 +3,7 @@
  *
  * Pure arithmetic over a snapshot of Visma's ledger, shared by the finance page
  * and the Slack warning so the two can never disagree about what "overdue"
- * means — the same reason `promiseOn` is shared by the delivery page and its
+ * means - the same reason `promiseOn` is shared by the delivery page and its
  * alerts.
  */
 

@@ -73,7 +73,7 @@ describe('seasonalLevel', () => {
 describe('yearOverYear', () => {
   /**
    * The same 60 calendar days, a year apart. Comparing like with like is what
-   * makes this a growth figure rather than a seasonal one — and it is the exact
+   * makes this a growth figure rather than a seasonal one - and it is the exact
    * multiplier the forecast applies to last year's shape.
    */
   it('reports growth against the same period last year as a fraction', () => {

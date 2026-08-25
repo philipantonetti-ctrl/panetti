@@ -12,7 +12,7 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 const Body = z.object({ target: z.enum(['bring', 'dhl', 'slack']) })
 
 // Obviously not a real parcel. Bring simply returns nothing for a number it
-// does not know (see fetchTracking's own doc) — any response at all, empty
+// does not know (see fetchTracking's own doc) - any response at all, empty
 // or not, is what proves the credentials were accepted.
 //
 // DHL answers 404 to the same string, which fetchTracking returns as null, so
@@ -25,7 +25,7 @@ const PROBE_NUMBER = '00000000000TEST'
 /**
  * The two buttons that prove the integrations actually work.
  *
- * An alerting feature nobody has seen fire is one nobody trusts — this is the
+ * An alerting feature nobody has seen fire is one nobody trusts - this is the
  * whole reason the client believes a silent week means "nothing is late"
  * rather than "it broke". Both branches speak in a sentence a human can act
  * on: Bring's and Slack's own errors are caught here and turned into words,
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       }
       try {
         // The point is that Bring accepted the credentials, not that this
-        // parcel exists — any non-error response counts as success.
+        // parcel exists - any non-error response counts as success.
         await fetchTracking(creds, [PROBE_NUMBER])
         return NextResponse.json(
           { ok: true, message: 'Bring accepted the credentials.' },
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
 
     if (parsed.data.target === 'dhl') {
       // Not a stored setting like Bring's, but a deployment secret read from
-      // the environment — the same value syncShipments reads, checked the same
+      // the environment - the same value syncShipments reads, checked the same
       // way, so this button can never say "connected" while the poller sees no
       // carrier.
       const dhlKey = process.env.DHL_API_KEY
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
         )
       }
       try {
-        // Null here means 404 — DHL took the key and simply has no such
+        // Null here means 404 - DHL took the key and simply has no such
         // parcel, which is the whole point. A bad key is a 401, and
         // fetchTracking throws on every non-404 failure.
         await fetchDhl(dhlKey, PROBE_NUMBER)

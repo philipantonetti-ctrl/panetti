@@ -2,7 +2,7 @@
  * What the shops named as stock sources carry, and what they call it.
  *
  * The Forecast tab has read its product list and its product names from those
- * shops since the day the flag existed — which is what stopped Norwegian
+ * shops since the day the flag existed - which is what stopped Norwegian
  * products appearing under their Finnish and Swedish names. Suppliers & lead
  * times never did: it lists every `SupplyItem` ever created, one per usable SKU
  * from every shop ever synced, under whichever name was snapshotted first.
@@ -42,7 +42,7 @@ export function catalogueOf(products: { sku: string; name: string }[]): Map<stri
  *
  * First non-null wins, not first row. A source shop that lists the product
  * without a picture must not blank out a picture another source shop does
- * have — the same reason a blank title cannot win in `catalogueOf`.
+ * have - the same reason a blank title cannot win in `catalogueOf`.
  */
 export function imagesOf(
   products: { sku: string; imageUrl: string | null }[],
@@ -65,7 +65,7 @@ export function imagesOf(
  * these lists arrive sorted by name and must stay that way.
  *
  * Nothing is dropped. A product the .no shops do not list is still a product we
- * may buy — its lead times, its supplier and its open orders are all real — so
+ * may buy - its lead times, its supplier and its open orders are all real - so
  * it moves out of the working list, never out of the page.
  */
 export function splitBySource<T extends { sku: string }>(
@@ -87,13 +87,13 @@ export function splitBySource<T extends { sku: string }>(
  * One row per product, out of a list that may carry it several times.
  *
  * The source shops are two catalogues, not one, and a page that lists both shows
- * anything they share twice — which is the client's complaint arriving by a
+ * anything they share twice - which is the client's complaint arriving by a
  * different road. First one wins, so the caller's ordering decides, and an
  * alphabetical list stays alphabetical.
  *
  * A SKU that cannot identify a product is never collapsed. Six live products
  * share the SKU "0", spanning a pizza oven and a massage chair, and folding them
- * into one row would hide five products that each need costing — worse than
+ * into one row would hide five products that each need costing - worse than
  * showing a duplicate.
  */
 export function oneRowPerSku<T extends { sku: string }>(rows: T[]): T[] {
@@ -116,7 +116,7 @@ export function oneRowPerSku<T extends { sku: string }>(rows: T[]): T[] {
  * What the source shops call one product, or its stored name when they do not
  * carry it.
  *
- * The single-row form, for the places a name is nested inside something else —
+ * The single-row form, for the places a name is nested inside something else -
  * a purchase order carries its product, not a list of them. `namedFromSource`
  * is this applied across a list, so the two can never disagree about the rule.
  */
@@ -142,7 +142,7 @@ export function imageOf(images: Map<string, string>, item: { sku: string }): str
  * Retitle each row with what the source shop calls it.
  *
  * `SupplyItem.name` is a snapshot taken once, from whichever shop the database
- * returned first, and never updated — so Norwegian products are listed under
+ * returned first, and never updated - so Norwegian products are listed under
  * their Finnish and Swedish names. Reading the name from the source shop instead
  * fixes every existing row with no migration, and keeps following the listing if
  * it is renamed. A row the source shops do not carry keeps its stored name,

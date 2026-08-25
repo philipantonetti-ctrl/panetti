@@ -147,7 +147,7 @@ async function storeDaily(accountId: string, rows: DailyRow[]): Promise<number> 
 
 /**
  * Campaign rows for a split account. The AdCampaign row is upserted for its
- * NAME only — shopId is a person's decision and the sync must never touch it,
+ * NAME only - shopId is a person's decision and the sync must never touch it,
  * or renaming a campaign in the platform would silently unassign its store.
  */
 async function storeCampaignDaily(accountId: string, rows: CampaignDailyRow[]): Promise<number> {

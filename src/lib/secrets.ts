@@ -3,11 +3,11 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'crypto'
 /**
  * Shop API keys, encrypted at rest.
  *
- * AES-256-GCM with a key derived (HKDF-SHA256) from AUTH_SECRET — the one secret
+ * AES-256-GCM with a key derived (HKDF-SHA256) from AUTH_SECRET - the one secret
  * that already exists on Vercel, so connecting a shop needs no extra setup.
  * A value without the prefix is returned as-is: rows written before this module
  * (local dev) keep working. If AUTH_SECRET ever changes, decryption throws and
- * the sync reports "reconnect this shop" — a visible failure, never a silent one.
+ * the sync reports "reconnect this shop" - a visible failure, never a silent one.
  */
 
 const PREFIX = 'enc:v1:'

@@ -2,7 +2,7 @@
  * What a parcel's history MEANS, independently of who carried it.
  *
  * Pure: no database, no network. Every rule about when a parcel counts as
- * delivered lives here and nowhere else — which is the point of the file. Two
+ * delivered lives here and nowhere else - which is the point of the file. Two
  * carriers reporting the same journey in two vocabularies must still produce
  * the same milestones, or the delivery median silently measures a different
  * thing per carrier and nothing on the Delivery page can be compared.
@@ -10,7 +10,7 @@
  * The status strings below are Bring's, adopted as OUR canonical vocabulary
  * because it was first and because the Nordic pickup-point distinction it
  * encodes is real. A carrier mapper's job is to translate into these, not to
- * invent its own — see src/lib/dhl/map.ts, which turns DHL's statusCode enum
+ * invent its own - see src/lib/dhl/map.ts, which turns DHL's statusCode enum
  * into exactly these words before this file ever sees them.
  */
 

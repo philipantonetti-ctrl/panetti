@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { shopNameForSite, linkDhlShipments } from './link'
 import type { DhlShipment } from './parse'
 
-// Unique to THIS file — shops and orders are shared with every other test.
+// Unique to THIS file - shops and orders are shared with every other test.
 const TAG = '[dhl-link-test]'
 const PREFIX = '95DHL'
 const scoped = { shop: { name: { contains: TAG } } }
@@ -105,12 +105,12 @@ describe('linkDhlShipments', () => {
   })
 
   /**
-   * The export says a parcel IS delivered. It never says WHEN — and DHL's
+   * The export says a parcel IS delivered. It never says WHEN - and DHL's
    * tracking API does, to the second. So the file supplies the fact and the API
    * supplies the moment, and this file stamps nothing.
    *
    * `terminal` is the whole hinge. It used to be set true here, which took the
-   * parcel out of the poller's `terminal: false` selection permanently — so the
+   * parcel out of the poller's `terminal: false` selection permanently - so the
    * real timestamp could never arrive, and the comment promising it would was
    * describing something the code prevented. Left false, one poll fills the
    * date in and nextPollFor makes the parcel terminal on its own.
@@ -198,7 +198,7 @@ describe('linkDhlShipments', () => {
     expect(r.unmatched[0].reason).toMatch(/panetti\.xx/i)
   })
 
-  it('is safe to run twice — the second import adopts rather than rebuilds', async () => {
+  it('is safe to run twice - the second import adopts rather than rebuilds', async () => {
     const t = `${PREFIX}00008`
     await linkDhlShipments([parcel({ trackingNumber: t })], NOW)
     const before = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: t } })

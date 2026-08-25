@@ -88,7 +88,7 @@ describe('carrierAverages', () => {
 
   /**
    * Two currencies cannot be added. Converting them here would invent a rate
-   * the page never showed, so it refuses and says why — the same rule the rest
+   * the page never showed, so it refuses and says why - the same rule the rest
    * of the app follows when a figure cannot be trusted.
    */
   it('refuses to sum an invoice in one currency with another', () => {

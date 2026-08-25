@@ -1,7 +1,7 @@
 # Executable scripts keep LF, whatever the checkout does to everything else.
 #
 # core.autocrlf is true here and there was no .gitattributes, so a FRESH
-# checkout — a worktree, a clone, a new machine — rewrote scripts/db-push.mjs
+# checkout - a worktree, a clone, a new machine - rewrote scripts/db-push.mjs
 # with CRLF. A shebang line ending in \r stops the file parsing at all, and
 # scripts/db-push.test.ts then failed to load with "Invalid or unexpected
 # token". The main checkout was fine only because those files were written with

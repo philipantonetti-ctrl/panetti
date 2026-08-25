@@ -30,7 +30,7 @@ export const ANY_COUNTRY = '*'
  * could beat an older shop-specific one, a single blanket edit would silently
  * override every shop's own promise, which is exactly what this shape exists
  * to prevent. Recency only decides between rows at the SAME level, which is
- * what keeps last month's figures intact when a promise changes today — the
+ * what keeps last month's figures intact when a promise changes today - the
  * same rule costOn() and fulfillmentOn() already follow.
  *
  * Returns null when nothing is in force. Deliberately not "zero days": a zero

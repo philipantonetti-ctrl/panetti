@@ -9,7 +9,7 @@ import { OrderModal } from './OrderModal'
 // OrderModal is a leaf page client, like ExpensesClient and B2bClient: it uses
 // the throwing useToast() hook, so every render needs a real ToastProvider
 // ancestor, matching those siblings' own renderWithToast helper. Rendering the
-// modal bare — as its brief's snippet does — throws before the first line
+// modal bare - as its brief's snippet does - throws before the first line
 // asserts anything, for a reason that has nothing to do with this component.
 function renderWithToast(ui: ReactNode) {
   return render(<ToastProvider>{ui}</ToastProvider>)
@@ -33,7 +33,7 @@ const detail = {
 
 const catalogue = { products: [{ id: 'p1', sku: 'SKU-1', name: 'Massage gun' }, { id: 'p2', sku: 'SKU-2', name: 'Belt' }] }
 
-// Optionally answers `GET /api/b2b/orders/<id>` too, for edit-mode tests —
+// Optionally answers `GET /api/b2b/orders/<id>` too, for edit-mode tests -
 // the create-mode tests above never pass this, so `/api/b2b/orders/` is left
 // unrouted for them exactly as before.
 function mockFetch(orderResponse?: { order: Record<string, unknown> } | null) {
@@ -70,7 +70,7 @@ describe('OrderModal', () => {
     fireEvent.click(await screen.findByRole('button', { name: /add a line/i }))
     fireEvent.change(await screen.findByLabelText('Product 1'), { target: { value: 'p1' } })
 
-    // The agreed 89.00 arrives on its own — the whole point of the price book.
+    // The agreed 89.00 arrives on its own - the whole point of the price book.
     expect(await screen.findByLabelText('Unit price 1')).toHaveValue(89)
 
     fireEvent.change(screen.getByLabelText('Quantity 1'), { target: { value: '10' } })
@@ -144,7 +144,7 @@ describe('OrderModal', () => {
 
   it('never labels the shipping-cost field with the customer’s currency, and disables it, while the shop’s own currency is unknown', async () => {
     // The customer-detail fetch fails outright, so shopCurrency never arrives
-    // — not just "hasn't arrived yet". The component's own .catch() only
+    // - not just "hasn't arrived yet". The component's own .catch() only
     // toasts and never recovers a value, so a `shopCurrency || customer.currency`
     // fallback would show the WRONG currency (the customer's, EUR) forever,
     // with nothing on screen to say anything went wrong.
@@ -176,7 +176,7 @@ describe('OrderModal', () => {
     }
 
     // c1's own detail resolves normally; c2's is held open, so the moment
-    // right after switching — before c2's fetch has answered — can be
+    // right after switching - before c2's fetch has answered - can be
     // inspected directly. That gap is exactly what the reset must cover.
     let resolveC2Detail: (r: Response) => void = () => {}
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -189,7 +189,7 @@ describe('OrderModal', () => {
     renderWithToast(<OrderModal customers={twoShops} onClose={() => {}} onSaved={() => {}} />)
 
     fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
-    // Prove NOK is genuinely showing first — otherwise clearing it on switch
+    // Prove NOK is genuinely showing first - otherwise clearing it on switch
     // would prove nothing about a real previous value being wiped.
     expect(await screen.findByText(/shipping we paid \(NOK\)/i)).toBeInTheDocument()
 
@@ -202,7 +202,7 @@ describe('OrderModal', () => {
     expect(screen.getByLabelText(/shipping we paid/i)).toBeDisabled()
 
     // Letting c2's own answer land shows its OWN shop currency, proving the
-    // reset does not break the real load — only the stale gap before it.
+    // reset does not break the real load - only the stale gap before it.
     resolveC2Detail(new Response(JSON.stringify(detailTwo), { status: 200 }))
     expect(await screen.findByText(/shipping we paid \(SEK\)/i)).toBeInTheDocument()
   })
@@ -219,14 +219,14 @@ describe('OrderModal in edit mode', () => {
 
     renderWithToast(<OrderModal customers={customers} order={{ id: 'o1' }} onClose={() => {}} onSaved={() => {}} />)
 
-    // Minor units on the wire, major in the fields — toMajor, not /100. If the
+    // Minor units on the wire, major in the fields - toMajor, not /100. If the
     // load skipped toMajor (or fed 8900 straight to the field), this would
     // read 8900, not 89.
     expect(await screen.findByLabelText('Unit price 1')).toHaveValue(89)
     expect(screen.getByLabelText('Quantity 1')).toHaveValue(10)
     expect(screen.getByLabelText('Discount 1')).toHaveValue(10)
     expect(screen.getByLabelText('Shipping charged (EUR)')).toHaveValue(50)
-    // The heading says which order you are editing — proves `loaded` (from
+    // The heading says which order you are editing - proves `loaded` (from
     // the GET response) reached the form, not just the id passed in as a prop.
     expect(screen.getByRole('heading', { name: /B-0007/ })).toBeInTheDocument()
   })
@@ -277,7 +277,7 @@ describe('OrderModal in edit mode', () => {
     renderWithToast(<OrderModal customers={customers} order={{ id: 'o4' }} onClose={() => {}} onSaved={() => {}} />)
 
     // Wait for the load to actually land, and for the fields it populates to
-    // show up, before clicking — Save stays disabled until then (see the
+    // show up, before clicking - Save stays disabled until then (see the
     // component's own comment on that button), so clicking any earlier would
     // hit a no-op and prove nothing about which verb a real save uses.
     await screen.findByLabelText('Discount 1')
@@ -295,7 +295,7 @@ describe('OrderModal in edit mode', () => {
   it('preserves a refunded order’s status on save when nothing about the status is touched', async () => {
     // This is the bug found by the whole-branch review: the PATCH body used
     // to omit `status` entirely, and the route defaults a missing status to
-    // 'completed' — so editing a voided order silently un-voided it. This
+    // 'completed' - so editing a voided order silently un-voided it. This
     // test must fail against the code as it stood before this fix.
     const calls: { url: string; method?: string; body?: string }[] = []
     mockFetchCapturing(calls, { order: {
@@ -309,7 +309,7 @@ describe('OrderModal in edit mode', () => {
 
     await screen.findByLabelText('Discount 1')
     // The select is seeded from the loaded order, not left on the create
-    // default — proof the widened `loaded` state actually reached the form.
+    // default - proof the widened `loaded` state actually reached the form.
     expect(screen.getByLabelText('Status')).toHaveValue('refunded')
 
     fireEvent.click(screen.getByRole('button', { name: /save/i }))
@@ -357,7 +357,7 @@ describe('OrderModal in edit mode', () => {
 
     renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
 
-    // No `order` prop — nothing to load a status from, and nothing to move.
+    // No `order` prop - nothing to load a status from, and nothing to move.
     expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
 
     fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })

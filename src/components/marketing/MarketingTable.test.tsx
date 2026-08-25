@@ -75,17 +75,17 @@ describe('MarketingTable', () => {
 
     // The shop without spend wears dashes, not zero-ratios.
     const sweden = screen.getByText('Panetti Sweden').closest('tr')!
-    expect(sweden.textContent).toContain('—')
+    expect(sweden.textContent).toContain('-')
 
     expect(screen.getByText('Total')).toBeTruthy()
   })
 
   // FINDING 3: under a platform filter, Store ROAS and CPA dash out (they
-  // divide whole-store figures by one platform's spend — see marketing.ts's
+  // divide whole-store figures by one platform's spend - see marketing.ts's
   // `ratios()`), but the static column hint never said why, so the dashes
   // read as missing data rather than a deliberate refusal. `platformFiltered`
   // must come from the caller's SETTLED platform (MarketingClient passes
-  // `data.platform`, not the pending filter selection) — this component only
+  // `data.platform`, not the pending filter selection) - this component only
   // renders what it is told.
   it('explains why Store ROAS and CPA are dashed under a platform filter', () => {
     render(

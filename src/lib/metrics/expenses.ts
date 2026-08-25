@@ -6,7 +6,7 @@ import type { EngineExpense } from './types'
  *
  * Recurring expenses are converted to a DAILY amount and charged per active day.
  * A month's daily amount depends on that month's own length, so February and July
- * are each charged correctly — which is why we walk day by day instead of
+ * are each charged correctly - which is why we walk day by day instead of
  * multiplying by an average.
  *
  * A ONE_TIME expense lands entirely on its startDate.

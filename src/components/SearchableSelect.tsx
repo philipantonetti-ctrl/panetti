@@ -9,7 +9,7 @@ export type SelectOption = {
 }
 
 /**
- * A dropdown you can type into — for lists too long to scroll, like every currency
+ * A dropdown you can type into - for lists too long to scroll, like every currency
  * in the world or the full category tree.
  */
 export function SearchableSelect({

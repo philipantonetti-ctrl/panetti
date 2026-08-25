@@ -16,7 +16,7 @@ import { bucketSeries, type Granularity } from '@/lib/ads/series-buckets'
 
 /**
  * Ad spend against gross revenue, day by day. Two series of the SAME measure
- * (money), so they share one axis — the same rules as the dashboard's chart.
+ * (money), so they share one axis - the same rules as the dashboard's chart.
  * ROAS and POAS are a different measure (a ratio, not money) so they get a
  * second axis on the right.
  */
@@ -96,7 +96,7 @@ export function ChartTooltip({
     // Recharts hands back the whole bucket behind each series point. Reading
     // `endDate` off it (rather than adding it as its own <Line>) is how a
     // week or month bucket's real span reaches the tooltip without inventing
-    // a server figure — see series-buckets.ts's SeriesBucket.
+    // a server figure - see series-buckets.ts's SeriesBucket.
     payload?: { date: string; endDate: string }
   }[]
   label?: string
@@ -115,7 +115,7 @@ export function ChartTooltip({
       <p className="text-[11px] font-semibold text-faint">
         {label
           ? spansMultipleDays
-            ? `${tickDate(label)} – ${tickDate(bucket.endDate)}`
+            ? `${tickDate(label)} - ${tickDate(bucket.endDate)}`
             : tickDate(label)
           : ''}
       </p>

@@ -10,12 +10,12 @@ export type Currency = {
   label: string // "USD - $", as the picker shows it
 }
 
-/** The ones we actually trade in — shown first so nobody scrolls for them. */
+/** The ones we actually trade in - shown first so nobody scrolls for them. */
 const COMMON = ['USD', 'EUR', 'NOK', 'SEK', 'DKK', 'GBP']
 
 /**
  * The currencies we hold daily exchange rates for (the ECB's list, via Frankfurter).
- * An expense in anything else CANNOT be converted into the USD totals — the UI warns
+ * An expense in anything else CANNOT be converted into the USD totals - the UI warns
  * instead of quietly counting 1 000 of it as 1 000 USD.
  */
 const CONVERTIBLE = new Set([
@@ -51,7 +51,7 @@ export function currencySymbol(code: string): string {
 
     return parts.find((p) => p.type === 'currency')?.value ?? code
   } catch {
-    return code // not a real currency code — show it as typed rather than blow up
+    return code // not a real currency code - show it as typed rather than blow up
   }
 }
 

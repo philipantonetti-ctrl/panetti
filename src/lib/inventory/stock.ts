@@ -18,16 +18,16 @@ export type AgreedStock = {
  *
  * The shops are not nine warehouses. Denmark, Finland, Norway and Sweden carry
  * IDENTICAL quantities for the same SKU, which is one physical warehouse
- * mirrored into each store. So the job is not to sum them — that would multiply
- * the warehouse by five — but to agree on what the one number is.
+ * mirrored into each store. So the job is not to sum them - that would multiply
+ * the warehouse by five - but to agree on what the one number is.
  *
  * The most common value wins, because a mirror that has drifted is outvoted by
  * the ones that have not. On 2026-08-13 that was exactly the situation: four
  * shops said 906 and Germany said 939.
  *
  * `disagrees` is the point of the function as much as `quantity` is. A drifting
- * mirror is invisible by nature — each store looks perfectly consistent on its
- * own — so the disagreement has to be said out loud.
+ * mirror is invisible by nature - each store looks perfectly consistent on its
+ * own - so the disagreement has to be said out loud.
  */
 export function agreeStock(rows: ShopStock[]): AgreedStock {
   const known = rows.filter((r) => r.quantity !== null)
@@ -79,7 +79,7 @@ export type ResolvedStock = AgreedStock & {
  * One stock figure, from the source that is entitled to give it.
  *
  * Visma is the ERP the warehouse works in. The shops are copies of it, and
- * `agreeStock` exists only because copies drift — a vote is what you do when
+ * `agreeStock` exists only because copies drift - a vote is what you do when
  * nobody is authoritative. So Visma wins outright wherever it has the SKU, and
  * the vote is left to settle the ones it does not.
  *

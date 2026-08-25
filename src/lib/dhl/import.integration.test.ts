@@ -72,7 +72,7 @@ beforeAll(async () => {
     },
   })
   // Bring DISCONNECTED on purpose: a German parcel must not depend on a
-  // Norwegian carrier's credentials. Upsert, never delete-then-create — it is a
+  // Norwegian carrier's credentials. Upsert, never delete-then-create - it is a
   // fixed-id singleton no tag can isolate.
   await db.deliveryConfig.upsert({
     where: { id: 'singleton' },

@@ -14,14 +14,14 @@ const put = (body: unknown) =>
   PUT(new Request(url, { method: 'PUT', body: JSON.stringify(body) }))
 
 // The brief's Step 1 calls GET(new Request(url)) throughout, but Step 3's
-// GET reads nothing off the request (no query params — this route's data is
+// GET reads nothing off the request (no query params - this route's data is
 // fixed) and is declared `export async function GET()` with zero
 // parameters, the same shape as /api/shops and /api/settings. Vitest
 // doesn't mind the extra argument (JS ignores it), but `npx tsc --noEmit`
 // does: "Expected 0 arguments, but got 1." Calling GET() bare here matches
 // the route as actually declared.
 
-// Tagged and scoped — see "Test data convention" in the Global Constraints.
+// Tagged and scoped - see "Test data convention" in the Global Constraints.
 // DeliveryConfig is a fixed-id singleton and DeliveryPromise has no shop to
 // tag, so neither can carry a per-file tag the way Shop and Order fixtures
 // can; '*' and 'NO' are the only country codes any suite in the repo writes
@@ -39,7 +39,7 @@ async function cleanup() {
 beforeEach(cleanup)
 // The brief's own Step 1 test has no afterAll, which leaves the singleton
 // row (fake email, encrypted 'super-secret') sitting in the shared DB after
-// this file's last test runs — harmless to other suites (nothing else reads
+// this file's last test runs - harmless to other suites (nothing else reads
 // DeliveryConfig in a test), but untidy, and exactly the kind of leftover the
 // Global Constraints ask fixtures to avoid. Added for hygiene.
 afterAll(cleanup)
@@ -98,7 +98,7 @@ describe('delivery settings', () => {
     expect(row.bringApiUid).toBe('ops2@example.com')
   })
 
-  it('treats a whitespace-only secret as blank too — a stray paste must not wipe a good key', async () => {
+  it('treats a whitespace-only secret as blank too - a stray paste must not wipe a good key', async () => {
     await put({ bringApiUid: 'ops@example.com', bringApiKey: 'super-secret', slackWebhookUrl: 'https://hooks.slack.com/services/x' })
     await put({ bringApiKey: '   ', slackWebhookUrl: '\t\n ' })
     const row = await db.deliveryConfig.findUniqueOrThrow({ where: { id: 'singleton' } })
@@ -162,11 +162,11 @@ describe('delivery settings', () => {
 // Not part of the brief's Step 1 list, added alongside it: "which shops are
 // tracked" (page section 4) has to write Shop.deliveryTrackingFrom through
 // SOME endpoint, and the Interfaces line for this task names exactly one PUT
-// (`GET/PUT /api/delivery/settings`) — no second route is declared. So the
+// (`GET/PUT /api/delivery/settings`) - no second route is declared. So the
 // PUT body grows a `shopTracking` field to carry it, and that needs its own
 // coverage: it is the feature's on/off switch, not a cosmetic field.
 describe('which shops are tracked', () => {
-  it('writes Shop.deliveryTrackingFrom, and a blank date clears it — untracked, not "unchanged"', async () => {
+  it('writes Shop.deliveryTrackingFrom, and a blank date clears it - untracked, not "unchanged"', async () => {
     const shop = await db.shop.create({ data: { name: `Test shop ${TAG}`, currency: 'NOK' } })
 
     await put({ shopTracking: [{ shopId: shop.id, date: '2026-02-01' }] })
@@ -177,7 +177,7 @@ describe('which shops are tracked', () => {
     const listed = body.shops.find((s: { id: string }) => s.id === shop.id)
     expect(listed.deliveryTrackingFrom).toBe('2026-02-01')
 
-    // Dates are not secret — unlike bringApiKey above, the browser already
+    // Dates are not secret - unlike bringApiKey above, the browser already
     // holds the true value, so blank here is a deliberate instruction, not
     // "leave what is stored".
     await put({ shopTracking: [{ shopId: shop.id, date: '' }] })

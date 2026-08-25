@@ -9,7 +9,7 @@ const ZERO: EffectiveCost = { costPerItem: 0, handlingCost: 0 }
  * The cost that was true on `date`: the cost point with the latest
  * effectiveFrom that is on or before that day.
  *
- * If no cost was ever entered for that period the cost is ZERO — we never
+ * If no cost was ever entered for that period the cost is ZERO - we never
  * guess. The UI flags zero-cost products so they get noticed, not hidden.
  */
 export function costOn(history: CostPoint[], date: Date): EffectiveCost {

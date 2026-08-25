@@ -2,30 +2,30 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Import every Addrevenue affiliate transaction for the Panetti and Mazzetti brands and charge it to net profit as a new **Affiliate** cost line — a Compare-table column, a Marketing-page section, and a settings page where the brand tokens are pasted.
+**Goal:** Import every Addrevenue affiliate transaction for the Panetti and Mazzetti brands and charge it to net profit as a new **Affiliate** cost line - a Compare-table column, a Marketing-page section, and a settings page where the brand tokens are pasted.
 
-**Architecture:** Two new tables mirror Addrevenue exactly: `AffiliateAccount` (one per brand token, encrypted) and `AffiliateTransaction` (one per tracked sale, upserted by their id). The sync refetches the FULL history every run (~2,200 rows, one page per brand) and makes our table an exact mirror — upsert present rows, delete vanished ones — so status restatements, denials and remote deletions are all one operation. A loader groups non-denied rows per (shop, day, currency) into flat `{shopId, date, amount, currency}` rows the metrics engine converts at each day's own FX rate and subtracts in net profit, exactly as ad spend already does.
+**Architecture:** Two new tables mirror Addrevenue exactly: `AffiliateAccount` (one per brand token, encrypted) and `AffiliateTransaction` (one per tracked sale, upserted by their id). The sync refetches the FULL history every run (~2,200 rows, one page per brand) and makes our table an exact mirror - upsert present rows, delete vanished ones - so status restatements, denials and remote deletions are all one operation. A loader groups non-denied rows per (shop, day, currency) into flat `{shopId, date, amount, currency}` rows the metrics engine converts at each day's own FX rate and subtracts in net profit, exactly as ad spend already does.
 
 **Tech Stack:** TypeScript, Next.js 16 App Router, Prisma 6 on PostgreSQL, Vitest 4, Playwright. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-08-24-addrevenue-affiliate-cost-design.md` — read it first; it holds the measured API shapes and the client's three decisions (cost = commission + brokerageFee; count all except denied, on the sale's date; own `affiliate` figure, not merged into `marketing`).
+**Spec:** `docs/superpowers/specs/2026-08-24-addrevenue-affiliate-cost-design.md` - read it first; it holds the measured API shapes and the client's three decisions (cost = commission + brokerageFee; count all except denied, on the sale's date; own `affiliate` figure, not merged into `marketing`).
 
 ## Global Constraints
 
-- **Money is integer minor units.** Use `toMinor` from `src/lib/money.ts`. `commission`/`eventValue` arrive as decimal STRINGS ("128.35"), `brokerageFee` as a number (19.25) — `toMinor` accepts both. Never float arithmetic.
+- **Money is integer minor units.** Use `toMinor` from `src/lib/money.ts`. `commission`/`eventValue` arrive as decimal STRINGS ("128.35"), `brokerageFee` as a number (19.25) - `toMinor` accepts both. Never float arithmetic.
 - **Store each row's own `currency`.** Real data has FI-market sales in SEK. Never assume the shop's currency.
-- **The API tokens are secrets.** They are pasted in the settings UI and stored via `encryptSecret()` (`src/lib/secrets.ts`). They must NEVER appear in git — not in code, not in seeds, not in `.env.example`, not in test fixtures, not in commit messages. Tests and seeds use the literal string `'seed'` or `'plain-token'` (decryptSecret passes unprefixed values through).
+- **The API tokens are secrets.** They are pasted in the settings UI and stored via `encryptSecret()` (`src/lib/secrets.ts`). They must NEVER appear in git - not in code, not in seeds, not in `.env.example`, not in test fixtures, not in commit messages. Tests and seeds use the literal string `'seed'` or `'plain-token'` (decryptSecret passes unprefixed values through).
 - **Errors are stored, never thrown.** `lastError` on the account, shown in settings. One bad token must not fail the cron. Follow `src/lib/ads/sync.ts`.
 - **Dates:** a transaction is dated by Addrevenue's plain `date` day at UTC midnight (`utcDay`), the platform-reported-day convention `AdSpend` uses (`spendInRange` in the engine, NOT the shop-calendar `inRange`).
 - **Unmatched markets are visible, never guessed.** A market whose URL matches no shop's `wooUrl` host leaves `shopId: null`; the settings page and the Marketing section surface the count. Nothing name-parses.
 - **Test data convention:** DB-backed unit tests run in parallel against the shared local Postgres. Each file defines a unique marker (e.g. `[affiliate-test]`), scopes every row to it, wipes in `beforeEach`/`afterEach`, and calls `vi.unstubAllGlobals()` after stubbing fetch. See `src/lib/ads/sync.test.ts`.
-- **The `src/lib/data/load.affiliate.test.ts` file needs NO vitest.config change**, but not for the reason first written here: there is no `load` project, and the serialized `setting` project lists two explicit filenames rather than a glob — so this file runs in the PARALLEL `app` project like everything else in this plan. That is safe because a single-shop load never reads `Setting.displayCurrency` (the race that project exists to serialize) and `getSetting()` only reads. It is also why the test's affiliate account must be `active: false`: a parallel sync test's forced syncAll would otherwise sweep it up. Adding a MULTI-shop case to that file later would make it racy — move it to the serialized project then.
+- **The `src/lib/data/load.affiliate.test.ts` file needs NO vitest.config change**, but not for the reason first written here: there is no `load` project, and the serialized `setting` project lists two explicit filenames rather than a glob - so this file runs in the PARALLEL `app` project like everything else in this plan. That is safe because a single-shop load never reads `Setting.displayCurrency` (the race that project exists to serialize) and `getSetting()` only reads. It is also why the test's affiliate account must be `active: false`: a parallel sync test's forced syncAll would otherwise sweep it up. Adding a MULTI-shop case to that file later would make it racy - move it to the serialized project then.
 - **Commit after every task.** Conventional commits: `feat(affiliate): ...`, `test(affiliate): ...`.
 - Run tests from the repo root with `npx vitest run <path>`; typecheck with `npx tsc --noEmit`.
 
 ---
 
-### Task 1: Schema — the two tables
+### Task 1: Schema - the two tables
 
 **Files:**
 - Modify: `prisma/schema.prisma` (Shop relation list ~line 66-75; new models after `AdCampaignSpend` ~line 462)
@@ -60,14 +60,14 @@ model AffiliateAccount {
 
 // One tracked affiliate sale, an EXACT mirror of Addrevenue's transaction row.
 // The sync refetches the full history and upserts by (account, externalId):
-// restatement and denial arrive as changed rows, remote deletion as absence —
+// restatement and denial arrive as changed rows, remote deletion as absence -
 // all the same mirror operation. Money in minor units of `currency`, which is
 // the ROW's own (a FI sale can be in SEK); converted at read time.
 model AffiliateTransaction {
   id           String    @id @default(cuid())
   accountId    String
-  externalId   String // Addrevenue transaction id, e.g. "1176373" — theirs to shape, so String like every platform id here
-  date         DateTime // the sale's day, UTC midnight — the platform-reported day
+  externalId   String // Addrevenue transaction id, e.g. "1176373" - theirs to shape, so String like every platform id here
+  date         DateTime // the sale's day, UTC midnight - the platform-reported day
   market       String // "NO" | "SE" | "DK" | "FI" | "DE"
   // Resolved from the advertiser's market URL matched against Shop.wooUrl at
   // sync time. Null = no shop matched; surfaced in settings, never guessed.
@@ -79,7 +79,7 @@ model AffiliateTransaction {
   // the entire history so far, but the field is the documented deny signal.
   denyDate     DateTime?
   commission   Int // what the affiliate earns, minor units of `currency`
-  brokerageFee Int // Addrevenue's markup on top — also our money
+  brokerageFee Int // Addrevenue's markup on top - also our money
   orderValue   Int // the sale the commission was earned on (their eventValue)
   currency     String
   eventOrderId String? // the Woo order number, for audit against /orders
@@ -97,15 +97,15 @@ model AffiliateTransaction {
 
 - [ ] **Step 3: Apply and generate.**
 
-Run: `npx prisma db push --skip-generate` — expect "Your database is now in sync". Then `npx prisma generate`.
+Run: `npx prisma db push --skip-generate` - expect "Your database is now in sync". Then `npx prisma generate`.
 
-- [ ] **Step 4: Typecheck** — `npx tsc --noEmit` must stay clean.
+- [ ] **Step 4: Typecheck** - `npx tsc --noEmit` must stay clean.
 
-- [ ] **Step 5: Commit** — `feat(affiliate): tables for Addrevenue accounts and their transactions`
+- [ ] **Step 5: Commit** - `feat(affiliate): tables for Addrevenue accounts and their transactions`
 
 ---
 
-### Task 2: API client — parse what was measured
+### Task 2: API client - parse what was measured
 
 **Files:**
 - Create: `src/lib/affiliate/client.ts`
@@ -125,7 +125,7 @@ const json = (body: unknown, status = 200) =>
 afterEach(() => vi.unstubAllGlobals())
 
 // Trimmed from a real /advertisers answer (2026-08-24). The markets object is
-// keyed by market code and carries the webshop URL — the shop-mapping key.
+// keyed by market code and carries the webshop URL - the shop-mapping key.
 const advertisers = {
   results: [
     {
@@ -243,7 +243,7 @@ describe('fetchTransactions', () => {
 })
 ```
 
-- [ ] **Step 2: Run it** — `npx vitest run src/lib/affiliate/client.test.ts` — expect FAIL (module not found).
+- [ ] **Step 2: Run it** - `npx vitest run src/lib/affiliate/client.test.ts` - expect FAIL (module not found).
 
 - [ ] **Step 3: Implement `src/lib/affiliate/client.ts`**
 
@@ -251,7 +251,7 @@ describe('fetchTransactions', () => {
 import { toMinor } from '../money'
 
 /**
- * Addrevenue's v2 API, as MEASURED on 2026-08-24 — the public docs are thin
+ * Addrevenue's v2 API, as MEASURED on 2026-08-24 - the public docs are thin
  * and partly wrong (they promise `http_code`/`count` at the top level; the
  * real envelope is `{ results, meta }`). One life-time token per brand
  * account; these are advertiser accounts, so /channels and /payouts answer
@@ -273,7 +273,7 @@ export type AffiliateAdvertiser = {
 
 /** One transaction, parsed: money in integer minor units of `currency`. */
 export type AffiliateTxRow = {
-  externalId: string // their numeric id, stringified — platform ids are Strings here
+  externalId: string // their numeric id, stringified - platform ids are Strings here
   date: Date // UTC midnight of the platform-reported sale day
   market: string
   channelId: string
@@ -300,7 +300,7 @@ async function get(token: string, path: string): Promise<Envelope> {
   }
   if (res.status === 403) {
     // Their 403 covers a missing header, an unknown token and an inactive
-    // account alike — one message a person can act on.
+    // account alike - one message a person can act on.
     throw new AffiliateApiError('Addrevenue rejected the token. Check it in Addrevenue and paste it again.')
   }
   if (!res.ok) {
@@ -315,7 +315,7 @@ function utcDayOf(s: string): Date {
 }
 
 /**
- * The account's advertiser: id, display name, and each market's webshop URL —
+ * The account's advertiser: id, display name, and each market's webshop URL -
  * the key the sync matches against Shop.wooUrl.
  */
 export async function fetchAdvertiser(token: string): Promise<AffiliateAdvertiser> {
@@ -350,7 +350,7 @@ type RawTx = {
 
 /**
  * Every transaction in the window, all pages. The whole history is ~2,200
- * rows against a 5,000-per-page cap, so today this is one request per brand —
+ * rows against a 5,000-per-page cap, so today this is one request per brand -
  * the loop is for the day it is not.
  */
 export async function fetchTransactions(
@@ -387,10 +387,10 @@ export async function fetchTransactions(
 }
 ```
 
-Note: `toMinor` takes `number | string`; the `?? 0` keeps `null` out of it (`toMinor(null)` would be 0 anyway via NaN — but say what you mean).
+Note: `toMinor` takes `number | string`; the `?? 0` keeps `null` out of it (`toMinor(null)` would be 0 anyway via NaN - but say what you mean).
 
-- [ ] **Step 4: Run it** — expect PASS.
-- [ ] **Step 5: Commit** — `feat(affiliate): a client that reads Addrevenue as it actually answers`
+- [ ] **Step 4: Run it** - expect PASS.
+- [ ] **Step 5: Commit** - `feat(affiliate): a client that reads Addrevenue as it actually answers`
 
 ---
 
@@ -448,7 +448,7 @@ describe('matchMarketsToShops', () => {
 })
 ```
 
-- [ ] **Step 2: Run it** — expect FAIL.
+- [ ] **Step 2: Run it** - expect FAIL.
 - [ ] **Step 3: Implement `src/lib/affiliate/match.ts`**
 
 ```ts
@@ -456,7 +456,7 @@ import type { AffiliateMarket } from './client'
 
 /**
  * Which shop an Addrevenue market belongs to, decided by DOMAIN: the
- * advertiser's market URL against Shop.wooUrl. Exact or nothing — a market
+ * advertiser's market URL against Shop.wooUrl. Exact or nothing - a market
  * with no matching shop is reported, never guessed from names. (Compare
  * src/lib/dhl/link.ts, which refuses unknown codes for the same reason.)
  */
@@ -494,10 +494,10 @@ export function matchMarketsToShops(
 }
 ```
 
-Wait — `hostOf('not a url at all ???')`: `new URL('https://not a url at all ???')` throws (spaces), returning null. Good.
+Wait - `hostOf('not a url at all ???')`: `new URL('https://not a url at all ???')` throws (spaces), returning null. Good.
 
-- [ ] **Step 4: Run it** — expect PASS.
-- [ ] **Step 5: Commit** — `feat(affiliate): match a market to its shop by domain, refusing to guess`
+- [ ] **Step 4: Run it** - expect PASS.
+- [ ] **Step 5: Commit** - `feat(affiliate): match a market to its shop by domain, refusing to guess`
 
 ---
 
@@ -507,7 +507,7 @@ Wait — `hostOf('not a url at all ???')`: `new URL('https://not a url at all ??
 - Create: `src/lib/affiliate/sync.ts`
 - Create: `src/lib/affiliate/sync.test.ts`
 
-- [ ] **Step 1: Write the failing test** (DB-backed, marker-scoped, fetch stubbed — the `ads/sync.test.ts` pattern)
+- [ ] **Step 1: Write the failing test** (DB-backed, marker-scoped, fetch stubbed - the `ads/sync.test.ts` pattern)
 
 ```ts
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -575,7 +575,7 @@ function stub(markets: Record<string, { market: string; url: string }>, txs: unk
     vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       // Only this file's token is answered. A foreign account swept up by a
       // syncAll test (another test file's row, or seeded sample data in the
-      // shared dev DB) gets a 403 and stores its own lastError — its
+      // shared dev DB) gets a 403 and stores its own lastError - its
       // transactions are never touched, because the mirror rewrite only runs
       // on success.
       const auth = (init?.headers as Record<string, string> | undefined)?.Authorization
@@ -633,7 +633,7 @@ describe('syncAffiliateAccount', () => {
   })
 
   it('a market with no matching shop stays unmatched and is reported', async () => {
-    await makeShop() // affiliate-test.no — deliberately not panetti.fi
+    await makeShop() // affiliate-test.no - deliberately not panetti.fi
     const account = await makeAccount()
     stub({ FI: { market: 'FI', url: 'https://www.panetti.fi' } }, [tx({ market: 'FI', currency: 'EUR' })])
 
@@ -696,7 +696,7 @@ describe('syncAffiliateAccount', () => {
 describe('syncAllAffiliateAccounts', () => {
   // The shared dev database can hold affiliate accounts this file never made
   // (another test file's rows, seeded sample data), so every assertion here is
-  // scoped to this file's marker — the same discipline ads/sync.test.ts uses.
+  // scoped to this file's marker - the same discipline ads/sync.test.ts uses.
   const mine = <T extends { name: string }>(results: T[]) => results.filter((r) => r.name.includes(MARKER))
 
   it('skips an account synced within six hours unless forced', async () => {
@@ -719,7 +719,7 @@ describe('syncAllAffiliateAccounts', () => {
 })
 ```
 
-- [ ] **Step 2: Run it** — expect FAIL.
+- [ ] **Step 2: Run it** - expect FAIL.
 - [ ] **Step 3: Implement `src/lib/affiliate/sync.ts`**
 
 ```ts
@@ -731,7 +731,7 @@ import { matchMarketsToShops } from './match'
 
 /**
  * The Addrevenue sync: refetch the WHOLE history and make our table an exact
- * mirror — upsert what they return, delete what they no longer do. The entire
+ * mirror - upsert what they return, delete what they no longer do. The entire
  * history is ~2,200 rows in one page per brand, and old rows change status in
  * place months later, so a windowed fetch would buy nothing and cost the
  * restatement guarantee. No watermarks, no restate window.
@@ -766,7 +766,7 @@ export async function syncAffiliateAccount(
     const token = decryptSecret(account.token)
 
     // The market map is rebuilt every run, so connecting a shop later heals
-    // every historical row on the next sync — the mirror rewrite below writes
+    // every historical row on the next sync - the mirror rewrite below writes
     // shopId afresh for all of them.
     const advertiser = await fetchAdvertiser(token)
     const shops = await db.shop.findMany({
@@ -779,7 +779,7 @@ export async function syncAffiliateAccount(
     const rows = await fetchTransactions(token, { fromDate: FIRST_DATA_DATE, toDate })
 
     // Zero transactions for an account that HAS some is an outage answer, not
-    // a truth — mirroring it would silently zero the affiliate cost on every
+    // a truth - mirroring it would silently zero the affiliate cost on every
     // dashboard until the platform recovers (importVismaStock refuses the
     // same wipe, for the same reason). A genuinely new account has nothing
     // stored, so it still syncs clean.
@@ -787,7 +787,7 @@ export async function syncAffiliateAccount(
       const kept = await db.affiliateTransaction.count({ where: { accountId: account.id } })
       if (kept > 0) {
         throw new AffiliateApiError(
-          `Addrevenue answered with zero transactions for an account holding ${kept} — keeping the mirror as it was.`,
+          `Addrevenue answered with zero transactions for an account holding ${kept} - keeping the mirror as it was.`,
         )
       }
     }
@@ -830,7 +830,7 @@ export async function syncAffiliateAccount(
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Sync failed'
     // Shown on the settings page. Stored, never thrown: one broken token must
-    // not stop the other brand — or the cron.
+    // not stop the other brand - or the cron.
     await db.affiliateAccount
       .update({ where: { id: account.id }, data: { lastError: error } })
       .catch(() => {})
@@ -856,12 +856,12 @@ export async function syncAllAffiliateAccounts(
 }
 ```
 
-- [ ] **Step 4: Run it** — expect PASS. Also re-run `src/lib/affiliate/client.test.ts` and `match.test.ts`.
-- [ ] **Step 5: Commit** — `feat(affiliate): the sync mirrors Addrevenue's transactions exactly`
+- [ ] **Step 4: Run it** - expect PASS. Also re-run `src/lib/affiliate/client.test.ts` and `match.test.ts`.
+- [ ] **Step 5: Commit** - `feat(affiliate): the sync mirrors Addrevenue's transactions exactly`
 
 ---
 
-### Task 5: Cost loader — flat rows for the engine
+### Task 5: Cost loader - flat rows for the engine
 
 **Files:**
 - Create: `src/lib/affiliate/cost.ts`
@@ -949,7 +949,7 @@ describe('relevantAffiliateCurrencies', () => {
 })
 ```
 
-- [ ] **Step 2: Run it** — expect FAIL.
+- [ ] **Step 2: Run it** - expect FAIL.
 - [ ] **Step 3: Implement `src/lib/affiliate/cost.ts`**
 
 ```ts
@@ -959,7 +959,7 @@ import type { EngineAffiliateCost } from '../metrics/types'
 
 /**
  * Affiliate cost as the engine eats it: one row per (shop, day, currency),
- * amount = commission + Addrevenue's brokerage fee — both leave the bank
+ * amount = commission + Addrevenue's brokerage fee - both leave the bank
  * account, so both count (the client's explicit decision, 2026-08-24).
  * Denied rows cost nothing; unmatched rows (shopId null) can belong to no
  * shop's figures and are surfaced elsewhere instead of summed here.
@@ -992,7 +992,7 @@ export async function affiliateCosts(
 
 /**
  * Every currency these shops hold affiliate rows in, so the FX loader has a
- * rate before the first conversion — real data has FI-market sales in SEK.
+ * rate before the first conversion - real data has FI-market sales in SEK.
  */
 export async function relevantAffiliateCurrencies(shopIds: string[]): Promise<string[]> {
   if (!shopIds.length) return []
@@ -1005,10 +1005,10 @@ export async function relevantAffiliateCurrencies(shopIds: string[]): Promise<st
 }
 ```
 
-(`EngineAffiliateCost` does not exist yet — Task 6 Step 1 adds it. If working strictly in order, add the type first, or accept one red typecheck between the tasks' first steps; the commit lands after both are green.)
+(`EngineAffiliateCost` does not exist yet - Task 6 Step 1 adds it. If working strictly in order, add the type first, or accept one red typecheck between the tasks' first steps; the commit lands after both are green.)
 
-- [ ] **Step 4: Run it** — expect PASS (after Task 6's type exists; do Task 6 Step 1 first if the import blocks).
-- [ ] **Step 5: Commit** — with Task 6 if interleaved, otherwise `feat(affiliate): affiliate cost rows in the engine's shape`
+- [ ] **Step 4: Run it** - expect PASS (after Task 6's type exists; do Task 6 Step 1 first if the import blocks).
+- [ ] **Step 5: Commit** - with Task 6 if interleaved, otherwise `feat(affiliate): affiliate cost rows in the engine's shape`
 
 ---
 
@@ -1024,7 +1024,7 @@ export async function relevantAffiliateCurrencies(shopIds: string[]): Promise<st
 ```ts
 /**
  * One day of one shop's affiliate cost (Addrevenue commission + their fee),
- * in the TRANSACTIONS' own currency — a FI sale can be in SEK. `date` is
+ * in the TRANSACTIONS' own currency - a FI sale can be in SEK. `date` is
  * plain UTC midnight, the platform-reported day, like ad spend.
  */
 export type EngineAffiliateCost = {
@@ -1047,7 +1047,7 @@ In `ZERO_FIGURES`, after `marketing: 0,`:
   affiliate: 0,
 ```
 
-- [ ] **Step 2: Write the failing engine test.** Append to `engine.test.ts` (self-contained describe, mirroring the neighbouring ad-spend block — same two-shop, two-rate shape):
+- [ ] **Step 2: Write the failing engine test.** Append to `engine.test.ts` (self-contained describe, mirroring the neighbouring ad-spend block - same two-shop, two-rate shape):
 
 ```ts
 describe('affiliate cost', () => {
@@ -1103,7 +1103,7 @@ describe('affiliate cost', () => {
     expect(res.total.affiliate).toBe(1000 + 5000)
   })
 
-  it('is zero when absent — every existing caller’s profit must not move', () => {
+  it('is zero when absent - every existing caller’s profit must not move', () => {
     const res = run(undefined)
     expect(res.total.affiliate).toBe(0)
     expect(res.total.netProfit).toBe(0)
@@ -1113,9 +1113,9 @@ describe('affiliate cost', () => {
 
 Add `EngineAffiliateCost` to the existing type-import from `./types` at the top of the test file.
 
-- [ ] **Step 3: Run it** — `npx vitest run src/lib/metrics/engine.test.ts` — expect FAIL (unknown input key / missing figure).
+- [ ] **Step 3: Run it** - `npx vitest run src/lib/metrics/engine.test.ts` - expect FAIL (unknown input key / missing figure).
 
-- [ ] **Step 4: Implement in `engine.ts`** — four edits, each next to its `adSpend` twin:
+- [ ] **Step 4: Implement in `engine.ts`** - four edits, each next to its `adSpend` twin:
 
 In `MetricsInput`, after the `adSpend?` member:
 
@@ -1161,17 +1161,17 @@ The net-profit line becomes:
 
 Add `affiliate,` to the per-shop return literal (after `marketing,`), and in `totalOf` add `affiliate: add((r) => r.affiliate),` after the `marketing` line.
 
-- [ ] **Step 5: Run the tests** — engine tests PASS; then `npx tsc --noEmit` (this is what catches any other `Figures` literal in the codebase — fix any it names by adding the `affiliate` key the same way).
-- [ ] **Step 6: Run the cost-loader test from Task 5** — now green. `npx vitest run src/lib/affiliate src/lib/metrics`.
-- [ ] **Step 7: Commit** — `feat(affiliate): the engine charges affiliate cost to net profit`
+- [ ] **Step 5: Run the tests** - engine tests PASS; then `npx tsc --noEmit` (this is what catches any other `Figures` literal in the codebase - fix any it names by adding the `affiliate` key the same way).
+- [ ] **Step 6: Run the cost-loader test from Task 5** - now green. `npx vitest run src/lib/affiliate src/lib/metrics`.
+- [ ] **Step 7: Commit** - `feat(affiliate): the engine charges affiliate cost to net profit`
 
 ---
 
-### Task 7: Load it — `loadMetricsInput` wiring
+### Task 7: Load it - `loadMetricsInput` wiring
 
 **Files:**
 - Modify: `src/lib/data/load.ts` (imports; after the `adSpend` load ~line 187; the `inPlay` set ~line 209; the return literal ~line 220)
-- Create: `src/lib/data/load.affiliate.test.ts` (lands in the serialized `load` vitest project by its name — no config change)
+- Create: `src/lib/data/load.affiliate.test.ts` (lands in the serialized `load` vitest project by its name - no config change)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1236,7 +1236,7 @@ describe('loadMetricsInput affiliate', () => {
 })
 ```
 
-- [ ] **Step 2: Run it** — `npx vitest run src/lib/data/load.affiliate.test.ts` — expect FAIL (`input.affiliate` undefined).
+- [ ] **Step 2: Run it** - `npx vitest run src/lib/data/load.affiliate.test.ts` - expect FAIL (`input.affiliate` undefined).
 - [ ] **Step 3: Implement in `load.ts`.** Import at the top:
 
 ```ts
@@ -1254,7 +1254,7 @@ After the `adSpend` line (~187):
 In the `inPlay` set, after the `relevantAdCurrencies` spread:
 
 ```ts
-    // Affiliate rows carry their own currency too — measured: FI sales in SEK.
+    // Affiliate rows carry their own currency too - measured: FI sales in SEK.
     ...(await relevantAffiliateCurrencies(shopIds)),
 ```
 
@@ -1264,8 +1264,8 @@ In the return literal, after `adSpend,`:
     affiliate,
 ```
 
-- [ ] **Step 4: Run it** — expect PASS. Also `npx tsc --noEmit`.
-- [ ] **Step 5: Commit** — `feat(affiliate): the dashboard loader carries affiliate cost to the engine`
+- [ ] **Step 4: Run it** - expect PASS. Also `npx tsc --noEmit`.
+- [ ] **Step 5: Commit** - `feat(affiliate): the dashboard loader carries affiliate cost to the engine`
 
 ---
 
@@ -1293,28 +1293,28 @@ And give the `row` fixture a real figure so the money renders: add `affiliate: 5
     expect(screen.getAllByText((_t, el) => el?.textContent === affiliateCell).length).toBeGreaterThan(0)
 ```
 
-(Note: `row.netProfit` in the fixture is a hand-written illustration, not engine output — leave it as is; the test renders, it does not recompute.)
+(Note: `row.netProfit` in the fixture is a hand-written illustration, not engine output - leave it as is; the test renders, it does not recompute.)
 
-- [ ] **Step 2: Run it** — `npx vitest run src/components/dashboard/CompareTable.test.tsx` — expect FAIL (no Affiliate column).
+- [ ] **Step 2: Run it** - `npx vitest run src/components/dashboard/CompareTable.test.tsx` - expect FAIL (no Affiliate column).
 - [ ] **Step 3: Implement.** In `COLUMNS`, between `marketing` and `operationalExpenses`:
 
 ```ts
   { key: 'affiliate', label: 'Affiliate', money: true, hint: 'Addrevenue affiliate commission + platform fee, converted at each day’s own rate' },
 ```
 
-(Everything else — metric picker, sorting, persistence — is COLUMNS-driven and needs nothing.)
+(Everything else - metric picker, sorting, persistence - is COLUMNS-driven and needs nothing.)
 
-- [ ] **Step 4: Run it** — expect PASS.
-- [ ] **Step 5: Commit** — `feat(affiliate): an Affiliate column on the Dashboard compare table`
+- [ ] **Step 4: Run it** - expect PASS.
+- [ ] **Step 5: Commit** - `feat(affiliate): an Affiliate column on the Dashboard compare table`
 
 ---
 
-### Task 9: Marketing page — the Affiliate section and its endpoint
+### Task 9: Marketing page - the Affiliate section and its endpoint
 
 **Files:**
 - Create: `src/app/api/affiliate/summary/route.ts`
 - Create: `src/app/marketing/AffiliateSection.tsx`
-- Modify: `src/app/marketing/MarketingClient.tsx` (render the section just before `</PageBody>`, OUTSIDE the `hasAccounts` ternary — affiliate must show even with no ad accounts)
+- Modify: `src/app/marketing/MarketingClient.tsx` (render the section just before `</PageBody>`, OUTSIDE the `hasAccounts` ternary - affiliate must show even with no ad accounts)
 
 No unit test for the thin route (house convention for read-shaping routes); the e2e spec in Task 12 walks the section against seeded data.
 
@@ -1332,7 +1332,7 @@ import { getSetting } from '@/lib/settings'
 
 /**
  * The Marketing page's Affiliate section: totals, per shop and per channel.
- * Channel detail lives here rather than in the engine — the engine speaks in
+ * Channel detail lives here rather than in the engine - the engine speaks in
  * per-shop figures, and "which blog earned what" is not one of them. The COST
  * figure follows the engine's exact conventions (non-denied rows, commission +
  * fee, each row at its own day's rate) so this section and the Dashboard's
@@ -1436,7 +1436,7 @@ export async function GET(req: Request) {
 }
 ```
 
-Check the actual export names in `src/lib/metrics/fx.ts` before writing (`crossConvert`, `buildRateTable`) — both are imported elsewhere (`engine.ts`, `load.ts`), copy those import paths exactly.
+Check the actual export names in `src/lib/metrics/fx.ts` before writing (`crossConvert`, `buildRateTable`) - both are imported elsewhere (`engine.ts`, `load.ts`), copy those import paths exactly.
 
 - [ ] **Step 2: The section.** `src/app/marketing/AffiliateSection.tsx` (page-local, like `BreakdownTable.tsx`):
 
@@ -1461,7 +1461,7 @@ const count = (n: number) => Math.round(n).toLocaleString('en-US')
 
 /**
  * Affiliate commissions on the Marketing page. Fetches its own figures with
- * the page's own filter state, so it works even when no AD account exists —
+ * the page's own filter state, so it works even when no AD account exists -
  * the affiliate program is its own channel, not a subset of paid ads.
  */
 export function AffiliateSection({
@@ -1506,7 +1506,7 @@ export function AffiliateSection({
       <div className="flex items-baseline justify-between">
         <h2 className="text-[15px] font-semibold text-ink">Affiliate</h2>
         <p className="text-[12px] text-muted">
-          Addrevenue commissions + platform fee — counted into net profit as their own cost line.
+          Addrevenue commissions + platform fee - counted into net profit as their own cost line.
         </p>
       </div>
 
@@ -1597,12 +1597,12 @@ export function AffiliateSection({
         </div>
 ```
 
-- [ ] **Step 4: Verify** — `npx tsc --noEmit`; `npm run dev`, sign in as the seeded admin, open /marketing: no affiliate data yet, so the section must NOT render (that's the `connected/sales===0` gate working). No console errors.
-- [ ] **Step 5: Commit** — `feat(affiliate): the Marketing page shows affiliate cost per channel and shop`
+- [ ] **Step 4: Verify** - `npx tsc --noEmit`; `npm run dev`, sign in as the seeded admin, open /marketing: no affiliate data yet, so the section must NOT render (that's the `connected/sales===0` gate working). No console errors.
+- [ ] **Step 5: Commit** - `feat(affiliate): the Marketing page shows affiliate cost per channel and shop`
 
 ---
 
-### Task 10: Settings — connect a brand token
+### Task 10: Settings - connect a brand token
 
 **Files:**
 - Create: `src/app/api/affiliate/accounts/route.ts` (GET list, POST add)
@@ -1743,7 +1743,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 /**
- * Remove the account AND its transactions (cascade) — which removes its cost
+ * Remove the account AND its transactions (cascade) - which removes its cost
  * from every historical figure. The client confirms in the UI; pausing via
  * PATCH is the way to stop syncing while keeping the history.
  */
@@ -1760,7 +1760,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 }
 ```
 
-(Check the house `params` idiom in an existing `[id]` route — e.g. `src/app/api/shops/[id]/route.ts` — and copy its exact signature; Next 16 makes `params` a Promise.)
+(Check the house `params` idiom in an existing `[id]` route - e.g. `src/app/api/shops/[id]/route.ts` - and copy its exact signature; Next 16 makes `params` a Promise.)
 
 - [ ] **Step 3: `src/app/api/affiliate/sync/route.ts`**
 
@@ -1869,7 +1869,7 @@ export function AffiliateClient({
         return
       }
       setToken('')
-      toast.success(`${json.account.name} connected — ${json.sync.rows} sales imported`)
+      toast.success(`${json.account.name} connected - ${json.sync.rows} sales imported`)
       await reload()
     } catch {
       toast.error('Could not reach the server')
@@ -1906,7 +1906,7 @@ export function AffiliateClient({
   }
 
   async function remove(id: string, name: string) {
-    // Deleting removes the COST HISTORY from every dashboard figure — say so.
+    // Deleting removes the COST HISTORY from every dashboard figure - say so.
     if (!window.confirm(`Remove ${name}? Its imported sales and their cost disappear from every figure. To just stop syncing, pause it instead.`)) return
     const res = await fetch(`/api/affiliate/accounts/${id}`, { method: 'DELETE' })
     if (res.ok) {
@@ -1917,7 +1917,7 @@ export function AffiliateClient({
 
   return (
     <AppShell email={email}>
-      <PageHeader title="Affiliate" subtitle="Addrevenue — commissions imported as a cost, per shop and channel.">
+      <PageHeader title="Affiliate" subtitle="Addrevenue - commissions imported as a cost, per shop and channel.">
         {accounts.length > 0 && (
           <button
             type="button"
@@ -1936,8 +1936,8 @@ export function AffiliateClient({
             <h2 className="text-[14px] font-semibold text-ink">Connect a brand</h2>
             <p className="mt-1 text-[13px] text-muted">
               Paste the brand’s API token from Addrevenue (Settings → API). The token is checked
-              against Addrevenue before anything is stored, then kept encrypted. Each brand —
-              Panetti, Mazzetti — has its own token.
+              against Addrevenue before anything is stored, then kept encrypted. Each brand -
+              Panetti, Mazzetti - has its own token.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <input
@@ -1988,7 +1988,7 @@ export function AffiliateClient({
                             <span className="text-muted">Paused</span>
                           ) : a.unmatched > 0 ? (
                             <span className="text-muted">
-                              OK — {a.unmatched} sales match no shop (check the shops’ URLs)
+                              OK - {a.unmatched} sales match no shop (check the shops’ URLs)
                             </span>
                           ) : (
                             <span className="text-muted">OK</span>
@@ -2042,8 +2042,8 @@ Before writing, glance at `src/app/settings/ad-accounts/AdAccountsClient.tsx` fo
       },
 ```
 
-- [ ] **Step 7: Verify** — `npx tsc --noEmit`; `npm run dev`: /settings/affiliate renders, the connect form refuses a garbage token with Addrevenue's own wording (stub-free manual check is fine offline: a bad token gets the 403 message).
-- [ ] **Step 8: Commit** — `feat(affiliate): a settings page that proves a brand token before storing it`
+- [ ] **Step 7: Verify** - `npx tsc --noEmit`; `npm run dev`: /settings/affiliate renders, the connect form refuses a garbage token with Addrevenue's own wording (stub-free manual check is fine offline: a bad token gets the 403 message).
+- [ ] **Step 8: Commit** - `feat(affiliate): a settings page that proves a brand token before storing it`
 
 ---
 
@@ -2064,7 +2064,7 @@ import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affili
   // Affiliate commissions from Addrevenue. Two bounded requests per brand and
   // a six-hour spacing inside syncAllAffiliateAccounts, so most runs cost
   // nothing; a due account is roughly five to ten seconds (a full-history
-  // mirror rewrite against Neon), so a due run costs the budget ~20s — spent
+  // mirror rewrite against Neon), so a due run costs the budget ~20s - spent
   // here, with the money pulls, ahead of the greedy parcel poll. Best-effort
   // like the ads: a bad token keeps its own lastError on the settings page
   // and must never fail the shop sync.
@@ -2092,15 +2092,15 @@ import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affili
     affiliateFailed: affiliate.filter((r) => !r.ok).map((r) => r.name),
 ```
 
-- [ ] **Step 5: Verify** — `npx tsc --noEmit`; full test run `npx vitest run` stays green.
-- [ ] **Step 6: Commit** — `feat(affiliate): the scheduled sync reads Addrevenue every six hours`
+- [ ] **Step 5: Verify** - `npx tsc --noEmit`; full test run `npx vitest run` stays green.
+- [ ] **Step 6: Commit** - `feat(affiliate): the scheduled sync reads Addrevenue every six hours`
 
 ---
 
 ### Task 12: Seed data and the E2E walk
 
 > **As built (2026-08-24):** the spec was made SELF-SEEDING (tagged `E2E AFFILIATE`
-> fixtures created in beforeAll, swept in both hooks — the delivery specs' pattern)
+> fixtures created in beforeAll, swept in both hooks - the delivery specs' pattern)
 > instead of depending on `npm run db:seed`, because re-seeding wipes users/orders
 > and the user had not approved that. The seed.ts additions below were still made,
 > for whoever seeds a fresh database later; `npm run db:seed` was NOT run.
@@ -2117,7 +2117,7 @@ import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affili
   await db.affiliateAccount.deleteMany()
 ```
 
-After the AD_ACCOUNTS loop (where ad spend seeding ends), add — reusing the file's existing `between`/`rnd` helpers and `shops` array:
+After the AD_ACCOUNTS loop (where ad spend seeding ends), add - reusing the file's existing `between`/`rnd` helpers and `shops` array:
 
 ```ts
   // The affiliate program: one Addrevenue brand with tracked sales across
@@ -2159,9 +2159,9 @@ After the AD_ACCOUNTS loop (where ad spend seeding ends), add — reusing the fi
   }
 ```
 
-(Confirm against the file that `shops[0..2]` are the three Panetti shops and that the ad-spend section uses the same `Date.UTC(2026, 6, 14)` anchor — copy whatever anchor it actually uses.)
+(Confirm against the file that `shops[0..2]` are the three Panetti shops and that the ad-spend section uses the same `Date.UTC(2026, 6, 14)` anchor - copy whatever anchor it actually uses.)
 
-Run: `npm run db:seed` (or the script the repo defines — check `package.json`) — expect it to finish green.
+Run: `npm run db:seed` (or the script the repo defines - check `package.json`) - expect it to finish green.
 
 - [ ] **Step 2: Warm list.** In `e2e/global-setup.ts`, add `'/marketing'` and `'/settings/affiliate'` to the warmed paths.
 
@@ -2214,11 +2214,11 @@ test('the settings page lists the seeded brand and offers Sync now', async ({ pa
 })
 ```
 
-(If the nav link name 'Affiliate' collides with the Marketing-page heading in `getByRole('link', ...)`, scope it: `page.getByRole('navigation').getByRole('link', { name: 'Affiliate' })` — mirror how other specs disambiguate.)
+(If the nav link name 'Affiliate' collides with the Marketing-page heading in `getByRole('link', ...)`, scope it: `page.getByRole('navigation').getByRole('link', { name: 'Affiliate' })` - mirror how other specs disambiguate.)
 
-- [ ] **Step 4: Run E2E** — `npx playwright test e2e/affiliate.spec.ts --headed` (this machine needs `--headed`; the config runs `workers: 1` and starts the dev server itself). Expect 3 passed.
-- [ ] **Step 5: Run everything** — `npx vitest run` (all projects), `npx tsc --noEmit`, `npm run build` (the build runs db-push + next build). All green.
-- [ ] **Step 6: Commit** — `feat(affiliate): seed affiliate sales and walk the three surfaces end to end`
+- [ ] **Step 4: Run E2E** - `npx playwright test e2e/affiliate.spec.ts --headed` (this machine needs `--headed`; the config runs `workers: 1` and starts the dev server itself). Expect 3 passed.
+- [ ] **Step 5: Run everything** - `npx vitest run` (all projects), `npx tsc --noEmit`, `npm run build` (the build runs db-push + next build). All green.
+- [ ] **Step 6: Commit** - `feat(affiliate): seed affiliate sales and walk the three surfaces end to end`
 
 ---
 
@@ -2227,8 +2227,8 @@ test('the settings page lists the seeded brand and offers Sync now', async ({ pa
 No code. This is the "no guessing" acceptance the client asked for.
 
 - [ ] `npm run dev`, sign in locally, open **Settings → Affiliate**.
-- [ ] Paste the **Mazzetti** token, then the **Panetti** token (the user has them; they are in the conversation — never commit them anywhere). Each connect must report its real name (Mazzetti / Panetti) and import its real history (~70 and ~2,097 sales as of 2026-08-24; more by now).
-- [ ] The local shops table must have `wooUrl` set for the nine Panetti/Mazzetti shops for domain matching to land; if the local DB lacks them, the settings row will say how many sales match no shop — set the shops' URLs in /settings/shops to the real domains and press Sync now, and the mirror rewrite heals every row.
+- [ ] Paste the **Mazzetti** token, then the **Panetti** token (the user has them; they are in the conversation - never commit them anywhere). Each connect must report its real name (Mazzetti / Panetti) and import its real history (~70 and ~2,097 sales as of 2026-08-24; more by now).
+- [ ] The local shops table must have `wooUrl` set for the nine Panetti/Mazzetti shops for domain matching to land; if the local DB lacks them, the settings row will say how many sales match no shop - set the shops' URLs in /settings/shops to the real domains and press Sync now, and the mirror rewrite heals every row.
 - [ ] Dashboard, Last 12 months: the Affiliate column shows real money per shop; net profit visibly shifts by it. Marketing page: the channel table names the real channels (Forbrukertesten.com, Hjem og Hage, Nettavisen, Testsieger.de…).
 - [ ] Cross-check one number: pick one month and one brand, and compare the section's total against Addrevenue's own dashboard for that month (the user can open it). Small differences from THEIR currency table are expected when crossing currencies (we convert at our own daily rates, as everywhere else in the app); same-currency single-shop figures must match to the øre.
 - [ ] Then merge to main and deploy; paste both tokens again in PROD settings (they live encrypted in Neon, never in git or Vercel env), and confirm the cron report starts carrying `affiliateAccounts: 2`.

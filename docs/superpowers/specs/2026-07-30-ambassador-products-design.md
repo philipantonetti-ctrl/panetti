@@ -18,13 +18,13 @@ count ambassadors per product.
 
 `Product` is **shop-scoped** (`@@unique([shopId, externalId])`) and discovered
 from orders. The same physical item therefore exists as a separate row in every
-shop that has ever sold it — the seed alone creates 6 catalogue items across 11
+shop that has ever sold it - the seed alone creates 6 catalogue items across 11
 shops, so 66 rows describe 6 real products.
 
 A gift is a fact about a physical object, not about a store's listing. So the
 ledger keys on **`sku`**, the product identity across shops. The overview then
-reads "4 ambassadors have the Advanced Comfort" — one honest number per real
-product — instead of splitting that chair across eleven near-empty rows.
+reads "4 ambassadors have the Advanced Comfort" - one honest number per real
+product - instead of splitting that chair across eleven near-empty rows.
 
 ## Design
 
@@ -55,7 +55,7 @@ destructive-change flag.
 Four choices worth naming:
 
 - **`sku`, not a `productId` foreign key.** A `Product` row cascades away with
-  its shop. A gift must not vanish because a store was removed — the same
+  its shop. A gift must not vanish because a store was removed - the same
   instinct that freezes ambassador attribution onto orders rather than
   recomputing it.
 - **`name` is a snapshot**, exactly like `OrderItem.name`, so the ledger still
@@ -68,7 +68,7 @@ Four choices worth naming:
   second date and the second note.
 
 **Counting is a pure function.** The overview must count **distinct
-ambassadors** per SKU — one person holding two of the same chair is one person,
+ambassadors** per SKU - one person holding two of the same chair is one person,
 not two. That subtlety lives in `src/lib/ambassador-products.ts`:
 
 ```ts
@@ -94,7 +94,7 @@ already fetch:
   roster chips and the Edit modal.
 - `GET /api/portal` gains `products[]` for the session's own ambassador.
 
-`assertStaff` matches `/api/ambassadors` exactly, so Marketing manages gifts —
+`assertStaff` matches `/api/ambassadors` exactly, so Marketing manages gifts -
 they run the ambassador program. Every financial route keeps `assertAdmin`
 untouched. The portal read takes its ambassador id **from the session, never
 the request**, so there is no id for a caller to tamper with; that is the rule
@@ -111,7 +111,7 @@ makes one request, not two.
 ## UI
 
 **Roster** gains a `Products` column of chips (`Advanced Comfort ×1`) mirroring
-the existing Codes column, with the date and note in the `title`, and `—` when
+the existing Codes column, with the date and note in the `title`, and `-` when
 empty.
 
 **Edit modal** gains a `Products` section directly under Codes, following that
@@ -136,7 +136,7 @@ pattern every route here uses. `quantity` is an integer of at least 1,
 are required, and `note` is optional with a 200-character ceiling.
 
 An unknown ambassador is a 404. DELETE uses `deleteMany` scoped by id and treats
-`count === 0` as a 404 — the rule the codes route already follows, so a no-op is
+`count === 0` as a 404 - the rule the codes route already follows, so a no-op is
 never reported as success.
 
 Portal and roster reads degrade honestly: an ambassador with no gifts shows an
@@ -144,17 +144,17 @@ empty state, never a missing card.
 
 ## Testing
 
-- **Unit** — `summariseProducts`: distinct counting when one person holds two of
+- **Unit** - `summariseProducts`: distinct counting when one person holds two of
   a SKU, sorting, the empty case.
-- **Route** — POST validation and creation, DELETE scoping and its 404,
+- **Route** - POST validation and creation, DELETE scoping and its 404,
   `assertStaff` returning 403 for an AMBASSADOR session, and the portal
   returning only the caller's own rows.
-- **Component** — the modal's Products section and the roster chips.
-- **End to end** (`e2e/ambassador-products.spec.ts`) — an admin adds a gift, the
+- **Component** - the modal's Products section and the roster chips.
+- **End to end** (`e2e/ambassador-products.spec.ts`) - an admin adds a gift, the
   chip appears in the roster, the count appears in the overview, then that
   ambassador signs in and sees it read-only in their portal. One spec, the whole
   loop the client described.
-- **Seed** — a few seeded ambassadors receive products, so the page is never
+- **Seed** - a few seeded ambassadors receive products, so the page is never
   empty on a fresh database and the e2e spec has something to find.
 
 ## Known limitation, accepted

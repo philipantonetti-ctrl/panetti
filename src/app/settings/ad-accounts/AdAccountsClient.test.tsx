@@ -313,5 +313,5 @@ describe('AdAccountsClient', () => {
   // the "the Facebook app was just fixed, press Connect again" notice, which
   // WAS the loop, and the save-time App Domains warning. Both died with
   // ensureMetaApp. A green test guarding an impossible message is worse than
-  // no test — it reads as coverage while proving nothing.
+  // no test - it reads as coverage while proving nothing.
 })

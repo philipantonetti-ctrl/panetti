@@ -129,7 +129,7 @@ export async function POST(req: Request) {
     // An email that already has a login (e.g. the admin's own) is deliberately
     // allowed: the same person can be an admin AND an ambassador. The code is
     // tracked without a separate ambassador login, and they see it on the
-    // dashboard. Only onboarding (setting a second password) is skipped — the
+    // dashboard. Only onboarding (setting a second password) is skipped - the
     // invite route says so plainly if they ever open the link.
 
     // One nested write, not a create followed by N gift POSTs. A duplicate code

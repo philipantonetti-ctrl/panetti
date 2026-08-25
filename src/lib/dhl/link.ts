@@ -4,7 +4,7 @@
  * Simpler than the Bring path on purpose. Bring's file gives only parcel
  * numbers, so that path asks the carrier for the recipient email and matches on
  * that. DHL's export already names the order, so the only real work here is
- * deciding WHICH SHOP the reference belongs to — order numbers are not unique
+ * deciding WHICH SHOP the reference belongs to - order numbers are not unique
  * across shops, and Panetti Germany #15537 and Panetti Sweden #15537 are two
  * different customers.
  */
@@ -44,7 +44,7 @@ export type DhlLinkResult = { linked: number; unmatched: UnmatchedRow[] }
  * Write one Shipment per DHL parcel, attached to its order.
  *
  * `now` is when this file reached us, and it is the only honest delivery
- * timestamp the export can give — see the availableAt rule below.
+ * timestamp the export can give - see the availableAt rule below.
  */
 export async function linkDhlShipments(
   shipments: DhlShipment[],
@@ -109,7 +109,7 @@ export async function linkDhlShipments(
     const existing = await db.shipment.findUnique({
       where: { trackingNumber: s.trackingNumber },
       // nextPollAt is read so the file cannot overwrite a schedule the poller
-      // has since decided — see the assignment below.
+      // has since decided - see the assignment below.
       select: { availableAt: true, outcome: true, terminal: true, nextPollAt: true },
     })
 
@@ -119,7 +119,7 @@ export async function linkDhlShipments(
      * The delivery moment, which this file never supplies.
      *
      * The export says a parcel IS delivered. It never says WHEN. DHL's tracking
-     * API does, to the second — so the file provides the fact and the API
+     * API does, to the second - so the file provides the fact and the API
      * provides the moment, and nothing here is stamped.
      *
      * This used to write `now` for a parcel that turned delivered in a later
@@ -147,7 +147,7 @@ export async function linkDhlShipments(
        * `delivered ? true` here was the reason DHL's real delivery timestamps
        * could never arrive: syncShipments selects `terminal: false`, so a
        * parcel the file called delivered was removed from the poller's reach
-       * permanently — and the comment above promising the API would fill its
+       * permanently - and the comment above promising the API would fill its
        * date in was describing something this line prevented.
        *
        * Worse for a parcel already delivered the first time we saw it: no
@@ -155,7 +155,7 @@ export async function linkDhlShipments(
        * list forever with nothing able to correct it.
        *
        * Left to the poller, one lookup writes the real availableAt, and
-       * nextPollFor turns the parcel terminal itself — DHL's `delivered` maps
+       * nextPollFor turns the parcel terminal itself - DHL's `delivered` maps
        * into COLLECTED, which is a full stop. One extra call per delivered
        * parcel, once, against a 240/day budget.
        */
@@ -167,7 +167,7 @@ export async function linkDhlShipments(
        * This used to be null on purpose: the poller asked Bring about every
        * number regardless of carrier, so a due date here would have sent a DHL
        * number to Bring. delivery/sync.ts now dispatches on `carrier`, so a DHL
-       * parcel can finally be tracked — and without a due date the poller, which
+       * parcel can finally be tracked - and without a due date the poller, which
        * selects on `nextPollAt: { lte: now }`, would never see it.
        *
        * Set to `now` so the next run picks it up, but only when the parcel has

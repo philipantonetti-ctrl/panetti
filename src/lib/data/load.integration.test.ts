@@ -5,7 +5,7 @@ import { EXCLUDED_STATUSES } from '../metrics/types'
 import { db } from '../db'
 import { ensureRates } from '../fx/rates'
 
-// Only ensureRates is faked — it otherwise reaches api.frankfurter.app, which
+// Only ensureRates is faked - it otherwise reaches api.frankfurter.app, which
 // makes tests flaky offline and, uncontrolled, would hide the very bug this
 // file's B2B tests exist to catch. loadRates stays real: buildRateTable still
 // needs it to shape whatever rates the local database actually holds.
@@ -75,7 +75,7 @@ describe('engine against the seeded database', () => {
 
 // This file otherwise only reads the seeded database; these two cases create
 // their own fixtures, so they clean up after themselves like the rest of the
-// suite's integration tests do (see e.g. src/app/api/orders/route.test.ts) —
+// suite's integration tests do (see e.g. src/app/api/orders/route.test.ts) -
 // the '[load-test]' tag on every shop name marks what to wipe.
 describe('loadMetricsInput and B2B orders', () => {
   beforeEach(() => {
@@ -243,7 +243,7 @@ describe('loadMetricsInput and B2B orders', () => {
 
   it('fetches rates for an ad account’s currency, which no shop need trade in', async () => {
     // A lone NOK shop needs no consolidation, so nothing else would ask for a
-    // rate — and its EUR ad spend would then convert on whatever stale rate
+    // rate - and its EUR ad spend would then convert on whatever stale rate
     // happened to be lying around.
     const shop = await db.shop.create({
       data: { name: 'Ad FX [load-test]', currency: 'NOK' },
@@ -265,8 +265,8 @@ describe('loadMetricsInput and B2B orders', () => {
 
   it('does not fetch an order placed before the window merely because it was voided inside it', async () => {
     // It used to be fetched so the engine could subtract it on the day the
-    // money went back. That reversal is gone — an order belongs to the day it
-    // was placed — so fetching it now only costs rows that produce no entry.
+    // money went back. That reversal is gone - an order belongs to the day it
+    // was placed - so fetching it now only costs rows that produce no entry.
     const shop = await db.shop.create({
       data: { name: 'Late refund [load-test]', currency: 'NOK' },
     })
@@ -309,8 +309,8 @@ describe('loadMetricsInput and B2B orders', () => {
   })
 
   it('still fetches an ordinary order placed inside the window with voidedAt null', async () => {
-    // The regression guard: the common case — a live order that has never
-    // been voided — must keep working exactly as before.
+    // The regression guard: the common case - a live order that has never
+    // been voided - must keep working exactly as before.
     const shop = await db.shop.create({
       data: { name: 'Ordinary order [load-test]', currency: 'NOK' },
     })

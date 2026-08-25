@@ -1,9 +1,9 @@
 /**
  * What the Inventory pages are actually showing you, in one short sentence.
  *
- * The Forecast and Stock tabs mix two different scopes on purpose — the stock
+ * The Forecast and Stock tabs mix two different scopes on purpose - the stock
  * figure comes from the shops named as sources, the sales rate comes from every
- * shop — and that is impossible to guess from the numbers themselves. A page
+ * shop - and that is impossible to guess from the numbers themselves. A page
  * showing 906 units at 30.3 a day looks equally plausible whichever shops fed
  * it, so the only way to know is to be told. Same rule as the "shops disagree"
  * badge and the "no seasonal history yet" note: say what the figure is made of.

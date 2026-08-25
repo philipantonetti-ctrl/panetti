@@ -18,7 +18,7 @@ export type ImportResult = {
    * How many things the file offered to import, in whichever unit that path
    * counts in. `importTrackingFile` counts distinct parcel-shaped numbers in
    * the document. `importWarehouseFile` counts resolved CONSIGNMENTS plus the
-   * numbers Bring could not resolve — not raw long numbers, which come in two
+   * numbers Bring could not resolve - not raw long numbers, which come in two
    * per parcel (a shipment reference and a package number) and would show a
    * flawless run as parcels vanishing. Always `linked + unaccounted`.
    */
@@ -31,7 +31,7 @@ export type ImportResult = {
    */
   linked: number
   /**
-   * Entries refused for a reason we can state — an order number two shops
+   * Entries refused for a reason we can state - an order number two shops
    * share, or an email that matched zero or two orders instead of one.
    */
   unmatched: UnmatchedRow[]
@@ -46,7 +46,7 @@ export type ImportResult = {
 
 /**
  * A file we could not read. Its message is written for the person who uploaded
- * it — "Only PDF and CSV files can be read. This one is a .docx" — so the route
+ * it - "Only PDF and CSV files can be read. This one is a .docx" - so the route
  * is allowed to pass it straight through. Anything NOT wearing this type is
  * unexpected, and its text is not fit for a client.
  */
@@ -85,7 +85,7 @@ export async function importTrackingFile(
 ): Promise<ImportResult> {
   // Split from the parse step below on purpose: this is a database read, not
   // a judgement about the file, so its failure must NOT be dressed up as an
-  // ImportParseError — that type is a promise to the route that the message
+  // ImportParseError - that type is a promise to the route that the message
   // is safe to show, and a dropped connection's message is not.
   let known: Set<string>
   try {
@@ -98,8 +98,8 @@ export async function importTrackingFile(
 
   // `seen` is what the document APPEARED to contain; `rows` is what we managed
   // to pair. Recording rows.length as "parsed" was a lie by omission: a 100-row
-  // file we half-understood reported "read 40, linked 40" — a complete success
-  // — while sixty parcels vanished. And a vanished parcel leaves its order
+  // file we half-understood reported "read 40, linked 40" - a complete success
+  // - while sixty parcels vanished. And a vanished parcel leaves its order
   // looking never-shipped, so it eventually fires a Slack alert about a parcel
   // that shipped perfectly normally, with its tracking number sitting in the
   // file we just read.
@@ -118,7 +118,7 @@ export async function importTrackingFile(
   try {
     ;({ linked, unmatched } = await linkRows(rows))
   } catch (e) {
-    // Unexpected by definition — parsing already succeeded, so this is the
+    // Unexpected by definition - parsing already succeeded, so this is the
     // database's failure, not the file's. Re-thrown untagged, same as the
     // knownOrderNumbers failure above, so the route treats it as unsafe to
     // show verbatim.
@@ -180,7 +180,7 @@ export async function importWarehouseFile(
 
   /**
    * DHL is tried first, and returns null the moment the bytes are not one of
-   * its exports — so the Bring reader below gets the same file untouched and
+   * its exports - so the Bring reader below gets the same file untouched and
    * ONE inbound address takes both. Neither sender has to know or care which
    * reader will pick their message up.
    *
@@ -242,14 +242,14 @@ export async function importWarehouseFile(
     throw new ImportParseError(error)
   }
 
-  // Everything from here on can fail mid-way — Bring timing out, a dropped
-  // database connection, even the bookkeeping write itself — and a throw that
+  // Everything from here on can fail mid-way - Bring timing out, a dropped
+  // database connection, even the bookkeeping write itself - and a throw that
   // escapes unrecorded is exactly the silent morning this feature exists to
   // prevent: no TrackingImport row, Postmark redelivers nothing because the
   // route answers 200 regardless, and the delivery page reads like a quiet
   // day while some Shipments may already sit half-linked. So the whole of it
   // is one guarded block, and whatever is known when it fails is recorded
-  // before rethrowing — same shape as the linkRows guard above.
+  // before rethrowing - same shape as the linkRows guard above.
   let consignments: ResolvedConsignment[] = []
   /**
    * Numbers Bring gave nothing for, each carrying WHY.
@@ -258,7 +258,7 @@ export async function importWarehouseFile(
    * the 2026-08-18 file is what that cost: 51 parsed, 46 linked, 5 unmatched,
    * and only the two email refusals could say anything about themselves. The
    * other three were numbers out of this list. Nobody could find out which
-   * ones, because the numbers were never written down — the count was the only
+   * ones, because the numbers were never written down - the count was the only
    * surviving evidence they had ever been in the file.
    *
    * They join `unmatched` below, so every entry behind the count names itself.
@@ -392,7 +392,7 @@ export async function importWarehouseFile(
       })
     }
 
-    // Consignments and the numbers Bring never resolved — not raw long
+    // Consignments and the numbers Bring never resolved - not raw long
     // numbers, which run two per parcel (a shipment reference and a package
     // number) and would show a flawless import as parcels vanishing.
     const parsed = consignments.length + unresolved.length
@@ -419,7 +419,7 @@ export async function importWarehouseFile(
     // A throw partway through the consignment loop leaves the consignments it
     // never reached counted in rowsParsed and in neither of the other two, so
     // the row would claim 27 parsed, 4 linked, 0 unmatched and quietly lose 23
-    // parcels — against the promise ImportResult makes, that parsed is always
+    // parcels - against the promise ImportResult makes, that parsed is always
     // linked + unaccounted. Same shape as importTrackingFile's `unaccounted`.
     const parsed = consignments.length + unresolved.length
     await recordFailedAttempt(filename, source, {

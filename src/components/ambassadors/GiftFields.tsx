@@ -23,7 +23,7 @@ export function forShop(catalogue: CatalogueItem[], shopIds: string[]): Catalogu
 const INPUT =
   'w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint'
 
-/** Micro step from DESIGN.md — the tier below a section heading. */
+/** Micro step from DESIGN.md - the tier below a section heading. */
 const LABEL = 'block text-[11px] font-medium text-muted'
 
 /** Today as yyyy-mm-dd, which is what a date input wants. */
@@ -34,7 +34,7 @@ export const today = () => new Date().toISOString().slice(0, 10)
  *
  * Shared between the Edit modal, where pressing add POSTs straight away, and
  * the create form, where there is no ambassador to attach it to yet so it joins
- * a list instead. Same fields, same order, one place to change them — two
+ * a list instead. Same fields, same order, one place to change them - two
  * copies would drift the first time either was touched.
  *
  * `onAdd` answers whether the draft was accepted. False keeps the fields as
@@ -65,7 +65,7 @@ export function GiftFields({
 
   async function add() {
     if (!chosen) return
-    // The picked product's NAME travels with its SKU on purpose — the record
+    // The picked product's NAME travels with its SKU on purpose - the record
     // keeps a snapshot, so renaming a shop's listing later never rewrites what
     // we handed over.
     const accepted = await onAdd({

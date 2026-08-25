@@ -41,8 +41,8 @@ describe('ResetClient', () => {
   })
 
   /**
-   * Answered in the browser as well as by the route. The route is the rule —
-   * it applies them regardless — but a mistyped confirmation is the single most
+   * Answered in the browser as well as by the route. The route is the rule -
+   * it applies them regardless - but a mistyped confirmation is the single most
    * likely thing to happen here, and spending a one-time link on it would mean
    * asking for another email.
    */

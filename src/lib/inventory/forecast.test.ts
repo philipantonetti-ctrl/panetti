@@ -171,7 +171,7 @@ describe('forecast', () => {
   it('a container rounding can never drop below the minimum', () => {
     // 90 needed, raised to the 500 minimum, then rounded up to two 400-unit
     // containers = 800. Applying the container first would give 400, then the
-    // minimum would lift it to 500 — not a whole number of containers.
+    // minimum would lift it to 500 - not a whole number of containers.
     const f = forecast(input({ stock: 300, level: 1, moq: 500, unitsPerContainer: 400 }), TODAY)
     expect(f.quantity).toBe(800)
     expect(f.quantity).toBeGreaterThanOrEqual(500)

@@ -84,7 +84,7 @@ describe('SuppliersClient', () => {
 
   it('refuses a number typed the way a Norwegian writes it, instead of deleting the value', async () => {
     // Number('1 000') is NaN, JSON.stringify serialises NaN as null, and the API
-    // reads null as "clear this field" — so before the guard this erased a saved
+    // reads null as "clear this field" - so before the guard this erased a saved
     // lead time down the same path as an intentional clear. Nothing may leave
     // the browser.
     const fetchSpy = vi.spyOn(globalThis, 'fetch')

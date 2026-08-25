@@ -9,7 +9,7 @@ import { MIN_PASSWORD_LENGTH } from '@/lib/auth/account-rules'
  * Where an ambassador chooses their password and is signed in by doing so.
  *
  * The name is here to prove the link is theirs before they type a secret into it. The two
- * checks below are the API's own rules answered faster — the API applies them regardless,
+ * checks below are the API's own rules answered faster - the API applies them regardless,
  * and its refusals are written to be read, so they are shown as they come.
  */
 export function InviteClient({ token, name }: { token: string; name: string }) {
@@ -52,7 +52,7 @@ export function InviteClient({ token, name }: { token: string; name: string }) {
         return
       }
 
-      // Already signed in — the API set the session cookie on this very response.
+      // Already signed in - the API set the session cookie on this very response.
       router.push(data?.redirectTo ?? '/portal')
       router.refresh()
     } catch {

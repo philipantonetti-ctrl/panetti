@@ -11,13 +11,13 @@ export const maxDuration = 60
 /**
  * Leaves 10s of the 60s ceiling for the parse, the database writes and the
  * response itself. Only the Bring lookups inside resolveConsignments check
- * this — one HTTP call per parcel, the one part of the chain that can
- * genuinely run long — so a slow Bring day stops the import cleanly instead
+ * this - one HTTP call per parcel, the one part of the chain that can
+ * genuinely run long - so a slow Bring day stops the import cleanly instead
  * of the platform killing the function mid-write. Same shape as
  * SHOPS_DEADLINE_MS in api/cron/sync/route.ts.
  *
  * It is a budget for the WHOLE REQUEST, spent once and shared by every
- * attachment — see the single `deadline` computed before the loop below.
+ * attachment - see the single `deadline` computed before the loop below.
  */
 const IMPORT_DEADLINE_MS = 50_000
 
@@ -46,7 +46,7 @@ function authorised(req: Request): boolean {
   const given = new URL(req.url).searchParams.get('token') ?? ''
   const a = Buffer.from(given)
   const b = Buffer.from(expected)
-  // A length mismatch still leaks that one bit — right length or not — same
+  // A length mismatch still leaks that one bit - right length or not - same
   // as the throw below would. This only avoids timingSafeEqual THROWING on
   // mismatched lengths (and turning a bad token into a 500); it is not itself
   // a leak mitigation. Same trade as verifyWooSignature in lib/woo/webhooks.ts.
@@ -61,7 +61,7 @@ type Attachment = { Name?: unknown; Content?: unknown; ContentID?: unknown }
  *
  * The URL token above authenticates POSTMARK, not the person who emailed. Until
  * this existed nothing read `From` at all, so anyone who learned the inbound
- * address could post a spreadsheet straight into the shipment data — and that
+ * address could post a spreadsheet straight into the shipment data - and that
  * address has to be given to the warehouse for any of this to work, so it
  * cannot stay secret forever.
  *
@@ -76,7 +76,7 @@ type Attachment = { Name?: unknown; Content?: unknown; ContentID?: unknown }
  * Unset means unchecked. Nobody has configured a sender yet, and an
  * unconfigured guard must not start flagging every ordinary morning.
  *
- * A sender we cannot read is not called unexpected either — we would be
+ * A sender we cannot read is not called unexpected either - we would be
  * asserting something we do not know. Postmark always sends `From`, so in
  * practice this only covers a malformed payload.
  *
@@ -102,7 +102,7 @@ function senderWarning(body: { From?: unknown; FromFull?: { Email?: unknown } })
 /**
  * Is this part of the message BODY rather than something enclosed with it?
  *
- * Postmark puts inline images in the same `Attachments` array as real files —
+ * Postmark puts inline images in the same `Attachments` array as real files -
  * the company logo and the disclaimer graphic in an email signature arrive
  * exactly like an attached spreadsheet does. Without some test for it, every
  * ordinary warehouse email would write a refusal row for `image001.png` beside
@@ -163,7 +163,7 @@ function recordRefusal(filename: string, error: string) {
  *
  * Answers 200 to almost everything on purpose. Postmark redelivers on a
  * non-2xx, and a file we have already taken and failed to parse will fail
- * exactly the same way on every retry — so a failure is RECORDED, in
+ * exactly the same way on every retry - so a failure is RECORDED, in
  * TrackingImport, and acknowledged. The delivery page is where a bad morning
  * becomes visible; the retry queue is not.
  */
@@ -178,7 +178,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Expected JSON' }, { status: 400, headers: NO_STORE })
   }
 
-  // Per email, not per attachment — one sender sends the whole message.
+  // Per email, not per attachment - one sender sends the whole message.
   const oddSender = senderWarning(body)
 
   const attachments = Array.isArray(body.Attachments) ? (body.Attachments as Attachment[]) : []
@@ -186,14 +186,14 @@ export async function POST(req: Request) {
   // How many attachments left a TrackingImport row behind, by any route: one
   // importWarehouseFile wrote (success or its own recordFailedAttempt), or one
   // recordRefusal wrote for an attachment we would not even open. NOT
-  // results.length — `results` is the JSON body handed to Postmark and no human
+  // results.length - `results` is the JSON body handed to Postmark and no human
   // ever reads it. This counts the durable traces, which is what decides
   // whether the catch-all row at the bottom is a needed record or a duplicate.
   let recorded = 0
 
   // ONE budget for the whole request, spent before the loop rather than inside
   // it. Computed per attachment, two readable attachments each claimed a fresh
-  // 50s against a 60s maxDuration for the request as a whole — and a platform
+  // 50s against a 60s maxDuration for the request as a whole - and a platform
   // timeout is not a JS throw, so nothing in importWarehouseFile's guard runs:
   // no row is written, no 200 is returned, and Postmark redelivers the same
   // payload forever.
@@ -201,7 +201,7 @@ export async function POST(req: Request) {
 
   for (const a of attachments) {
     // Checked FIRST, and skipped completely: no `results` entry, no
-    // TrackingImport row, and — the part that matters — not counted in
+    // TrackingImport row, and - the part that matters - not counted in
     // `recorded`. A signature logo is not a delivery. So an email whose ONLY
     // attachments are inline images still falls through to the "nothing
     // readable arrived" row at the bottom, which is right: a signature with no
@@ -220,8 +220,8 @@ export async function POST(req: Request) {
     if (!filename || !READABLE.test(filename) || !content) {
       // Recorded in TrackingImport, not merely in `results`. A bare `continue`
       // here used to mean a skipped attachment left no trace whenever a SIBLING
-      // attachment in the same email succeeded — the report renamed `eod.xls`
-      // vanished behind the `notes.txt` that happened to ride along — and
+      // attachment in the same email succeeded - the report renamed `eod.xls`
+      // vanished behind the `notes.txt` that happened to ride along - and
       // pushing it into `results` alone did not fix that, because `results` is
       // handed back to Postmark and read by nobody. The delivery page reads
       // TrackingImport, so that is where a refusal has to land.
@@ -264,7 +264,7 @@ export async function POST(req: Request) {
       // redeliver a file we have already taken.
       //
       // Only the success path. When the import throws it has already recorded
-      // its own reason, and that reason is what an operator needs first — a
+      // its own reason, and that reason is what an operator needs first - a
       // sender note would overwrite the thing that actually went wrong.
       if (oddSender) {
         await db.trackingImport
@@ -272,8 +272,8 @@ export async function POST(req: Request) {
           .catch(() => {})
       }
     } catch (e) {
-      // importWarehouseFile guards every step that can fail — parsing,
-      // Bring, matching, the Shipment and TrackingImport writes — and
+      // importWarehouseFile guards every step that can fail - parsing,
+      // Bring, matching, the Shipment and TrackingImport writes - and
       // records a TrackingImport row before rethrowing (best-effort: see
       // recordFailedAttempt in lib/bring/import.ts). This branch exists so
       // that throw still resolves to a 200 for Postmark, not a second,

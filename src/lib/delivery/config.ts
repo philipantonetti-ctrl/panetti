@@ -6,7 +6,7 @@ import type { BringCredentials } from '../bring/client'
  * The delivery integration's credentials, decrypted.
  *
  * Never throws. A missing or unreadable secret returns null, and the caller
- * reports "not connected" — the same visible-failure rule the shop sync uses
+ * reports "not connected" - the same visible-failure rule the shop sync uses
  * when AUTH_SECRET has changed under it.
  */
 export async function getDeliveryConfig(): Promise<{

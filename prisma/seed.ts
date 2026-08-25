@@ -70,7 +70,7 @@ const EXPENSES = [
 const ORDER_STATUSES = ['completed', 'completed', 'completed', 'completed', 'processing', 'refunded']
 
 // Sample buyers, so the Orders page shows who bought. A slice of orders stay
-// nameless — real stores have guest checkouts, and the UI must cope.
+// nameless - real stores have guest checkouts, and the UI must cope.
 const CUSTOMERS = [
   'Tino Skaarup', 'Anne Berg', 'Ola Nordmann', 'Kari Olsen', 'Jens Hansen',
   'Maria Virtanen', 'Lars Larsen', 'Sofia Andersson', 'Peter Madsen', 'Ingrid Dahl',
@@ -153,7 +153,7 @@ async function main() {
   })
 
   console.log('Creating products, costs and expenses per shop...')
-  // Carry sku+name alongside the id — two products share a price, so looking one up
+  // Carry sku+name alongside the id - two products share a price, so looking one up
   // by price alone would silently attach the wrong SKU to half the order lines.
   type SeedProduct = { id: string; price: number; sku: string; name: string }
   const productsByShop = new Map<string, SeedProduct[]>()
@@ -218,7 +218,7 @@ async function main() {
 
   for (const shop of shops) {
     const products = productsByShop.get(shop.id)!
-    // Busier shops get more orders — the seed should look like the real thing.
+    // Busier shops get more orders - the seed should look like the real thing.
     const busy = ['Panetti Norway', 'Mazzetti.no', 'Massasjepistoler.no'].includes(shop.name)
     const count = busy ? between(140, 200) : between(20, 70)
 

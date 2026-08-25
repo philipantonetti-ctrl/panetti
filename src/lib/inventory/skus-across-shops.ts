@@ -29,8 +29,8 @@ const MIN_STEM = 3
  *
  * Punctuation and case go first, then a single country code off either end:
  * PZO-500, pzo500, PZO-500-SE and SE-PZO-500 all reduce to PZO500. Both ends,
- * because nobody has told us which convention these shops use — that is what
- * the report is for — and looking at one end only would return a clean answer
+ * because nobody has told us which convention these shops use - that is what
+ * the report is for - and looking at one end only would return a clean answer
  * for a workspace where every product had five codes.
  */
 export function skuStem(sku: string): string {
@@ -53,7 +53,7 @@ export type Listing = {
   /**
    * True when this "SKU" is really the Woo product id, because the listing had
    * no SKU at all. Such a code can never match another shop's, so the product
-   * can never be forecast — and it looks like an ordinary SKU while doing it.
+   * can never be forecast - and it looks like an ordinary SKU while doing it.
    */
   noSkuInWoo: boolean
 }
@@ -76,7 +76,7 @@ export type BlindSpot = {
   recentUnits: number
   /**
    * No shop listing this code gave it a real SKU, so it is a Woo product id.
-   * Its fix is entering a SKU in the webshop, not anything on our side — a
+   * Its fix is entering a SKU in the webshop, not anything on our side - a
    * distinction nobody can make from the number alone.
    */
   noSkuInWoo: boolean
@@ -121,7 +121,7 @@ export function skusAcrossShops(
   const shopsBySku = new Map<string, Set<string>>()
   /** One row per shop, whether or not any of its SKUs turn out to be usable. */
   const perShop = new Map<string, { isSource: boolean; isActive: boolean; skus: Set<string> }>()
-  /** SKUs at least one source shop carries — what the forecast can see. */
+  /** SKUs at least one source shop carries - what the forecast can see. */
   const sourced = new Set<string>()
   /**
    * Per SKU, whether EVERY listing of it lacked a real SKU. One shop giving it
@@ -191,8 +191,8 @@ export function skusAcrossShops(
     b.recentUnits - a.recentUnits || a.sku.localeCompare(b.sku)
 
   // Nobody has named a source, so the forecast lists every SKU and there is no
-  // blind spot to report. Reading `sourced` alone would say the opposite —
-  // every SKU unsourced — which is the most alarming possible way to describe a
+  // blind spot to report. Reading `sourced` alone would say the opposite -
+  // every SKU unsourced - which is the most alarming possible way to describe a
   // workspace where nothing is wrong.
   const scoped = sourced.size > 0
   const sellingButNotSourced: BlindSpot[] = !scoped
@@ -263,8 +263,8 @@ export type ListedProduct = {
  *
  * A field copy, and tested anyway: `isSource` is what the whole blind-spot half
  * of the report rests on. Taken from the wrong column it would read as "no shop
- * is a source", the report would say nothing is being missed, and — being a
- * diagnostic — that answer would be believed.
+ * is a source", the report would say nothing is being missed, and - being a
+ * diagnostic - that answer would be believed.
  */
 export function listingsFrom(products: ListedProduct[]): Listing[] {
   return products.map((p) => ({

@@ -298,7 +298,7 @@ describe('per-platform series', () => {
         spendRow({ accountId: 'acc-google', date: new Date('2026-07-01T00:00:00Z'), spend: 50_00 }),
       ],
       engine,
-      // A full SeriesPoint (trend.ts:32) — netRevenue and netProfit are
+      // A full SeriesPoint (trend.ts:32) - netRevenue and netProfit are
       // required and unused here, so they are zero rather than cast away.
       series: [{ date: '2026-07-01', grossRevenue: 500_00, netRevenue: 0, netProfit: 0 }],
       rates,

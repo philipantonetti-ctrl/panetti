@@ -23,7 +23,7 @@ The system can do the clicking itself.
 **The app heals itself.** `ensureMetaApp` (née `validateMetaApp`) keeps the
 pair check, then reads `app_domains,website_url`. When the domain is missing
 it no longer stops at words: it POSTs the app node with the existing domains
-plus ours, and sets `website_url` to `https://<domain>/` when none exists —
+plus ours, and sets `website_url` to `https://<domain>/` when none exists -
 a website is what makes App Domains valid at all. A successful write means
 no warning and nothing for the client to do. Only a refused write falls back
 to the warning, still naming the two pastes with their exact values.
@@ -35,7 +35,7 @@ domain as covered, so the check does too: `panetti.com` in the list covers
 **The button checks before it walks.** /start runs the same ensure for Meta
 before redirecting. A wrong pair bounces back to the settings page with
 Facebook's words; a domain that could not be written bounces back with the
-paste-this-here warning; an unreachable Meta lets the login proceed — our
+paste-this-here warning; an unreachable Meta lets the login proceed - our
 own courtesy check must never be the blocker. The client meets instructions
 where they can act, never Facebook's dead end. Every click heals drift too:
 whatever host the site is on that day gets registered before Facebook sees
@@ -44,7 +44,7 @@ it.
 **The card sheds two steps.** App Domains and the Website platform are no
 longer the client's job; the card now says saving adds this site to the app
 for you, and the App Domains copy box goes away. The Facebook Login redirect
-paste stays — that field has no public API — with the callback URL still
+paste stays - that field has no public API - with the callback URL still
 shown copyable.
 
 ## Testing

@@ -9,7 +9,7 @@ const Body = z.object({ token: z.string().min(1), password: z.string().min(8) })
 
 /**
  * The only public write in the app. Four guards, in order. Guards 3 and 4 are
- * revocation and single-use, and neither needs stored state — they read facts the
+ * revocation and single-use, and neither needs stored state - they read facts the
  * database already holds. That is what makes the stateless invite link safe.
  */
 export async function POST(req: Request) {
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       include: { user: { select: { id: true } } },
     })
 
-    // 2. Still exists. 3. Still active — deactivating IS revocation.
+    // 2. Still exists. 3. Still active - deactivating IS revocation.
     // One message for both: a stranger holding a dead link learns nothing from it.
     if (!ambassador || !ambassador.active) {
       return NextResponse.json({ error: 'This invite is no longer valid.' }, { status: 400 })
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'You already have a login. Sign in instead.' }, { status: 409 })
     }
 
-    // 5. This email already has a login (typically the admin's own — the same
+    // 5. This email already has a login (typically the admin's own - the same
     // person can be an admin and an ambassador). They do not need a second one:
     // their ambassador sales already show on the dashboard they sign in to. Say
     // that plainly rather than letting the unique constraint blow up into an
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     })
     if (taken) {
       return NextResponse.json(
-        { error: 'This email already has a login — sign in with it. Your ambassador sales show on your dashboard.' },
+        { error: 'This email already has a login - sign in with it. Your ambassador sales show on your dashboard.' },
         { status: 409 },
       )
     }

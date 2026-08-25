@@ -49,7 +49,7 @@ describe('AdCampaign', () => {
   it('unassigns rather than deletes when a shop goes away', async () => {
     // Two DIFFERENT shops: the account belongs to `owner`, but the campaign is
     // assigned to `assigned`. Only deleting `assigned` exercises AdCampaign's
-    // own shopId relation — deleting `owner` would cascade Shop->AdAccount->
+    // own shopId relation - deleting `owner` would cascade Shop->AdAccount->
     // AdCampaign and prove nothing about SetNull vs Cascade.
     const owner = await shop('owner')
     const assigned = await shop('assigned')

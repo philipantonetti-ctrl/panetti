@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Applies the Prisma schema during a build — but only from a build that is
+ * Applies the Prisma schema during a build - but only from a build that is
  * allowed to change a database.
  *
  * This used to be a bare `prisma db push --skip-generate` in the build script,
@@ -30,7 +30,7 @@ export function decide({ vercelEnv, databaseUrl, force = false }) {
 
   // Not on Vercel: a developer running `npm run build` on their own machine.
   // Push unconditionally, because DATABASE_URL missing from process.env proves
-  // nothing here — Prisma reads .env by itself, and .env is where it lives
+  // nothing here - Prisma reads .env by itself, and .env is where it lives
   // locally. Gating on process.env would quietly stop applying local schema.
   if (!vercelEnv) return { action: 'push', reason: 'local build' }
 
@@ -70,7 +70,7 @@ export function decide({ vercelEnv, databaseUrl, force = false }) {
  *
  * Why it exists: swapping DeliveryPromise's unique key on 2026-08-07 blocked
  * every deployment for a day. `db push` runs non-interactively in CI, so its
- * "use --accept-data-loss" prompt is not a prompt — it is a dead build, and
+ * "use --accept-data-loss" prompt is not a prompt - it is a dead build, and
  * the schema change behind it was provably safe.
  *
  * @param {string} output combined stdout+stderr of the failed push
@@ -78,7 +78,7 @@ export function decide({ vercelEnv, databaseUrl, force = false }) {
  */
 export function retryable(output) {
   const warnings = [...String(output).matchAll(/^\s*•\s*(.+?)\s*$/gm)].map((m) => m[1])
-  // No warnings means the push died of something else — an unreachable
+  // No warnings means the push died of something else - an unreachable
   // database, a malformed schema. Retrying with a data-loss flag would fail
   // again and teach the operator nothing.
   if (warnings.length === 0) return false
@@ -104,11 +104,11 @@ if (isMain) {
   if (action === 'skip') {
     // Loud, not silent: a build that quietly stopped applying the schema is how
     // a missing column reaches production wearing a green tick.
-    console.log(`[db-push] schema NOT applied — ${reason}`)
+    console.log(`[db-push] schema NOT applied - ${reason}`)
     process.exit(0)
   }
 
-  console.log(`[db-push] applying the schema — ${reason}`)
+  console.log(`[db-push] applying the schema - ${reason}`)
 
   // Captured rather than inherited, because the retry decision below has to
   // read the warnings. Everything is echoed either way, so the build log looks
@@ -122,7 +122,7 @@ if (isMain) {
   if (!retryable(output)) {
     console.error(
       '\n[db-push] the schema was NOT applied, and this is not a refusal we retry.\n' +
-        '  Prisma only warns like this when something can actually be lost —\n' +
+        '  Prisma only warns like this when something can actually be lost -\n' +
         '  a dropped column, a dropped table, a required column on rows that\n' +
         '  already exist. Fix the schema change, or apply it by hand against\n' +
         '  the database with a human watching.\n',
@@ -134,7 +134,7 @@ if (isMain) {
   // the worst it can do is fail on a duplicate, which fails the build anyway.
   console.log(
     '[db-push] every warning above is a constraint being added, which cannot\n' +
-      '  destroy data — retrying once with --accept-data-loss.',
+      '  destroy data - retrying once with --accept-data-loss.',
   )
   const retry = spawnSync('prisma db push --skip-generate --accept-data-loss', {
     stdio: 'inherit',

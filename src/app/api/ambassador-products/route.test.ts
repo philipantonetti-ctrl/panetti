@@ -61,8 +61,8 @@ describe('POST /api/ambassador-products', () => {
   it('records a gift and it shows up in the overview', async () => {
     // A SKU nothing else in the system uses. The overview aggregates EVERY
     // AmbassadorProduct row with no scoping, so asserting exact counts against
-    // a real catalogue SKU would break the moment the seed — or a developer
-    // clicking around the local app — created one of the same product. The
+    // a real catalogue SKU would break the moment the seed - or a developer
+    // clicking around the local app - created one of the same product. The
     // catalogue test below already uses a synthetic 'DUP-1' for the same
     // reason; this makes the file consistent with itself.
     const res = await post({
@@ -117,7 +117,7 @@ describe('POST /api/ambassador-products', () => {
     // An empty string is the ONLY case that discriminates. With `note` omitted,
     // `d.note` is undefined, Prisma drops the key from the INSERT, and the
     // defaultless nullable column yields null under `||`, under `??`, and under
-    // no fallback at all — so an omitted note proves nothing about the code.
+    // no fallback at all - so an omitted note proves nothing about the code.
     // An explicit '' is where they finally diverge: `'' || null` is null (what
     // we want), `'' ?? null` is '' (what the UI would then print as a blank
     // note line). This test fails the moment someone "modernises" || to ??.
@@ -136,7 +136,7 @@ describe('POST /api/ambassador-products', () => {
     expect(res.status).toBe(404)
   })
 
-  it('lets marketing record a gift — they run the program', async () => {
+  it('lets marketing record a gift - they run the program', async () => {
     await asMarketing()
     const res = await post({
       ambassadorId, sku: 'MPX-001', name: 'Pro X', quantity: 1, receivedAt: '2026-03-12',
@@ -158,7 +158,7 @@ describe('GET /api/ambassador-products', () => {
   it('offers each SKU once, however many shops sell it', async () => {
     const shopA = await db.shop.create({ data: { name: `A ${MARK}`, currency: 'NOK' } })
     const shopB = await db.shop.create({ data: { name: `B ${MARK}`, currency: 'SEK' } })
-    // The same physical product, listed in two shops — the exact situation the
+    // The same physical product, listed in two shops - the exact situation the
     // whole sku-not-productId decision exists for.
     await db.product.create({
       data: { shopId: shopA.id, externalId: '1', sku: 'DUP-1', name: 'Duplicated Chair' },

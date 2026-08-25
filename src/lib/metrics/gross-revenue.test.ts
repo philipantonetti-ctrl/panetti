@@ -6,7 +6,7 @@ import type { CostBook, EngineOrder, EngineShop } from './types'
 /**
  * Nordic merchants read "gross" as INCLUDING VAT (brutto). This system's "gross
  * sales" is the Shopify sense (before discount, EXCL. VAT), so the figure they
- * expect — what the customer actually paid — is its own metric: gross revenue.
+ * expect - what the customer actually paid - is its own metric: gross revenue.
  */
 
 const shops: EngineShop[] = [{ id: 's1', name: 'Shop', currency: 'USD' }]
@@ -28,7 +28,7 @@ const input = {
 }
 
 describe('gross revenue', () => {
-  it('is net revenue plus VAT — exactly what the customer paid', () => {
+  it('is net revenue plus VAT - exactly what the customer paid', () => {
     const shop = computeMetrics(input).byShop[0]
     expect(shop.netRevenue).toBe(10500) // net sales + shipping, ex VAT
     expect(shop.taxes).toBe(2625) // 25% VAT

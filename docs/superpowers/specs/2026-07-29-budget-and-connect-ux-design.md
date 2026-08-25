@@ -7,7 +7,7 @@ Status: approved for implementation. Follows 2026-07-29-ads-oauth-connect-design
 
 The client asked for exactly these Google Ads columns: Budget, Amount spent,
 Conversions, Conversion value, ROAS, Avg. CPC, Clicks. Everything but Budget
-already syncs. He also could not press "Connect with Facebook / Google" — on
+already syncs. He also could not press "Connect with Facebook / Google" - on
 production the one-time Platform setup is still empty, so the buttons rendered
 disabled with only a hover tooltip to say why. Correct behavior, failed
 explanation.
@@ -23,7 +23,7 @@ exists they stay links straight into the OAuth flow. The server-side guard
 
 ## Daily budget
 
-"Budget" in Ads Manager is the campaign's current daily budget — a setting,
+"Budget" in Ads Manager is the campaign's current daily budget - a setting,
 not a day-by-day series. So it lives on the account, refreshed at every sync:
 `AdAccount.dailyBudget Int?` (minor units, account currency).
 
@@ -36,7 +36,7 @@ not a day-by-day series. So it lives on the account, refreshed at every sync:
   minor units.
 - Best-effort: a failed budget fetch keeps the previous value and never fails
   the spend sync. An account with no budget information stays null and shows a
-  dash — never a zero pretending.
+  dash - never a zero pretending.
 
 `buildMarketing` gains a `to: Date` argument and sums each account's budget
 converted at the range-end rate (a current setting converts at the current

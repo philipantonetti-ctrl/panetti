@@ -8,7 +8,7 @@ datasource db {
 }
 
 // All money fields are INTEGER MINOR UNITS (øre/cents) in the SHOP'S OWN currency.
-// Conversion to USD happens at read time only — never stored converted.
+// Conversion to USD happens at read time only - never stored converted.
 
 model Shop {
   id                   String    @id @default(cuid())
@@ -39,8 +39,8 @@ model Shop {
   /// and what "in stock" says.
   ///
   /// The shops mirror ONE warehouse, so nine catalogues describe the same
-  /// shelves. Left to vote, they disagree — four said 906 and Germany said 939
-  /// on 2026-08-13 — and the row's product name came from whichever shop the
+  /// shelves. Left to vote, they disagree - four said 906 and Germany said 939
+  /// on 2026-08-13 - and the row's product name came from whichever shop the
   /// database happened to return first, which is why Norwegian products were
   /// listed as "Hierontatuoli" and "Pizzaugnsskydd". Naming the shops that count
   /// answers both at once.
@@ -86,7 +86,7 @@ model Product {
   catalogPrice Int? // the store's own listed price, minor units, incl VAT
 
   /// Units on hand as this shop reports them. Null = the store does not manage
-  /// stock for this item, which is NOT zero — zero is sold out.
+  /// stock for this item, which is NOT zero - zero is sold out.
   ///
   /// Per shop, deliberately, even though the shops mirror ONE warehouse. Storing
   /// only an agreed figure would throw away the disagreement, and the
@@ -131,11 +131,11 @@ model Order {
   discountTotal   Int // excl VAT
   netSales        Int // grossSales - discountTotal. THE COMMISSION BASE. Stored for audit.
   shippingCharged Int // excl VAT
-  taxTotal        Int // VAT — recorded, never counted as revenue
+  taxTotal        Int // VAT - recorded, never counted as revenue
   total           Int // what the customer actually paid, incl VAT
 
   couponCode      String?
-  ambassadorId    String? // resolved AT SYNC TIME and frozen — changing codes never rewrites history
+  ambassadorId    String? // resolved AT SYNC TIME and frozen - changing codes never rewrites history
   // Set = this order was entered by hand for a business customer. It is the
   // B2B marker, and the reason the order pays no gateway fee.
   b2bCustomerId   String?
@@ -148,7 +148,7 @@ model Order {
   // shipping rates and then to the shop's standing per-order rate.
   //
   // Zero is a different statement: it means shipping this order cost us
-  // nothing, and it WINS — `fulfillmentCost ?? perSku` short-circuits on it, so
+  // nothing, and it WINS - `fulfillmentCost ?? perSku` short-circuits on it, so
   // a zero stored by accident makes an order permanently uncostable by any
   // rate. That is why the B2B form no longer defaults the field to 0.
   fulfillmentCost Int?
@@ -159,7 +159,7 @@ model Order {
   // order that arrives already refunded gets null, because we genuinely do not
   // know when it happened and a guessed date in a profit figure is worse than
   // an honest gap. Null therefore means "never voided, or voided before we
-  // started recording" — and such an order contributes nothing, anywhere.
+  // started recording" - and such an order contributes nothing, anywhere.
   voidedAt DateTime?
 
   // Who bought, from Woo's billing details. null = synced before we stored
@@ -278,7 +278,7 @@ model FulfillmentRate {
 }
 
 // What one unit of a product costs us to ship, so an order of fifty pizza ovens
-// no longer carries the same shipping cost as an order of one — which is all
+// no longer carries the same shipping cost as an order of one - which is all
 // FulfillmentRate above can express.
 //
 // Keyed by SKU, not productId, for the same reason SupplyItem is: the cost
@@ -292,7 +292,7 @@ model FulfillmentRate {
 // date, so history is answered by the row that was in force then.
 //
 // `currency` is carried per row because SKU is not shop-scoped and so there is
-// no shop currency to inherit — unlike FulfillmentRate.perOrder, which is always
+// no shop currency to inherit - unlike FulfillmentRate.perOrder, which is always
 // its shop's. A rate is only in force for an order whose costs are held in the
 // SAME currency; see src/lib/inventory/shipping.ts for why we never guess.
 model ShippingRate {
@@ -353,7 +353,7 @@ model AdPlatformApp {
   createdAt      DateTime @default(now())
 }
 
-// One way in — a Facebook or Google login someone completed.
+// One way in - a Facebook or Google login someone completed.
 // Many ad accounts can hang off it.
 model AdConnection {
   id        String    @id @default(cuid())
@@ -399,7 +399,7 @@ model AdAccount {
 
 // One day of one account's delivery. Money in minor units of the ACCOUNT's
 // currency; conversion happens at read time like everything else. Only
-// day-additive numbers live here — reach/frequency do not sum across days.
+// day-additive numbers live here - reach/frequency do not sum across days.
 model AdSpend {
   id              String   @id @default(cuid())
   accountId       String
@@ -421,7 +421,7 @@ model AdSpend {
 }
 
 // Which store a campaign advertises for. The account's own shopId is the
-// default; this overrides it. Never written by the sync — only by a person.
+// default; this overrides it. Never written by the sync - only by a person.
 model AdCampaign {
   id         String   @id @default(cuid())
   accountId  String
@@ -441,7 +441,7 @@ model AdCampaign {
 }
 
 // One day of one campaign's delivery. Same units as AdSpend: minor units of
-// the ACCOUNT's currency, converted at read time. Only day-additive numbers —
+// the ACCOUNT's currency, converted at read time. Only day-additive numbers -
 // reach does not sum across days, so it is deliberately absent.
 model AdCampaignSpend {
   id              String   @id @default(cuid())
@@ -483,14 +483,14 @@ model AffiliateAccount {
 
 // One tracked affiliate sale, an EXACT mirror of Addrevenue's transaction row.
 // The sync refetches the full history and upserts by (account, externalId):
-// restatement and denial arrive as changed rows, remote deletion as absence —
+// restatement and denial arrive as changed rows, remote deletion as absence -
 // all the same mirror operation. Money in minor units of `currency`, which is
 // the ROW's own (a FI sale can be in SEK); converted at read time.
 model AffiliateTransaction {
   id           String    @id @default(cuid())
   accountId    String
-  externalId   String // Addrevenue transaction id, e.g. "1176373" — theirs to shape, so String like every platform id here
-  date         DateTime // the sale's day, UTC midnight — the platform-reported day
+  externalId   String // Addrevenue transaction id, e.g. "1176373" - theirs to shape, so String like every platform id here
+  date         DateTime // the sale's day, UTC midnight - the platform-reported day
   market       String // "NO" | "SE" | "DK" | "FI" | "DE"
   // Resolved from the advertiser's market URL matched against Shop.wooUrl at
   // sync time. Null = no shop matched; surfaced in settings, never guessed.
@@ -502,7 +502,7 @@ model AffiliateTransaction {
   // the entire history so far, but the field is the documented deny signal.
   denyDate     DateTime?
   commission   Int // what the affiliate earns, minor units of `currency`
-  brokerageFee Int // Addrevenue's markup on top — also our money
+  brokerageFee Int // Addrevenue's markup on top - also our money
   orderValue   Int // the sale the commission was earned on (their eventValue)
   currency     String
   eventOrderId String? // the Woo order number, for audit against /orders
@@ -519,7 +519,7 @@ model AffiliateTransaction {
 
 // What we sent an ambassador: a chair, a massage gun, whatever they were given
 // to promote. Keyed on SKU, not a Product id, because Product is shop-scoped
-// and cascades away with its shop — a gift is a fact about a physical object
+// and cascades away with its shop - a gift is a fact about a physical object
 // and must outlive a store being removed. `name` is a snapshot for the same
 // reason OrderItem.name is one: a shop renaming its listing must not rewrite
 // what we already handed over.
@@ -543,7 +543,7 @@ model AmbassadorProduct {
 }
 
 // A business customer who buys off the webshop. Their orders are ordinary
-// Order rows — what makes them different is an agreed price list, their own
+// Order rows - what makes them different is an agreed price list, their own
 // currency, and an invoice instead of a card.
 model B2bCustomer {
   id         String   @id @default(cuid())
@@ -565,13 +565,13 @@ model B2bCustomer {
   /// starts in: importVismaB2bSales() ignores an invoice whose customer number
   /// is not one of these, and that allowlist is the only thing keeping every
   /// webshop order from being counted twice (Visma raises an invoice for those
-  /// too, against house accounts named "… - Webkunde" — 994 of the first 1000
+  /// too, against house accounts named "… - Webkunde" - 994 of the first 1000
   /// open documents on 2026-08-18).
   ///
   /// The NUMBER and never the name, and the evidence for that is stronger than
   /// it first looked. Searching Visma's customers for /verkko|kauppa/ returned
   /// zero hits and the design once recorded that Verkkokauppa.com "does not
-  /// exist in Visma". It does — as `Verkkokauppa`, no `.com`, number 10488. The
+  /// exist in Visma". It does - as `Verkkokauppa`, no `.com`, number 10488. The
   /// search read controller/api/v1/customer, which caps at 1000 rows, and never
   /// saw past the first page. So a name search here produced a CONFIDENT FALSE
   /// NEGATIVE, which is exactly the failure mode a name link has in production:
@@ -622,10 +622,10 @@ model Shipment {
 
   /// Milestones, derived from ShipmentEvent and rewritten on every ingest.
   /// Denormalised for query speed; the events remain the source of truth.
-  bookedAt    DateTime? // PRE_NOTIFIED — label made, nothing has moved
-  handedInAt  DateTime? // HANDED_IN — the warehouse let go of it
-  availableAt DateTime? // READY_FOR_PICKUP or DELIVERED — the clock stop
-  collectedAt DateTime? // COLLECTED / DELIVERED — recorded, never judged
+  bookedAt    DateTime? // PRE_NOTIFIED - label made, nothing has moved
+  handedInAt  DateTime? // HANDED_IN - the warehouse let go of it
+  availableAt DateTime? // READY_FOR_PICKUP or DELIVERED - the clock stop
+  collectedAt DateTime? // COLLECTED / DELIVERED - recorded, never judged
   /// DELIVERED | RETURNED | CANCELLED. Null while still moving.
   outcome     String?
 
@@ -664,14 +664,14 @@ model ShipmentEvent {
 }
 
 /// What we promise, per destination country, on a timeline. The row with the
-/// latest effectiveFrom <= Order.placedAt wins — the same rule ProductCost and
+/// latest effectiveFrom <= Order.placedAt wins - the same rule ProductCost and
 /// FulfillmentRate already use. A promise changed today never rewrites last
 /// month's on-time rate.
 model DeliveryPromise {
   id            String   @id @default(cuid())
   /// The shop this promise belongs to, or null for "every shop". Two shops in
-  /// one country genuinely promise different things — Panetti says 3 days to
-  /// Norway, Mazzetti says 5 — so country alone cannot express the real policy.
+  /// one country genuinely promise different things - Panetti says 3 days to
+  /// Norway, Mazzetti says 5 - so country alone cannot express the real policy.
   shopId        String?
   /// ISO-2 country code, or '*' for the fallback.
   country       String
@@ -712,7 +712,7 @@ model DeliveryConfig {
 /// It exists because everything this import knows otherwise lives in the cron's
 /// JSON response, which nothing reads. From inside the product, "the import is
 /// refused on every run" and "there are no B2B invoices to import" looked
-/// exactly alike — both are simply no new orders — and so would a sudden JUMP
+/// exactly alike - both are simply no new orders - and so would a sudden JUMP
 /// in `imported`, which is what a leak in the allowlist would look like.
 ///
 /// A singleton, like DeliveryConfig: only the newest run is worth showing, and
@@ -729,7 +729,7 @@ model B2bImportRun {
   /// Orders written.
   imported Int @default(0)
 
-  /// True when the run did not get to the end — a refusal or the cron's
+  /// True when the run did not get to the end - a refusal or the cron's
   /// deadline. What it did read is still stored; the rest arrives next run.
   partial Boolean @default(false)
   error   String?
@@ -764,12 +764,12 @@ model Briefing {
   day       DateTime @unique
   from      DateTime
   to        DateTime
-  /// The computed facts, as JSON text — the same convention TrackingImport
+  /// The computed facts, as JSON text - the same convention TrackingImport
   /// uses. Stored so the page prints figures from data rather than from prose,
   /// and so a failed generation retries against the same facts rather than
   /// against a database that has since moved on.
   facts     String
-  /// The model's ordered items. Null while generating, and after a failure —
+  /// The model's ordered items. Null while generating, and after a failure -
   /// the facts still render, so the page is never blank.
   items     String?
   /// Why generation failed; null when it worked. Shown on the page, the way a
@@ -801,12 +801,12 @@ model SupplyItem {
   id                String   @id @default(cuid())
   sku               String   @unique
   /// Snapshot for display, so a row still reads sensibly when no Product for it
-  /// is loaded — and so a shop renaming its listing cannot rewrite a purchase
+  /// is loaded - and so a shop renaming its listing cannot rewrite a purchase
   /// history, exactly as OrderItem.name already guarantees.
   name              String
   supplierId        String?
   /// Estimates. A purchase order's own ETA overrides them, because production
-  /// time varies with the season and how busy the factory is — the person who
+  /// time varies with the season and how busy the factory is - the person who
   /// placed the order knows that, a per-product average cannot.
   productionDays    Int?
   deliveryDays      Int?
@@ -839,7 +839,7 @@ model SupplyItem {
 /// ask.
 ///
 /// A row is only written for a SKU Visma actually holds a warehouse record for.
-/// A SKU missing here is not zero — it is unknown, and the forecast falls back
+/// A SKU missing here is not zero - it is unknown, and the forecast falls back
 /// to the shops for it.
 /// One unpaid document Visma is still holding open against a customer.
 ///
@@ -898,7 +898,7 @@ model PurchaseOrder {
   /// never show what actually arrived.
   quantity         Int
   /// What has landed so far, from Visma's `qtyOnReceipts`. Null on every
-  /// hand-entered row, which tracks no receipts — so a null falls back to
+  /// hand-entered row, which tracks no receipts - so a null falls back to
   /// counting the whole quantity as incoming, exactly as before this existed.
   receivedQuantity Int?
   orderedAt        DateTime
@@ -927,7 +927,7 @@ model PurchaseOrder {
 /// One carrier invoice, for one calendar month.
 ///
 /// Deliberately NOT an OperationalExpense. An expense belongs to exactly one
-/// shop, and a carrier bills for whatever it carried across all of them — split
+/// shop, and a carrier bills for whatever it carried across all of them - split
 /// by hand that becomes a guess, kept whole it divides exactly by the shipments
 /// we already count.
 ///

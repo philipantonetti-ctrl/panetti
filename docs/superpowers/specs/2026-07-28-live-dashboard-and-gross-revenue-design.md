@@ -12,7 +12,7 @@ while the developer saw fresh data. He also asked for two Compare-shops changes:
 > % of the Net revenue? So for example for Panetti Norway under COGS it would
 > say $3,843.74 (26.10%)"
 
-(26.10% = 3,843.74 / 14,726.58 — confirmed against his screenshot, so the
+(26.10% = 3,843.74 / 14,726.58 - confirmed against his screenshot, so the
 percentage base is net revenue.)
 
 ## Root cause of the "old dashboard" (investigated, with evidence)
@@ -24,7 +24,7 @@ serving cached copies without revalidation. There is no service worker.
 
 The staleness is in the browser tab: `DashboardClient` and `OrdersClient` fetch
 their data once on mount and again only when a filter changes. A tab left open
-overnight shows the world as of when it loaded — forever. The developer reloads
+overnight shows the world as of when it loaded - forever. The developer reloads
 constantly and sees fresh data; the client parks the tab and sees old data.
 Both experiences are "correct" per the current code; the code just never
 refreshes on its own.
@@ -46,7 +46,7 @@ Wiring:
 
 - `DashboardClient`: add the tick to the metrics-fetch effect deps. The effect
   gains an `AbortController` so a superseded response can never overwrite a
-  newer one. Tick refreshes are silent — `loading` is only set by the filter
+  newer one. Tick refreshes are silent - `loading` is only set by the filter
   handlers, so nothing dims or flickers.
 - `OrdersClient`: add the tick to the orders-fetch effect deps. A tick-driven
   run (detected by comparing the tick against a ref of the last seen value)
@@ -60,7 +60,7 @@ Wiring:
 
 60 seconds is the poll cadence: webhooks land in the database within seconds,
 so an open tab is at most a minute behind, and instantly fresh on focus. Two
-or three open admin tabs cost a handful of light queries per minute — nothing
+or three open admin tabs cost a handful of light queries per minute - nothing
 Neon notices.
 
 ## Fix 2: Gross revenue after Orders
@@ -75,14 +75,14 @@ VAT (Nordic "brutto")').
 Renaming the key (not just the label) matters: the column picker stores hidden
 keys in localStorage, and the client's browser currently hides `salesInclVat`.
 Unknown keys are dropped on load, so `grossRevenue` starts visible for
-everyone — which is exactly what "add" means here. No other definition fits
+everyone - which is exactly what "add" means here. No other definition fits
 better: gross sales before discounts already exists as its own column, and a
 Scandinavian owner saying "gross" means brutto, VAT included.
 
 ## Fix 3: COGS shows its share of net revenue
 
 In `CompareTable`, the COGS cells (shop rows and the Total row alike) render
-`$3,843.74 (26.10%)` — the row's `cogs / netRevenue`, two decimals. When net
+`$3,843.74 (26.10%)` - the row's `cogs / netRevenue`, two decimals. When net
 revenue is zero or negative the parenthesis is omitted; a shop with no sales
 shows plain `$0.00`.
 

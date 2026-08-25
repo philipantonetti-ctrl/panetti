@@ -38,7 +38,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (!shop) return NextResponse.json({ error: 'No such shop' }, { status: 404 })
     }
 
-    // A blank field means "leave what is saved" — the edit form posts blanks
+    // A blank field means "leave what is saved" - the edit form posts blanks
     // for anything untouched, exactly like the shop connection modal. An
     // account connected by login starts from nothing here.
     const stored = existing.credentials

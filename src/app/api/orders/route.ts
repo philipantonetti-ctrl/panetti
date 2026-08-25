@@ -19,7 +19,7 @@ import { deliveryFor } from '@/lib/delivery/view'
 import { isVismaExternalId } from '@/lib/visma/b2b-sales'
 import type { CostPoint, RateTable } from '@/lib/metrics/types'
 
-// Voided or simply not paid yet — either way the order earns nothing (yet).
+// Voided or simply not paid yet - either way the order earns nothing (yet).
 const NOT_EARNING = new Set<string>(EXCLUDED_STATUSES)
 
 /** Admin-only financial JSON: no browser, proxy or CDN may ever replay it. */
@@ -28,13 +28,13 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 /**
  * The order list for admins: every order in a date range, newest first, with
  * what was bought inside each one and what it truly earned. Paged, because a
- * busy store has tens of thousands. Each order is shown in ITS OWN currency —
- * an order only ever has one — so nothing here needs a display conversion.
+ * busy store has tens of thousands. Each order is shown in ITS OWN currency -
+ * an order only ever has one - so nothing here needs a display conversion.
  *
  * Unlike the metric screens this list can show refunded and cancelled orders
  * (`includeVoided`, or naming a `status` outright): seeing that an order WAS
  * refunded is the point of an order browser. Their money figures come back
- * null — a voided order earns nothing, and pretending otherwise would lie.
+ * null - a voided order earns nothing, and pretending otherwise would lie.
  *
  * Per-order figures mirror the engine exactly, at the rates in force on the
  * order's own date: cogs, fulfillment, gateway fee, commission, and
@@ -72,7 +72,7 @@ export async function GET(req: Request) {
      * (load.ts, engine.ts `inRange`), because a store keeps its own calendar.
      * This list used to bucket every order in the workspace zone instead, so a
      * store running an hour ahead put its around-midnight orders on one date
-     * here and a different date on the dashboard — the same order visible on
+     * here and a different date on the dashboard - the same order visible on
      * one screen and missing from the other, which is exactly how it was
      * reported. One window per distinct zone, so both screens name one day.
      *
@@ -97,7 +97,7 @@ export async function GET(req: Request) {
       // nothing, without relying on how an empty `OR` is interpreted.
       shopId: { in: activeShops.map((s) => s.id) },
       AND: [dayWindows],
-      // Naming a status wins outright — asking for "refunded" and getting an
+      // Naming a status wins outright - asking for "refunded" and getting an
       // empty list because refunds are hidden would be absurd. Otherwise the
       // default hides only VOIDED orders: a pending order is a live order and
       // belongs in the list, it just wears no figures until it is paid.
@@ -201,7 +201,7 @@ export async function GET(req: Request) {
       fulfillmentRates.set(r.shopId, list)
     }
 
-    // Per-unit shipping, keyed by the SKU it was typed against — the same map
+    // Per-unit shipping, keyed by the SKU it was typed against - the same map
     // lib/data/load.ts builds for the engine, so the two answer this page's
     // orders identically. Every row, not just this page's SKUs: there are a few
     // dozen of them, and an IN clause would cost more than it saved.
@@ -215,7 +215,7 @@ export async function GET(req: Request) {
     // A ShippingRate names its own currency, because a SKU is not shop-scoped
     // and so has no shop currency to inherit; an order reads only the rates held
     // in the currency its costs are in. Narrowed once per currency, not once per
-    // order — a page holds up to 200.
+    // order - a page holds up to 200.
     const narrowed = new Map<string, Map<string, ShippingPoint[]>>()
     const skuRatesIn = (currency: string) => {
       const cached = narrowed.get(currency)
@@ -249,7 +249,7 @@ export async function GET(req: Request) {
     )
     const rates: RateTable = needsRates ? buildRateTable(await loadRates()) : new Map()
 
-    // Once per page, never per row — the same rule the costs and rates above
+    // Once per page, never per row - the same rule the costs and rates above
     // follow.
     const promises = await db.deliveryPromise.findMany()
     const now = new Date()
@@ -275,7 +275,7 @@ export async function GET(req: Request) {
         // hand-entered order carries what shipping actually cost; otherwise what
         // its SKUs cost per unit; otherwise the shop's flat rate on its day.
         //
-        // The middle step is null, never 0, when no line has a rate — so an
+        // The middle step is null, never 0, when no line has a rate - so an
         // installation that has typed none shows exactly the figures it always
         // has, and this page cannot drift from the profit the engine reports.
         const perSku = shippingCostOf(
@@ -319,7 +319,7 @@ export async function GET(req: Request) {
          * The clock this order was placed on. Sent because the browser must not
          * be the one to decide: a plain Intl format with no timeZone renders in
          * whatever zone the VIEWER's computer is in, so the same sale read as
-         * 15:40 in Stockholm and 21:40 from Manila — and an evening order read
+         * 15:40 in Stockholm and 21:40 from Manila - and an evening order read
          * as the next day. The list is already filtered by this same zone, so
          * showing any other one would contradict the rows it just chose.
          */

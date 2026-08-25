@@ -17,7 +17,7 @@ table with Amount Spent, Impressions, Clicks and CPC.
 
 Two separate claims live in that message and they need separate answers:
 
-1. **There is no per-platform view.** True, and cheap to fix — the numbers are
+1. **There is no per-platform view.** True, and cheap to fix - the numbers are
    already computed.
 2. **The total is too low.** Unproven. Note the wording: "it *seems* like". No
    one has yet compared our figure against BeProfit's over the same range in the
@@ -31,11 +31,11 @@ Five ways spend can read low, from reading the code:
 
 | # | Finding | Location | Real defect? |
 |---|---------|----------|--------------|
-| 1 | With more than one store selected every figure is USD; BeProfit shows NOK. 639 337 NOK is roughly $58–60k, so ours looks ~11x smaller | `src/lib/data/load.ts:37` | No, but it is almost certainly what "too little" means |
-| 2 | Marketing opens on `this_month`, not BeProfit's rolling 30 days | `src/app/marketing/MarketingClient.tsx:128` | No — different window, different number |
+| 1 | With more than one store selected every figure is USD; BeProfit shows NOK. 639 337 NOK is roughly $58-60k, so ours looks ~11x smaller | `src/lib/data/load.ts:37` | No, but it is almost certainly what "too little" means |
+| 2 | Marketing opens on `this_month`, not BeProfit's rolling 30 days | `src/app/marketing/MarketingClient.tsx:128` | No - different window, different number |
 | 3 | A sync that stops for more than 35 days leaves a permanent hole | `src/lib/ads/sync.ts:48-52` | **Yes** |
 | 4 | An ad account on an inactive shop contributes zero everywhere, silently | `src/lib/data/load.ts:30` | Out of scope; noted below |
-| 5 | `metaSpend` / `googleSpend` are already computed but hidden by default and absent from the summary card | `src/components/marketing/MarketingTable.tsx:52-63` | No — this is the feature request |
+| 5 | `metaSpend` / `googleSpend` are already computed but hidden by default and absent from the summary card | `src/components/marketing/MarketingTable.tsx:52-63` | No - this is the feature request |
 
 Finding 3 is the only one that destroys data, and it is worth stating precisely.
 `syncWindow` reads `lastSyncAt` as a boolean and never as a date:
@@ -46,7 +46,7 @@ return { from: new Date(to.getTime() - back * DAY_MS), to }
 ```
 
 An account whose token expires for 60 days keeps its old `lastSyncAt` while it
-errors — correct so far. On reconnection it fetches only the last 35 days, then
+errors - correct so far. On reconnection it fetches only the last 35 days, then
 writes `lastSyncAt = now`. Days 36 through 60 are never fetched by anything,
 ever. The hole is sealed and silent.
 
@@ -63,7 +63,7 @@ expect((later.to.getTime() - later.from.getTime()) / DAY_MS).toBe(35)
 ### 1. Platform aggregation lives in `buildMarketing`
 
 The loop at `marketing.ts:155` already reads `account.provider` to split
-`metaSpend` from `googleSpend`. Platform buckets accumulate in that same pass —
+`metaSpend` from `googleSpend`. Platform buckets accumulate in that same pass -
 no new queries, no new endpoint.
 
 Two alternatives were rejected:
@@ -104,7 +104,7 @@ export type MarketingPlatformRow = {
 }
 ```
 
-`byPlatform` is sorted by spend descending, so the biggest spender leads — the
+`byPlatform` is sorted by spend descending, so the biggest spender leads - the
 same order BeProfit uses.
 
 **Bug fixed in passing:** today's `provider === 'meta' ? meta : google` files an
@@ -121,9 +121,9 @@ model Setting {
 
 The rule, which stays honest about what conversion is happening:
 
-- **One store selected** — that store's own currency, exactly as today. No
+- **One store selected** - that store's own currency, exactly as today. No
   conversion, so the figure matches Ads Manager to the øre.
-- **Several stores** — the setting. The current hardcoded `'USD'` becomes the
+- **Several stores** - the setting. The current hardcoded `'USD'` becomes the
   default value rather than a fixed rule.
 
 `load.ts:37` is the only line of logic that changes. FX needs no work:
@@ -133,7 +133,7 @@ The rule, which stays honest about what conversion is happening:
 
 `loadMetricsInput` reads the setting itself rather than taking it as an
 argument. Its four callers already pass `timezone` from `getSetting()`, so a
-second field would work — but a caller that forgot would render a page quoting a
+second field would work - but a caller that forgot would render a page quoting a
 different currency from the one beside it, which is the drift this codebase
 guards against everywhere else. `getSetting()` already falls back to defaults on
 any DB failure, so it cannot break a build-time prerender.
@@ -152,20 +152,20 @@ default-preserving change: nothing moves until someone picks a new value.
 
 ### 3. The four surfaces
 
-**Ad Spend card** (`MarketingPlatformCard`) — one row per platform with a share
+**Ad Spend card** (`MarketingPlatformCard`) - one row per platform with a share
 bar and the combined total beneath, mirroring the screenshot's left card.
 
-**Platform table** (`PlatformTable`) — one row per platform: spend, impressions,
+**Platform table** (`PlatformTable`) - one row per platform: spend, impressions,
 clicks, CPC, purchases, P. ROAS. BeProfit's `v.expenses` column is deliberately
 omitted: it reads 0 NOK for both rows in the reference screenshot and we have no
 equivalent concept.
 
-**Chart split by platform** — a `By platform` toggle on `MarketingChart`. Off:
+**Chart split by platform** - a `By platform` toggle on `MarketingChart`. Off:
 today's spend against gross revenue. On: a Meta line and a Google line. Requires
 `metaSpend` and `googleSpend` on each `MarketingSeriesPoint`, accumulated in the
 same `byDay` pass.
 
-**Spend check panel** (`SpendCheck`) — per connected account, over the chosen
+**Spend check panel** (`SpendCheck`) - per connected account, over the chosen
 range:
 
 | Column | Why it is there |
@@ -178,7 +178,7 @@ range:
 | Status | `lastError`, or inactive, or ok |
 
 Native total is the point of the panel. If the native totals agree with BeProfit
-and the headline still looks small, the answer is currency — demonstrated rather
+and the headline still looks small, the answer is currency - demonstrated rather
 than argued.
 
 **"Days with data" is information, not an alarm.** A platform returns no row for
@@ -232,7 +232,7 @@ page, and campaign fetches are already chunked at `CHUNK_DAYS = 90`.
 ## Testing
 
 Behavioural, per the repo's existing style. Every test below must be able to
-fail — the sync-window test is written first and observed failing against the
+fail - the sync-window test is written first and observed failing against the
 current implementation.
 
 1. `syncWindow` with a 60-day-old `lastSyncAt` reaches back far enough to cover
@@ -248,7 +248,7 @@ current implementation.
    does **not** raise the banner for it on its own.
 8. The banner does fire for a `lastError`, and for a `lastSyncAt` older than
    24 hours.
-9. Spend check native total is unconverted — a NOK account reports NOK, not
+9. Spend check native total is unconverted - a NOK account reports NOK, not
    display currency.
 10. Display currency: several shops honour the setting; one shop still reports
     its own currency and ignores it.
@@ -260,7 +260,7 @@ current implementation.
 
 Recorded rather than fixed, so they are not lost:
 
-- **Finding 4** — an ad account whose shop is `active: false` contributes zero
+- **Finding 4** - an ad account whose shop is `active: false` contributes zero
   spend everywhere with no notice. The spend check panel will surface it as a
   symptom (the account is absent from the list), but the underlying silence is
   a separate fix.

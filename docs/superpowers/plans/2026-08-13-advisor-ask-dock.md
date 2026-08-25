@@ -14,7 +14,7 @@
 
 - Never edit files with PowerShell `Get-Content`/`Set-Content`; it corrupts UTF-8. Use the Edit/Write tools.
 - Tests run against local Postgres at `127.0.0.1:5432/ecom_analytics`. Never point them at the live Neon database.
-- A full `npm test` on this machine fails 2–3 tests in `src/lib/woo/sync.test.ts` with `Test timed out in 5000ms`. That is parallel-load contention, not your change. Re-run with `npm test -- --testTimeout=20000` to confirm green.
+- A full `npm test` on this machine fails 2-3 tests in `src/lib/woo/sync.test.ts` with `Test timed out in 5000ms`. That is parallel-load contention, not your change. Re-run with `npm test -- --testTimeout=20000` to confirm green.
 - The repo's lint baseline is **8 errors, 4 warnings**, all pre-existing and in unrelated files. Do not "fix" them; just do not add to them.
 - Existing behaviour that must not regress: the first request from a fresh mount sends exactly `{"messages":[{"role":"user","content":"<question>"}]}` (asserted at `Chat.test.tsx:31-35`).
 - Money, ranking and the Report are out of scope. Do not touch `src/lib/advisor/brief.ts`, `collect.ts`, or the `Card`/`Report` components.
@@ -32,7 +32,7 @@
 - Consumes: nothing from other tasks.
 - Produces: `export type Turn = { role: 'user' | 'assistant'; content: unknown }`, `export function trimTranscript(turns: Turn[], maxExchanges?: number, maxChars?: number): Turn[]`, `export const MAX_EXCHANGES: number`, `export const MAX_CHARS: number`.
 
-**Why this is delicate:** the transcript is not a flat list of messages. `route.ts:78-106` pushes assistant turns whose `content` is an array of blocks (sometimes containing `tool_use`) and user turns whose `content` is an array of `tool_result` blocks. A `slice(-n)` will eventually land between a `tool_use` and its `tool_result`, and the Anthropic API rejects that with a 400. Tool results are `role: 'user'` too, so role alone cannot identify a boundary — the content must also be a string.
+**Why this is delicate:** the transcript is not a flat list of messages. `route.ts:78-106` pushes assistant turns whose `content` is an array of blocks (sometimes containing `tool_use`) and user turns whose `content` is an array of `tool_result` blocks. A `slice(-n)` will eventually land between a `tool_use` and its `tool_result`, and the Anthropic API rejects that with a 400. Tool results are `role: 'user'` too, so role alone cannot identify a boundary - the content must also be a string.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -153,7 +153,7 @@ export const MAX_EXCHANGES = 6
 /**
  * Roughly 15k tokens, about $0.075 of input per question at the ceiling.
  * Tool results are JSON and dominate the size, so this is the limit that
- * usually bites first — the exchange count is the backstop, not the reverse.
+ * usually bites first - the exchange count is the backstop, not the reverse.
  */
 export const MAX_CHARS = 60_000
 
@@ -174,7 +174,7 @@ export function trimTranscript(
   if (starts.length === 0) return turns
 
   let first = Math.max(0, starts.length - maxExchanges)
-  // Whole exchanges, never messages — and never the last one, however big,
+  // Whole exchanges, never messages - and never the last one, however big,
   // because a conversation with no current question is worth nothing.
   while (
     first < starts.length - 1 &&
@@ -411,7 +411,7 @@ to:
         <Chat day={briefing?.day ?? null} />
 ```
 
-The wrapper goes now rather than in Task 3 because Task 3's sticky composer cannot work inside it — see that task for why. `Chat` carries its own top margin from here on.
+The wrapper goes now rather than in Task 3 because Task 3's sticky composer cannot work inside it - see that task for why. `Chat` carries its own top margin from here on.
 
 - [ ] **Step 5: Restore the spacing Chat just lost**
 
@@ -424,7 +424,7 @@ In `src/app/advisor/Chat.tsx`, add the top margin to the section element at line
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npx vitest run src/app/advisor/Chat.test.tsx`
-Expected: PASS, 11 tests. The pre-existing "survives a refresh" test must still pass — it exercises the same restore path through localStorage now.
+Expected: PASS, 11 tests. The pre-existing "survives a refresh" test must still pass - it exercises the same restore path through localStorage now.
 
 - [ ] **Step 7: Verify types and the whole suite**
 
@@ -453,7 +453,7 @@ git commit -m "feat(advisor): a conversation survives the tab and ends with the 
 - Consumes: `Chat({ day })` from Task 2, and the fact that `AdvisorClient` no longer wraps it in a div.
 - Produces: no new exports.
 
-**The one thing that will silently not work if you get it wrong:** `position: sticky` is constrained to its **parent's** content box. If the composer's parent is a short wrapper that only contains `Chat`, the element has nowhere to travel and will look completely static. It must be a direct child of `<main>` — which is what `PageBody` renders (`AppShell.tsx:386-388`) and why Task 2 deleted the wrapper div. Sticky is right here rather than `fixed` because no ancestor of `main` sets `overflow` (the only one is inside the sidebar's own nav, `AppShell.tsx:294`), because it inherits the content column width and so cannot overlap the 232px sidebar (`AppShell.tsx:283`), and because it occupies flow space, so nothing needs a spacer.
+**The one thing that will silently not work if you get it wrong:** `position: sticky` is constrained to its **parent's** content box. If the composer's parent is a short wrapper that only contains `Chat`, the element has nowhere to travel and will look completely static. It must be a direct child of `<main>` - which is what `PageBody` renders (`AppShell.tsx:386-388`) and why Task 2 deleted the wrapper div. Sticky is right here rather than `fixed` because no ancestor of `main` sets `overflow` (the only one is inside the sidebar's own nav, `AppShell.tsx:294`), because it inherits the content column width and so cannot overlap the 232px sidebar (`AppShell.tsx:283`), and because it occupies flow space, so nothing needs a spacer.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -649,14 +649,14 @@ Run: `npx tsc --noEmit`
 Expected: no output.
 
 Run: `npm run lint`
-Expected: still 8 errors, 4 warnings. If the count rose, the new code caused it — fix that, not the baseline.
+Expected: still 8 errors, 4 warnings. If the count rose, the new code caused it - fix that, not the baseline.
 
 Run: `npm test -- --testTimeout=20000`
 Expected: 0 failed.
 
 - [ ] **Step 7: See it in a real browser**
 
-Start the dev server in the background. **Never pipe it to `head`** — that wedges the process and holds the port:
+Start the dev server in the background. **Never pipe it to `head`** - that wedges the process and holds the port:
 
 ```bash
 npm run dev

@@ -24,7 +24,7 @@ export type FetchFilter = {
   requestTimeoutMs?: number
   /**
    * Ask for these order statuses BY NAME. Empty or absent falls back to
-   * WooCommerce's default, which is not the "everything" it reads as — see
+   * WooCommerce's default, which is not the "everything" it reads as - see
    * `fetchOrderStatuses`.
    */
   statuses?: string[]
@@ -40,7 +40,7 @@ export type FetchResult = {
   resumeFrom?: string
   /**
    * False when the store did not return orders in modified order, or sent one
-   * without the stamp — in either case `resumeFrom` is NOT safe to resume from,
+   * without the stamp - in either case `resumeFrom` is NOT safe to resume from,
    * because orders we never saw may sit behind it. Always true for a first-sync
    * chunk, which is sorted by created date and makes no such claim.
    */
@@ -52,7 +52,7 @@ const REQUEST_TIMEOUT_MS = 30_000
 
 /**
  * What one request is allowed. The ceiling, or whatever is left of the run,
- * whichever is smaller — a 30-second request begun with 10 seconds left would
+ * whichever is smaller - a 30-second request begun with 10 seconds left would
  * overrun the deadline the caller is relying on. Never below 1ms: an expired
  * budget still has to be a valid timeout, and the page loop is what stops.
  */
@@ -66,7 +66,7 @@ export function requestBudgetMs(filter: FetchFilter, now = Date.now()): number {
  * A readable error from a Woo response.
  *
  * A broken WordPress answers with a whole HTML error page, and that belongs in
- * nobody's toast, log line or error report — least of all the owner's, which
+ * nobody's toast, log line or error report - least of all the owner's, which
  * is where this string ends up by way of Shop.lastError and the Advisor.
  *
  * This used to truncate to 300 characters to that end. For that exact page the
@@ -87,7 +87,7 @@ async function wooError(res: Response): Promise<Error> {
  * `res.json()` was called raw at six sites in this file, every one of them
  * just past an `res.ok` guard that a broken store sails straight through.
  * Panetti Denmark answered 200 with an empty body on 2026-08-20 and the
- * owner's shops page read "Sync failed — Unexpected end of JSON input": V8's
+ * owner's shops page read "Sync failed - Unexpected end of JSON input": V8's
  * words for JSON.parse(''), naming no store, no request, and nothing to do.
  *
  * `what` is what we asked the store for, so the sentence says which request
@@ -95,7 +95,7 @@ async function wooError(res: Response): Promise<Error> {
  *
  * Deliberately quotes NO status code in either message. The store reported
  * success, and a bare three-digit number here would be read as an HTTP
- * failure by anything scanning for one — the Advisor's trustSentence, which
+ * failure by anything scanning for one - the Advisor's trustSentence, which
  * greps `\b(\d{3})\b` off exactly this string, included.
  */
 async function readJson<T>(res: Response, what: string): Promise<T> {
@@ -135,7 +135,7 @@ function isTimeoutAbort(err: unknown): boolean {
  * Fetch orders one page at a time, oldest first. WooCommerce caps `per_page` at 100.
  *
  * Stops on a short page (the end), at `maxPages`, or once the caller's deadline
- * passes — the last two both report `hasMore: true`, and for an incremental
+ * passes - the last two both report `hasMore: true`, and for an incremental
  * pull `resumeFrom` says exactly how far we got, so the caller can carry on next
  * run instead of starting the same window again.
  */
@@ -184,7 +184,7 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
       // A timeout is a stopping condition, not a failure: the pages already
       // fetched are real, and the caller can resume from here next run.
       // requestBudgetMs deliberately hands the LAST request whatever is left of
-      // the deadline — sometimes a couple hundred ms — so this is the clamp's
+      // the deadline - sometimes a couple hundred ms - so this is the clamp's
       // NORMAL outcome, not a rare edge case. Anything else (DNS, connection
       // refused, a real network failure) still throws, so the store still
       // reports a genuine failure.
@@ -218,7 +218,7 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
     if (batch.length < 100) return { orders: all, hasMore: false, resumeFrom, sortedByModified } // last page
   }
 
-  // Every page we were allowed to fetch came back full — more is behind it.
+  // Every page we were allowed to fetch came back full - more is behind it.
   return { orders: all, hasMore: true, resumeFrom, sortedByModified }
 }
 
@@ -226,7 +226,7 @@ export async function fetchOrders(creds: WooCredentials, filter: FetchFilter): P
  * Every order status this store actually uses, its own inventions included.
  *
  * Asked because WooCommerce's default is a trap. Send no `status` and the REST
- * controller applies `any`, which becomes WordPress's `post_status => 'any'` —
+ * controller applies `any`, which becomes WordPress's `post_status => 'any'` -
  * and that is NOT everything: it silently omits any status registered with
  * `exclude_from_search`, which is how fulfilment plugins commonly register the
  * extra statuses they add. A store running orders through its own "shipping"
@@ -270,7 +270,7 @@ export async function fetchOrderStatuses(
 /**
  * Fetch specific orders by their WooCommerce ids. Used by the customer
  * backfill, which knows exactly which stored orders still miss their customer.
- * Ids Woo no longer has simply don't come back — the caller decides what that
+ * Ids Woo no longer has simply don't come back - the caller decides what that
  * means.
  */
 export async function fetchOrdersByIds(creds: WooCredentials, ids: string[]): Promise<WooOrder[]> {
@@ -283,7 +283,7 @@ export async function fetchOrdersByIds(creds: WooCredentials, ids: string[]): Pr
       per_page: '100',
     })
     // A store that never answers must cost this run, not every store behind
-    // it — every request from here down carries this same budget, the way
+    // it - every request from here down carries this same budget, the way
     // fetchOrders already does for the sync's main page loop.
     const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders?${params}`, {
       headers: { Authorization: `Basic ${auth}` },

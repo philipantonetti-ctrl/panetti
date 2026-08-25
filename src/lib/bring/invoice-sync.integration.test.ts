@@ -6,7 +6,7 @@ import { encryptSecret } from '@/lib/secrets'
 import { collectNextReport, discoverInvoices, requestNextReport, syncBringInvoices, writeBringCosts } from './invoice-sync'
 import { getSetting } from '@/lib/settings'
 
-// Unique to THIS file — see "Test data convention" in the Global Constraints.
+// Unique to THIS file - see "Test data convention" in the Global Constraints.
 const CUST = 'ZZDISC'
 const mine = { customerNumber: { startsWith: CUST } }
 const creds = { uid: 'u', key: 'k', clientUrl: 'https://panetti.vercel.app' }
@@ -15,8 +15,8 @@ const creds = { uid: 'u', key: 'k', clientUrl: 'https://panetti.vercel.app' }
 // can write. ShipmentCost has no customerNumber prefix of its own to scope
 // by, but every invoiceNumber this file creates starts with CUST, so scoping
 // there keeps a future test's rows from leaking into the shared database.
-// Shipment can't be prefixed at all — trackingNumber has to be a real fixture
-// waybill for the join to have anything to match — so it is scoped instead to
+// Shipment can't be prefixed at all - trackingNumber has to be a real fixture
+// waybill for the join to have anything to match - so it is scoped instead to
 // the one literal value (KNOWN_WAYBILL) this file ever creates one for.
 const cleanup = async () => {
   await db.bringReportRun.deleteMany({ where: mine })
@@ -215,14 +215,14 @@ describe('requestNextReport', () => {
     const row = await db.bringReportRun.findUnique({ where: { invoiceNumber: `${CUST}-BAD` } })
     expect(row?.state).toBe('FAILED')
     expect(row?.error).toContain('500')
-    // A FAILED row still has to be retried eventually — see the "retries a
-    // FAILED row" test below — so it must carry a nextTryAt, not just an error.
+    // A FAILED row still has to be retried eventually - see the "retries a
+    // FAILED row" test below - so it must carry a nextTryAt, not just an error.
     expect(row?.nextTryAt).not.toBeNull()
   })
 
   // I1(a): requestBudgetMs floors an expired budget at 1ms rather than
   // refusing to run at all, so past the deadline generateSpecReport would
-  // abort almost immediately — a throw this function's own catch cannot tell
+  // abort almost immediately - a throw this function's own catch cannot tell
   // apart from a genuine failure, which would then bury the oldest PENDING
   // row as FAILED every time a tick starves. Checked first, before the row is
   // even read, the same shape discoverInvoices already uses.
@@ -244,7 +244,7 @@ describe('requestNextReport', () => {
 
   // I1(b): FAILED must not be a second terminal state alongside NO_SPEC.
   // Once its backoff has elapsed, a FAILED row is picked up again exactly
-  // like a PENDING one — generating it a fresh report — and a successful
+  // like a PENDING one - generating it a fresh report - and a successful
   // request clears the old error rather than leaving it to look current.
   it('retries a FAILED row once its backoff has elapsed, clearing its error', async () => {
     await db.bringReportRun.create({
@@ -267,8 +267,8 @@ describe('requestNextReport', () => {
 
   // I1(b), the other half: without a backoff a permanently-broken invoice
   // would be retried every single tick forever, spending one of the tick's
-  // few request slots on a hopeless row and — under oldest-first ordering,
-  // since this row is backdated to look oldest — starving every invoice
+  // few request slots on a hopeless row and - under oldest-first ordering,
+  // since this row is backdated to look oldest - starving every invoice
   // behind it. nextTryAt in the future must keep it out of the selection
   // entirely, not merely deprioritise it.
   it('leaves a FAILED row alone until its backoff elapses, so a broken invoice does not spin every tick', async () => {
@@ -388,7 +388,7 @@ describe('collectNextReport', () => {
     expect(row?.rowsUnmatched).toBe(2)
   })
 
-  // I1(a): the same guard as requestNextReport, for the same reason —
+  // I1(a): the same guard as requestNextReport, for the same reason -
   // reportStatus/downloadReport/listInvoices are Bring requests too, and past
   // the deadline requestBudgetMs would clamp each to a 1ms timeout that
   // aborts almost immediately, a throw the catch below cannot tell apart from
@@ -410,7 +410,7 @@ describe('collectNextReport', () => {
     expect(row?.state).toBe('REQUESTED')
   })
 
-  // I2: a REQUESTED row this old is not "not ready yet", it is stuck — either
+  // I2: a REQUESTED row this old is not "not ready yet", it is stuck - either
   // parked NOT_DONE forever or answering a status shape this code no longer
   // recognises. Measured, the real report was DONE on the very first poll, so
   // STALE_REQUESTED_MS's many hours is a wide margin, not a tight guess. Aged
@@ -440,7 +440,7 @@ describe('collectNextReport', () => {
 
   // I4: a dropped line and a truncated download both make the lines fall
   // short of the header, and until now both produced the identical
-  // reconciliation message — pointing at a truncated download even when the
+  // reconciliation message - pointing at a truncated download even when the
   // real cause was one line missing WAYBILL_NUMBER, TRX_DATE or
   // INVOICE_CURRENCY_CODE. The skip count is what tells them apart.
   it('says how many lines were skipped when a report fails to reconcile because one line could not be read', async () => {
@@ -454,7 +454,7 @@ describe('collectNextReport', () => {
     const xmlUrl = 'https://www.mybring.com/s/1/report.xml'
     // Blanks exactly one of DUPLICATE_WAYBILL's two <Line> blocks (a plain,
     // non-global replace hits only the first) so parseSpecifiedInvoice drops
-    // it for missing WAYBILL_NUMBER — one real line gone, not a truncated file.
+    // it for missing WAYBILL_NUMBER - one real line gone, not a truncated file.
     const broken = specifiedInvoiceXml
       .replace(/<InvoiceNumber>[^<]*<\/InvoiceNumber>/, `<InvoiceNumber>${CUST}-SKIP</InvoiceNumber>`)
       .replace('<WAYBILL_NUMBER>73325383643994654</WAYBILL_NUMBER>', '<WAYBILL_NUMBER></WAYBILL_NUMBER>')
@@ -484,7 +484,7 @@ describe('collectNextReport', () => {
 describe('syncBringInvoices', () => {
   // DeliveryConfig is a fixed-id singleton shared by the whole `delivery`
   // project (see the Global Constraints), so a test must never assume it
-  // knows the row's starting state — another file may have left real
+  // knows the row's starting state - another file may have left real
   // credentials on it, or none. Captured once here and restored exactly in
   // afterAll, via upsert-and-blank rather than delete, so a file running
   // beside this one (fileParallelism is off for this project, but the row
@@ -555,7 +555,7 @@ describe('syncBringInvoices', () => {
     })
     stubTick()
     const result = await syncBringInvoices()
-    // The full shape, not just `configured` — this is the object the cron
+    // The full shape, not just `configured` - this is the object the cron
     // route's JSON response is built from, and it is otherwise unchecked.
     expect(result).toEqual({
       configured: true,
@@ -617,7 +617,7 @@ describe('syncBringInvoices', () => {
 
     const result = await syncBringInvoices()
     // 4 of the fixture's 6 lines match KNOWN_WAYBILL; the other 2, on
-    // DUPLICATE_WAYBILL, match no Shipment here — see the matched-lines test
+    // DUPLICATE_WAYBILL, match no Shipment here - see the matched-lines test
     // above `collectNextReport` for why that split is 4/2 and not 1/1 or 2/4.
     expect(result.stored).toBe(6)
     expect(result.unmatched).toBe(2)

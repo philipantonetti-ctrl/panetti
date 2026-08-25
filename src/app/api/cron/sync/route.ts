@@ -46,14 +46,14 @@ const SHOPS_DEADLINE_MS = 240_000
  *
  * Last, because a parcel checked twenty minutes late costs nobody anything,
  * while a sale not synced is a wrong number on the dashboard. Short, because
- * whatever runs after it inherits only the remainder — and the delivery ALERT
+ * whatever runs after it inherits only the remainder - and the delivery ALERT
  * runs after it, deliberately, so that it judges the freshest tracking we have.
  * An alert that never fires because polling ate the whole invocation is the one
  * outcome this feature cannot afford.
  *
  * The gap left here covers the alert's own work: one query, one Slack post with
- * a 10s timeout, one stamp. A run killed by the platform ceiling is still safe —
- * orders stay unstamped and alert on the next run — but it would be silent, and
+ * a 10s timeout, one stamp. A run killed by the platform ceiling is still safe -
+ * orders stay unstamped and alert on the next run - but it would be silent, and
  * silence is what we are paying to avoid.
  */
 const SHIPMENTS_DEADLINE_MS = 275_000
@@ -61,7 +61,7 @@ const SHIPMENTS_DEADLINE_MS = 275_000
 /**
  * The alert must have STARTED by this point in the run, or it is skipped.
  *
- * The reservation above is only a budget for parcel polling — it cannot bind
+ * The reservation above is only a budget for parcel polling - it cannot bind
  * the stages before it. `syncAllAdAccounts` and `ensureRates` carry no deadline
  * of their own, so a slow-but-not-failing upstream stage can still eat the
  * margin, and `flushDeliveryAlerts` has no early exit once it begins.
@@ -74,17 +74,17 @@ const SHIPMENTS_DEADLINE_MS = 275_000
 const ALERT_START_BY_MS = 280_000
 
 /**
- * The B2B sales import is finished by this point in the run — genuinely, not
+ * The B2B sales import is finished by this point in the run - genuinely, not
  * merely stopped from starting more work.
  *
  * It makes one request per linked customer, three or four today, and the cost
  * grows with every customer the client links. The Visma client clamps every
- * request it sends — the token mint as well as the GET — to whatever is left of
+ * request it sends - the token mint as well as the GET - to whatever is left of
  * this deadline, exactly as `bring/client.ts` clamps the parcel poll, so
  * nothing it does can outlive the number. That clamp is what makes this number
  * mean anything: with the fixed 60-second ceiling alone, a request starting at
  * 264.9s would return around 325s, overrun the 300s platform maxDuration, and
- * take the parcel poll and the delivery alert down with it — the outcome this
+ * take the parcel poll and the delivery alert down with it - the outcome this
  * constant exists to prevent.
  *
  * Set before SHIPMENTS_DEADLINE_MS because whatever this stage leaves behind
@@ -110,7 +110,7 @@ const BRING_INVOICES_DEADLINE_MS = 270_000
  *
  * Guarded by CRON_SECRET, which Vercel sends as a bearer token on scheduled
  * calls. With no secret configured this REFUSES to run rather than standing
- * open — an unguarded endpoint here would let a stranger hammer the client's
+ * open - an unguarded endpoint here would let a stranger hammer the client's
  * WooCommerce stores and database at will.
  */
 export async function GET(req: Request) {
@@ -139,12 +139,12 @@ export async function GET(req: Request) {
   // One run makes roughly nine calls to Visma back to back, and the measured
   // limit is that about ten quick calls earn a 429 which then holds for
   // minutes. Whichever import goes last therefore meets the emptiest part of
-  // that window — and because the order is fixed and the calls before it are
+  // that window - and because the order is fixed and the calls before it are
   // identical every run, it does not lose at random: it loses the SAME rows
   // every time, forever, while every gate stays green.
   //
   // B2B sales goes FIRST for two reasons. It is the smallest and most bounded
-  // read of the four — one request per linked customer, three or four today.
+  // read of the four - one request per linked customer, three or four today.
   // And it is the only one whose absence produces a WRONG revenue picture
   // rather than a stale operational one: stock and purchase orders can be a
   // quarter of an hour out of date without misleading anyone about money,
@@ -241,7 +241,7 @@ export async function GET(req: Request) {
   // Affiliate commissions from Addrevenue. Two bounded requests per brand and
   // a six-hour spacing inside syncAllAffiliateAccounts, so most runs cost
   // nothing; a due account is roughly five to ten seconds (a full-history
-  // mirror rewrite against Neon), so a due run costs the budget ~20s — spent
+  // mirror rewrite against Neon), so a due run costs the budget ~20s - spent
   // here, with the money pulls, ahead of the greedy parcel poll. Best-effort
   // like the ads: a bad token keeps its own lastError on the settings page
   // and must never fail the shop sync.
@@ -255,7 +255,7 @@ export async function GET(req: Request) {
   // Top up exchange rates BEFORE parcel tracking, not after. Rates are one
   // cheap bounded call; parcel polling is greedy and runs to its deadline. With
   // the order reversed, a busy backlog of parcels could eat the whole
-  // invocation and quietly leave the rates stale — and a stale rate is a wrong
+  // invocation and quietly leave the rates stale - and a stale rate is a wrong
   // money figure, which outranks a delivery date checked an hour late.
   // Best-effort, like everything after the shops.
   try {
@@ -309,7 +309,7 @@ export async function GET(req: Request) {
   // alerts on the next run.
   let alerts: { sent: number; skipped: string | null } = { sent: 0, skipped: null }
   if (Date.now() > runStartedAt + ALERT_START_BY_MS) {
-    // Checked, not assumed — see ALERT_START_BY_MS. Starting work the platform
+    // Checked, not assumed - see ALERT_START_BY_MS. Starting work the platform
     // will kill part-way through is worse than not starting it: both leave the
     // orders unstamped for the next run, but only this one says so out loud.
     alerts = { sent: 0, skipped: 'Not enough time left in this run; alerts retry next run.' }
@@ -363,7 +363,7 @@ export async function GET(req: Request) {
     // counting every webshop order twice.
     //
     // This response is a RECORD, not a warning. Nothing reads it, so nothing
-    // here is seen by a person — which is why importVismaB2bSales also writes
+    // here is seen by a person - which is why importVismaB2bSales also writes
     // its outcome to B2bImportRun and the B2B page shows it. That line carries
     // the headline (linked, read, imported, partial, error); these per-reason
     // counts are for whoever goes looking after it.

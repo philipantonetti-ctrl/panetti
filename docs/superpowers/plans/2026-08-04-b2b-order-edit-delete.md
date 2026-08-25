@@ -1,4 +1,4 @@
-# B2B Order Edit, Void and Delete — Implementation Plan
+# B2B Order Edit, Void and Delete - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -13,12 +13,12 @@
 ## Global Constraints
 
 - **All money is INTEGER minor units.** `toMinor`/`toMajor` from `src/lib/money.ts`; never divide or multiply by 100 by hand.
-- **`discountValue` is stored two ways on purpose:** a plain number for `PERCENT` (10 means 10%), minor units for `AMOUNT`. Any conversion must respect that split — it exists at three call sites already (`OrderModal`'s `engineLines`, its payload, and `buildOrderWrite`).
+- **`discountValue` is stored two ways on purpose:** a plain number for `PERCENT` (10 means 10%), minor units for `AMOUNT`. Any conversion must respect that split - it exists at three call sites already (`OrderModal`'s `engineLines`, its payload, and `buildOrderWrite`).
 - **Two currencies:** unit prices, discounts and `shippingCharged` are the **customer's**; `fulfillmentCost` is the **shop's**.
 - **Admin-only:** `assertAdmin(await currentUser())` first inside the `try`, `AuthError` → 403, `Cache-Control: private, no-store` on **every** response including errors.
-- **`ownB2bOrder` gates every verb** — a WooCommerce order must 404, never be edited, voided or deleted.
+- **`ownB2bOrder` gates every verb** - a WooCommerce order must 404, never be edited, voided or deleted.
 - Tests use `fireEvent`; `@testing-library/user-event` is not a dependency of this project and must not be reintroduced.
-- **Edit files with the Edit/Write tools only** — PowerShell `Get-Content`/`Set-Content` corrupts the UTF-8 here.
+- **Edit files with the Edit/Write tools only** - PowerShell `Get-Content`/`Set-Content` corrupts the UTF-8 here.
 - **Never run `git stash`, `git checkout --`, `git restore`, `git reset --hard`, `git clean`.**
 - Never pipe `npm run dev` into anything; do not redirect test output into the repo.
 - Tests run against the real local Postgres from `.env`. Fixtures clean up FK-safely: **orders → customers → shops** (`Order.b2bCustomer` is `onDelete: Restrict`). Use a marker verified unique by grep.
@@ -58,7 +58,7 @@
 } }
 ```
 
-`unitPrice` is minor units. `discountValue` is **as stored** — plain for `PERCENT`, minor for `AMOUNT`. `discountKind` falls back to `'PERCENT'` when null (webshop-shaped rows never reach here, but the column is nullable).
+`unitPrice` is minor units. `discountValue` is **as stored** - plain for `PERCENT`, minor for `AMOUNT`. `discountKind` falls back to `'PERCENT'` when null (webshop-shaped rows never reach here, but the column is nullable).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -125,7 +125,7 @@ Add `GET` to the file's route import.
 
 - [ ] **Step 2: Run to verify they fail**
 
-`npx vitest run "src/app/api/b2b/orders/[id]/route.test.ts"` — expect failures on `GET` not being exported.
+`npx vitest run "src/app/api/b2b/orders/[id]/route.test.ts"` - expect failures on `GET` not being exported.
 
 - [ ] **Step 3: Implement**
 
@@ -173,7 +173,7 @@ export async function GET(_req: Request, { params }: Ctx) {
           currency: order.currency,
           shippingCharged: order.shippingCharged,
           // null means "webshop order, use the shop's rate", which a B2B order
-          // never is — but the column is nullable, so say 0 rather than null.
+          // never is - but the column is nullable, so say 0 rather than null.
           fulfillmentCost: order.fulfillmentCost ?? 0,
           lines: order.items.map((i) => ({
             productId: i.productId,
@@ -233,7 +233,7 @@ describe('OrderModal in edit mode', () => {
 
     renderWithToast(<OrderModal customers={customers} order={{ id: 'o1' }} onClose={() => {}} onSaved={() => {}} />)
 
-    // Minor units on the wire, major in the fields — toMajor, not /100.
+    // Minor units on the wire, major in the fields - toMajor, not /100.
     expect(await screen.findByLabelText('Unit price 1')).toHaveValue(89)
     expect(screen.getByLabelText('Quantity 1')).toHaveValue(10)
     expect(screen.getByLabelText('Discount 1')).toHaveValue(10)
@@ -286,7 +286,7 @@ describe('OrderModal in edit mode', () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-`npx vitest run src/app/b2b/OrderModal.test.tsx` — the `order` prop does not exist yet.
+`npx vitest run src/app/b2b/OrderModal.test.tsx` - the `order` prop does not exist yet.
 
 - [ ] **Step 3: Implement**
 
@@ -467,7 +467,7 @@ Add state and handlers to `B2bClient`:
   /**
    * Void = the order happened and earns nothing, which is what a refunded
    * webshop order already means. PATCH takes the whole order, so this reads
-   * it back and returns it unchanged but for the status — two round trips,
+   * it back and returns it unchanged but for the status - two round trips,
    * rather than widening a contract that is already tested.
    */
   async function setOrderStatus(o: B2bOrder, status: 'refunded' | 'cancelled') {
@@ -551,6 +551,6 @@ git commit -m "feat: edit, void or delete a B2B order from the B2B page"
 
 **Spec coverage:** GET endpoint → Task 1; edit mode → Task 2; card actions, void and delete-with-confirm → Task 3. Every spec section maps.
 
-**Riskiest:** Task 2's `discountValue` conversion — `PERCENT` must not be divided, `AMOUNT` must. Task 1's test asserts the stored form, Task 2's asserts the displayed form, so the pair pins both ends.
+**Riskiest:** Task 2's `discountValue` conversion - `PERCENT` must not be divided, `AMOUNT` must. Task 1's test asserts the stored form, Task 2's asserts the displayed form, so the pair pins both ends.
 
 **Type consistency:** `order?: { id: string } | null` in Task 2 is what Task 3 passes (`editingOrder`, same shape). `GET`'s payload field names in Task 1 are consumed verbatim in Tasks 2 and 3.

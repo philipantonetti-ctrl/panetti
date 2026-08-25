@@ -9,9 +9,9 @@ import type { ProductInput, ProductMeta, ProductOrder } from '../metrics/product
 
 export type LoadProductsArgs = {
   // undefined = every active shop. An explicitly empty array is a real
-  // selection too, not an absent one — it is what ShopFilter's NO_SHOPS
+  // selection too, not an absent one - it is what ShopFilter's NO_SHOPS
   // sentinel (src/components/filters/ShopFilter.tsx) resolves to once a
-  // caller turns a selection into shop ids — and must mean "no shops",
+  // caller turns a selection into shop ids - and must mean "no shops",
   // never silently widen back out to "all of them".
   shopIds?: string[]
   from: Date
@@ -38,7 +38,7 @@ export class MixedCurrencyError extends Error {
  * name and unit price. Widening the shared select would make every Dashboard
  * request haul three unused columns across thousands of rows.
  *
- * The display currency is the selected shops' shared currency — not USD.
+ * The display currency is the selected shops' shared currency - not USD.
  * Mixing currencies is refused rather than converted, because a product table
  * that silently consolidates is one a client cannot check against his own till.
  */
@@ -48,7 +48,7 @@ export async function loadProductsInput(args: LoadProductsArgs): Promise<Product
   // undefined -> every active shop, matching loadMetricsInput. An explicitly
   // empty array is a DIFFERENT thing: the old `args.shopIds?.length ? ... : {}`
   // treated both the same, so a caller resolving ShopFilter's NO_SHOPS
-  // sentinel into `shopIds: []` silently got every active shop back — and,
+  // sentinel into `shopIds: []` silently got every active shop back - and,
   // on this loader, a baffling MixedCurrencyError for what reads as "nothing
   // selected". `{ in: [] }` correctly matches zero rows, so an explicit empty
   // list now means what it says.
@@ -62,8 +62,8 @@ export async function loadProductsInput(args: LoadProductsArgs): Promise<Product
 
   const shops = shopRows.map((s) => ({ id: s.id, name: s.name, currency: s.currency }))
   const shopIds = shops.map((s) => s.id)
-  // No shops matched at all — an explicitly empty selection, or ids that hit
-  // no ACTIVE shop (a stale id, a deactivated store) — means no rows on this
+  // No shops matched at all - an explicitly empty selection, or ids that hit
+  // no ACTIVE shop (a stale id, a deactivated store) - means no rows on this
   // page, and there is then no shop whose currency the label could honestly
   // claim. 'USD' here is not a claim about the data: it is an arbitrary
   // non-empty placeholder that keeps the type honest while every figure
@@ -161,7 +161,7 @@ export async function loadProductsInput(args: LoadProductsArgs): Promise<Product
   }
 
   // Every shop shares one currency here, so the only thing that can still need
-  // a rate is an order invoiced in a different one — a B2B order, typically.
+  // a rate is an order invoiced in a different one - a B2B order, typically.
   const inPlay = new Set([displayCurrency, ...orders.map((o) => o.currency)])
   if (inPlay.size > 1) await ensureRates(from, to, [...inPlay])
 

@@ -15,13 +15,13 @@ const HOUR = 60 * 60 * 1000
  * aborting at its own deadline (see the deadline guards on requestNextReport
  * and collectNextReport below) to an invoice that will never reconcile.
  * Without a backoff, a permanently-broken invoice would be retried on every
- * fifteen-minute tick forever — one of the tick's few request slots spent on
- * a hopeless row — and, because selection is oldest-first, would starve every
+ * fifteen-minute tick forever - one of the tick's few request slots spent on
+ * a hopeless row - and, because selection is oldest-first, would starve every
  * invoice behind it for as long as it kept winning that ordering. One hour
  * matches delivery/sync.ts's own backoff for a single dead parcel: long
  * enough that a broken row costs at most a handful of wasted ticks a day,
- * short enough that a transient failure — a 500, a timeout, a dropped
- * connection — clears within the hour rather than sitting for a working day.
+ * short enough that a transient failure - a 500, a timeout, a dropped
+ * connection - clears within the hour rather than sitting for a working day.
  */
 const RETRY_AFTER_MS = HOUR
 
@@ -30,10 +30,10 @@ const RETRY_AFTER_MS = HOUR
  * gives up on it and asks Bring to build a fresh report.
  *
  * Measured, the real report was DONE on its very first status check, so six
- * hours — twenty-four polls at the cron's fifteen-minute cadence — is a wide
+ * hours - twenty-four polls at the cron's fifteen-minute cadence - is a wide
  * margin over the legitimate case, not a tight guess. Below it, a `NOT_DONE`
- * report gets every reasonable chance to finish. Above it — or if Bring's
- * status body ever changes shape and simply stops matching DONE or FAILED —
+ * report gets every reasonable chance to finish. Above it - or if Bring's
+ * status body ever changes shape and simply stops matching DONE or FAILED -
  * this is what stops the row sitting at the head of the oldest-first queue
  * forever, promoting nothing behind it: the exact freeze invoices.ts's own
  * reportStatus comment names.
@@ -52,7 +52,7 @@ const STALE_REQUESTED_MS = 6 * HOUR
  * other: past the deadline, requestBudgetMs clamps the next one to 1ms and it
  * aborts almost immediately, which is a throw a caller has no way to tell
  * apart from a genuine failure. `partial` reports that this stopped early for
- * that reason instead — still true, never an error, and never a reason to
+ * that reason instead - still true, never an error, and never a reason to
  * discard what it already found.
  */
 export async function discoverInvoices(
@@ -127,7 +127,7 @@ export async function discoverInvoices(
  * without it a run that cannot reach everything starves the same rows every
  * time, forever.
  *
- * Returns whether a row was worked on at all — a failure still counts, because
+ * Returns whether a row was worked on at all - a failure still counts, because
  * the tick did its one unit of work and the row now says why.
  */
 export async function requestNextReport(
@@ -137,7 +137,7 @@ export async function requestNextReport(
   // Checked before the row is even read. requestBudgetMs floors an expired
   // budget at 1ms rather than refusing outright, so past the deadline
   // generateSpecReport would abort almost immediately and the catch below
-  // would write that abort onto the row as FAILED — burying the oldest
+  // would write that abort onto the row as FAILED - burying the oldest
   // PENDING invoice every fifteen minutes that a tick starves, under a
   // message no reader could tell apart from a genuine failure. Same shape as
   // discoverInvoices' guard above.
@@ -148,7 +148,7 @@ export async function requestNextReport(
     where: {
       OR: [
         { state: 'PENDING' },
-        // FAILED is NOT terminal — only NO_SPEC is, and the spec justifies
+        // FAILED is NOT terminal - only NO_SPEC is, and the spec justifies
         // NO_SPEC precisely as the state that stops something being retried
         // forever, which only means anything if FAILED is retried. Everything
         // else writes FAILED: a 500, a dropped connection, a report that never
@@ -178,13 +178,13 @@ export async function requestNextReport(
       data: { state: 'REQUESTED', statusUrl, requestedAt: now, error: null, nextTryAt: null },
     })
   } catch (e) {
-    // Stored, never thrown. One dead invoice must not stop the rest — the same
+    // Stored, never thrown. One dead invoice must not stop the rest - the same
     // rule delivery/sync.ts follows for one dead parcel.
     //
     // The recovery write is itself guarded, exactly as delivery/sync.ts guards
     // its own. Without the .catch a database blip DURING the write would throw
     // out of here, past the collect stage, and land in syncBringInvoices as a
-    // run-level error — one failure reported as two, and the collect skipped
+    // run-level error - one failure reported as two, and the collect skipped
     // for a reason unrelated to it. Swallowed, the row simply stays PENDING and
     // comes round again next tick, which is where it belonged anyway.
     await db.bringReportRun
@@ -204,7 +204,7 @@ export async function requestNextReport(
 /**
  * Collect one requested report.
  *
- * Null means nothing was collected — nothing requested, or not ready yet —
+ * Null means nothing was collected - nothing requested, or not ready yet -
  * which is a normal tick, not a problem.
  *
  * The invoice header is re-read here rather than remembered from discovery, so
@@ -230,7 +230,7 @@ export async function collectNextReport(
     // from inside the catch below, so a throw here escapes the function
     // entirely and is reported as a run-level failure. Left unwritten, the row
     // stays REQUESTED and is either collected next tick or aged out by
-    // STALE_REQUESTED_MS — both better than losing the tick.
+    // STALE_REQUESTED_MS - both better than losing the tick.
     await db.bringReportRun
       .update({
         where: { id: job.id },
@@ -276,8 +276,8 @@ export async function collectNextReport(
       //
       // The skip count separates the two causes that produce an identical
       // shortfall: a truncated download drops trailing lines and leaves it at
-      // 0, while a line the parser could not read — an invoice-level charge
-      // carrying no waybill, say — leaves it non-zero. Those need different
+      // 0, while a line the parser could not read - an invoice-level charge
+      // carrying no waybill, say - leaves it non-zero. Those need different
       // answers from whoever reads this message.
       const skipped =
         parsed.skipped > 0
@@ -290,7 +290,7 @@ export async function collectNextReport(
 
     // Wholesale replace, and the unmatched count and the STORED update ride in
     // the same transaction as the replace itself. The report carries no line
-    // identifier, so delete-then-recreate — not a unique constraint — is what
+    // identifier, so delete-then-recreate - not a unique constraint - is what
     // makes re-reading safe; folding the rest in here means a failure after
     // the lines are written can never leave them committed while the row that
     // describes them says FAILED, which nothing would ever retry.

@@ -34,8 +34,8 @@ describe('deliveryStats', () => {
   /**
    * An arrival the warehouse file reported and the carrier has not yet dated.
    *
-   * It has to leave the moving counts — the parcel is with the customer, and
-   * "In transit" is the word this whole fix exists to stop saying — without
+   * It has to leave the moving counts - the parcel is with the customer, and
+   * "In transit" is the word this whole fix exists to stop saying - without
    * joining `delivered`, which is a population of dates and has none to give
    * it. That leaves it in no bucket at all unless it gets its own, and "Where
    * everything is now" has to be able to account for every order it was given.
@@ -124,7 +124,7 @@ describe('deliveryStats', () => {
   it('rates on time against the promise each order actually had', () => {
     // `late` is stated on each fixture rather than left to default, because it
     // is what the rate now reads. deliveryFor is the only thing entitled to
-    // decide lateness — it knows the business-day deadline — so a fixture that
+    // decide lateness - it knows the business-day deadline - so a fixture that
     // means "this one missed its promise" has to say so.
     const s = deliveryStats(
       [
@@ -140,7 +140,7 @@ describe('deliveryStats', () => {
   it('trusts the business-day verdict over a raw calendar-day comparison', () => {
     // Placed Thursday, three BUSINESS days promised, delivered Monday. That is
     // 4 calendar days against a promise of 3, so a naive totalDays <=
-    // promiseDays test calls it late — but the deadline was Tuesday and
+    // promiseDays test calls it late - but the deadline was Tuesday and
     // deliveryFor correctly says it was not. The rate must agree with the late
     // list on the same page, or the tile accuses an order the list exonerates.
     const s = deliveryStats(
@@ -178,7 +178,7 @@ describe('deliveryStats', () => {
    * Reported live 2026-08-19: the tile read 155 while the Late list under it
    * showed 8. The other 147 were orders past their promise with no parcel at
    * all, which api/delivery/route.ts deliberately moved into their own section
-   * — a missing warehouse file is not evidence of a missed promise. lateNow
+   * - a missing warehouse file is not evidence of a missed promise. lateNow
    * was never taught about that split, so the tile went on counting both.
    *
    * The tile's own tooltip calls itself "the list to chase". An order nobody
@@ -195,7 +195,7 @@ describe('deliveryStats', () => {
     )
 
     expect(s.lateNow).toBe(1)
-    // Still counted, and still visible in their own section — removed from the
+    // Still counted, and still visible in their own section - removed from the
     // chase queue, not from the page.
     expect(s.noTracking).toBe(2)
   })
@@ -275,7 +275,7 @@ describe('deliveryStats', () => {
 
 /**
  * The strip's last segment was called "Delivered" and counted `delivered`,
- * which is every order whose clock has stopped — pickup-point arrivals
+ * which is every order whose clock has stopped - pickup-point arrivals
  * included. So a parcel sitting uncollected at a Posten point was counted as
  * delivered six inches above a badge that (now) says it is not.
  *

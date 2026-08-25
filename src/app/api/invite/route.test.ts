@@ -30,7 +30,7 @@ beforeEach(async () => {
 
 afterEach(wipe)
 
-describe('guard 1 — the token itself', () => {
+describe('guard 1 - the token itself', () => {
   it('rejects garbage', async () => {
     expect((await redeem({ token: 'nonsense', password: 'longenough1' })).status).toBe(400)
   })
@@ -57,7 +57,7 @@ describe('guard 1 — the token itself', () => {
   })
 })
 
-describe('guard 2 — the ambassador exists', () => {
+describe('guard 2 - the ambassador exists', () => {
   it('rejects a token for a deleted ambassador', async () => {
     const token = await signInvite(ambA)
     await db.ambassador.delete({ where: { id: ambA } })
@@ -65,7 +65,7 @@ describe('guard 2 — the ambassador exists', () => {
   })
 })
 
-describe('guard 3 — active (this IS revocation)', () => {
+describe('guard 3 - active (this IS revocation)', () => {
   it('rejects the link of a deactivated ambassador', async () => {
     const token = await signInvite(ambA)
     await db.ambassador.update({ where: { id: ambA }, data: { active: false } })
@@ -74,7 +74,7 @@ describe('guard 3 — active (this IS revocation)', () => {
     expect(await db.user.findUnique({ where: { email: EMAIL_A } })).toBeNull()
   })
 
-  it('gives the same message for deactivated as for deleted — a stranger learns nothing', async () => {
+  it('gives the same message for deactivated as for deleted - a stranger learns nothing', async () => {
     const tokenDead = await signInvite(ambA)
     await db.ambassador.update({ where: { id: ambA }, data: { active: false } })
     const deactivated = await (await redeem({ token: tokenDead, password: 'longenough1' })).json()
@@ -87,7 +87,7 @@ describe('guard 3 — active (this IS revocation)', () => {
   })
 })
 
-describe('guard 4 — single use', () => {
+describe('guard 4 - single use', () => {
   it('refuses a second redemption of the same link', async () => {
     const token = await signInvite(ambA)
     expect((await redeem({ token, password: 'longenough1' })).status).toBe(200)
@@ -118,7 +118,7 @@ describe('guard 4 — single use', () => {
   })
 })
 
-describe('guard 5 — the email must be free to become a login', () => {
+describe('guard 5 - the email must be free to become a login', () => {
   // The exact production bug: an ambassador was created with an email that
   // already belongs to a login (typically the admin testing on their own email).
   // Creating the user blew up on the unique constraint, and with no handling the

@@ -19,7 +19,7 @@ describe('FreshBuild', () => {
     const onNewBuild = vi.fn()
     render(<FreshBuild onNewBuild={onNewBuild} />)
     await act(async () => {})
-    expect(fetchMock).not.toHaveBeenCalled() // the page just loaded — it IS current
+    expect(fetchMock).not.toHaveBeenCalled() // the page just loaded - it IS current
 
     await act(async () => {
       vi.advanceTimersByTime(60_000)
@@ -55,15 +55,15 @@ describe('FreshBuild', () => {
     render(<FreshBuild onNewBuild={onNewBuild} />)
 
     await act(async () => {
-      vi.advanceTimersByTime(60_000) // network down — swallowed
+      vi.advanceTimersByTime(60_000) // network down - swallowed
     })
     await act(async () => {
-      vi.advanceTimersByTime(60_000) // no id in the answer — ignored
+      vi.advanceTimersByTime(60_000) // no id in the answer - ignored
     })
     expect(onNewBuild).not.toHaveBeenCalled()
 
     await act(async () => {
-      vi.advanceTimersByTime(60_000) // a real new build — now it acts
+      vi.advanceTimersByTime(60_000) // a real new build - now it acts
     })
     expect(onNewBuild).toHaveBeenCalledTimes(1)
   })

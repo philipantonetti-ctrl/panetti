@@ -10,7 +10,7 @@ describe('currencySymbol', () => {
   })
 
   it('uses the Nordic symbols people here actually recognise', () => {
-    // Left to the default data these come out as "NOK", "SEK", "DKK" — which reads
+    // Left to the default data these come out as "NOK", "SEK", "DKK" - which reads
     // as "NOK - NOK" in the picker. Our shops live in these currencies.
     expect(currencySymbol('NOK')).toBe('Nkr')
     expect(currencySymbol('SEK')).toBe('Skr')

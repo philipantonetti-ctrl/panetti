@@ -17,7 +17,7 @@ const ITEM_PX = 30
  * A row's own actions, behind one button.
  *
  * A table row can carry three or four verbs, and spelling them all out makes
- * the last column the widest thing on the page — squeezing the columns holding
+ * the last column the widest thing on the page - squeezing the columns holding
  * the actual data until they wrap. Worse, it gives Delete the same weight as
  * Edit. Here the row shows one quiet control, and the actions rank themselves
  * inside it: the ordinary ones first, anything destructive set apart below a
@@ -25,7 +25,7 @@ const ITEM_PX = 30
  *
  * Positioned FIXED against the button's own rect rather than absolutely inside
  * the cell. The table sits in a rounded, `overflow-hidden` panel, which clips
- * any descendant — an absolute menu on the last row would simply be cut off at
+ * any descendant - an absolute menu on the last row would simply be cut off at
  * the table's edge. Fixed escapes that without a portal, and lets the menu flip
  * above the button when the viewport has no room below.
  */
@@ -70,7 +70,7 @@ export function RowMenu({ ariaLabel, actions }: { ariaLabel: string; actions: Ro
      * when the page moves beneath it.
      *
      * Re-place, never close. An earlier version closed on any scroll, and the
-     * browser fires one the instant focus lands on the first item — the menu
+     * browser fires one the instant focus lands on the first item - the menu
      * shut in the same frame it opened and the button looked dead. Following
      * the row has no such failure mode, and is the better behaviour anyway.
      */
@@ -92,7 +92,7 @@ export function RowMenu({ ariaLabel, actions }: { ariaLabel: string; actions: Ro
    *
    * `preventScroll` is not a nicety. Focusing an element the browser considers
    * out of view scrolls it into view, that scroll fires the listener above, and
-   * the menu closes in the same frame it opened — it looked like the button did
+   * the menu closes in the same frame it opened - it looked like the button did
    * nothing at all. The menu is already placed against the trigger, so there is
    * nothing to scroll to.
    */

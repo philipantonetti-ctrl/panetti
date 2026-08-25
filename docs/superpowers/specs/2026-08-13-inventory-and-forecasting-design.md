@@ -1,4 +1,4 @@
-# Inventory and forecasting — design
+# Inventory and forecasting - design
 
 Date: 2026-08-13
 Status: approved shape, spec for review
@@ -58,8 +58,8 @@ Panetti Germany   2025-09-16     604 orders   <- 11 months, no seasonal history
 **"Connect the stock balance in Visma."** Stock is already in WooCommerce and we
 already hold the credentials. Visma would take weeks of ISV registration and two
 Visma-side approvals to deliver a number we can read today. Visma is still worth
-connecting, but for the purchasing side — purchase orders, measured lead times,
-and what is already on the water — not for stock.
+connecting, but for the purchasing side - purchase orders, measured lead times,
+and what is already on the water - not for stock.
 
 **"Run out of PrimoMix in Germany."** There is no German stock. Comparing the
 same SKU across shops shows Denmark, Finland, Norway and Sweden carrying
@@ -79,8 +79,8 @@ real anomaly, surfaced by phase 1 rather than explained by this design.
 ## The SKU collision that must not be ignored
 
 `Product` is shop-scoped (`@@unique([shopId, externalId])`), so one physical item
-exists as up to nine rows. Purchasing facts — who makes it, how long it takes,
-how many fit a container — belong to the object, not to a German listing. They
+exists as up to nine rows. Purchasing facts - who makes it, how long it takes,
+how many fit a container - belong to the object, not to a German listing. They
 must therefore key on SKU. The codebase already sets this precedent:
 `AmbassadorProduct` is keyed on SKU "because Product is shop-scoped and cascades
 away with its shop".
@@ -98,7 +98,7 @@ ordering containers of a product that does not exist.
 
 **Rule:** a SKU is unusable if it is blank or matches `/^0+$/`. Products with an
 unusable SKU are excluded from the forecast and **listed on the page as needing a
-SKU**. Never silently dropped — the same principle the delivery page already
+SKU**. Never silently dropped - the same principle the delivery page already
 applies to unlinked parcels.
 
 ## Navigation
@@ -124,11 +124,11 @@ A concern was raised and overruled: putting configuration behind the same button
 as the daily answer costs a click on the forecast every day. Philip chose one
 tab; this design follows that choice.
 
-## Phase 1 — Stock visibility
+## Phase 1 - Stock visibility
 
 **Read.** `fetchCatalogPrices` in `src/lib/woo/client.ts` already pages through
 `/wp-json/wc/v3/products` on every completed sync. Extend that one sweep to also
-return `stock_quantity` and `manage_stock`. One request, two facts — no second
+return `stock_quantity` and `manage_stock`. One request, two facts - no second
 pass over the catalogue.
 
 **Store.** Two new columns on `Product`:
@@ -149,7 +149,7 @@ where shops disagree, and the per-shop breakdown behind it.
 Phase 1 is useful alone: it is what surfaced Germany carrying different numbers
 from the other four.
 
-## Phase 2 — Purchasing data and forecast
+## Phase 2 - Purchasing data and forecast
 
 ### Data model
 
@@ -191,7 +191,7 @@ model PurchaseOrder {
   quantity     Int
   orderedAt    DateTime
   /// When it is expected to land. Entered by hand, because production time
-  /// varies with the season and how busy the factory is — a per-product
+  /// varies with the season and how busy the factory is - a per-product
   /// estimate cannot know that, but the person who placed the order can.
   eta          DateTime?
   /// Null = still on the water, so it still counts as incoming stock.
@@ -227,7 +227,7 @@ keeps its purchasing history and its open orders; `active` is what hides it.
 Per SupplyItem, across all shops, since it is one warehouse.
 
 **Burn rate.** Units of that SKU sold per day over a trailing 60 days, summed
-across every shop, excluding voided orders — a cancelled order never consumed
+across every shop, excluding voided orders - a cancelled order never consumed
 stock, so it is not demand. `VOIDED_STATUSES` from `src/lib/metrics/types.ts`
 already names them.
 
@@ -240,7 +240,7 @@ index(D) = units sold in the 28 days centred on D minus one year
 ```
 
 Clamped to [0.25, 4.0] so one freak week cannot dominate. Requires the SKU's own
-first recorded sale to be at least 400 days ago — the SKU's history, not the
+first recorded sale to be at least 400 days ago - the SKU's history, not the
 shop's, because a product added last month has no last year whatever the shop's
 age. Below that, `index = 1.0` and the row is labelled **"no seasonal history
 yet"** on the page. Panetti Germany has 11 months, so this label is not
@@ -250,7 +250,7 @@ hypothetical.
 
 **Nothing selling.** A SKU with no sales in the trailing 60 days has a burn of
 zero, so it never runs out and the row reads "not selling". It is sorted last,
-never dropped — a product that stopped selling is worth seeing, and a zero here
+never dropped - a product that stopped selling is worth seeing, and a zero here
 must never be mistaken for a missing figure.
 
 **Runs out.** Walk forward, at most 365 days:
@@ -271,7 +271,7 @@ whose arrival date nobody knows would push out a run-out date on a guess. The
 label is the prompt to go and set the ETA.
 
 **No stock figure at all.** If no shop reports a quantity for the SKU, the row
-reads "no stock data" and produces no dates. It is not treated as zero — zero
+reads "no stock data" and produces no dates. It is not treated as zero - zero
 means sold out and would raise a false alarm at the top of the list.
 
 **Order by.** `runsOut - (productionDays + deliveryDays)`. If that date has
@@ -293,15 +293,15 @@ rounded up, never squeezed back below the minimum the supplier will accept.
 
 ### The pages
 
-- **Forecast** (`/inventory`) — one row per SKU, soonest run-out first. Stock,
+- **Forecast** (`/inventory`) - one row per SKU, soonest run-out first. Stock,
   run-out date, order-by date, quantity. Rows needing configuration say what is
   missing. A separate short list names products with an unusable SKU.
-- **Stock** (`/inventory/stock`) — phase 1.
-- **Purchase orders** (`/inventory/purchase-orders`) — add, edit, mark received.
-- **Suppliers & lead times** (`/inventory/suppliers`) — suppliers, and per SKU:
+- **Stock** (`/inventory/stock`) - phase 1.
+- **Purchase orders** (`/inventory/purchase-orders`) - add, edit, mark received.
+- **Suppliers & lead times** (`/inventory/suppliers`) - suppliers, and per SKU:
   supplier, production days, delivery days, MOQ, units per container, cover days.
 
-## Phase 3 — Visma purchase order import
+## Phase 3 - Visma purchase order import
 
 `PurchaseOrder.externalId` is the whole seam. An importer creates and updates
 rows from Visma instead of a person typing them, and everything downstream is
@@ -326,20 +326,20 @@ Phases 1 and 2 must not wait for it.
 
 ## Testing
 
-- `extractStock` — a product with `manage_stock: false` yields null, not zero.
-- Agreed stock — mode across shops; tie breaks to newest; disagreement flagged.
-- Unusable SKU — blank and `"0"` and `"000"` are excluded and reported, and the
+- `extractStock` - a product with `manage_stock: false` yields null, not zero.
+- Agreed stock - mode across shops; tie breaks to newest; disagreement flagged.
+- Unusable SKU - blank and `"0"` and `"000"` are excluded and reported, and the
   Pizzetta Primo / Advanced Comfort pair never pools.
-- Burn — voided orders excluded; a SKU sold in five shops sums across all five.
-- Seasonal index — under 400 days of history returns exactly 1.0 and sets the
+- Burn - voided orders excluded; a SKU sold in five shops sums across all five.
+- Seasonal index - under 400 days of history returns exactly 1.0 and sets the
   flag; the clamp holds at both ends.
-- Run-out walk — an incoming purchase order landing before the run-out date
+- Run-out walk - an incoming purchase order landing before the run-out date
   pushes the date out; one landing after it does not.
 - A purchase order with no ETA never moves the run-out date, and is still
   reported on the row.
 - A received purchase order is not counted as incoming a second time.
 - Order-by in the past reads "order now, N days late" rather than a past date.
-- Quantity — rounds up to MOQ, then up to a whole container, in that order. A
+- Quantity - rounds up to MOQ, then up to a whole container, in that order. A
   container rounding can never drop the quantity back under the MOQ.
 - A SKU with no lead times set produces no order-by date and no quantity, and
   says so.
@@ -347,7 +347,7 @@ Phases 1 and 2 must not wait for it.
   as zero.
 - A SKU with no sales in the window reads "not selling", sorts last, and is not
   dropped.
-- SupplyItem creation — a new Product with a usable SKU gets a row; a second
+- SupplyItem creation - a new Product with a usable SKU gets a row; a second
   shop listing the same SKU does not create a duplicate; an unusable SKU gets
   none; and a Product disappearing never deletes an existing row.
 

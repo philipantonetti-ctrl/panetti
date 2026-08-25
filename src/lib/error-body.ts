@@ -4,7 +4,7 @@
  * Most of what we call answers with JSON or a bare string, which needs nothing
  * doing to it. WordPress is the exception: a fatal error there returns a whole
  * HTML page, and its first 300 characters are the doctype, three meta tags and
- * the opening of <title>. Truncating to 300 — which is what this replaces —
+ * the opening of <title>. Truncating to 300 - which is what this replaces -
  * therefore kept 100% boilerplate and dropped 100% of the message, so a client
  * read `WooCommerce responded 500: <!DOCTYPE html> <html lang="nb-NO">` off his
  * own dashboard and had nothing to act on.
@@ -23,7 +23,7 @@ const LIMIT = 200
 const ENTITIES: Record<string, string> = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
   rsaquo: '›', lsaquo: '‹', hellip: '…',
-  mdash: '—', ndash: '–', rsquo: '’', lsquo: '‘',
+  mdash: '-', ndash: '-', rsquo: '’', lsquo: '‘',
 }
 
 function decode(text: string): string {
@@ -41,7 +41,7 @@ const tidy = (html: string) =>
   decode(html.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim()
 
 export function readableErrorBody(body: string, limit = LIMIT): string {
-  // Nothing tag-shaped — JSON, a bare string, a stack trace. Already readable,
+  // Nothing tag-shaped - JSON, a bare string, a stack trace. Already readable,
   // so it passes through with only its whitespace settled.
   if (!/<[a-z!/][^>]*>/i.test(body)) return body.replace(/\s+/g, ' ').trim().slice(0, limit)
 

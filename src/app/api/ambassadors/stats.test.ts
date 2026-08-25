@@ -60,7 +60,7 @@ describe('ambassador statistics for staff', () => {
     expect(body.displayCurrency).toBe('USD')
   })
 
-  it('carries no revenue, profit or spend — those words never leave this endpoint', async () => {
+  it('carries no revenue, profit or spend - those words never leave this endpoint', async () => {
     const text = JSON.stringify(await (await stats()).json())
     expect(text).not.toContain('profit')
     expect(text).not.toContain('revenue')

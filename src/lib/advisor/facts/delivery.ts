@@ -7,7 +7,7 @@ import type { Fact } from '../types'
  *
  * These deliberately DO NOT use the money gates in severity.ts. A day is not
  * money, so "worth 1% of revenue" has no meaning here. What a median needs
- * instead is enough parcels to be a median at all — hence a count gate — and a
+ * instead is enough parcels to be a median at all - hence a count gate - and a
  * change large enough to act on, in days.
  */
 

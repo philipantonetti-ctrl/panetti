@@ -14,7 +14,7 @@ const HOUR = 3_600_000
  * Derived from the forecast's own run-out date rather than dividing stock by
  * sales, deliberately. A fresh division would ignore the purchase orders on the
  * water and the seasonal rate, so the Stock page would quote a different number
- * from the Forecast page for the same product — and two figures that look like
+ * from the Forecast page for the same product - and two figures that look like
  * they should agree but do not are worse than either alone.
  *
  * Null in, null out: no run-out date means there is nothing to count towards,

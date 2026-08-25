@@ -38,7 +38,7 @@ describe('spreadCost', () => {
   /**
    * The whole reason this is not a call to crossConvert. That returns the amount
    * unconverted when a rate is missing, which would store 100,000 NOK into a
-   * German product as 100,000 EUR — an eleven-fold error that reads as an
+   * German product as 100,000 EUR - an eleven-fold error that reads as an
    * ordinary number and would overstate nothing visibly while destroying every
    * profit figure that product touches.
    */

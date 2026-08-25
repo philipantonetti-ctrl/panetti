@@ -82,10 +82,10 @@ there disabled with no explanation.
 
 ## Testing
 
-- **Route** — the catalogue reports `shopIds` per SKU; a SKU sold in two shops
+- **Route** - the catalogue reports `shopIds` per SKU; a SKU sold in two shops
   appears once with both; `quantity` defaults to 1 when omitted.
-- **Component** — the list narrows to the chosen store; switching stores clears
+- **Component** - the list narrows to the chosen store; switching stores clears
   the ticks; submit is blocked with nothing ticked; two ticks send two records
   at quantity 1; Edit's picker is filtered and has no quantity box.
-- **End to end** — create an ambassador with two ticked products, see both on
+- **End to end** - create an ambassador with two ticked products, see both on
   the roster, then delete so the spec re-runs.

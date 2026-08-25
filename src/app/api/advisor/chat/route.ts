@@ -16,7 +16,7 @@ Finland and Germany, for the owner.
 
 You have read-only tools over his accounting data. Use them for EVERY figure you
 state. Never estimate, never work a number out in your head, and never carry a
-figure forward from memory — call a tool and read it.
+figure forward from memory - call a tool and read it.
 
 Money comes back in minor units (cents, øre) of the currency named beside it, so
 82000 in USD is $820.00. Convert for display, never between currencies.
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     }
 
     // Up to 8 tool rounds share one 300s platform ceiling below, so a
-    // per-call timeout anywhere near the SDK's 600s default is meaningless —
+    // per-call timeout anywhere near the SDK's 600s default is meaningless -
     // one slow round would already exceed the whole budget. 60s bounds a
     // single stuck call without pretending to guarantee the total; the
     // platform's own kill at maxDuration is what actually enforces that.
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
         model: ADVISOR_MODEL,
         max_tokens: 8000,
         system: [
-          // Stable prefix, cached — the chat re-sends it on every turn.
+          // Stable prefix, cached - the chat re-sends it on every turn.
           { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
         ],
         tools: TOOL_DEFINITIONS,

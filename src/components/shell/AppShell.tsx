@@ -10,7 +10,7 @@ import { FreshBuild } from './FreshBuild'
  * The app shell.
  *
  * Navigation lives on the left and stays put. The page header carries the page's own
- * title AND its filters — which shops, which dates — because those are page context,
+ * title AND its filters - which shops, which dates - because those are page context,
  * not account chrome. They never sit next to "sign out" again.
  */
 
@@ -278,7 +278,7 @@ export function AppShell({
   // useContext directly, not the useToast() hook: AppShell wraps every page,
   // including ones a test renders without a ToastProvider ancestor. useToast()
   // throws in that case; here the toast is a courtesy, and the one thing that
-  // must always hold — never navigate to /login on a failed sign-out — does
+  // must always hold - never navigate to /login on a failed sign-out - does
   // not depend on it being present.
   const toast = useContext(ToastContext)
 
@@ -309,7 +309,7 @@ export function AppShell({
       {/* Every page heals itself when a newer deployment appears. */}
       <FreshBuild />
 
-      {/* Sidebar — a column on desktop, a strip on smaller screens. */}
+      {/* Sidebar - a column on desktop, a strip on smaller screens. */}
       <aside className="border-line bg-panel lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-r">
         <div className="flex items-center justify-between border-b border-line px-3 py-3 lg:block lg:border-b-0 lg:py-4">
           <Wordmark home={home} />

@@ -19,7 +19,7 @@ describe('carrierName', () => {
 
   /**
    * Never silently relabel an unknown carrier as Bring. The link has to fall
-   * back somewhere, but a NAME that lies is worse than an unfamiliar one — it
+   * back somewhere, but a NAME that lies is worse than an unfamiliar one - it
    * would tell an operator a PostNord parcel is Bring's.
    */
   it('shows an unrecognised carrier under its own name, never as Bring', () => {

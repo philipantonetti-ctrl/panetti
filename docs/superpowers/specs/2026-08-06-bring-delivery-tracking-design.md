@@ -1,4 +1,4 @@
-# Delivery tracking (Bring) — design
+# Delivery tracking (Bring) - design
 
 **Date:** 2026-08-06
 **Status:** approved, ready for an implementation plan
@@ -13,7 +13,7 @@ Two things, from the client:
 He has a Bring account. Bring has an open API.
 
 A follow-up narrowed it considerably. The warehouse books the parcels, and it books
-them **under its own Bring customer number, not his** — which is why none of this
+them **under its own Bring customer number, not his** - which is why none of this
 tracking appears in his Bring backend, only on Bring's public tracking site. The
 warehouse can email a file (PDF today, hopefully CSV) pairing order number with
 tracking number. Their WMS, NYCE, has an API he is still chasing.
@@ -31,7 +31,7 @@ tracking number. Their WMS, NYCE, has an API he is still chasing.
 | Webhook receiver with a per-shop secret | `src/app/api/webhooks/woo/[shopId]` |
 
 Nothing about shipping exists. `Order` (`prisma/schema.prisma:83`) has no tracking,
-no carrier, no delivery date and no destination country — `shippingCharged` is a
+no carrier, no delivery date and no destination country - `shippingCharged` is a
 money column. There is no outbound notification of any kind anywhere in the
 codebase; toasts are in-browser only.
 
@@ -52,7 +52,7 @@ The warehouse's file supplies the join directly, from the party that booked the
 parcel, today, with no dependency on NYCE.
 
 **The link is a seam, not an assumption.** `Shipment.linkSource` records which
-strategy produced it — `FILE`, `NYCE`, `WOO`, `MANUAL` — and NYCE later drops into
+strategy produced it - `FILE`, `NYCE`, `WOO`, `MANUAL` - and NYCE later drops into
 the same slot without moving anything downstream.
 
 ## Decisions
@@ -80,7 +80,7 @@ is where the company's obligation ends.
 This matters more in the Nordics than it would elsewhere: a large share of parcels
 sit at a pickup point for days, and Bring only reports `DELIVERED` on collection.
 Judging against collection would fire alerts about customers who took a week to walk
-to the shop — noise nobody can act on. `collectedAt` is still stored and shown in
+to the shop - noise nobody can act on. `collectedAt` is still stored and shown in
 the drill-down.
 
 ### The promise is per destination country, on a timeline
@@ -163,9 +163,9 @@ model Shipment {
   orderId        String?
   linkSource     String?              // FILE | NYCE | WOO | MANUAL
 
-  bookedAt       DateTime?            // PRE_NOTIFIED — label made, nothing moved
+  bookedAt       DateTime?            // PRE_NOTIFIED - label made, nothing moved
   handedInAt     DateTime?            // HANDED_IN
-  availableAt    DateTime?            // READY_FOR_PICKUP or DELIVERED — the clock stop
+  availableAt    DateTime?            // READY_FOR_PICKUP or DELIVERED - the clock stop
   collectedAt    DateTime?            // COLLECTED / DELIVERED
   outcome        String?              // DELIVERED | RETURNED | CANCELLED
 
@@ -197,19 +197,19 @@ truth. They are also what the drill-down timeline renders.
 
 **On `Order`:**
 
-- `shippingCountry String?` — backfilled from Woo, following `backfillCustomers`
+- `shippingCountry String?` - backfilled from Woo, following `backfillCustomers`
   (`src/lib/woo/sync.ts:189`). Null means "not yet checked"; `''` means "checked,
   the store has none", matching the existing `customerName` convention.
-- `deliveryAlertedAt DateTime?` — so nothing can alert twice, ever.
+- `deliveryAlertedAt DateTime?` - so nothing can alert twice, ever.
 
 **On `Shop`:**
 
-- `deliveryTrackingFrom DateTime?` — **null means this shop is not tracked at all.**
+- `deliveryTrackingFrom DateTime?` - **null means this shop is not tracked at all.**
   It carries two jobs at once, and both are necessary. A shop that ships from
   somewhere else entirely (Germany is the likely case) must not have every one of its
   orders read `Not shipped yet` and alert. And for a tracked shop, orders placed
   before the date read `Before tracking started`, never alert, and never enter the
-  median — without which the day this ships, every order in history is "past its
+  median - without which the day this ships, every order in history is "past its
   promise and not delivered" and Slack receives a thousand-line message.
 
   It is backdateable: if the warehouse can supply old files, importing them and
@@ -257,7 +257,7 @@ CSV is a header lookup, tolerant of column-name variation.
 PDF is text extraction, then this rule instead of guessing formats: pull every token
 that could be a tracking number, and pair each with the nearest token that **matches
 an order number already in the database**. We do not need to know his order-number
-format or their table layout — we look up what we already hold. A row matching
+format or their table layout - we look up what we already hold. A row matching
 nothing lands in the unmatched pile with its raw text, visible rather than dropped.
 
 Pure and synchronous; the real warehouse files become fixtures.
@@ -293,7 +293,7 @@ grows. It leaves the median (it was never delivered) and shows as `Returned`.
 
 ### `src/lib/bring/sync.ts` (new)
 
-Selects `terminal = false AND nextPollAt <= now`, oldest first — the same fairness
+Selects `terminal = false AND nextPollAt <= now`, oldest first - the same fairness
 rule `syncAllShops` gets from ordering by `lastRunAt`. Upserts events, recomputes
 milestones, sets the next tier, marks terminal.
 
@@ -339,7 +339,7 @@ permanent late delivery and Slack fills with orders nobody is waiting for. The
 constant already exists (`src/lib/metrics/types.ts`) and is reused rather than
 restated.
 
-That rule covers both live failure modes — a parcel crawling through Bring, and an
+That rule covers both live failure modes - a parcel crawling through Bring, and an
 order the warehouse never booked at all. The second is the worse of the two, and a
 shipment-driven alert would miss it entirely because there is no shipment.
 
@@ -413,10 +413,10 @@ as `api/orders/route.ts`. Ambassadors and the marketing role never see any of it
 | --- | --- |
 | Bring credentials unset | Delivery page explains what is missing and links to settings. No polling. |
 | Slack webhook unset | Everything else works; alerting is shown as off, not silently skipped. |
-| Shop with `deliveryTrackingFrom` null | Excluded entirely. Column reads `—`, never alerts, never in the median. |
+| Shop with `deliveryTrackingFrom` null | Excluded entirely. Column reads `-`, never alerts, never in the median. |
 | Order before its shop's `deliveryTrackingFrom` | `Before tracking started`. Never alerts, never counted. |
 | Order after it with no shipment | `Not shipped yet`, and alerts once past its deadline. |
-| Order refunded or cancelled | Never alerts. Column reads whatever the parcel actually did, or `—`. |
+| Order refunded or cancelled | Never alerts. Column reads whatever the parcel actually did, or `-`. |
 | Shipment with no linked order | Counted in the unlinked bucket, manually linkable. |
 | File row matching several orders | Unmatched, with the reason shown. Never guessed. |
 | Parcel returned or cancelled | Own outcome. Alerts once, then leaves the median and the late list. |
@@ -427,36 +427,36 @@ as `api/orders/route.ts`. Ambassadors and the marketing role never see any of it
 
 Written first, RED confirmed before GREEN.
 
-`days.test.ts` — a Friday order with a 3-day business promise is due Wednesday, not
+`days.test.ts` - a Friday order with a 3-day business promise is due Wednesday, not
 Monday; a calendar promise crosses the weekend; DST transitions in `Europe/Oslo` do
 not shift a deadline by an hour; timezone comes from the shop, then the setting.
 
-`promise.test.ts` — the latest `effectiveFrom <= placedAt` wins; a promise added
+`promise.test.ts` - the latest `effectiveFrom <= placedAt` wins; a promise added
 today does not rewrite last month; unknown country falls back to `'*'`; no rows at
 all yields no judgement rather than a zero-day promise.
 
-`parse.test.ts` — real warehouse fixtures, CSV and PDF; a reordered CSV column still
+`parse.test.ts` - real warehouse fixtures, CSV and PDF; a reordered CSV column still
 parses; a PDF row whose order number is unknown lands unmatched; nothing crashes on
 a garbage file.
 
-`link.test.ts` — an order number held by two shops is refused, not guessed;
+`link.test.ts` - an order number held by two shops is refused, not guessed;
 re-importing the same file links nothing twice.
 
-`map.test.ts` — `READY_FOR_PICKUP` sets `availableAt` and a later `COLLECTED` does
+`map.test.ts` - `READY_FOR_PICKUP` sets `availableAt` and a later `COLLECTED` does
 not move it; a home delivery sets both from `DELIVERED`; `RETURN` sets the outcome
 and never sets `availableAt`; re-ingesting the same event set changes no row.
 
-`sync.test.ts` — a failing shipment does not stop the others; a terminal shipment is
+`sync.test.ts` - a failing shipment does not stop the others; a terminal shipment is
 never polled again; the deadline stops the batch.
 
-`alerts.test.ts` — an order past its deadline with no shipment alerts; the same order
+`alerts.test.ts` - an order past its deadline with no shipment alerts; the same order
 does not alert on the next run; a Slack failure leaves `deliveryAlertedAt` null so
 the next run retries; **a refunded order past its deadline never alerts**; **a shop
 with `deliveryTrackingFrom` null never alerts**; an order placed before its shop's
 date never alerts; a returned parcel alerts once with its own reason; more than 25
 late orders produce one capped message.
 
-`route.test.ts` — non-admin gets 403 on every new route.
+`route.test.ts` - non-admin gets 403 on every new route.
 
 ## Phasing
 
@@ -475,7 +475,7 @@ Phase 1 is useful standing alone, which is why the split is there.
 - **Whether Bring's Tracking API returns parcels booked under another customer
   number.** Every design above rests on this. The public tracking site shows full
   event history to anyone holding a number, and the API key identifies the caller
-  rather than scoping which parcels may be read — so it should work, but "should" is
+  rather than scoping which parcels may be read - so it should work, but "should" is
   not "does". One authenticated call with one real tracking number settles it, and
   it happens before any code is written.
 - **Bring's rate limit is undocumented as far as the research went.** The tiered

@@ -135,7 +135,7 @@ type Ratioless = Omit<
  *
  * `wholeStore` is false when a platform filter is active. `roas` and `cpa`
  * divide WHOLE-STORE revenue and orders by spend, so narrowing spend to one
- * platform does not narrow them — it inflates them. A 5.5x store ROAS would
+ * platform does not narrow them - it inflates them. A 5.5x store ROAS would
  * read 7.5x for no reason but a dropdown. They dash instead.
  */
 const ratios = (row: Ratioless, wholeStore = true): MarketingShopRow => ({
@@ -180,7 +180,7 @@ export function buildMarketing(args: {
 
   const accountById = new Map(accounts.map((a) => [a.id, a]))
 
-  // Budgets come from the accounts themselves, not the spend rows — an account
+  // Budgets come from the accounts themselves, not the spend rows - an account
   // that spent nothing this period still has its budget set.
   const budgetByShop = new Map<string, number>()
   for (const account of accounts) {
@@ -234,7 +234,7 @@ export function buildMarketing(args: {
     // bill in a currency that is neither the shop's nor USD.
     const minor = crossConvert(row.spend, account.currency, display, row.date, args.rates)
     const valueMinor = crossConvert(row.conversionValue, account.currency, display, row.date, args.rates)
-    // A split account's row carries its own shopId, overriding the account's —
+    // A split account's row carries its own shopId, overriding the account's -
     // a whole account's row has none, so it falls back to the account's own.
     const shopId = row.shopId ?? account.shopId
     const acc = byShop.get(shopId) ?? zero()
@@ -271,7 +271,7 @@ export function buildMarketing(args: {
     platformByDay.set(day, split)
   }
 
-  // Every shop in scope gets a row — a shop without ad accounts shows zero
+  // Every shop in scope gets a row - a shop without ad accounts shows zero
   // spend and dashes, not absence.
   const rows = args.engine.byShop.map((shop) => {
     const acc = byShop.get(shop.shopId) ?? zero()

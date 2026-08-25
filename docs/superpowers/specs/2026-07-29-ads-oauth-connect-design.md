@@ -17,7 +17,7 @@ per result, purchase ROAS, CPM, cost per unique link click, unique CTR, video pl
    Google OAuth verification: weeks, and an app owner organisation. Rejected for now.
 2. **Keep manual tokens, write a better guide.** The client already said no. Rejected.
 3. **Client-owned apps + standard OAuth (chosen).** A Meta app in development mode
-   grants any permission to its own admins without App Review — and the only person
+   grants any permission to its own admins without App Review - and the only person
    who will ever log in IS the app admin (Philip). A Google OAuth client set to
    "In production" (unverified) shows a one-time warning screen he can click through,
    and its refresh tokens do not expire the way "Testing" ones do (7 days). Each is a
@@ -74,7 +74,7 @@ manual paste path stays as an "Advanced" fallback, so nothing existing breaks.
     `GET /me?fields=name` for the label; store connection with `expiresAt`.
   - Google: exchange code at `oauth2.googleapis.com/token` → refresh token (+ label
     via the userinfo endpoint with the fresh access token; fall back to "Google Ads").
-  - Then redirect to `/settings/ad-accounts?picker=<connectionId>` — the page opens
+  - Then redirect to `/settings/ad-accounts?picker=<connectionId>` - the page opens
     the account picker by itself. Errors redirect with `?error=<message>`.
 - Reconnect = run the same flow again; the callback updates the existing connection
   for that provider+label rather than piling up rows (match on provider+label, else
@@ -121,8 +121,8 @@ clicks double as linkClicks (that is what a search/shopping click is).
   (= thruplays / videoViews3s), `videoViews3s`, `thruplays`. Null with a dash when
   the denominator is zero, as everywhere.
 - Two ROAS numbers exist and are labelled so they cannot be confused: **P. ROAS**
-  (what the platform attributes: conversion value ÷ spend — matches Ads Manager) and
-  **Store ROAS** (whole-store gross revenue ÷ spend — matches the dashboard).
+  (what the platform attributes: conversion value ÷ spend - matches Ads Manager) and
+  **Store ROAS** (whole-store gross revenue ÷ spend - matches the dashboard).
 - Stat cards become: AD SPEND, PURCHASE ROAS, COST PER PURCHASE, CONV. VALUE.
 - The table adopts CompareTable's column-visibility toggle (localStorage key
   `marketing-columns`). Default visible: Shop, Ad spend, Purchases, Conv. value,

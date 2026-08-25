@@ -51,7 +51,7 @@ export type DeliveryStats = {
   booked: number
   inTransit: number
   /**
-   * The two ways an order ends, counted apart — collected splits off from
+   * The two ways an order ends, counted apart - collected splits off from
    * `delivered`, it does not replace it.
    *
    * `delivered` is every order whose clock has stopped, and stays the
@@ -74,7 +74,7 @@ export type DeliveryStats = {
    * parcel is with the customer, so leaving it out of the strip entirely would
    * lose an order that "Where everything is now" promised to account for.
    *
-   * A number that stays high is worth reading as a fault — it means the poller
+   * A number that stays high is worth reading as a fault - it means the poller
    * is not reaching those parcels, and the delivery median is being computed
    * from whatever it did reach.
    */
@@ -84,7 +84,7 @@ export type DeliveryStats = {
 }
 
 /**
- * The middle value. Null for nothing — never zero, which would read as
+ * The middle value. Null for nothing - never zero, which would read as
  * "delivered same day" on an empty page.
  *
  * Median rather than mean throughout: two parcels stuck in customs for a month
@@ -106,7 +106,7 @@ const rate = (delivered: OrderDelivery[]) => {
   // timezone. Comparing raw calendar days against promiseDays here silently
   // disagreed with it: a Thursday order delivered Monday against a 3
   // business-day promise counted against this rate while being correctly
-  // absent from the late list on the same page — the tile and the list
+  // absent from the late list on the same page - the tile and the list
   // contradicting each other about the same order.
   //
   // `late`, not `lateNow`: an order that ARRIVED late must still count against
@@ -165,7 +165,7 @@ export function deliveryStats(
     // Spelled out here once, and now spelled out NOWHERE else: `stillLate` is
     // the same function api/delivery/route.ts filters the list with, so the
     // tile and the rows under it are one set by construction rather than two
-    // agreeing rules. They stopped agreeing twice — 155 against 8 when this
+    // agreeing rules. They stopped agreeing twice - 155 against 8 when this
     // count forgot the parcel clause, then 13 against 16 when the LIST forgot
     // the arrival clause.
     lateNow: views.filter(stillLate).length,

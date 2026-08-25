@@ -16,7 +16,7 @@ vi.mock('@/lib/auth/current-user', () => ({ currentUser: async () => mockUser })
 // getDeliveryConfig is a seam inside importWarehouseFile's one guarded block
 // (src/lib/bring/import.ts). Its own docstring promises it never throws, but it
 // runs a findUnique, and import.ts guards it rather than trusting that on
-// faith — so a dropped connection there is exactly the "unexpected failure"
+// faith - so a dropped connection there is exactly the "unexpected failure"
 // shape this file exists to pin. Forcing it to throw proves the route's
 // catch-all hides such a failure from the client, including anything that looks
 // like a connection string, instead of forwarding the caught error's message.
@@ -43,7 +43,7 @@ vi.mock('@/lib/bring/consignments', () => ({
 const { POST } = await import('./route')
 const { db } = await import('@/lib/db')
 
-// Unique to THIS file's TrackingImport rows — see the Test data convention
+// Unique to THIS file's TrackingImport rows - see the Test data convention
 // note in src/lib/bring/import.integration.test.ts. TrackingImport has no
 // shop to tag, so scope by the filenames only this suite uses.
 const FILENAMES = [
@@ -75,7 +75,7 @@ describe('POST /api/delivery/import', () => {
     expect(res.status).toBe(500)
 
     const text = await res.text()
-    // Not just the exact message — nothing that even resembles what a raw
+    // Not just the exact message - nothing that even resembles what a raw
     // infrastructure error could contain, however the wording changes later.
     expect(text).not.toContain('10.0.0.5')
     expect(text).not.toContain('5432')
@@ -85,7 +85,7 @@ describe('POST /api/delivery/import', () => {
     })
   })
 
-  it('still shows a genuine parse error verbatim — it is written for the uploader', async () => {
+  it('still shows a genuine parse error verbatim - it is written for the uploader', async () => {
     const res = await postFile('route-parse-error.docx', 'whatever')
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -94,14 +94,14 @@ describe('POST /api/delivery/import', () => {
 
   // The manual button takes the SAME path as the emailed report. Before it was
   // rewired it called importTrackingFile, which reads the warehouse's own order
-  // number — a column that matched the right order 0 times out of 27 — and
+  // number - a column that matched the right order 0 times out of 27 - and
   // refused .xlsx outright, so the manual fallback could not even open the file
   // the warehouse sends. Both paths upsert on the one Shipment.trackingNumber
   // unique key, so the wrong path here could overwrite a correct BRING_EMAIL
   // link with a wrong FILE one and have the cron stamp real milestones onto the
   // wrong order.
   //
-  // These bytes are not a real workbook, so the answer is still an error — but
+  // These bytes are not a real workbook, so the answer is still an error - but
   // it is the xlsx reader's error, which is only reachable on the new path.
   it('opens the Excel the warehouse actually sends, on the same path the email takes', async () => {
     const res = await postFile('route-excel.xlsx', 'not really a workbook')
@@ -114,7 +114,7 @@ describe('POST /api/delivery/import', () => {
   // Rewiring this route onto importWarehouseFile gave it the inbound route's
   // exposure: sequential Bring lookups, one HTTP call per parcel, under a
   // 60-second maxDuration. A platform kill is not a JS throw, so
-  // importWarehouseFile's guard never runs — no TrackingImport row, no answer
+  // importWarehouseFile's guard never runs - no TrackingImport row, no answer
   // to the operator, and the delivery page reads like a quiet day. On the one
   // screen someone opens precisely because the automatic feed already failed.
   it('bounds the whole upload with one deadline, so a slow Bring day stops cleanly', async () => {
@@ -125,8 +125,8 @@ describe('POST /api/delivery/import', () => {
     const res = await postFile('route-deadline.csv', 'no,known,numbers\n')
     expect(res.status).toBe(200)
 
-    // resolveConsignments checks this before every lookup — see
-    // consignments.ts — so it has to actually arrive there for the protection
+    // resolveConsignments checks this before every lookup - see
+    // consignments.ts - so it has to actually arrive there for the protection
     // to exist at all. Derived from maxDuration (60) less 10s of headroom.
     const opts = resolveConsignments.mock.calls[0][2] as { deadline?: number }
     expect(opts.deadline).toBeGreaterThanOrEqual(before + 49_000)

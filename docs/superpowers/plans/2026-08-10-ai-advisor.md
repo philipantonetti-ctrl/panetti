@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A morning briefing that tells the owner what needs attention, plus a chat he can ask follow-up questions in — both built on figures computed by the existing metrics engine, never by the model.
+**Goal:** A morning briefing that tells the owner what needs attention, plus a chat he can ask follow-up questions in - both built on figures computed by the existing metrics engine, never by the model.
 
-**Architecture:** Three layers. A **facts layer** of pure TypeScript runs the existing `computeMetrics` / `buildMarketing` / `deliveryStats` / `productFigures` over two windows and emits typed `Fact[]` — no AI. A **briefing layer** sends those facts to Claude and gets back validated JSON that ranks and explains them, stored in a new `Briefing` row by a daily cron. A **chat layer** gives Claude read-only tools that call the same loaders. The model never computes a number, and the interface prints figures from `Fact`, never from the model's prose.
+**Architecture:** Three layers. A **facts layer** of pure TypeScript runs the existing `computeMetrics` / `buildMarketing` / `deliveryStats` / `productFigures` over two windows and emits typed `Fact[]` - no AI. A **briefing layer** sends those facts to Claude and gets back validated JSON that ranks and explains them, stored in a new `Briefing` row by a daily cron. A **chat layer** gives Claude read-only tools that call the same loaders. The model never computes a number, and the interface prints figures from `Fact`, never from the model's prose.
 
 **Tech Stack:** Next.js 16 App Router, React 19, Prisma + PostgreSQL, Tailwind v4, `@anthropic-ai/sdk` (new), zod v4 (existing), vitest, playwright.
 
@@ -16,7 +16,7 @@
 - **Model:** `claude-opus-5`. Never a different model without the user asking.
 - **Money is integer minor units** in the currency named alongside it, everywhere, matching the whole codebase.
 - **Admin only.** Every new route calls `assertAdmin(await currentUser())` and returns `{ 'Cache-Control': 'private, no-store' }`.
-- **Structured output uses a hand-written JSON Schema plus the project's own zod v4** for validation. Do NOT use `client.messages.parse()` with `zodOutputFormat` — that helper is coupled to the SDK's bundled zod version and this project is on zod v4.
+- **Structured output uses a hand-written JSON Schema plus the project's own zod v4** for validation. Do NOT use `client.messages.parse()` with `zodOutputFormat` - that helper is coupled to the SDK's bundled zod version and this project is on zod v4.
 - **Failures are visible, never silent.** A missing API key, a failed generation, or a refusal is stored and shown; the computed facts still render.
 - **No new dependency other than `@anthropic-ai/sdk`.**
 - **`loadProductsInput` throws `MixedCurrencyError`** when the shops passed to it do not share one currency. Product facts must therefore be gathered one call per currency group, never one call for every shop.
@@ -43,7 +43,7 @@
  *
  * A fact is a COMPUTED COMPARISON, not an observation: every one of these came
  * out of the same engine the Dashboard uses, over two windows. The model is
- * given these and asked only to rank and explain them — it never derives a
+ * given these and asked only to rank and explain them - it never derives a
  * figure of its own, because a confident wrong number is the one thing this
  * product must never ship.
  */
@@ -78,7 +78,7 @@ export type Fact = {
   /** Now and before. Minor units when `unit` is 'money'. */
   current: number | null
   previous: number | null
-  /** Fractional change. Null when the previous value was zero — growing from
+  /** Fractional change. Null when the previous value was zero - growing from
    *  nothing is not a percentage, the same call `deltaPct` already makes. */
   deltaPct: number | null
   unit: FactUnit
@@ -169,7 +169,7 @@ describe('movingFact', () => {
 - [ ] **Step 3: Run the test and confirm it fails**
 
 Run: `npx vitest run src/lib/advisor/severity.test.ts`
-Expected: FAIL — `Failed to resolve import "./severity"`
+Expected: FAIL - `Failed to resolve import "./severity"`
 
 - [ ] **Step 4: Write `src/lib/advisor/severity.ts`**
 
@@ -194,7 +194,7 @@ export const SATURATION_SHARE = 0.05
  * 0..1, or null for "this is not a fact".
  *
  * `share` is what the move is worth as a fraction of the PREVIOUS window's
- * total revenue — the same frame for every shop, so a NOK store and a EUR one
+ * total revenue - the same frame for every shop, so a NOK store and a EUR one
  * are ranked against each other honestly.
  */
 export function severityOf(delta: number | null, share: number): number | null {
@@ -426,7 +426,7 @@ describe('moneyFacts', () => {
 - [ ] **Step 2: Run the test and confirm it fails**
 
 Run: `npx vitest run src/lib/advisor/facts/money.test.ts`
-Expected: FAIL — `Failed to resolve import "./money"`
+Expected: FAIL - `Failed to resolve import "./money"`
 
 - [ ] **Step 3: Write `src/lib/advisor/facts/money.ts`**
 
@@ -440,7 +440,7 @@ import type { Fact } from '../types'
  * What the money did, per shop, against the equally-long period before.
  *
  * Every figure here already came out of `computeMetrics` and `buildMarketing`,
- * so a fact and the number on the Dashboard can never disagree — this file
+ * so a fact and the number on the Dashboard can never disagree - this file
  * compares, it does not calculate.
  */
 
@@ -458,7 +458,7 @@ export type MoneyFactsArgs = {
  *
  * Deliberately NOT `Partial<MarketingShopRow>` forced back with `as`. That
  * cast claims three fields are all twenty-six, so a later read of a fourth
- * compiles cleanly and yields undefined — which reaches severity.ts as NaN,
+ * compiles cleanly and yields undefined - which reaches severity.ts as NaN,
  * and `NaN < MIN_SHARE` is false, so the materiality gate fails OPEN and a
  * junk fact ships. Narrowing the type makes that a compile error instead.
  */
@@ -470,8 +470,8 @@ export function moneyFacts(args: MoneyFactsArgs): Fact[] {
   const { now, before, nowMarketing, beforeMarketing } = args
   const days = args.days ?? 7
 
-  // Every shop is measured against ONE baseline — the previous window's total
-  // revenue — so a NOK store and a EUR one are ranked against each other rather
+  // Every shop is measured against ONE baseline - the previous window's total
+  // revenue - so a NOK store and a EUR one are ranked against each other rather
   // than each against itself.
   const baseline = before.total.netRevenue
 
@@ -601,7 +601,7 @@ git commit -m "feat(advisor): revenue, profit, margin, ROAS and budget facts"
 - Consumes: `DeliveryStats`, `CountryStat` from `src/lib/delivery/stats.ts`; `Fact` (Task 1)
 - Produces: `deliveryFacts({ shopId, shopName, now, before }): Fact[]`
 
-Delivery facts deliberately do **not** use the money gates. Days are not money, so a revenue-share threshold is meaningless here. They use a **count** gate instead — enough delivered parcels for the median to mean anything — and a size gate in days.
+Delivery facts deliberately do **not** use the money gates. Days are not money, so a revenue-share threshold is meaningless here. They use a **count** gate instead - enough delivered parcels for the median to mean anything - and a size gate in days.
 
 - [ ] **Step 1: Write the failing test `src/lib/advisor/facts/delivery.test.ts`**
 
@@ -701,7 +701,7 @@ describe('deliveryFacts', () => {
 - [ ] **Step 2: Run the test and confirm it fails**
 
 Run: `npx vitest run src/lib/advisor/facts/delivery.test.ts`
-Expected: FAIL — `Failed to resolve import "./delivery"`
+Expected: FAIL - `Failed to resolve import "./delivery"`
 
 - [ ] **Step 3: Write `src/lib/advisor/facts/delivery.ts`**
 
@@ -715,7 +715,7 @@ import type { Fact } from '../types'
  *
  * These deliberately DO NOT use the money gates in severity.ts. A day is not
  * money, so "worth 1% of revenue" has no meaning here. What a median needs
- * instead is enough parcels to be a median at all — hence a count gate — and a
+ * instead is enough parcels to be a median at all - hence a count gate - and a
  * change large enough to act on, in days.
  */
 
@@ -970,7 +970,7 @@ describe('productFacts', () => {
 - [ ] **Step 2: Run it and confirm it fails**
 
 Run: `npx vitest run src/lib/advisor/facts/products.test.ts`
-Expected: FAIL — `Failed to resolve import "./products"`
+Expected: FAIL - `Failed to resolve import "./products"`
 
 - [ ] **Step 3: Write `src/lib/advisor/facts/products.ts`**
 
@@ -983,7 +983,7 @@ import type { Fact } from '../types'
  * Which products moved, per shop.
  *
  * ONE CURRENCY GROUP AT A TIME. `loadProductsInput` refuses to add NOK and EUR
- * together — it throws MixedCurrencyError — so the collector calls it once per
+ * together - it throws MixedCurrencyError - so the collector calls it once per
  * group and calls this once per result. Nothing here converts anything.
  *
  * The materiality share is therefore built in two hops, neither of which needs
@@ -1030,7 +1030,7 @@ export function productFacts(args: ProductFactsArgs): Fact[] {
 
       // movingFact divides impact by baseline, so scaling the baseline UP by
       // the reciprocal of the shop's share is the same arithmetic as scaling
-      // the share down — done here so movingFact keeps one meaning of baseline.
+      // the share down - done here so movingFact keeps one meaning of baseline.
       const scaledBaseline = shopShare > 0 ? shopBaseline / shopShare : 0
 
       const fact = movingFact({
@@ -1100,7 +1100,7 @@ describe('b2bQuietFacts', () => {
   })
 
   it('reports a WEEKLY customer at a gap that is fine for a monthly one', () => {
-    // Gaps of 7 and 8 days; median 7.5. Last order 26 days ago — nearly four
+    // Gaps of 7 and 8 days; median 7.5. Last order 26 days ago - nearly four
     // times their own rhythm, which one fixed threshold would have missed.
     const facts = b2bQuietFacts({
       customers: [history(['2026-06-30', '2026-07-07', '2026-07-15'])],
@@ -1171,7 +1171,7 @@ describe('ambassadorFacts', () => {
 - [ ] **Step 6: Run it and confirm it fails**
 
 Run: `npx vitest run src/lib/advisor/facts/customers.test.ts`
-Expected: FAIL — `Failed to resolve import "./customers"`
+Expected: FAIL - `Failed to resolve import "./customers"`
 
 - [ ] **Step 7: Write `src/lib/advisor/facts/customers.ts`**
 
@@ -1207,7 +1207,7 @@ export type B2bQuietArgs = {
 }
 
 /**
- * Who has gone quiet — measured against their OWN rhythm, never a fixed number
+ * Who has gone quiet - measured against their OWN rhythm, never a fixed number
  * of days. A customer who orders weekly and one who orders monthly fall silent
  * at very different points, and a shared threshold would nag about the first
  * while missing the second entirely.
@@ -1337,7 +1337,7 @@ describe('qualityFacts', () => {
     expect(isQuality(facts[0])).toBe(true)
   })
 
-  it('reports even a single uncosted product — this gate is trust, not size', () => {
+  it('reports even a single uncosted product - this gate is trust, not size', () => {
     const facts = qualityFacts({
       uncostedByShop: [{ shopId: 'shop_no', shopName: 'Panetti Norway', count: 1 }],
       failingShops: [],
@@ -1379,7 +1379,7 @@ describe('qualityFacts', () => {
 - [ ] **Step 2: Run it and confirm it fails**
 
 Run: `npx vitest run src/lib/advisor/facts/quality.test.ts`
-Expected: FAIL — `Failed to resolve import "./quality"`
+Expected: FAIL - `Failed to resolve import "./quality"`
 
 - [ ] **Step 3: Write `src/lib/advisor/facts/quality.ts`**
 
@@ -1390,7 +1390,7 @@ import type { Fact } from '../types'
  * Facts about whether the other facts can be TRUSTED.
  *
  * These bypass the materiality gates on purpose. "Norway's profit is overstated
- * because three products have no cost on file" is worth saying at any size —
+ * because three products have no cost on file" is worth saying at any size -
  * it is the product's own "say when you don't know" principle applied to the
  * briefing itself, and it is the difference between a wrong number the client
  * acts on and a gap he can close.
@@ -1484,7 +1484,7 @@ git commit -m "feat(advisor): data-quality facts, so an untrustworthy number say
 - Modify: `vitest.config.ts` (add the new integration test to the serial `delivery` project)
 
 **Interfaces:**
-- Consumes: every fact builder from Tasks 2–5; `loadMetricsInput`, `loadProductsInput`, `loadDelivery`, `computeMetrics`, `buildMarketing`, `deliveryStats`, `productFigures`, `leaderboard`, `previousRange`, `groupByCurrency`, `getSetting`, `db`
+- Consumes: every fact builder from Tasks 2-5; `loadMetricsInput`, `loadProductsInput`, `loadDelivery`, `computeMetrics`, `buildMarketing`, `deliveryStats`, `productFigures`, `leaderboard`, `previousRange`, `groupByCurrency`, `getSetting`, `db`
 - Produces: `collectFacts(now?: Date): Promise<CollectedFacts>` where `CollectedFacts = { from: Date; to: Date; facts: Fact[] }`
 
 **Why this test joins the serial `delivery` project:** it writes `Shop`, `Order`, `Product` and `FxRate` rows and reads every one of them back through loaders that query the whole table. Run in parallel with the `app` project it would race the other suites' fixtures.
@@ -1518,7 +1518,7 @@ import { isQuality, type Fact } from './types'
  *
  * Every figure here comes back out of the same loaders and the same engine the
  * pages use, run over two windows. Nothing in this file adds, divides or
- * converts money — it gathers, compares through the fact builders, and ranks.
+ * converts money - it gathers, compares through the fact builders, and ranks.
  */
 
 /** The window the briefing describes. A week reads through weekday effects. */
@@ -1760,7 +1760,7 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
     }),
   )
 
-  // Rank, then cap — but never cap away a trust warning. A briefing that
+  // Rank, then cap - but never cap away a trust warning. A briefing that
   // silently drops "this shop's sync is broken" because forty things moved is
   // the exact failure this whole feature exists to avoid.
   const quality = facts.filter(isQuality)
@@ -1818,9 +1818,9 @@ beforeAll(async () => {
   })
   productId = product.id
 
-  // Previous window (27 Jul – 2 Aug): 1_000_000 NOK.
+  // Previous window (27 Jul - 2 Aug): 1_000_000 NOK.
   await order('A1', day('2026-07-29'), 1_000_000)
-  // Current window (3 – 9 Aug): 400_000 NOK — a 60% fall.
+  // Current window (3 - 9 Aug): 400_000 NOK - a 60% fall.
   await order('A2', day('2026-08-05'), 400_000)
 })
 
@@ -1873,14 +1873,14 @@ In the `app` project's `exclude` array, add:
 'src/lib/advisor/**/*.integration.test.ts',
 ```
 
-In the `delivery` project's `include` array, add the same string. The comment on that project says the two lists must stay identical — honour it.
+In the `delivery` project's `include` array, add the same string. The comment on that project says the two lists must stay identical - honour it.
 
 - [ ] **Step 4: Run the test and confirm it passes**
 
 Run: `npx vitest run --project delivery src/lib/advisor/collect.integration.test.ts`
 Expected: PASS, 5 tests
 
-If `MixedCurrencyError` is thrown, the per-currency-group loop is wrong — check that `groupByCurrency` is being given `{ id, name, currency }` and that `loadProductsInput` receives only one group's ids.
+If `MixedCurrencyError` is thrown, the per-currency-group loop is wrong - check that `groupByCurrency` is being given `{ id, name, currency }` and that `loadProductsInput` receives only one group's ids.
 
 - [ ] **Step 5: Commit**
 
@@ -1927,12 +1927,12 @@ model Briefing {
   day       DateTime @unique
   from      DateTime
   to        DateTime
-  /// The computed facts, as JSON text — the same convention TrackingImport
+  /// The computed facts, as JSON text - the same convention TrackingImport
   /// uses. Stored so the page prints figures from data rather than from prose,
   /// and so a failed generation retries against the same facts rather than
   /// against a database that has since moved on.
   facts     String
-  /// The model's ordered items. Null while generating, and after a failure —
+  /// The model's ordered items. Null while generating, and after a failure -
   /// the facts still render, so the page is never blank.
   items     String?
   /// Why generation failed; null when it worked. Shown on the page, the way a
@@ -2062,7 +2062,7 @@ describe('generateBrief', () => {
 - [ ] **Step 6: Run it and confirm it fails**
 
 Run: `npx vitest run src/lib/advisor/brief.test.ts`
-Expected: FAIL — `Failed to resolve import "./brief"`
+Expected: FAIL - `Failed to resolve import "./brief"`
 
 - [ ] **Step 7: Write `src/lib/advisor/brief.ts`**
 
@@ -2137,7 +2137,7 @@ Your job is to decide what deserves his attention, in what order, and to say why
 
 Rules:
 - Never state a figure that is not in the facts you were given. You cannot compute.
-- Do not put numbers in "headline" or "why" — the interface prints them from the
+- Do not put numbers in "headline" or "why" - the interface prints them from the
   facts, beneath your words. Refer to direction and cause instead: "fell sharply",
   "in step with advertising efficiency".
 - Cite every fact an item rests on in factIds. An item citing an id you were not
@@ -2148,7 +2148,7 @@ Rules:
   invent advice to fill the field.
 - Order items so the most consequential is first.
 - Data-quality facts mean a number on his dashboard cannot yet be trusted. Say that
-  plainly — it outranks a move he can see for himself.
+  plainly - it outranks a move he can see for himself.
 - Write plainly. No preamble, no encouragement, no exclamation marks.`
 
 /** What a briefing generator does. A function so tests can pass a stub. */
@@ -2157,7 +2157,7 @@ export type BriefingModel = (
 ) => Promise<{ items: BriefItem[]; model: string }>
 
 /**
- * The real one, or null when no key is configured — which is a state the page
+ * The real one, or null when no key is configured - which is a state the page
  * shows plainly rather than an error it throws.
  */
 export function anthropicModel(): BriefingModel | null {
@@ -2289,7 +2289,7 @@ import { anthropicModel, generateBrief, type BriefingModel } from './brief'
 /**
  * Compute a morning's facts, ask for a briefing, and store both.
  *
- * Upsert on `day`, so a re-run replaces rather than duplicates — which is what
+ * Upsert on `day`, so a re-run replaces rather than duplicates - which is what
  * makes both the cron and the page's Refresh button safe to press twice.
  */
 export async function writeBriefing(
@@ -2330,7 +2330,7 @@ import { writeBriefing } from '@/lib/advisor/write'
  *
  * Its own route rather than a stage inside /api/cron/sync. That run is budgeted
  * tight against the 300s platform ceiling, and its own comments explain that the
- * delivery alert at the end is the one thing it cannot afford to have starved —
+ * delivery alert at the end is the one thing it cannot afford to have starved -
  * an unbounded model call in front of it is exactly that risk.
  */
 export const maxDuration = 300
@@ -2377,7 +2377,7 @@ export async function GET(req: Request) {
 }
 ```
 
-05:00 UTC is 06:00 in Oslo in winter and 07:00 in summer — before the working day in every market the group trades in.
+05:00 UTC is 06:00 in Oslo in winter and 07:00 in summer - before the working day in every market the group trades in.
 
 - [ ] **Step 4: Write the failing test `src/app/api/cron/briefing/route.integration.test.ts`**
 
@@ -2668,7 +2668,7 @@ describe('AdvisorClient', () => {
 - [ ] **Step 4: Run it and confirm it fails**
 
 Run: `npx vitest run src/app/advisor/AdvisorClient.test.tsx`
-Expected: FAIL — `Failed to resolve import "./AdvisorClient"`
+Expected: FAIL - `Failed to resolve import "./AdvisorClient"`
 
 - [ ] **Step 5: Write `src/app/advisor/AdvisorClient.tsx`**
 
@@ -2694,7 +2694,7 @@ export type Briefing = {
  * FIGURES ARE PRINTED FROM FACTS, NEVER FROM THE MODEL'S PROSE.
  *
  * This is the second of the two places that guarantee the advisor cannot show
- * a number nobody computed — the first is validateItems() dropping an item that
+ * a number nobody computed - the first is validateItems() dropping an item that
  * cites an unknown fact. The model supplies the sentence; this supplies the
  * figure beside it.
  */
@@ -2702,7 +2702,7 @@ function figure(fact: Fact): string {
   const { current, previous, deltaPct, unit } = fact
 
   const one = (n: number | null) => {
-    if (n === null) return '—'
+    if (n === null) return '-'
     if (unit === 'money') return (n / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })
     if (unit === 'percent') return `${(n * 100).toFixed(1)}%`
     if (unit === 'ratio') return n.toFixed(1)
@@ -2963,7 +2963,7 @@ describe('runTool', () => {
 - [ ] **Step 2: Run it and confirm it fails**
 
 Run: `npx vitest run src/lib/advisor/tools.test.ts`
-Expected: FAIL — `Failed to resolve import "./tools"`
+Expected: FAIL - `Failed to resolve import "./tools"`
 
 - [ ] **Step 3: Write `src/lib/advisor/tools.ts`**
 
@@ -3073,7 +3073,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'get_orders',
     description:
-      'Individual orders in a range: number, date, status, customer, country and value. Call this only when the question is about specific orders — use get_metrics for totals.',
+      'Individual orders in a range: number, date, status, customer, country and value. Call this only when the question is about specific orders - use get_metrics for totals.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -3101,7 +3101,7 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
     const engine = computeMetrics(loaded)
     const shopIds = engine.byShop.map((s) => s.shopId)
     // Through accountIdsForShops, so a split account's in-scope campaigns are
-    // not dropped — see the same note in collect.ts.
+    // not dropped - see the same note in collect.ts.
     const accountIds = await accountIdsForShops(shopIds)
     const accounts = await db.adAccount.findMany({
       where: { id: { in: accountIds } },
@@ -3195,7 +3195,7 @@ Finland and Germany, for the owner.
 
 You have read-only tools over his accounting data. Use them for EVERY figure you
 state. Never estimate, never work a number out in your head, and never carry a
-figure forward from memory — call a tool and read it.
+figure forward from memory - call a tool and read it.
 
 Money comes back in minor units (cents, øre) of the currency named beside it, so
 82000 in USD is $820.00. Convert for display, never between currencies.
@@ -3236,7 +3236,7 @@ export async function POST(req: Request) {
         model: ADVISOR_MODEL,
         max_tokens: 8000,
         system: [
-          // Stable prefix, cached — the chat re-sends it on every turn.
+          // Stable prefix, cached - the chat re-sends it on every turn.
           { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
         ],
         tools: TOOL_DEFINITIONS,
@@ -3388,7 +3388,7 @@ describe('Chat', () => {
 - [ ] **Step 2: Run it and confirm it fails**
 
 Run: `npx vitest run src/app/advisor/Chat.test.tsx`
-Expected: FAIL — `Failed to resolve import "./Chat"`
+Expected: FAIL - `Failed to resolve import "./Chat"`
 
 - [ ] **Step 3: Write `src/app/advisor/Chat.tsx`**
 
@@ -3633,7 +3633,7 @@ npm run lint
 npm run test:e2e
 ```
 
-Expected: all green. Do not proceed past a failure — fix it.
+Expected: all green. Do not proceed past a failure - fix it.
 
 - [ ] **Step 5: Build, exactly as the deployment will**
 
@@ -3648,7 +3648,7 @@ Expected: the schema push reports the additive `Briefing` change and the build s
 In `README.md`, under "Where things live", add:
 
 ```markdown
-- `src/lib/advisor/` — the morning briefing and the chat. The facts are computed
+- `src/lib/advisor/` - the morning briefing and the chat. The facts are computed
   by the engine; the model only ranks and explains them.
 ```
 
@@ -3658,8 +3658,8 @@ And after the "How data stays current" section, add:
 ## The advisor
 
 Every morning a briefing is written from the last seven days against the seven
-before them, and stored. The figures are computed by `src/lib/metrics/` — the same
-code every other page uses — and Claude is given them and asked only what deserves
+before them, and stored. The figures are computed by `src/lib/metrics/` - the same
+code every other page uses - and Claude is given them and asked only what deserves
 attention and why. It never calculates: an item citing a figure that was not
 computed is discarded, and the page prints numbers from the facts rather than from
 the model's words.
@@ -3678,12 +3678,12 @@ git commit -m "test(advisor): end-to-end coverage, and document the advisor"
 
 ## Self-review
 
-**Spec coverage.** Every section of `2026-08-10-ai-advisor-design.md` maps to a task: three layers → Tasks 1–6, 7, 10; the `Briefing` model → Task 7; all four fact groups → Tasks 2–5; severity gates → Task 1; the output shape → Task 7; model parameters and refusal handling → Task 7; tools not SQL → Task 10; the page → Task 9; failing visibly → Tasks 7, 8, 9; the separate cron → Task 8; the three test layers → Tasks 1–12.
+**Spec coverage.** Every section of `2026-08-10-ai-advisor-design.md` maps to a task: three layers → Tasks 1-6, 7, 10; the `Briefing` model → Task 7; all four fact groups → Tasks 2-5; severity gates → Task 1; the output shape → Task 7; model parameters and refusal handling → Task 7; tools not SQL → Task 10; the page → Task 9; failing visibly → Tasks 7, 8, 9; the separate cron → Task 8; the three test layers → Tasks 1-12.
 
 **One thing the spec did not anticipate, now in the plan:** `loadProductsInput` throws `MixedCurrencyError` across currencies, so Task 6 loads products one currency group at a time and Task 4's `productFacts` takes a per-shop baseline in the group's own currency. Nothing converts a product figure across currencies.
 
-**One deliberate scope call:** Task 6 loads each shop's own prior revenue in its own currency with an extra `loadMetricsInput` per shop. That is ~11 small queries once a day inside a 300-second cron. If it proves slow, the fix is to sum the group's order rows directly — but measure before optimising.
+**One deliberate scope call:** Task 6 loads each shop's own prior revenue in its own currency with an extra `loadMetricsInput` per shop. That is ~11 small queries once a day inside a 300-second cron. If it proves slow, the fix is to sum the group's order rows directly - but measure before optimising.
 
-**Names checked across tasks:** `Fact`, `FactKind`, `FactUnit`, `isQuality`, `severityOf`, `movingFact`, `moneyFacts`, `deliveryFacts`, `productFacts`, `b2bQuietFacts`, `ambassadorFacts`, `qualityFacts`, `collectFacts`, `CollectedFacts`, `BriefItem`, `BriefingModel`, `anthropicModel`, `generateBrief`, `validateItems`, `writeBriefing`, `ADVISOR_MODEL`, `TOOL_DEFINITIONS`, `runTool`, `parseWindow`, `Briefing`, `AdvisorClient`, `Chat` — each defined once and used with the same signature everywhere.
+**Names checked across tasks:** `Fact`, `FactKind`, `FactUnit`, `isQuality`, `severityOf`, `movingFact`, `moneyFacts`, `deliveryFacts`, `productFacts`, `b2bQuietFacts`, `ambassadorFacts`, `qualityFacts`, `collectFacts`, `CollectedFacts`, `BriefItem`, `BriefingModel`, `anthropicModel`, `generateBrief`, `validateItems`, `writeBriefing`, `ADVISOR_MODEL`, `TOOL_DEFINITIONS`, `runTool`, `parseWindow`, `Briefing`, `AdvisorClient`, `Chat` - each defined once and used with the same signature everywhere.
 
-**One name the first draft got wrong, since corrected:** the plan invented `attributedCampaignSpend`. `src/lib/ads/attribution.ts` exports no such thing — `attributedSpend` returns `EngineAdSpend[]`, which is the wrong shape for `buildMarketing`. The real pair is `accountIdsForShops(shopIds)` then `accountSpendRows(accountIds, shopIds, from, to)`, and accounts must be resolved through the former rather than by filtering `adAccount` on `shopId`: a split account can run campaigns for a shop while its own default shop is out of scope, and the direct filter silently drops that spend. Tasks 6 and 10 now both follow the pattern `src/app/api/marketing/route.ts:36-51` already uses.
+**One name the first draft got wrong, since corrected:** the plan invented `attributedCampaignSpend`. `src/lib/ads/attribution.ts` exports no such thing - `attributedSpend` returns `EngineAdSpend[]`, which is the wrong shape for `buildMarketing`. The real pair is `accountIdsForShops(shopIds)` then `accountSpendRows(accountIds, shopIds, from, to)`, and accounts must be resolved through the former rather than by filtering `adAccount` on `shopId`: a split account can run campaigns for a shop while its own default shop is out of scope, and the direct filter silently drops that spend. Tasks 6 and 10 now both follow the pattern `src/app/api/marketing/route.ts:36-51` already uses.

@@ -11,7 +11,7 @@ export type CarrierMonth = {
   month: string
   parcels: number
   /**
-   * False when the month's parcel count is not the month — counting began
+   * False when the month's parcel count is not the month - counting began
    * part-way through it, or never reached it at all. The bill still shows;
    * the count and the division do not. Absent means true, so a cached older
    * payload renders as it always did.
@@ -32,10 +32,10 @@ export type CarrierCostSave = {
   currency: string
 }
 
-const DASH = '—'
+const DASH = '-'
 
 /**
- * 'BRING' -> 'Bring'. The carrier shouts in the database, not on the page —
+ * 'BRING' -> 'Bring'. The carrier shouts in the database, not on the page -
  * except an acronym, which is capitals or it reads as a typo: the client's own
  * paste of this card said "Dhl".
  */
@@ -73,7 +73,7 @@ const editable = (minor: number | null) => (minor === null ? '' : (minor / 100).
 /**
  * What one parcel costs to send, per carrier.
  *
- * Bring's monthly bill is READ FROM BRING — writeBringCosts totals the invoice
+ * Bring's monthly bill is READ FROM BRING - writeBringCosts totals the invoice
  * archive each sync and fills the month in, marked source 'bring'. DHL's is
  * TYPED, because DHL has no invoice API at all; its rating endpoints would
  * answer with a quote computed from weight and dimensions we do not store,

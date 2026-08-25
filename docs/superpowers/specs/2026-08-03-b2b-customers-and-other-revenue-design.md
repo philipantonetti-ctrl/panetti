@@ -9,7 +9,7 @@ prices negotiated with them, in a currency they chose, sometimes on campaign
 discount. Today none of that money exists in the app: the Dashboard answers
 "did we actually make money" with only the WooCommerce half of the answer.
 
-The client asked for two things. A place to register a B2B customer — name, the
+The client asked for two things. A place to register a B2B customer - name, the
 store they buy from, the currency they pay in, and their own price per product.
 Then an "add other revenue" action: pick the customer, pick what they bought,
 watch their agreed prices fill themselves in, and apply a campaign discount in
@@ -42,8 +42,8 @@ Three things, and only three:
 3. **Its currency need not be the shop's.** Nordic Retail AS pays in EUR while
    buying from Mazzetti.no, a NOK store.
 
-Everything else — VAT excluded from revenue, cost timelines by order date,
-refunded and cancelled orders earning nothing — is identical, and identical on
+Everything else - VAT excluded from revenue, cost timelines by order date,
+refunded and cancelled orders earning nothing - is identical, and identical on
 purpose.
 
 ## The currency bug this uncovers
@@ -52,7 +52,7 @@ purpose.
 far arrived from that shop's WooCommerce. The engine quietly depends on it:
 
 ```ts
-// engine.ts:126-130 — cost comes from ProductCost, which is in SHOP currency…
+// engine.ts:126-130 - cost comes from ProductCost, which is in SHOP currency…
 const cost = costOn(costs.get(item.productId) ?? [], order.placedAt)
 const line = item.quantity * (cost.costPerItem + cost.handlingCost)
 return conv(line, order)   // …but conv() converts from ORDER currency
@@ -75,7 +75,7 @@ converted from the order's) and is hand-copied into
 
 We fix the assumption rather than avoid it. Storing the order converted was
 rejected: `prisma/schema.prisma:10-11` states the rule the whole product rests
-on — *"Conversion to USD happens at read time only — never stored converted"* —
+on - *"Conversion to USD happens at read time only - never stored converted"* -
 and a frozen conversion would show the client NOK for an invoice written in EUR.
 
 ## Data model
@@ -84,7 +84,7 @@ Two new tables. Both additive, so `scripts/db-push.mjs` ships them on a push.
 
 ```prisma
 // A business customer who buys off the webshop. Their orders are ordinary
-// Order rows — what makes them different is an agreed price list, their own
+// Order rows - what makes them different is an agreed price list, their own
 // currency, and an invoice instead of a card.
 model B2bCustomer {
   id         String   @id @default(cuid())
@@ -149,7 +149,7 @@ Back-references are added to `Shop` (`b2bCustomers`) and `Product` (`b2bPrices`)
 
 There is no `source` column. `b2bCustomerId != null` already answers it, and a
 second column could disagree with the first. Everything that needs to know an
-order is B2B — the badge, the Orders filter, the engine's fee rule — derives it
+order is B2B - the badge, the Orders filter, the engine's fee rule - derives it
 from that one field.
 
 ### The rest of the Order row
@@ -161,32 +161,32 @@ Fields a B2B order sets that are not otherwise obvious:
 | `status` | `"completed"` on entry | The order happened; it earns from the moment it is recorded. Editing can set `refunded` or `cancelled`, and `EXCLUDED_STATUSES` then zeroes it exactly as for a webshop order, with no special case. |
 | `couponCode` | `null` | No coupon was used. |
 | `ambassadorId` | `null` | No ambassador is ever paid on a B2B order. |
-| `customerName` | the B2B customer's name | **Not null.** `backfillCustomers()` (`woo/sync.ts:169`) queues every order with `customerName: null` and asks WooCommerce for it — for a `b2b:` external id it would ask forever and get nothing. Filling it keeps the order out of that queue and makes the Orders page search find these customers by name. |
+| `customerName` | the B2B customer's name | **Not null.** `backfillCustomers()` (`woo/sync.ts:169`) queues every order with `customerName: null` and asks WooCommerce for it - for a `b2b:` external id it would ask forever and get nothing. Filling it keeps the order out of that queue and makes the Orders page search find these customers by name. |
 | `customerEmail` | the customer's email, or `''` | `''` means "checked, none on file", the convention `mapOrder()` already uses. |
 
 ### Order numbering and identity
 
 B2B orders number `B-0001`, `B-0002`… per shop, and take
 `externalId = "b2b:B-0001"`. A WooCommerce `externalId` is always
-`String(woo.id)` — plain digits — so a sync or a webhook can never collide with
+`String(woo.id)` - plain digits - so a sync or a webhook can never collide with
 or overwrite a hand-entered order through `@@unique([shopId, externalId])`.
 
-`nextB2bNumber(shopId)` — in `src/lib/b2b/numbering.ts`, with the pure
-`B-NNNN` parse and format beside it so both can be tested without a database —
+`nextB2bNumber(shopId)` - in `src/lib/b2b/numbering.ts`, with the pure
+`B-NNNN` parse and format beside it so both can be tested without a database -
 reads the highest existing number for the shop and adds one, inside the
 transaction that writes the order. The unique constraint catches a double-click;
 one retry, then the route errors honestly rather than guessing.
 
 ### Deleting a customer
 
-Refused with 409 while they have orders, offering "deactivate" instead — the
+Refused with 409 while they have orders, offering "deactivate" instead - the
 same move `Ambassador` and `Shop` make. `onDelete: Restrict` is the backstop.
 History must not evaporate because someone tidied a list.
 
 ## The money math
 
 New pure module `src/lib/b2b/pricing.ts`, beside `src/lib/metrics/`. No
-database, no React, no I/O — arithmetic that can be tested exhaustively.
+database, no React, no I/O - arithmetic that can be tested exhaustively.
 
 ```ts
 export type DiscountKind = 'PERCENT' | 'AMOUNT'
@@ -216,13 +216,13 @@ Rules:
 - **A discount is per unit.** `AMOUNT` means "€20 off each chair", which puts it
   in the same frame as the unit price beside it on the form. The picker reads
   `%` and `€ / unit` so it cannot be misread.
-- `PERCENT` uses `pct()` from `src/lib/money.ts` — round half away from zero,
+- `PERCENT` uses `pct()` from `src/lib/money.ts` - round half away from zero,
   like every other rounding in the product.
 - A line's discount is clamped to `[0, gross]`. A discount cannot invent revenue.
 - `grossSales = Σ gross`, `discountTotal = Σ discount`,
   `netSales = grossSales − discountTotal`.
 - `taxTotal = pct(netSales + shippingCharged, vatPercent / 100)`. `vatPercent`
-  is a percentage — 25 means 25% — and shipping follows the goods' rate.
+  is a percentage - 25 means 25% - and shipping follows the goods' rate.
 - `total = netSales + shippingCharged + taxTotal`.
 
 Those names are the ones `mapOrder()` produces from WooCommerce. That is what
@@ -271,41 +271,41 @@ holds a hand-copy of this arithmetic for its per-order figures.
 
 `needsRates` today reads shop and expense currencies plus the gateway fee's, so
 a EUR order on a NOK shop would never trigger a rate fetch and would pass
-through unconverted. It becomes: gather every currency in play — display, shops,
-orders, expenses, the fee — and fetch when the set holds more than one. One set
+through unconverted. It becomes: gather every currency in play - display, shops,
+orders, expenses, the fee - and fetch when the set holds more than one. One set
 and one size check, in place of two independently-reasoned clauses: simpler to
-reason about and unable to miss a case. (Simpler, not shorter — it is a few
+reason about and unable to miss a case. (Simpler, not shorter - it is a few
 lines longer than what it replaces.)
 
 ## Screens
 
-### `/b2b` — the B2B page
+### `/b2b` - the B2B page
 
 Nav: Analytics, after Ambassadors. Shop filter in the `PageHeader`, reusing
 `ShopFilter`. Two cards:
 
-- **Business customers** — name, shop, currency, VAT, agreed prices, orders,
+- **Business customers** - name, shop, currency, VAT, agreed prices, orders,
   revenue. `+ Add customer`. A row opens the customer. Revenue is shown in the
   **customer's own** currency: every one of their orders is in it, so no
   conversion is involved and none can mislead. The column therefore has **no
-  total row** — adding EUR to NOK down a column would be the confident wrong
+  total row** - adding EUR to NOK down a column would be the confident wrong
   number `PRODUCT.md` forbids. The consolidated figure already exists, converted
   properly, on the Dashboard.
-- **B2B orders** — number, customer, date, net sales, profit, status, actions.
+- **B2B orders** - number, customer, date, net sales, profit, status, actions.
   `+ Add order`. The 25 most recent, with a link to the Orders page filtered to
   B2B for the full history. This card is a working surface, not an archive.
 
 Empty states teach the next action, per `DESIGN.md`: "No business customers yet
-— add one and you can start entering their orders."
+- add one and you can start entering their orders."
 
-### `/b2b/[id]` — one customer
+### `/b2b/[id]` - one customer
 
 Their agreed price list and their order history. Deactivate lives here.
 
 The price list carries two currencies, so both columns name theirs in the
 header: **our cost** comes from `ProductCost` and is in the shop's currency;
 **agreed price** is in the customer's. They are not comparable at a glance and
-the table must not pretend they are — no margin column, because a margin here
+the table must not pretend they are - no margin column, because a margin here
 would need an FX rate and a date, and the honest per-order margin is already on
 the Orders page.
 
@@ -313,7 +313,7 @@ the Orders page.
 
 Name, shop, currency, VAT %, email, note, and a starting price list. Currency
 uses `SearchableSelect` over `allCurrencies()` with the `isConvertible()`
-warning `ExpensesClient` already shows — a currency we hold no rate for says so
+warning `ExpensesClient` already shows - a currency we hold no rate for says so
 rather than quietly mis-totalling.
 
 The shop locks once the customer has an order: changing it would orphan the
@@ -326,7 +326,7 @@ product lines:
 
 | field | behaviour |
 |---|---|
-| Product | picker scoped to that customer's shop — see the limit below |
+| Product | picker scoped to that customer's shop - see the limit below |
 | Qty | ≥ 1 |
 | Unit price | prefilled from the price book; empty and highlighted when there is no agreed price, with a "save as this customer's price" checkbox. Editing a prefilled price is a one-off unless the box is ticked. |
 | Discount | value plus a `%` / `€ per unit` toggle |
@@ -341,7 +341,7 @@ discount, net sales, shipping, VAT and total, live.
 
 ### The product picker's limit, and saying so
 
-A `Product` row is only created when a product **sells** — `storeOrder()`
+A `Product` row is only created when a product **sells** - `storeOrder()`
 discovers products from order lines, and the catalogue pass in `syncShop()`
 (`woo/sync.ts:405`) only refreshes prices for products it already holds. So a
 product that has never sold through the webshop cannot be picked for a B2B
@@ -354,14 +354,14 @@ listing that nobody asked for.
 
 The picker therefore says so rather than looking broken. When a search matches
 nothing: *"Only products that have sold through this shop can be added. Sync the
-shop, or check the name."* Per `PRODUCT.md` — say when you don't know, never
+shop, or check the name."* Per `PRODUCT.md` - say when you don't know, never
 show a confident wrong thing.
 
 ### Orders page
 
 A Source filter (All / Webshop / B2B) and a B2B badge on the row.
 `OrdersClient.tsx` and its route. The filter is a `where` on `b2bCustomerId`
-being null or not — nothing new is stored to support it.
+being null or not - nothing new is stored to support it.
 
 ## Routes
 
@@ -376,7 +376,7 @@ GET  POST            /api/b2b/orders
 ```
 
 `PATCH /api/b2b/customers/[id]` takes the whole price list and replaces it, in a
-transaction — the same "rewrite, don't diff" rule as order lines, for the same
+transaction - the same "rewrite, don't diff" rule as order lines, for the same
 reason: simpler and always correct. Replacing a price never touches an order
 already placed, because the charged price lives on the `OrderItem`.
 
@@ -387,18 +387,18 @@ and the posted lines. It also rejects:
 
 - a `productId` that does not belong to the customer's shop
 - `quantity < 1` or a negative `unitPrice`
-- a `PERCENT` discount outside 0–100
+- a `PERCENT` discount outside 0-100
 - an `AMOUNT` discount above the unit price
 - an unparseable date
 
-Order lines are rewritten inside a transaction rather than diffed — the rule
+Order lines are rewritten inside a transaction rather than diffed - the rule
 `storeOrder()` already follows, so an order and its lines land together or not
 at all.
 
 ## Error handling
 
 As the app already does it. A failed action toasts and leaves the modal open
-with what was typed still in it — closing would discard the entry while the list
+with what was typed still in it - closing would discard the entry while the list
 shows nothing added. A failed page load says so in the table body, because an
 empty table reads as "you have no customers", which would be a lie.
 
@@ -409,7 +409,7 @@ Tests first for the pure module and the engine deltas, as this repo does.
 | file | proves |
 |---|---|
 | `src/lib/b2b/pricing.test.ts` | percent vs amount, rounding half away from zero, clamping, VAT, zero-discount and zero-VAT cases |
-| `src/lib/metrics/engine.test.ts` | cost currency ≠ order currency; a B2B order pays no gateway fee; a B2B order uses its own fulfillment cost — **plus the existing suite passing unmodified** |
+| `src/lib/metrics/engine.test.ts` | cost currency ≠ order currency; a B2B order pays no gateway fee; a B2B order uses its own fulfillment cost - **plus the existing suite passing unmodified** |
 | `src/app/api/b2b/customers/route.test.ts` | admin-only, validation, the delete refusal, price list replacement |
 | `src/app/api/b2b/orders/route.test.ts` | server recompute beats posted totals, product-belongs-to-shop, numbering under a double-click, line rewrite on edit |
 | `src/app/api/orders/route.test.ts` | the source filter and the B2B marker |
@@ -422,19 +422,19 @@ Tests first for the pure module and the engine deltas, as this repo does.
 One feature, but it has a natural spine. Each step leaves the app working and
 green:
 
-1. **Schema** — the two tables and the four columns. Additive, ships alone.
+1. **Schema** - the two tables and the four columns. Additive, ships alone.
 2. **`src/lib/b2b/pricing.ts`** and its tests. Pure, no dependencies.
-3. **Engine and loader** — the three `EngineOrder` fields, the three `engine.ts`
+3. **Engine and loader** - the three `EngineOrder` fields, the three `engine.ts`
    lines, the `needsRates` rewrite, the same three fixes in the Orders route.
    Gate: the existing engine and orders suites pass unmodified.
-4. **Customer routes and screens** — `/b2b`, `/b2b/[id]`, add/edit customer.
+4. **Customer routes and screens** - `/b2b`, `/b2b/[id]`, add/edit customer.
    Usable on its own: you can register customers and their prices.
-5. **Order entry** — the add-order modal and `/api/b2b/orders`. This is the step
+5. **Order entry** - the add-order modal and `/api/b2b/orders`. This is the step
    where money starts arriving.
-6. **Orders page** — badge and Source filter.
+6. **Orders page** - badge and Source filter.
 7. **e2e**.
 
-Steps 1–3 change existing money code and nothing else; 4–7 only add. That split
+Steps 1-3 change existing money code and nothing else; 4-7 only add. That split
 is deliberate, so a regression in the numbers can only have come from step 3.
 
 ## Out of scope

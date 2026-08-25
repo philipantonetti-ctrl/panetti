@@ -29,7 +29,7 @@ export function reorderFacts(tips: ReorderTip[]): Fact[] {
       id: `reorder:${tip.sku}`,
       kind: 'REORDER_DUE' as const,
       // A warehouse is not a shop. The stores mirror one of them, and it is the
-      // warehouse that empties — so this fact belongs to no shop's section.
+      // warehouse that empties - so this fact belongs to no shop's section.
       shopId: null,
       shopName: null,
       subject: tip.name,

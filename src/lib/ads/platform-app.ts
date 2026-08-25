@@ -7,8 +7,8 @@ import { decryptSecret } from '@/lib/secrets'
  * The environment first, the AdPlatformApp row second. That order is the whole
  * point: these used to be a form the client filled in, which made him register
  * a Facebook app and apply for a Google developer token before he could press
- * a button. They are server configuration, and BeProfit — the tool he compared
- * us to — has always treated them that way.
+ * a button. They are server configuration, and BeProfit - the tool he compared
+ * us to - has always treated them that way.
  *
  * The row survives as a fallback rather than being dropped, so a mistyped
  * variable name on Vercel cannot take the live site dark. Google's developer
@@ -18,7 +18,7 @@ import { decryptSecret } from '@/lib/secrets'
  * with it.
  *
  * Every use of the row is logged. A silent fallback is what makes it
- * dangerous — it keeps the site working right up until someone assumes an
+ * dangerous - it keeps the site working right up until someone assumes an
  * environment variable is in effect that never took. `console.warn` fires
  * only when the row answers *and* at least one of that provider's variables
  * was set in the environment; the ordinary today-nothing-is-set state stays
@@ -55,7 +55,7 @@ function env(name: string | undefined): string | undefined {
 
 /**
  * A row that answers while an environment variable for that provider was
- * set is never intentional — it is a typo, or a rollout half finished.
+ * set is never intentional - it is a typo, or a rollout half finished.
  * `seenEnvKeys` is whichever of that provider's variables had a value,
  * regardless of whether the fallback below needed all of them. Nothing is
  * logged when the list is empty: that is the ordinary state before the
@@ -68,7 +68,7 @@ function warnFallback(provider: Provider, seenEnvKeys: string[], using: string):
   console.warn(
     `[platform-app] ${provider}: ${using}, even though ${seenEnvKeys.join(', ')} ` +
       `${plural ? 'are' : 'is'} set in the environment. That combination is usually a typo ` +
-      `— check the name${plural ? 's' : ''}.`,
+      `- check the name${plural ? 's' : ''}.`,
   )
 }
 
@@ -77,7 +77,7 @@ function warnFallback(provider: Provider, seenEnvKeys: string[], using: string):
  * `platformApp` layers `decryptSecret` on top for callers that need usable
  * credentials. `configuredProviders` reads this directly instead of going
  * through `platformApp`, because whether a button should work is a presence
- * question, not a plaintext one — asking it must never risk a throw from an
+ * question, not a plaintext one - asking it must never risk a throw from an
  * undecryptable secret.
  */
 async function resolveRaw(provider: Provider): Promise<RawCredentials | null> {
@@ -91,7 +91,7 @@ async function resolveRaw(provider: Provider): Promise<RawCredentials | null> {
     return { clientId, clientSecret, developerToken }
   }
 
-  // Something is missing: the id/secret pair, or — Google only — just the
+  // Something is missing: the id/secret pair, or - Google only - just the
   // developer token while id and secret are both fine. Whichever of this
   // provider's variables WERE set get named in the fallback warning below,
   // so a typo in one of them cannot look identical to nobody having
@@ -117,7 +117,7 @@ async function resolveRaw(provider: Provider): Promise<RawCredentials | null> {
   }
 
   // clientId and clientSecret both came from the environment here. Only
-  // Google's developer token can still be missing — Meta has no
+  // Google's developer token can still be missing - Meta has no
   // developerToken key, so `missingDeveloperToken` is always false for it,
   // and this branch is a no-op for Meta. Pulling just the token from the row
   // while id/secret stay in the environment is safe to mix: the token
@@ -134,8 +134,8 @@ export async function platformApp(provider: Provider): Promise<PlatformCredentia
   if (!raw) return null
 
   // One decrypt for both sources, deliberately. decryptSecret returns a value
-  // without the enc:v1: prefix unchanged, so the documented path — pasting
-  // the plaintext value straight from Facebook's or Google's own dashboard —
+  // without the enc:v1: prefix unchanged, so the documented path - pasting
+  // the plaintext value straight from Facebook's or Google's own dashboard -
   // passes through untouched. A value copied straight out of the database is
   // enc:v1: ciphertext and still decrypts here too, kept for compatibility,
   // though it ties the deployment to whichever AUTH_SECRET encrypted it (see
@@ -154,8 +154,8 @@ export async function platformApp(provider: Provider): Promise<PlatformCredentia
  * login carries it. Meta needs only the app it logs into.
  *
  * Presence only, never plaintext. This calls `resolveRaw` directly rather
- * than `platformApp`, so an undecryptable secret — the wrong AUTH_SECRET, a
- * malformed blob, an unknown `enc:` version — cannot take the settings page
+ * than `platformApp`, so an undecryptable secret - the wrong AUTH_SECRET, a
+ * malformed blob, an unknown `enc:` version - cannot take the settings page
  * down over a question that never needed the plaintext to answer.
  */
 export async function configuredProviders(): Promise<{ meta: boolean; google: boolean }> {

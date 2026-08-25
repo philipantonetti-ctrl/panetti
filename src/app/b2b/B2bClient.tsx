@@ -39,7 +39,7 @@ type B2bOrder = {
   /**
    * Imported from Visma, which makes it READ-ONLY here. Visma is its source and
    * the next fifteen-minute run rewrites its money and its lines from the
-   * invoice — so an edit would silently revert and a delete would come back on
+   * invoice - so an edit would silently revert and a delete would come back on
    * the next upsert. The route refuses both; this is why the row stops offering
    * them at all.
    */
@@ -47,7 +47,7 @@ type B2bOrder = {
 }
 
 /**
- * The orders card is a working surface, not an archive — but a business
+ * The orders card is a working surface, not an archive - but a business
  * customer may order only twice a year, and ninety days hid orders the client
  * knew they had placed. A year covers the real rhythm; "See all" still leads
  * to the Orders page for anything older.
@@ -58,7 +58,7 @@ const day = (d: Date) => d.toISOString().slice(0, 10)
 /**
  * What the last B2B sales import did, read from the database by the page.
  *
- * Null means no run has been recorded — a workspace with no Visma credentials,
+ * Null means no run has been recorded - a workspace with no Visma credentials,
  * or one where the cron has not run since this shipped.
  */
 export type ImportRun = {
@@ -76,7 +76,7 @@ export type ImportRun = {
  * It exists because every one of these numbers otherwise lived in the cron's
  * JSON response, which nothing reads. "Refused on every run" and "there are no
  * B2B invoices" are both just no new orders on this page, and a JUMP in
- * `imported` — which is what a leak in the allowlist would look like — would be
+ * `imported` - which is what a leak in the allowlist would look like - would be
  * invisible too. A line, deliberately, not a dashboard: it is a health check on
  * a feature that is supposed to be silent, and anything larger would compete
  * with the orders it is reporting on.
@@ -91,12 +91,12 @@ function ImportStatus({ run }: { run: ImportRun | null }) {
 
   // Worst news first: an error outranks a partial run, which outranks a count.
   const body = run.error
-    ? `last import failed — ${run.error}`
+    ? `last import failed - ${run.error}`
     : run.linked === 0
       ? 'no customers are linked to Visma yet, so nothing is imported'
       : `imported ${run.imported} of ${run.read} invoices from ${run.linked} linked ${
           run.linked === 1 ? 'customer' : 'customers'
-        }${run.partial ? ', and did not reach the end — the rest arrive next run' : ''}`
+        }${run.partial ? ', and did not reach the end - the rest arrive next run' : ''}`
 
   return (
     <p className={`mt-0.5 text-[11px] ${run.error ? 'text-warn' : 'text-muted'}`}>
@@ -125,7 +125,7 @@ export function B2bClient({
   const [editingOrder, setEditingOrder] = useState<{ id: string } | null>(null)
   const [orderMenuFor, setOrderMenuFor] = useState<string | null>(null)
   // A page-load failure is not an action: a toast fades and would leave an
-  // empty table reading as "you have no customers" — a lie. Say it in place.
+  // empty table reading as "you have no customers" - a lie. Say it in place.
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(() => {
@@ -172,7 +172,7 @@ export function B2bClient({
       }
       toast.success(`${c.name} removed`)
     } finally {
-      // Reload either way — the reload is what shows the true, post-delete
+      // Reload either way - the reload is what shows the true, post-delete
       // state, matching ExpensesClient.remove()'s ground-truth reload.
       load()
     }
@@ -181,7 +181,7 @@ export function B2bClient({
   /**
    * Void = the order happened and earns nothing, which is what a refunded
    * webshop order already means. PATCH takes the whole order, so this reads
-   * it back and returns it unchanged but for the status — two round trips,
+   * it back and returns it unchanged but for the status - two round trips,
    * rather than widening a contract that is already tested.
    */
   async function setOrderStatus(o: B2bOrder, status: 'refunded' | 'cancelled') {
@@ -201,7 +201,7 @@ export function B2bClient({
           placedAt: d.placedAt,
           shippingCharged: toMajor(d.shippingCharged),
           // Null survives, because `toMajor(null)` is 0 and would be stored as
-          // a real zero — turning an order nobody costed into one whose
+          // a real zero - turning an order nobody costed into one whose
           // shipping was free, on an action taken only to mark it refunded.
           // See toMajorOrNull; `d` is untyped, so nothing else would catch it.
           fulfillmentCost: toMajorOrNull(d.fulfillmentCost),
@@ -299,7 +299,7 @@ export function B2bClient({
                   <tr>
                     <td colSpan={8} className="px-3 py-10 text-center text-faint">
                       <span className="font-semibold text-ink">No shops connected yet.</span>{' '}
-                      A business customer buys from a shop —{' '}
+                      A business customer buys from a shop -{' '}
                       <Link href="/settings/shops" className="text-accent hover:underline">
                         connect one first
                       </Link>.
@@ -308,7 +308,7 @@ export function B2bClient({
                 ) : customers.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-3 py-10 text-center text-faint">
-                      <span className="font-semibold text-ink">No business customers yet</span> — add
+                      <span className="font-semibold text-ink">No business customers yet</span> - add
                       one and you can start entering their orders.
                     </td>
                   </tr>
@@ -409,7 +409,7 @@ export function B2bClient({
                   orders.map((o) => (
                     <tr key={o.id} className="border-t border-line">
                       <td className="px-3 py-3 font-semibold text-ink">{o.number}</td>
-                      <td className="px-3 py-3 text-muted">{o.customer ?? '—'}</td>
+                      <td className="px-3 py-3 text-muted">{o.customer ?? '-'}</td>
                       <td className="px-3 py-3 text-muted">{o.placedAt.slice(0, 10)}</td>
                       <td className="px-3 py-3 text-muted">{o.status}</td>
                       <td className="num px-3 py-3 text-right text-ink">
@@ -422,7 +422,7 @@ export function B2bClient({
                           !o.figures ? 'text-faint' : o.figures.profit < 0 ? 'text-loss' : 'text-gain'
                         }`}
                       >
-                        {o.figures ? formatMoney(o.figures.profit, o.currency) : '—'}
+                        {o.figures ? formatMoney(o.figures.profit, o.currency) : '-'}
                       </td>
                       <td className="relative px-3 py-3 text-right">
                         {/* Nothing to offer on an imported order: the route

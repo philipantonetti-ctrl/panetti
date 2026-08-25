@@ -26,7 +26,7 @@ describe('canViewAmbassador', () => {
     expect(canViewAmbassador(null, 'a1')).toBe(false)
   })
 
-  it('lets marketing view anyone — ambassador statistics are their job', () => {
+  it('lets marketing view anyone - ambassador statistics are their job', () => {
     expect(canViewAmbassador(mari, 'a1')).toBe(true)
     expect(canViewAmbassador(mari, 'a2')).toBe(true)
   })
@@ -45,7 +45,7 @@ describe('assertStaff', () => {
 })
 
 describe('assertAdmin keeps marketing out', () => {
-  it('throws for marketing — the financial house is not theirs', () => {
+  it('throws for marketing - the financial house is not theirs', () => {
     expect(() => assertAdmin(mari)).toThrow(AuthError)
   })
 })
@@ -55,7 +55,7 @@ describe('assertAdmin', () => {
     expect(() => assertAdmin(admin)).not.toThrow()
   })
 
-  it('throws for an ambassador — costs and profit are not theirs to see', () => {
+  it('throws for an ambassador - costs and profit are not theirs to see', () => {
     expect(() => assertAdmin(emma)).toThrow(AuthError)
   })
 

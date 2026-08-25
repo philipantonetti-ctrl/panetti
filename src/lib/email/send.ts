@@ -15,13 +15,13 @@ const STREAM = 'outbound'
  * Send one transactional email through Postmark's REST API.
  *
  * Postmark rather than a new vendor because the account already exists for the
- * warehouse intake — one bill, one dashboard, one set of credentials to keep
+ * warehouse intake - one bill, one dashboard, one set of credentials to keep
  * alive. Raw `fetch` rather than the Postmark SDK because this is a single POST
  * and the SDK would be a dependency earning nothing.
  *
  * THROWS on failure, like postSlack in lib/slack/notify.ts. Every caller has a
- * different idea of what a failure means — the forgot-password route swallows
- * it so the page cannot be used to discover who has an account — so this
+ * different idea of what a failure means - the forgot-password route swallows
+ * it so the page cannot be used to discover who has an account - so this
  * reports the truth and lets them decide.
  *
  * Configuration is read at call time, not at module load: a serverless instance

@@ -62,7 +62,7 @@ const HISTORY_DAYS = 730
  * Units of a purchase order that are still on the water.
  *
  * Whatever has already been received is already in the stock figure, so counting
- * the whole order as incoming would count those units twice — and the forecast
+ * the whole order as incoming would count those units twice - and the forecast
  * would then advise ordering too little, which is the exact failure this feature
  * exists to prevent, reached by another road.
  *
@@ -87,14 +87,14 @@ export function outstanding(order: {
  *
  * Days are UTC days, deliberately. `forecast()` normalises every date with
  * `Math.floor(t / DAY) * DAY`, which floors to UTC midnight regardless of the
- * caller's local zone — and the default `today = new Date()` here is a real
+ * caller's local zone - and the default `today = new Date()` here is a real
  * clock reading, not a pre-aligned constant. On a development host that runs
  * ahead of UTC, a local "today" between midnight and the UTC rollover still
  * falls on the previous UTC day, so a run-out or order-by date can appear one
  * day out from what the local wall clock suggests. This is intentional, not a
  * bug to chase: in production this runs on Vercel, whose server clock is UTC,
  * so it is exactly correct there, and a forecast measured in weeks and months
- * is not materially harmed by a one-day boundary — not worth the complexity of
+ * is not materially harmed by a one-day boundary - not worth the complexity of
  * pulling workspace-timezone handling into a purchasing forecast.
  */
 export async function loadInventory(today: Date = new Date()): Promise<InventoryView> {
@@ -134,7 +134,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     // A deactivated shop is never synced again, so its stockQuantity reading can
     // never refresh. Without this filter an unfiltered vote lets that frozen
     // figure outvote a live shop's in agreeStock. `stockSource` narrows it
-    // further when shops have been named — a drifted mirror should not get a
+    // further when shops have been named - a drifted mirror should not get a
     // vote at all, rather than be outvoted.
     db.product.findMany({
       where: { shop: { active: true, ...(scoped ? { stockSource: true } : {}) } },
@@ -184,7 +184,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
 
   const stocks = new Map<string, ShopStock[]>()
 
-  // SKU to what Visma counted. A SKU absent here is UNKNOWN, never zero — that
+  // SKU to what Visma counted. A SKU absent here is UNKNOWN, never zero - that
   // is the whole reason resolveStock takes a nullable reading rather than a
   // number with a default.
   const vismaStock = new Map(
@@ -198,7 +198,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   // the listing is renamed.
   //
   // Shared with the Suppliers & lead times page rather than repeated, so the
-  // two tabs cannot end up calling the same product different things — which is
+  // two tabs cannot end up calling the same product different things - which is
   // the whole bug, one page further along.
   const names = catalogueOf(products)
   // And what it LOOKS like, from the same shops and for the same reason. A
@@ -224,7 +224,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
 
   // Scoped, the source shops' catalogue IS the product list: an item they do
   // not carry is not a thing to forecast here. Unscoped, every SupplyItem is
-  // kept exactly as before — a product whose shops stopped listing it keeps its
+  // kept exactly as before - a product whose shops stopped listing it keeps its
   // lead times and its open orders, which is the promise ensureSupplyItems makes.
   const listed = scoped ? items.filter((i) => stocks.has(normaliseSku(i.sku))) : items
 
@@ -235,7 +235,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     const seasonal = hasSeasonalHistory(mine, today)
     const stock = resolveStock(vismaStock.get(sku) ?? null, stocks.get(sku) ?? [])
 
-    // One season, read once, used twice — first to take the season OUT of the
+    // One season, read once, used twice - first to take the season OUT of the
     // rate we can see, then to put the right season back on each future day.
     // Those two have to be the same function or the two halves disagree.
     const index = (d: Date) => seasonalIndex(mine, d, today)
@@ -273,7 +273,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   })
 
   // Soonest first. A row with no run-out date has nothing to chase, so it sorts
-  // after every row that does — but it is still present, because a product that
+  // after every row that does - but it is still present, because a product that
   // stopped selling or lost its stock figure is worth seeing.
   rows.sort((a, b) => {
     const at = a.forecast.runsOutOn?.getTime() ?? Infinity

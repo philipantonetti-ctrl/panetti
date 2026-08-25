@@ -29,7 +29,7 @@ export type B2bQuietArgs = {
 }
 
 /**
- * Who has gone quiet — measured against their OWN rhythm, never a fixed number
+ * Who has gone quiet - measured against their OWN rhythm, never a fixed number
  * of days. A customer who orders weekly and one who orders monthly fall silent
  * at very different points, and a shared threshold would nag about the first
  * while missing the second entirely.
@@ -79,7 +79,7 @@ export type AmbassadorFactsArgs = {
   before: LeaderboardRow[]
   /** The previous window's total revenue, display currency. */
   baseline: number
-  /** The engine's display currency — sales figures are already converted into it. */
+  /** The engine's display currency - sales figures are already converted into it. */
   currency: string
 }
 

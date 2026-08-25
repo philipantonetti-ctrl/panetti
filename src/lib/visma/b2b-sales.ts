@@ -17,7 +17,7 @@ export const VISMA_EXTERNAL_ID_PREFIX = 'visma-'
  * Was this order imported from Visma rather than entered here?
  *
  * Such an order is READ-ONLY. Visma is the source of it, and the next
- * fifteen-minute run rewrites its money and its lines from the invoice — so an
+ * fifteen-minute run rewrites its money and its lines from the invoice - so an
  * edit made here would silently revert, and a delete would come straight back
  * on the next upsert, losing anything typed onto it in the meantime.
  */
@@ -81,8 +81,8 @@ const num = (v: unknown): number | null => {
 
 const money = (v: unknown): number => {
   const raw = num(v)
-  // Rounded, not truncated. Visma sends fractions — a live open credit note
-  // carried 9257.5 — and Math.trunc would quietly lose 50 øre a line, forever.
+  // Rounded, not truncated. Visma sends fractions - a live open credit note
+  // carried 9257.5 - and Math.trunc would quietly lose 50 øre a line, forever.
   return raw === null ? 0 : Math.round(raw * 100)
 }
 
@@ -98,7 +98,7 @@ const date = (v: unknown): Date | null => {
  *
  * **The filter is an allowlist and it can never be anything else.** Visma
  * raises an invoice for every WEBSHOP order too, booked against house accounts
- * named "Panetti Norge - Webkunde", "Mazzetti Norge - Webkunde" and six more —
+ * named "Panetti Norge - Webkunde", "Mazzetti Norge - Webkunde" and six more -
  * 994 of the first 1000 open documents on 2026-08-18. Those same orders already
  * arrive from WooCommerce. Import one unlinked customer's invoice as a sale and
  * every webshop order is counted twice and every revenue figure in the product
@@ -108,7 +108,7 @@ const date = (v: unknown): Date | null => {
  * A denylist would not do. The client's own flow proves it: a mazzetti.no
  * customer who wants to pay by invoice has his order added to the WEBSHOP by
  * hand and is invoiced from Visma afterwards. His invoice is against a named
- * company, not a house account, and it must still never become a sale here —
+ * company, not a house account, and it must still never become a sale here -
  * the webshop already provided it. Four of the six real open invoices on
  * 2026-08-18 were exactly that, matching one of our orders to the cent.
  *
@@ -143,7 +143,7 @@ export function mapVismaB2bSales(
     }
 
     // Linked is not enough. The number is typed into a free-text field, so one
-    // typo — a "… - Webkunde" house account's number — would turn every webshop
+    // typo - a "… - Webkunde" house account's number - would turn every webshop
     // invoice booked to it into a duplicate order, which is precisely the
     // failure this whole design exists to prevent. A house account is never a
     // B2B customer however convincingly it has been linked, so it is refused on
@@ -161,7 +161,7 @@ export function mapVismaB2bSales(
     const referenceNumber = str(inv?.referenceNumber)
     const placedAt = date(inv?.documentDate)
     // No reference number is no identity, and no document date is no honest
-    // placedAt — which is not nullable, and a guessed date in a revenue figure
+    // placedAt - which is not nullable, and a guessed date in a revenue figure
     // is worse than an invoice we did not import.
     if (referenceNumber === '' || !placedAt) {
       skip('unusable invoice')
@@ -169,7 +169,7 @@ export function mapVismaB2bSales(
     }
 
     // The line amounts below are read from `unitPriceInCurrency`, which is the
-    // INVOICE's currency, while the order is labelled with the CUSTOMER's — and
+    // INVOICE's currency, while the order is labelled with the CUSTOMER's - and
     // the B2B customer page sums those columns without converting. So the two
     // must be the same currency or the figure is simply wrong: 45 000 NOK
     // recorded as 45 000 EUR is a tenfold error nothing downstream can notice.
@@ -210,7 +210,7 @@ export function mapVismaB2bSales(
       // The importer prices this line as quantity x unitPrice and passes no
       // discount, on the reasoning that Visma prices each line net so a
       // discount is already inside the unit price. The only evidence for that
-      // was a fixture reading `discountAmount: 0` — it has never been observed
+      // was a fixture reading `discountAmount: 0` - it has never been observed
       // on a real discounted invoice. If `unitPriceInCurrency` turns out to be
       // the LIST price, every discounted invoice imports with OVERSTATED net
       // sales, which is the direction that flatters the numbers, for a client
@@ -223,7 +223,7 @@ export function mapVismaB2bSales(
       // can be recovered, while a silently inflated sale cannot.
       //
       // No total at all is no check, and an unchecked assumption is the entire
-      // risk — so that is refused too.
+      // risk - so that is refused too.
       const lineTotal = num(l?.amountInCurrency)
       // Both sides are rounded to minor units, so each unit price can be half a
       // unit out and the total half a unit more. Anything inside that is
@@ -243,20 +243,20 @@ export function mapVismaB2bSales(
     }
 
     // Everything on it was unusable. An order with nothing on it is not an
-    // order — it would sit in the totals as a sale worth zero.
+    // order - it would sit in the totals as a sale worth zero.
     if (lines.length === 0) {
       skip('no lines')
       continue
     }
 
     orders.push({
-      // Prefixed, and the prefix is load-bearing — see VISMA_EXTERNAL_ID_PREFIX.
+      // Prefixed, and the prefix is load-bearing - see VISMA_EXTERNAL_ID_PREFIX.
       externalId: `${VISMA_EXTERNAL_ID_PREFIX}${referenceNumber}`,
       referenceNumber,
       b2bCustomerId: customer.b2bCustomerId,
       shopId: customer.shopId,
       // The CUSTOMER's currency, which is the frame every money column on their
-      // orders is read in — the B2B customer page sums them without converting.
+      // orders is read in - the B2B customer page sums them without converting.
       currency: customer.currency,
       placedAt,
       lines,

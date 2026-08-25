@@ -12,7 +12,7 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
 /**
  * Ambassador statistics for staff: the leaderboard and the shop options for
- * its filter — and nothing else. Revenue, profit, series and spend are never
+ * its filter - and nothing else. Revenue, profit, series and spend are never
  * computed here, so there is nothing to hide.
  */
 export async function GET(req: Request) {

@@ -4,7 +4,7 @@
 
 **Goal:** Build a BeProfit-style analytics dashboard for multiple WooCommerce shops that tracks sales, computes true net profit, attributes sales to ambassadors via coupon codes, and lets ambassadors log in to see their own earnings.
 
-**Architecture:** A single Next.js app. All money math lives in one pure, heavily-tested module (`lib/metrics/`) that knows nothing about HTTP or the database — it takes orders, costs, expenses and FX rates in, and returns figures out. Thin API routes and pages call it. Data is stored in each shop's native currency and converted to USD only at read time, using the exchange rate from the order's own date, so history never shifts.
+**Architecture:** A single Next.js app. All money math lives in one pure, heavily-tested module (`lib/metrics/`) that knows nothing about HTTP or the database - it takes orders, costs, expenses and FX rates in, and returns figures out. Thin API routes and pages call it. Data is stored in each shop's native currency and converted to USD only at read time, using the exchange rate from the order's own date, so history never shifts.
 
 **Tech Stack:** Next.js 15 (App Router) · TypeScript · Prisma + SQLite · Tailwind CSS · Recharts · Vitest · Playwright
 
@@ -12,29 +12,29 @@
 
 ---
 
-## The Money Rules (memorise these — every task depends on them)
+## The Money Rules (memorise these - every task depends on them)
 
 **Every revenue figure excludes VAT.** VAT is collected for the state; it was never the business's money.
 
 ```
   Gross sales        Σ line-item value before discount        (excl. VAT)
-– Discounts          Σ discounts applied                      (excl. VAT)
+- Discounts          Σ discounts applied                      (excl. VAT)
 ─────────────────
 = NET SALES          ← the reference figure; commission base  (excl. VAT)
 + Shipping charged   what the customer paid for shipping      (excl. VAT)
 ─────────────────
 = NET REVENUE        ← top line used for profit
-– COGS               Σ qty × cost-per-item   (cost in effect ON THE ORDER'S DATE)
-– Handling           Σ qty × handling-cost   (cost in effect ON THE ORDER'S DATE)
-– Operational expenses   each expense's daily share × active days in the range
-– Ambassador commission  10% × net sales of each attributed order
+- COGS               Σ qty × cost-per-item   (cost in effect ON THE ORDER'S DATE)
+- Handling           Σ qty × handling-cost   (cost in effect ON THE ORDER'S DATE)
+- Operational expenses   each expense's daily share × active days in the range
+- Ambassador commission  10% × net sales of each attributed order
 ─────────────────
 = NET PROFIT         Net margin = net profit ÷ net revenue
 ```
 
 - **Refunded/cancelled orders contribute nothing.** No revenue, no commission.
-- **Commission = 10% of net sales** — after discount, excluding shipping, excluding VAT.
-- **Missing product costs are 0 and flagged in the UI — never guessed.**
+- **Commission = 10% of net sales** - after discount, excluding shipping, excluding VAT.
+- **Missing product costs are 0 and flagged in the UI - never guessed.**
 
 ---
 
@@ -60,11 +60,11 @@ Each file has one clear responsibility.
 | `src/lib/woo/sync.ts` | Pull orders → upsert products/orders → attribute ambassadors |
 | `src/lib/fx/rates.ts` | Fetch + cache daily ECB rates (Frankfurter) |
 | `src/lib/auth/*` | Sessions, password hashing, role guards |
-| `src/app/**` | Pages and API routes — thin; they call the modules above |
+| `src/app/**` | Pages and API routes - thin; they call the modules above |
 
 ---
 
-## Stage 1 — Foundation
+## Stage 1 - Foundation
 
 ### Task 1: Scaffold the Next.js project
 
@@ -79,7 +79,7 @@ Run in `C:\Users\alama\Desktop\Philip Project\ecom-analytics`:
 npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --no-turbopack --yes
 ```
 
-If it refuses because the directory is not empty, that is expected (we have `docs/` and `.git/`) — pass `--yes` and let it write alongside. If it still refuses, scaffold into a temp dir and copy `package.json`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `src/`, and `public/` across.
+If it refuses because the directory is not empty, that is expected (we have `docs/` and `.git/`) - pass `--yes` and let it write alongside. If it still refuses, scaffold into a temp dir and copy `package.json`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `src/`, and `public/` across.
 
 - [ ] **Step 2: Install the remaining dependencies**
 
@@ -203,7 +203,7 @@ describe('money', () => {
 npx vitest run src/lib/money.test.ts
 ```
 
-Expected: FAIL — `Failed to resolve import "./money"`.
+Expected: FAIL - `Failed to resolve import "./money"`.
 
 - [ ] **Step 3: Implement**
 
@@ -212,7 +212,7 @@ Create `src/lib/money.ts`:
 ```ts
 /**
  * All money in this app is an INTEGER number of minor units (øre, cents).
- * Never use a float for money — 0.1 + 0.2 !== 0.3.
+ * Never use a float for money - 0.1 + 0.2 !== 0.3.
  * This file is the only place allowed to know about that convention.
  */
 
@@ -264,7 +264,7 @@ export function formatMoney(minor: number, currency: string): string {
 npx vitest run src/lib/money.test.ts
 ```
 
-Expected: PASS — 7 tests.
+Expected: PASS - 7 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -295,7 +295,7 @@ datasource db {
 }
 
 // All money fields are INTEGER MINOR UNITS (øre/cents) in the SHOP'S OWN currency.
-// Conversion to USD happens at read time only — never stored converted.
+// Conversion to USD happens at read time only - never stored converted.
 
 model Shop {
   id         String   @id @default(cuid())
@@ -357,11 +357,11 @@ model Order {
   discountTotal   Int      // excl VAT
   netSales        Int      // grossSales - discountTotal. THE COMMISSION BASE. Stored for audit.
   shippingCharged Int      // excl VAT
-  taxTotal        Int      // VAT — recorded, never counted as revenue
+  taxTotal        Int      // VAT - recorded, never counted as revenue
   total           Int      // what the customer actually paid, incl VAT
 
   couponCode      String?
-  ambassadorId    String?  // resolved AT SYNC TIME and frozen — changing codes never rewrites history
+  ambassadorId    String?  // resolved AT SYNC TIME and frozen - changing codes never rewrites history
 
   shop       Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
   ambassador Ambassador? @relation(fields: [ambassadorId], references: [id], onDelete: SetNull)
@@ -485,7 +485,7 @@ Expected: "Your database is now in sync with your Prisma schema." and the client
 
 ```bash
 git add prisma/schema.prisma src/lib/db.ts
-git commit -m "feat: database schema — shops, orders, costs, expenses, ambassadors, FX"
+git commit -m "feat: database schema - shops, orders, costs, expenses, ambassadors, FX"
 ```
 
 ---
@@ -511,7 +511,7 @@ describe('dates', () => {
     expect(utcDay(new Date('2026-07-14T23:59:59Z')).toISOString()).toBe('2026-07-14T00:00:00.000Z')
   })
 
-  it('counts days in a range inclusively — a single day is 1 day, not 0', () => {
+  it('counts days in a range inclusively - a single day is 1 day, not 0', () => {
     expect(daysInRange(new Date('2026-07-01'), new Date('2026-07-01'))).toBe(1)
     expect(daysInRange(new Date('2026-07-01'), new Date('2026-07-31'))).toBe(31)
   })
@@ -557,7 +557,7 @@ describe('dates', () => {
 npx vitest run src/lib/dates.test.ts
 ```
 
-Expected: FAIL — cannot resolve `./dates`.
+Expected: FAIL - cannot resolve `./dates`.
 
 - [ ] **Step 3: Implement**
 
@@ -583,7 +583,7 @@ export type Preset =
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-/** Strip the time — the UTC midnight that starts this date's day. */
+/** Strip the time - the UTC midnight that starts this date's day. */
 export function utcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }
@@ -661,7 +661,7 @@ export const PRESET_LABELS: Record<Preset, string> = {
 npx vitest run src/lib/dates.test.ts
 ```
 
-Expected: PASS — 5 tests.
+Expected: PASS - 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -672,9 +672,9 @@ git commit -m "feat: UTC date helpers and range presets"
 
 ---
 
-## Stage 2 — The Metrics Engine
+## Stage 2 - The Metrics Engine
 
-This is where the money is. Pure functions only — no database, no HTTP. Every function takes data in
+This is where the money is. Pure functions only - no database, no HTTP. Every function takes data in
 and returns numbers out, which is what makes it possible to test exhaustively.
 
 ### Task 5: Engine types
@@ -688,7 +688,7 @@ Create `src/lib/metrics/types.ts`:
 
 ```ts
 /**
- * The engine's own view of the world. Deliberately NOT the Prisma types —
+ * The engine's own view of the world. Deliberately NOT the Prisma types -
  * the engine must not care where the data came from.
  * All money is INTEGER MINOR UNITS in the currency named alongside it.
  */
@@ -805,7 +805,7 @@ git commit -m "feat: metrics engine types"
 
 ---
 
-### Task 6: Cost lookup — the cost in effect on the order's date
+### Task 6: Cost lookup - the cost in effect on the order's date
 
 **The rule:** an order from March is costed with March's cost, even if the cost changed in June.
 
@@ -839,7 +839,7 @@ describe('costOn', () => {
     expect(costOn(history, new Date('2026-06-01'))).toEqual({ costPerItem: 12000, handlingCost: 200 })
   })
 
-  it('returns zero when the order predates every known cost — never guesses', () => {
+  it('returns zero when the order predates every known cost - never guesses', () => {
     expect(costOn(history, new Date('2025-12-31'))).toEqual({ costPerItem: 0, handlingCost: 0 })
   })
 
@@ -852,7 +852,7 @@ describe('costOn', () => {
     expect(costOn(shuffled, new Date('2026-07-15'))).toEqual({ costPerItem: 12000, handlingCost: 200 })
   })
 
-  it('ignores the time of day — an order at 23:59 uses that day cost', () => {
+  it('ignores the time of day - an order at 23:59 uses that day cost', () => {
     expect(costOn(history, new Date('2026-06-01T23:59:59Z'))).toEqual({ costPerItem: 12000, handlingCost: 200 })
   })
 })
@@ -861,7 +861,7 @@ describe('costOn', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/metrics/costs.test.ts`
-Expected: FAIL — cannot resolve `./costs`.
+Expected: FAIL - cannot resolve `./costs`.
 
 - [ ] **Step 3: Implement**
 
@@ -879,7 +879,7 @@ const ZERO: EffectiveCost = { costPerItem: 0, handlingCost: 0 }
  * The cost that was true on `date`: the cost point with the latest
  * effectiveFrom that is on or before that day.
  *
- * If no cost was ever entered for that period the cost is ZERO — we never
+ * If no cost was ever entered for that period the cost is ZERO - we never
  * guess. The UI flags zero-cost products so they get noticed, not hidden.
  */
 export function costOn(history: CostPoint[], date: Date): EffectiveCost {
@@ -900,7 +900,7 @@ export function costOn(history: CostPoint[], date: Date): EffectiveCost {
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/metrics/costs.test.ts`
-Expected: PASS — 6 tests.
+Expected: PASS - 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -911,13 +911,13 @@ git commit -m "feat: cost lookup honours the cost in effect on the order date"
 
 ---
 
-### Task 7: Expense spreading — "spread daily"
+### Task 7: Expense spreading - "spread daily"
 
 **The rule:** a 14 000 kr monthly expense in a 31-day month is ~451.61 kr/day. Look at 7 days and
 ~3 161 kr of it lands in that range. This is what makes profit correct for *any* date range.
 
 **Rounding matters here.** Naively rounding each day and summing loses øre: `round(1400000/31) = 45161`,
-and `45161 × 31 = 1399991` — 9 øre short of the month. So we accumulate the **exact** daily value as a
+and `45161 × 31 = 1399991` - 9 øre short of the month. So we accumulate the **exact** daily value as a
 float and round only the **running total**. A full month then sums to exactly the month's amount, and
 any sub-range still gets its fair share.
 
@@ -954,11 +954,11 @@ describe('expenseInRange', () => {
     expect(expenseInRange(make(), new Date('2026-07-01'), new Date('2026-07-07'))).toBe(316129)
   })
 
-  it('charges exactly the full amount when the whole month is selected — no øre lost', () => {
+  it('charges exactly the full amount when the whole month is selected - no øre lost', () => {
     expect(expenseInRange(make(), new Date('2026-07-01'), new Date('2026-07-31'))).toBe(1400000)
   })
 
-  it('uses each month own length — February is not July', () => {
+  it('uses each month own length - February is not July', () => {
     expect(expenseInRange(make(), new Date('2026-02-01'), new Date('2026-02-28'))).toBe(1400000)
   })
 
@@ -1012,7 +1012,7 @@ describe('expenseInRange', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/metrics/expenses.test.ts`
-Expected: FAIL — cannot resolve `./expenses`.
+Expected: FAIL - cannot resolve `./expenses`.
 
 - [ ] **Step 3: Implement**
 
@@ -1027,7 +1027,7 @@ import type { EngineExpense } from './types'
  *
  * Recurring expenses are converted to a DAILY amount and charged per active day.
  * A month's daily amount depends on that month's own length, so February and July
- * are each charged correctly — which is why we walk day by day instead of
+ * are each charged correctly - which is why we walk day by day instead of
  * multiplying by an average.
  *
  * A ONE_TIME expense lands entirely on its startDate.
@@ -1079,7 +1079,7 @@ function exactDailyAmount(expense: EngineExpense, day: Date): number {
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/metrics/expenses.test.ts`
-Expected: PASS — 11 tests.
+Expected: PASS - 11 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1090,7 +1090,7 @@ git commit -m "feat: operational expenses spread daily across any date range"
 
 ---
 
-### Task 8: FX conversion — the rate on the order's own day
+### Task 8: FX conversion - the rate on the order's own day
 
 **The rule:** last month's numbers must never change because today's rate moved.
 
@@ -1141,7 +1141,7 @@ describe('convert', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/metrics/fx.test.ts`
-Expected: FAIL — cannot resolve `./fx`.
+Expected: FAIL - cannot resolve `./fx`.
 
 - [ ] **Step 3: Implement**
 
@@ -1173,7 +1173,7 @@ export function buildRateTable(rows: RateRow[]): RateTable {
  *
  * Missing that exact day we walk backwards to the most recent earlier rate; if the
  * date predates every rate we hold, we use the earliest one. An entirely unknown
- * currency is returned unchanged rather than zeroed — an unconverted number is
+ * currency is returned unchanged rather than zeroed - an unconverted number is
  * honest, a zero would hide real money.
  */
 export function convert(
@@ -1207,7 +1207,7 @@ export function convert(
     }
   }
 
-  if (chosen === undefined) return amount // unknown currency — never zero it out
+  if (chosen === undefined) return amount // unknown currency - never zero it out
   return mulRate(amount, chosen)
 }
 ```
@@ -1215,7 +1215,7 @@ export function convert(
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/metrics/fx.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS - 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1226,7 +1226,7 @@ git commit -m "feat: FX conversion pinned to the order's own date"
 
 ---
 
-### Task 9: The engine — compose everything into the final figures
+### Task 9: The engine - compose everything into the final figures
 
 This is the function the whole app calls. It is the single source of truth for every number on
 every screen.
@@ -1272,7 +1272,7 @@ function order(over: Partial<EngineOrder> = {}): EngineOrder {
     discountTotal: 10000, //  100.00 kr discount
     netSales: 90000, //  900.00 kr  <- commission base
     shippingCharged: 5000, //   50.00 kr
-    taxTotal: 22500, //  225.00 kr VAT — never revenue
+    taxTotal: 22500, //  225.00 kr VAT - never revenue
     ambassadorId: null,
     commissionRate: 0,
     items: [{ productId: 'p1', quantity: 2, lineNetTotal: 90000 }],
@@ -1422,7 +1422,7 @@ describe('computeMetrics', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: FAIL — cannot resolve `./engine`.
+Expected: FAIL - cannot resolve `./engine`.
 
 - [ ] **Step 3: Implement**
 
@@ -1458,7 +1458,7 @@ export type MetricsInput = {
   to: Date
 }
 
-/** An order that contributes nothing — refunded, cancelled, failed. */
+/** An order that contributes nothing - refunded, cancelled, failed. */
 function counts(order: EngineOrder): boolean {
   return !EXCLUDED_STATUSES.includes(order.status.toLowerCase() as never)
 }
@@ -1471,7 +1471,7 @@ function inRange(order: EngineOrder, from: Date, to: Date): boolean {
 /**
  * THE function. Every number on every screen comes from here.
  *
- *   net sales    = gross sales - discounts          (excl VAT — VAT is never revenue)
+ *   net sales    = gross sales - discounts          (excl VAT - VAT is never revenue)
  *   net revenue  = net sales + shipping charged
  *   cogs         = qty x (cost + handling), at the cost in effect ON THE ORDER'S DATE
  *   commission   = rate x net sales, for attributed orders only
@@ -1511,7 +1511,7 @@ export function computeMetrics(input: MetricsInput): EngineResult {
       ),
     )
 
-    // Commission is a percentage of NET SALES — after discount, before shipping, excl VAT.
+    // Commission is a percentage of NET SALES - after discount, before shipping, excl VAT.
     const commission = sum(
       shopOrders.map((o) => (o.ambassadorId ? conv(pct(o.netSales, o.commissionRate), o) : 0)),
     )
@@ -1589,18 +1589,18 @@ export * from './types'
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: PASS — 10 tests.
+Expected: PASS - 10 tests.
 
-- [ ] **Step 5: Run the whole suite — the engine is done**
+- [ ] **Step 5: Run the whole suite - the engine is done**
 
 Run: `npm test`
-Expected: PASS — all tests across money, dates, costs, expenses, fx, engine.
+Expected: PASS - all tests across money, dates, costs, expenses, fx, engine.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src/lib/metrics/
-git commit -m "feat: metrics engine — net profit across shops, costs, expenses, commission, FX"
+git commit -m "feat: metrics engine - net profit across shops, costs, expenses, commission, FX"
 ```
 
 ---
@@ -1695,7 +1695,7 @@ describe('leaderboard', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/metrics/ambassadors.test.ts`
-Expected: FAIL — cannot resolve `./ambassadors`.
+Expected: FAIL - cannot resolve `./ambassadors`.
 
 - [ ] **Step 3: Implement**
 
@@ -1729,7 +1729,7 @@ export type LeaderboardInput = {
  * Who sold the most. Same rules as the engine: refunded orders count for nothing,
  * commission is a percentage of net sales.
  *
- * Ambassadors with no sales in the range are still listed (with zeroes) — an empty
+ * Ambassadors with no sales in the range are still listed (with zeroes) - an empty
  * row is information; a missing row looks like a bug.
  */
 export function leaderboard(input: LeaderboardInput): LeaderboardRow[] {
@@ -1767,7 +1767,7 @@ export function leaderboard(input: LeaderboardInput): LeaderboardRow[] {
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/metrics/ambassadors.test.ts`
-Expected: PASS — 4 tests.
+Expected: PASS - 4 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1778,12 +1778,12 @@ git commit -m "feat: ambassador leaderboard"
 
 ---
 
-## Stage 3 — Data Layer & Seed
+## Stage 3 - Data Layer & Seed
 
 The engine is pure and knows nothing about the database. This stage builds the thin layer that
 loads rows out of Prisma and hands them to the engine in its own shapes.
 
-### Task 11: FX rates — fetch and cache daily ECB rates
+### Task 11: FX rates - fetch and cache daily ECB rates
 
 Rates come from Frankfurter (ECB data, free, no API key). We store one row per currency per day and
 never re-fetch a day we already have.
@@ -1850,7 +1850,7 @@ describe('missingDays', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/fx/rates.test.ts`
-Expected: FAIL — cannot resolve `./rates`.
+Expected: FAIL - cannot resolve `./rates`.
 
 - [ ] **Step 3: Implement**
 
@@ -1882,7 +1882,7 @@ export function parseFrankfurter(res: FrankfurterResponse): RateRow[] {
     rows.push({ date, currency: DISPLAY, rate: 1 })
 
     for (const [currency, perUsd] of Object.entries(perCurrency)) {
-      if (!perUsd) continue // 0 or NaN — skip, never divide by zero
+      if (!perUsd) continue // 0 or NaN - skip, never divide by zero
       rows.push({ date, currency, rate: 1 / perUsd })
     }
   }
@@ -1946,7 +1946,7 @@ export async function loadRates(): Promise<RateRow[]> {
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/fx/rates.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS - 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1957,7 +1957,7 @@ git commit -m "feat: fetch and cache daily ECB exchange rates"
 
 ---
 
-### Task 12: The loader — database rows into engine inputs
+### Task 12: The loader - database rows into engine inputs
 
 The only place that translates Prisma rows into the engine's shapes.
 
@@ -2020,7 +2020,7 @@ export async function loadMetricsInput(args: LoadArgs): Promise<MetricsInput> {
     taxTotal: o.taxTotal,
     ambassadorId: o.ambassadorId,
     // The rate is read from the ambassador, so a rate change applies to future
-    // reports — but the ATTRIBUTION itself was frozen at sync time.
+    // reports - but the ATTRIBUTION itself was frozen at sync time.
     commissionRate: o.ambassador?.commissionRate ?? 0,
     items: o.items.map((i) => ({
       productId: i.productId,
@@ -2094,7 +2094,7 @@ git commit -m "feat: load engine inputs from the database"
 
 ---
 
-### Task 13: Seed — realistic sample data
+### Task 13: Seed - realistic sample data
 
 The app must be usable and demonstrably correct **before** any live WooCommerce credentials exist.
 
@@ -2204,7 +2204,7 @@ async function main() {
   })
 
   console.log('Creating products, costs and expenses per shop...')
-  // Carry sku+name alongside the id — two products share a price, so looking one up
+  // Carry sku+name alongside the id - two products share a price, so looking one up
   // by price alone would silently attach the wrong SKU to half the order lines.
   type SeedProduct = { id: string; price: number; sku: string; name: string }
   const productsByShop = new Map<string, SeedProduct[]>()
@@ -2268,7 +2268,7 @@ async function main() {
 
   for (const shop of shops) {
     const products = productsByShop.get(shop.id)!
-    // Busier shops get more orders — the seed should look like the real thing.
+    // Busier shops get more orders - the seed should look like the real thing.
     const busy = ['Panetti Norway', 'Mazzetti.no', 'Massasjepistoler.no'].includes(shop.name)
     const count = busy ? between(140, 200) : between(20, 70)
 
@@ -2384,14 +2384,14 @@ Ambassador login: emma@ambassador.test / password123
 npx prisma studio
 ```
 
-Open `Order` — confirm orders exist, some with a `couponCode` and `ambassadorId`, some without, and
+Open `Order` - confirm orders exist, some with a `couponCode` and `ambassadorId`, some without, and
 some with status `refunded`. Close Studio when satisfied.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add prisma/seed.ts
-git commit -m "feat: seed realistic sample data — 11 shops, 24 ambassadors, 6 months of orders"
+git commit -m "feat: seed realistic sample data - 11 shops, 24 ambassadors, 6 months of orders"
 ```
 
 ---
@@ -2476,7 +2476,7 @@ npm run db:seed
 npx vitest run src/lib/data/load.integration.test.ts
 ```
 
-Expected: PASS — 4 tests. If `cogs` is 0, the cost seeding or the `costOn` lookup is wrong — fix
+Expected: PASS - 4 tests. If `cogs` is 0, the cost seeding or the `costOn` lookup is wrong - fix
 before moving on. This test is the guard that the whole chain works.
 
 - [ ] **Step 3: Commit**
@@ -2488,7 +2488,7 @@ git commit -m "test: engine verified against the seeded database"
 
 ---
 
-## Stage 4 — Auth & the Security Boundary
+## Stage 4 - Auth & the Security Boundary
 
 An ambassador must **never** be able to see another ambassador's data, or any company cost or profit
 figure. That is enforced on the server, in one place, and tested.
@@ -2519,7 +2519,7 @@ describe('session', () => {
 
   it('rejects a tampered token', async () => {
     const token = await signSession(admin)
-    // Flip the role in the payload — the signature must no longer verify.
+    // Flip the role in the payload - the signature must no longer verify.
     const tampered = token.slice(0, -4) + 'aaaa'
     expect(await verifySession(tampered)).toBeNull()
   })
@@ -2547,7 +2547,7 @@ describe('password', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/auth/session.test.ts`
-Expected: FAIL — cannot resolve `./session`.
+Expected: FAIL - cannot resolve `./session`.
 
 - [ ] **Step 3: Implement**
 
@@ -2615,7 +2615,7 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/auth/session.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS - 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2626,7 +2626,7 @@ git commit -m "feat: signed sessions and password hashing"
 
 ---
 
-### Task 16: The guard — one place that decides who may see what
+### Task 16: The guard - one place that decides who may see what
 
 **Files:**
 - Create: `src/lib/auth/guard.ts`
@@ -2670,7 +2670,7 @@ describe('assertAdmin', () => {
     expect(() => assertAdmin(admin)).not.toThrow()
   })
 
-  it('throws for an ambassador — costs and profit are not theirs to see', () => {
+  it('throws for an ambassador - costs and profit are not theirs to see', () => {
     expect(() => assertAdmin(emma)).toThrow(AuthError)
   })
 
@@ -2683,7 +2683,7 @@ describe('assertAdmin', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/auth/guard.test.ts`
-Expected: FAIL — cannot resolve `./guard`.
+Expected: FAIL - cannot resolve `./guard`.
 
 - [ ] **Step 3: Implement**
 
@@ -2711,7 +2711,7 @@ export function canViewAmbassador(user: SessionUser | null, ambassadorId: string
   return user.ambassadorId === ambassadorId
 }
 
-/** Company-wide figures — costs, profit, every shop — are admin-only. */
+/** Company-wide figures - costs, profit, every shop - are admin-only. */
 export function assertAdmin(user: SessionUser | null): asserts user is SessionUser {
   if (!user || user.role !== 'ADMIN') throw new AuthError('Admins only')
 }
@@ -2724,13 +2724,13 @@ export function assertAmbassadorAccess(user: SessionUser | null, ambassadorId: s
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/auth/guard.test.ts`
-Expected: PASS — 7 tests.
+Expected: PASS - 7 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/auth/guard.ts src/lib/auth/guard.test.ts
-git commit -m "feat: access guard — an ambassador can only ever see their own data"
+git commit -m "feat: access guard - an ambassador can only ever see their own data"
 ```
 
 ---
@@ -2777,7 +2777,7 @@ export async function POST(req: Request) {
 
   const user = await db.user.findUnique({ where: { email: parsed.data.email.toLowerCase() } })
 
-  // Same message whether the email is unknown or the password is wrong —
+  // Same message whether the email is unknown or the password is wrong -
   // never reveal which accounts exist.
   const bad = NextResponse.json({ error: 'Wrong email or password' }, { status: 401 })
   if (!user) return bad
@@ -2905,7 +2905,7 @@ export default function LoginPage() {
 }
 ```
 
-- [ ] **Step 4: Middleware — send logged-out visitors to the login page**
+- [ ] **Step 4: Middleware - send logged-out visitors to the login page**
 
 Create `src/middleware.ts`:
 
@@ -2915,7 +2915,7 @@ import { SESSION_COOKIE, verifySession } from '@/lib/auth/session'
 
 /**
  * A coarse gate: no session -> go to /login.
- * It does NOT decide what a logged-in user may see — that is the guard's job,
+ * It does NOT decide what a logged-in user may see - that is the guard's job,
  * enforced in the routes themselves, where it cannot be bypassed.
  */
 export async function middleware(req: NextRequest) {
@@ -2950,7 +2950,7 @@ npm run dev
 ```
 
 Visit `http://localhost:3000/dashboard` → you must be redirected to `/login`.
-Sign in as `admin@ecom.test` / `password123` → you land on `/dashboard` (a 404 for now — that is
+Sign in as `admin@ecom.test` / `password123` → you land on `/dashboard` (a 404 for now - that is
 next). Sign in as `emma@ambassador.test` / `password123` → you land on `/portal`.
 
 - [ ] **Step 6: Commit**
@@ -2962,7 +2962,7 @@ git commit -m "feat: login, logout, session cookie, and route gating"
 
 ---
 
-## Stage 5 — The Dashboard
+## Stage 5 - The Dashboard
 
 ### Task 18: The metrics API
 
@@ -3068,7 +3068,7 @@ describe('shopIdsFromQuery', () => {
 - [ ] **Step 3: Run it and watch it fail, then pass**
 
 Run: `npx vitest run src/app/api/metrics/route.test.ts`
-Expected: FAIL first (module missing), then PASS — 7 tests — once `src/lib/api/range.ts` exists.
+Expected: FAIL first (module missing), then PASS - 7 tests - once `src/lib/api/range.ts` exists.
 
 - [ ] **Step 4: The route**
 
@@ -3256,7 +3256,7 @@ export function TopBar({ email, children }: { email: string; children?: React.Re
 
 ```bash
 git add src/components/
-git commit -m "feat: shared UI — money, percent, KPI card, top bar"
+git commit -m "feat: shared UI - money, percent, KPI card, top bar"
 ```
 
 ---
@@ -3373,7 +3373,7 @@ export function ShopSelector({
    * An empty list means "all shops".
    *
    * Careful: when everything is selected, un-ticking one shop must leave the other
-   * ten — NOT collapse to that one. Isolating a single shop is a different action,
+   * ten - NOT collapse to that one. Isolating a single shop is a different action,
    * which is what the "Only" button is for.
    */
   function toggle(id: string) {
@@ -3411,7 +3411,7 @@ export function ShopSelector({
                 />
                 <span className="flex-1">{shop.name}</span>
                 <span className="text-slate-400">{shop.currency}</span>
-                {/* Isolate this one shop — the fastest way to read it in its own currency. */}
+                {/* Isolate this one shop - the fastest way to read it in its own currency. */}
                 <button
                   onClick={() => onChange([shop.id])}
                   aria-label={`Only ${shop.name}`}
@@ -3689,26 +3689,26 @@ npm run dev
 
 Sign in as `admin@ecom.test` / `password123`. You must see: six KPI cards with real figures, the
 compare table with 11 shops and a Total row, and the ambassador leaderboard. Change the date range
-to "Today" — the numbers must change. Select one shop — the currency must switch from USD to that
+to "Today" - the numbers must change. Select one shop - the currency must switch from USD to that
 shop's own currency.
 
-**If the numbers look wrong, stop and fix the engine — do not paper over it in the UI.**
+**If the numbers look wrong, stop and fix the engine - do not paper over it in the UI.**
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/app/dashboard src/components/CompareTable.tsx src/components/Leaderboard.tsx
-git commit -m "feat: the dashboard — KPI cards, compare table, leaderboard"
+git commit -m "feat: the dashboard - KPI cards, compare table, leaderboard"
 ```
 
 ---
 
-## Stage 6 — Cost & Expense Admin
+## Stage 6 - Cost & Expense Admin
 
 These screens are where the profit numbers actually come from. Without them the dashboard shows
-revenue with no cost, which is worse than useless — it looks like profit.
+revenue with no cost, which is worse than useless - it looks like profit.
 
-### Task 22: Product costs — API
+### Task 22: Product costs - API
 
 **Files:**
 - Create: `src/app/api/products/route.ts`, `src/app/api/products/[id]/cost/route.ts`
@@ -3790,7 +3790,7 @@ const Body = z.object({
 })
 
 /**
- * Saving a cost APPENDS a new point on the product's cost timeline — it never
+ * Saving a cost APPENDS a new point on the product's cost timeline - it never
  * overwrites history. Orders before `effectiveFrom` keep the cost they had.
  *
  * Saving twice for the same day updates that day's point rather than stacking
@@ -3847,7 +3847,7 @@ git commit -m "feat: product costs API with effective-from dating"
 
 ---
 
-### Task 23: Product costs — the screen
+### Task 23: Product costs - the screen
 
 **Files:**
 - Create: `src/app/settings/costs/page.tsx`, `src/app/settings/costs/CostsClient.tsx`
@@ -4106,7 +4106,7 @@ git commit -m "feat: product costs screen with effective-from dating"
 
 ---
 
-### Task 24: Operational expenses — API and screen
+### Task 24: Operational expenses - API and screen
 
 **Files:**
 - Create: `src/app/api/expenses/route.ts`, `src/app/api/expenses/[id]/route.ts`, `src/app/settings/expenses/page.tsx`, `src/app/settings/expenses/ExpensesClient.tsx`
@@ -4491,21 +4491,21 @@ function ExpenseModal({
 - [ ] **Step 3: Verify in the browser**
 
 Visit `/settings/expenses`, add a MONTHLY expense of 31 000 for a shop, then open `/dashboard` with
-that shop selected and the range set to a **single day**. Its Op. Ex. must be ~1 000 — the daily
+that shop selected and the range set to a **single day**. Its Op. Ex. must be ~1 000 - the daily
 share. That is "spread daily" working end to end.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add src/app/api/expenses src/app/settings/expenses
-git commit -m "feat: operational expenses — API and screen"
+git commit -m "feat: operational expenses - API and screen"
 ```
 
 ---
 
-## Stage 7 — The Ambassador Portal
+## Stage 7 - The Ambassador Portal
 
-### Task 25: The portal API — and the security test that matters most
+### Task 25: The portal API - and the security test that matters most
 
 **Files:**
 - Create: `src/app/api/portal/route.ts`
@@ -4561,7 +4561,7 @@ describe('ambassador data isolation', () => {
 - [ ] **Step 2: Run it**
 
 Run: `npx vitest run src/app/api/portal/security.test.ts`
-Expected: PASS — 6 tests (the guard already exists from Task 16).
+Expected: PASS - 6 tests (the guard already exists from Task 16).
 
 - [ ] **Step 3: The portal route**
 
@@ -4582,7 +4582,7 @@ import { EXCLUDED_STATUSES } from '@/lib/metrics/types'
 const DISPLAY = 'USD'
 
 /**
- * An ambassador's own figures — and ONLY their own.
+ * An ambassador's own figures - and ONLY their own.
  *
  * The ambassador id is taken from the SESSION, never from the query string.
  * There is therefore no id for a caller to tamper with.
@@ -4646,7 +4646,7 @@ export async function GET(req: Request) {
     })
 
     // Note: ranking compares raw netSales across currencies. Good enough for a rank,
-    // and it never exposes another ambassador's figures — only a position.
+    // and it never exposes another ambassador's figures - only a position.
     const better = everyone.filter((row) => (row._sum.netSales ?? 0) > (everyone.find((r) => r.ambassadorId === me.id)?._sum.netSales ?? 0)).length
     const totalAmbassadors = await db.ambassador.count({ where: { active: true } })
 
@@ -4674,7 +4674,7 @@ export async function GET(req: Request) {
 
 ```bash
 git add src/app/api/portal
-git commit -m "feat: ambassador portal API — session-scoped, never id-from-query"
+git commit -m "feat: ambassador portal API - session-scoped, never id-from-query"
 ```
 
 ---
@@ -4776,7 +4776,7 @@ export function PortalClient({ email }: { email: string }) {
             <h1 className="text-lg font-bold text-slate-900">Hi {data.name.split(' ')[0]} 👋</h1>
             <p className="mt-1 text-sm text-slate-500">
               Here is how your code{' '}
-              <strong className="text-violet-700">{data.codes.join(', ') || '—'}</strong> is performing.
+              <strong className="text-violet-700">{data.codes.join(', ') || '-'}</strong> is performing.
             </p>
 
             <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -4792,7 +4792,7 @@ export function PortalClient({ email }: { email: string }) {
                 value={
                   data.rank ? (
                     <span>#{data.rank} <span className="text-xs font-medium text-slate-400">of {data.totalAmbassadors}</span></span>
-                  ) : '—'
+                  ) : '-'
                 }
                 tone="accent"
               />
@@ -4850,8 +4850,8 @@ export function PortalClient({ email }: { email: string }) {
 - [ ] **Step 3: Verify in the browser**
 
 Sign in as `emma@ambassador.test` / `password123`. You must see Emma's own sales, commission and
-rank. Now try to visit `/dashboard` directly — you must be **redirected back to `/portal`**. Try
-`/api/metrics` — it must return **403**.
+rank. Now try to visit `/dashboard` directly - you must be **redirected back to `/portal`**. Try
+`/api/metrics` - it must return **403**.
 
 - [ ] **Step 4: Commit**
 
@@ -4862,7 +4862,7 @@ git commit -m "feat: ambassador portal screen"
 
 ---
 
-## Stage 8 — WooCommerce Sync
+## Stage 8 - WooCommerce Sync
 
 Everything so far runs on seeded data. This stage connects real shops. The same code path serves
 both, so nothing about the dashboard changes when the data becomes real.
@@ -4885,7 +4885,7 @@ import { describe, it, expect } from 'vitest'
 import { mapOrder, type WooOrder } from './map'
 
 // A realistic WooCommerce order. Woo gives strings, and line `total` is
-// ALREADY after discount and EXCLUDING tax — which is exactly our net sales.
+// ALREADY after discount and EXCLUDING tax - which is exactly our net sales.
 const woo: WooOrder = {
   id: 501,
   number: '501',
@@ -4955,7 +4955,7 @@ describe('mapOrder', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/woo/map.test.ts`
-Expected: FAIL — cannot resolve `./map`.
+Expected: FAIL - cannot resolve `./map`.
 
 - [ ] **Step 3: Implement**
 
@@ -5020,7 +5020,7 @@ const num = (v: string | undefined | null): number => toMinor(v ? parseFloat(v) 
  * Turn a WooCommerce order into our own shape.
  *
  * The critical detail: in WooCommerce, a line item's `subtotal` is the value
- * BEFORE discount and `total` is the value AFTER discount — and BOTH exclude
+ * BEFORE discount and `total` is the value AFTER discount - and BOTH exclude
  * tax. So `total` is exactly our net sales, which is exactly the commission base.
  *
  * VAT (`total_tax`) is recorded for reference and never enters revenue.
@@ -5041,7 +5041,7 @@ export function mapOrder(woo: WooOrder): MappedOrder {
     grossSales,
     discountTotal,
     netSales,
-    shippingCharged: num(woo.shipping_total), // ex VAT — shipping_tax stays out
+    shippingCharged: num(woo.shipping_total), // ex VAT - shipping_tax stays out
     taxTotal: num(woo.total_tax),
     total: num(woo.total),
     couponCode: woo.coupon_lines?.[0]?.code?.toUpperCase() ?? null,
@@ -5060,13 +5060,13 @@ export function mapOrder(woo: WooOrder): MappedOrder {
 - [ ] **Step 4: Run it and watch it pass**
 
 Run: `npx vitest run src/lib/woo/map.test.ts`
-Expected: PASS — 8 tests.
+Expected: PASS - 8 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/woo/map.ts src/lib/woo/map.test.ts
-git commit -m "feat: map WooCommerce orders — net sales excludes VAT"
+git commit -m "feat: map WooCommerce orders - net sales excludes VAT"
 ```
 
 ---
@@ -5144,7 +5144,7 @@ export type SyncResult = {
  * Pull a shop's orders and store them.
  *
  * - Only orders changed since the last successful sync are requested.
- * - Products are discovered from the orders themselves — anything ever sold appears
+ * - Products are discovered from the orders themselves - anything ever sold appears
  *   in Product Costs automatically, with no cost until someone enters one.
  * - Ambassador attribution is resolved HERE and frozen on the order, so renaming or
  *   reassigning a code later can never rewrite past commissions.
@@ -5174,7 +5174,7 @@ export async function syncShop(shopId: string): Promise<SyncResult> {
     for (const raw of orders) {
       const o = mapOrder(raw)
 
-      // Attribute — a code scoped to another shop does not count here.
+      // Attribute - a code scoped to another shop does not count here.
       let ambassadorId: string | null = null
       if (o.couponCode) {
         const match = byCode.get(o.couponCode)
@@ -5223,7 +5223,7 @@ export async function syncShop(shopId: string): Promise<SyncResult> {
         update: data,
       })
 
-      // Rewrite the lines rather than trying to diff them — simpler and always correct.
+      // Rewrite the lines rather than trying to diff them - simpler and always correct.
       await db.orderItem.deleteMany({ where: { orderId: order.id } })
       await db.orderItem.createMany({
         data: o.items.map((item) => ({
@@ -5240,7 +5240,7 @@ export async function syncShop(shopId: string): Promise<SyncResult> {
       synced++
     }
 
-    // Only now — after everything landed — do we move the watermark forward.
+    // Only now - after everything landed - do we move the watermark forward.
     await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: new Date() } })
 
     return { ...base, ok: true, ordersSynced: synced }
@@ -5290,7 +5290,7 @@ export async function POST(req: Request) {
 
 - [ ] **Step 4: Verify the sync is safe to run twice**
 
-Add to `src/lib/woo/map.test.ts` — a test proving the upsert key is stable, which is what makes a
+Add to `src/lib/woo/map.test.ts` - a test proving the upsert key is stable, which is what makes a
 re-run harmless:
 
 ```ts
@@ -5302,13 +5302,13 @@ re-run harmless:
 ```
 
 Run: `npx vitest run src/lib/woo/map.test.ts`
-Expected: PASS — 9 tests.
+Expected: PASS - 9 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/woo src/app/api/sync
-git commit -m "feat: WooCommerce sync — orders, products, ambassador attribution"
+git commit -m "feat: WooCommerce sync - orders, products, ambassador attribution"
 ```
 
 ---
@@ -5488,7 +5488,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-slate-500">
-                    {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : '—'}
+                    {s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : '-'}
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <button onClick={() => setEditing(s)} className="font-semibold text-violet-700 hover:underline">
@@ -5570,7 +5570,7 @@ function ConnectModal({ shop, onClose, onSaved }: { shop: Row; onClose: () => vo
 
 ```bash
 git add src/app/settings/shops src/app/api/shops
-git commit -m "feat: shops settings — connect WooCommerce and sync"
+git commit -m "feat: shops settings - connect WooCommerce and sync"
 ```
 
 ---
@@ -5644,7 +5644,7 @@ git commit -m "feat: navigation and role-aware landing"
 
 ---
 
-## Stage 9 — End to End, and All Green
+## Stage 9 - End to End, and All Green
 
 ### Task 31: End-to-end tests
 
@@ -5736,7 +5736,7 @@ test('the leaderboard names the top ambassador', async ({ page }) => {
 })
 ```
 
-- [ ] **Step 3: The ambassador journey — including the security boundary**
+- [ ] **Step 3: The ambassador journey - including the security boundary**
 
 Create `e2e/ambassador.spec.ts`:
 
@@ -5798,13 +5798,13 @@ npm run db:seed
 npm run test:e2e
 ```
 
-Expected: PASS — 9 tests.
+Expected: PASS - 9 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add playwright.config.ts e2e/
-git commit -m "test: end-to-end — admin journey and ambassador security boundary"
+git commit -m "test: end-to-end - admin journey and ambassador security boundary"
 ```
 
 ---
@@ -5823,11 +5823,11 @@ npx tsc --noEmit
 ```
 
 **Every one of these must pass.** Expected:
-- `npm test` — all unit + integration tests green (money, dates, costs, expenses, fx, engine,
+- `npm test` - all unit + integration tests green (money, dates, costs, expenses, fx, engine,
   ambassadors, auth, guard, range, woo/map, security, load.integration)
-- `npm run test:e2e` — 9 Playwright tests green
-- `npm run build` — compiles with no errors
-- `npx tsc --noEmit` — no type errors
+- `npm run test:e2e` - 9 Playwright tests green
+- `npm run build` - compiles with no errors
+- `npx tsc --noEmit` - no type errors
 
 - [ ] **Step 2: Drive the real app one last time**
 
@@ -5838,14 +5838,14 @@ npm run dev
 Walk through it as a person, not a test:
 1. Sign in as `admin@ecom.test` / `password123`.
 2. The dashboard shows six KPI cards, 11 shops in the compare table, a Total row, and a leaderboard.
-3. Switch the range to "Today", then "This year" — the numbers move.
-4. Select one shop — the currency changes from USD to that shop's own.
-5. `/settings/costs` — edit a cost, apply it from today, save. The dashboard's COGS for this month
+3. Switch the range to "Today", then "This year" - the numbers move.
+4. Select one shop - the currency changes from USD to that shop's own.
+5. `/settings/costs` - edit a cost, apply it from today, save. The dashboard's COGS for this month
    changes; an earlier month's does not.
-6. `/settings/expenses` — add a MONTHLY expense; a single-day view charges roughly 1/30th of it.
+6. `/settings/expenses` - add a MONTHLY expense; a single-day view charges roughly 1/30th of it.
 7. Sign out. Sign in as `emma@ambassador.test` / `password123`.
-8. The portal shows Emma's own sales, commission, and rank — and no company costs.
-9. Try `/dashboard` — you are bounced back to `/portal`.
+8. The portal shows Emma's own sales, commission, and rank - and no company costs.
+9. Try `/dashboard` - you are bounced back to `/portal`.
 
 - [ ] **Step 3: Write the README**
 
@@ -5871,7 +5871,7 @@ Sign in with:
 
 ## How the money is calculated
 
-Every revenue figure **excludes VAT** — VAT was never our money.
+Every revenue figure **excludes VAT** - VAT was never our money.
 
 ```
   Gross sales        line value before discount     (excl VAT)
@@ -5885,14 +5885,14 @@ Every revenue figure **excludes VAT** — VAT was never our money.
 = NET PROFIT
 ```
 
-Refunded and cancelled orders count for nothing — no revenue, no commission.
+Refunded and cancelled orders count for nothing - no revenue, no commission.
 
 ## Where things live
 
-- `src/lib/metrics/` — all the money maths. Pure functions, heavily tested. **Start here.**
-- `src/lib/woo/` — talking to WooCommerce.
-- `src/lib/auth/` — logins and the rule that an ambassador only ever sees their own data.
-- `src/app/` — the pages and API routes. Thin: they just call the above.
+- `src/lib/metrics/` - all the money maths. Pure functions, heavily tested. **Start here.**
+- `src/lib/woo/` - talking to WooCommerce.
+- `src/lib/auth/` - logins and the rule that an ambassador only ever sees their own data.
+- `src/app/` - the pages and API routes. Thin: they just call the above.
 
 ## Connecting a real shop
 
@@ -5912,7 +5912,7 @@ npm run test:e2e  # browser tests
 
 ```bash
 git add README.md
-git commit -m "docs: README — how to run it and how the money is calculated"
+git commit -m "docs: README - how to run it and how the money is calculated"
 ```
 
 - [ ] **Step 5: Final verification**
@@ -5931,8 +5931,8 @@ npm test && npm run test:e2e && npm run build
 
 Deliberately out of scope, each with a clean place to attach later:
 
-- Meta / Google Ads, ROAS, CTR (Phase 2) — ad spend becomes another cost feeding the same engine
+- Meta / Google Ads, ROAS, CTR (Phase 2) - ad spend becomes another cost feeding the same engine
 - Bounce rate, customer acquisition, LTV (Phase 3)
-- Shipping provider, delivery times, delayed orders (Phase 4) — shipping cost becomes another cost line
+- Shipping provider, delivery times, delayed orders (Phase 4) - shipping cost becomes another cost line
 - Customer service performance (Phase 5)
 - Payment processing fees, returns forecasting, Google Sheets sync, CSV import

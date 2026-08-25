@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `/settings/shops`'s promise true — every connected store re-checked every 15 minutes, and any store that cannot be says why on the page.
+**Goal:** Make `/settings/shops`'s promise true - every connected store re-checked every 15 minutes, and any store that cannot be says why on the page.
 
 **Architecture:** The scheduled sync keeps its single invocation but stops
 starving itself. It reclaims the platform's full 300-second budget, visits
@@ -19,13 +19,13 @@ failed.
 ## Global Constraints
 
 - **Never run tests against the live database.** Vitest runs against the local portable Postgres in `%LOCALAPPDATA%\panetti-pg`. Neon is production.
-- **Edit files with the Edit/Write tools only.** PowerShell 5.1 `Get-Content`/`Set-Content` corrupts UTF-8 in this repo and these files contain `…`, `—` and `ø`.
+- **Edit files with the Edit/Write tools only.** PowerShell 5.1 `Get-Content`/`Set-Content` corrupts UTF-8 in this repo and these files contain `…`, `-` and `ø`.
 - **Never run `git stash`, `git checkout -- `, `git reset`, `git clean`, or `git restore`.** Another session shares this working directory; those commands silently destroy its work.
 - This project has **no migrations directory**. Schema changes go in `prisma/schema.prisma` and are applied with `npx prisma db push`. The Vercel build runs `prisma db push --skip-generate` itself.
 - Exact values, copied from the spec: `maxDuration = 300`, shops deadline `240_000` ms, per-request timeout ceiling `30_000` ms, "catching up" threshold `3_600_000` ms.
 - Woo returns GMT timestamps with no zone suffix. Parse them as `new Date(value + 'Z')`, matching `mapOrder` in `src/lib/woo/map.ts`.
 - Run the full suite with `npx vitest run`. Type-check with `npx tsc --noEmit`. Lint with `npx eslint`.
-- Comments explain **why**, not what. Match the surrounding voice — the existing comments in `sync.ts` are the reference.
+- Comments explain **why**, not what. Match the surrounding voice - the existing comments in `sync.ts` are the reference.
 
 ## File Structure
 
@@ -83,7 +83,7 @@ Append to `src/app/api/cron/sync/route.test.ts`, inside the existing
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/app/api/cron/sync/route.test.ts`
-Expected: FAIL — `expected 60 to be 300`
+Expected: FAIL - `expected 60 to be 300`
 
 - [ ] **Step 3: Reclaim the budget**
 
@@ -125,7 +125,7 @@ which is why a frozen store gives no reason. Two columns and one helper, wired
 into every path `syncShop` can leave by.
 
 `lastRunAt` is separate from `lastSyncAt` on purpose. `lastSyncAt` is a
-watermark — how far through the store's change stream we have read. `lastRunAt`
+watermark - how far through the store's change stream we have read. `lastRunAt`
 is when we last gave the store attention. Task 5 makes a catching-up store move
 its watermark *backwards* relative to now, at which point a page showing only
 `lastSyncAt` would call a healthy run a failure.
@@ -139,7 +139,7 @@ its watermark *backwards* relative to now, at which point a page showing only
 - Consumes: nothing
 - Produces:
   - `Shop.lastRunAt: DateTime?` and `Shop.lastError: String?`
-  - `recordRun(shopId: string, outcome: { lastSyncAt?: Date; error?: string | null }): Promise<void>` — module-private in `sync.ts`
+  - `recordRun(shopId: string, outcome: { lastSyncAt?: Date; error?: string | null }): Promise<void>` - module-private in `sync.ts`
 
 - [ ] **Step 1: Add the columns**
 
@@ -242,7 +242,7 @@ describe('run bookkeeping', () => {
 - [ ] **Step 4: Run them and watch them fail**
 
 Run: `npx vitest run src/lib/woo/sync.test.ts -t "run bookkeeping"`
-Expected: FAIL — `lastError` and `lastRunAt` are null, because nothing writes them yet.
+Expected: FAIL - `lastError` and `lastRunAt` are null, because nothing writes them yet.
 
 - [ ] **Step 5: Add the helper**
 
@@ -262,7 +262,7 @@ In `src/lib/woo/sync.ts`, directly above `export async function syncShop(`:
  * retried unchanged rather than skipped.
  *
  * Never throws. If the database is what broke, the caller's own error is the
- * one worth reporting — not a second, more confusing one from the bookkeeping.
+ * one worth reporting - not a second, more confusing one from the bookkeeping.
  */
 async function recordRun(
   shopId: string,
@@ -285,7 +285,7 @@ async function recordRun(
 
 - [ ] **Step 6: Wire it into every exit of `syncShop`**
 
-Six edits in `src/lib/woo/sync.ts` — every path `syncShop` can leave by. Each
+Six edits in `src/lib/woo/sync.ts` - every path `syncShop` can leave by. Each
 records the attempt immediately before returning.
 
 At the missing-credentials exit (currently line 203-205):
@@ -309,7 +309,7 @@ At the unreadable-keys exit (currently line 212-215):
   }
 ```
 
-At the over-5,000 exit (currently line 241-250) — Task 5 removes this branch
+At the over-5,000 exit (currently line 241-250) - Task 5 removes this branch
 entirely, so change only the bookkeeping for now:
 
 ```ts
@@ -336,7 +336,7 @@ At the mid-backfill exit (currently line 260-264):
 At the completed exit, replace the `db.shop.update` at lines 304-307 with:
 
 ```ts
-    // Only now — after everything landed — does the watermark move. It moves to
+    // Only now - after everything landed - does the watermark move. It moves to
     // when the FETCH began (a completed backfill starts a day back), so nothing
     // changed while we worked can slip between two windows.
     await recordRun(shop.id, {
@@ -359,13 +359,13 @@ And in the outer `catch` (currently lines 310-318):
 - [ ] **Step 7: Run the tests and watch them pass**
 
 Run: `npx vitest run src/lib/woo/sync.test.ts`
-Expected: PASS — the four new tests and every test that was already there.
+Expected: PASS - the four new tests and every test that was already there.
 
 - [ ] **Step 8: Type-check**
 
 Run: `npx tsc --noEmit`
 Expected: clean. If it complains that `lastRunAt` does not exist on the Shop
-type, the Prisma client did not regenerate — run `npx prisma generate`.
+type, the Prisma client did not regenerate - run `npx prisma generate`.
 
 - [ ] **Step 9: Commit**
 
@@ -379,7 +379,7 @@ git commit -m "feat: a store records when it last ran and why it failed"
 ### Task 3: Incremental pulls sort by modified date, in GMT
 
 Two bugs in one request. The pull filters on `modified_after` but sorts by
-`date` (created), which is why a truncated result has no safe resume point —
+`date` (created), which is why a truncated result has no safe resume point -
 Task 5 needs one. And it sends a UTC timestamp with no `dates_are_gmt`, so the
 store compares it against local time: a store at UTC+2 silently widens every
 window by two hours, inflating the very count that trips the page cap.
@@ -394,7 +394,7 @@ change.
 
 **Interfaces:**
 - Consumes: `FetchFilter` and `fetchOrders` as they already exist; no earlier task
-- Produces: `WooOrder.date_modified_gmt?: string` — optional, because every existing test fixture omits it and a store that omits it must degrade safely rather than fail to compile
+- Produces: `WooOrder.date_modified_gmt?: string` - optional, because every existing test fixture omits it and a store that omits it must degrade safely rather than fail to compile
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -441,7 +441,7 @@ Append to the `describe('fetchOrders', ...)` block in `src/lib/woo/client.test.t
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `npx vitest run src/lib/woo/client.test.ts -t "sorts incremental"`
-Expected: FAIL — the URL contains `orderby=date`, not `orderby=modified`.
+Expected: FAIL - the URL contains `orderby=date`, not `orderby=modified`.
 
 - [ ] **Step 3: Add the field to the order type**
 
@@ -503,8 +503,8 @@ git commit -m "fix: incremental pulls sort by modified date and say their dates 
 
 Right now not one `fetch()` in `client.ts` sets a `signal`, so a single
 unresponsive store consumes whatever budget is left and takes every store behind
-it down too. A per-request timeout alone is not enough — a 30-second request
-starting with 10 seconds left still overruns — so the request budget is the
+it down too. A per-request timeout alone is not enough - a 30-second request
+starting with 10 seconds left still overruns - so the request budget is the
 lesser of the ceiling and what remains of the deadline.
 
 The same pass records the resume point Task 5 needs, and whether the store
@@ -570,7 +570,7 @@ describe('bounded pulls', () => {
     expect(requestBudgetMs({ deadline: now + 5_000 }, now)).toBe(5_000)
     // No deadline at all: the ceiling.
     expect(requestBudgetMs({}, now)).toBe(30_000)
-    // Never zero or negative — an already-expired budget must still be a valid
+    // Never zero or negative - an already-expired budget must still be a valid
     // timeout, and the page loop is what actually stops.
     expect(requestBudgetMs({ deadline: now - 10_000 }, now)).toBe(1)
   })
@@ -632,7 +632,7 @@ describe('resume points', () => {
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `npx vitest run src/lib/woo/client.test.ts -t "bounded pulls"`
-Expected: FAIL — `requestBudgetMs` is not exported.
+Expected: FAIL - `requestBudgetMs` is not exported.
 
 - [ ] **Step 3: Extend the types**
 
@@ -666,7 +666,7 @@ export type FetchResult = {
   resumeFrom?: string
   /**
    * False when the store did not return orders in modified order, or sent one
-   * without the stamp — in either case `resumeFrom` is NOT safe to resume from,
+   * without the stamp - in either case `resumeFrom` is NOT safe to resume from,
    * because orders we never saw may sit behind it. Always true for a first-sync
    * chunk, which is sorted by created date and makes no such claim.
    */
@@ -678,7 +678,7 @@ const REQUEST_TIMEOUT_MS = 30_000
 
 /**
  * What one request is allowed. The ceiling, or whatever is left of the run,
- * whichever is smaller — a 30-second request begun with 10 seconds left would
+ * whichever is smaller - a 30-second request begun with 10 seconds left would
  * overrun the deadline the caller is relying on. Never below 1ms: an expired
  * budget still has to be a valid timeout, and the page loop is what stops.
  */
@@ -724,7 +724,7 @@ everything after the opening brace) with:
     //
     // `dates_are_gmt` is set FIRST deliberately. It leaves `modified_after`
     // last in the query string, and the pre-existing test at
-    // `client.test.ts:54` asserts `not.toContain('after=<value>&')` — swap the
+    // `client.test.ts:54` asserts `not.toContain('after=<value>&')` - swap the
     // two and `"after=…&"` becomes a substring of `"modified_after=…&"`, and
     // that assertion flips. Param order is meaningless to WooCommerce, so keep
     // the order that keeps the test honest.
@@ -763,7 +763,7 @@ everything after the opening brace) with:
     if (batch.length < 100) return { orders: all, hasMore: false, resumeFrom, sortedByModified } // last page
   }
 
-  // Every page we were allowed to fetch came back full — more is behind it.
+  // Every page we were allowed to fetch came back full - more is behind it.
   return { orders: all, hasMore: true, resumeFrom, sortedByModified }
 ```
 
@@ -775,7 +775,7 @@ new reasons a pull stops:
  * Fetch orders one page at a time, oldest first. WooCommerce caps `per_page` at 100.
  *
  * Stops on a short page (the end), at `maxPages`, or once the caller's deadline
- * passes — the last two both report `hasMore: true`, and for an incremental
+ * passes - the last two both report `hasMore: true`, and for an incremental
  * pull `resumeFrom` says exactly how far we got, so the caller can carry on next
  * run instead of starting the same window again.
  */
@@ -813,8 +813,8 @@ identical wall.
 
 Draining replaces refusing. Store what arrived and move the watermark to the
 last order actually processed, so the window shrinks every run. This preserves
-the author's safety property more strictly than refusing did — it never skips,
-it stops exactly where it got to — as long as the ordering held, which Task 4
+the author's safety property more strictly than refusing did - it never skips,
+it stops exactly where it got to - as long as the ordering held, which Task 4
 now checks.
 
 **Files:**
@@ -844,7 +844,7 @@ function fullModifiedPage(n: number, startId: number) {
  *
  * The bounding is not incidental. A mock returning full pages forever runs the
  * pull to its 50-page ceiling and `storeOrder` then writes 5,000 orders one at a
- * time — minutes per test. A partial pull is a partial pull whether it stopped
+ * time - minutes per test. A partial pull is a partial pull whether it stopped
  * at page 2 or page 50, so one page proves the same thing.
  *
  * Bounded by `maxPages` rather than by a deadline on purpose: a deadline is set
@@ -874,7 +874,7 @@ describe('draining a backlog', () => {
     // The EXACT stamp of the last order processed, not merely "later than
     // before". An inequality here is worthless: advancing to `now` would also
     // satisfy it, while skipping every order between these 100 and the present
-    // — which is the precise failure this whole task exists to prevent.
+    // - which is the precise failure this whole task exists to prevent.
     expect(after.lastSyncAt!.toISOString()).toBe('2026-07-01T01:39:00.000Z')
     expect(after.lastError).toBeNull()
   })
@@ -901,7 +901,7 @@ describe('draining a backlog', () => {
     const watermark = new Date('2026-06-01T00:00:00Z')
     await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: watermark } })
 
-    // Full page, modified stamps descending — the opposite of what we asked.
+    // Full page, modified stamps descending - the opposite of what we asked.
     // The guard only matters on a PARTIAL pull: a completed one moves its
     // watermark to the fetch time and needs no resume point, so this must stop
     // early to be testing anything at all.
@@ -939,7 +939,7 @@ describe('draining a backlog', () => {
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `npx vitest run src/lib/woo/sync.test.ts -t "draining a backlog"`
-Expected: FAIL — the first test gets `ok: false` and the over-5,000 error.
+Expected: FAIL - the first test gets `ok: false` and the over-5,000 error.
 
 - [ ] **Step 3: Accept a deadline and a page bound, and pass both to the pull**
 
@@ -949,7 +949,7 @@ In `src/lib/woo/sync.ts`, change the `syncShop` signature (line 196-199):
 export async function syncShop(
   shopId: string,
   /**
-   * `backfillPages` bounds a first-sync chunk, `maxPages` an incremental one —
+   * `backfillPages` bounds a first-sync chunk, `maxPages` an incremental one -
    * the same seam for the other half of the function, and the only way a test
    * can produce a partial incremental pull without fetching 5,000 orders.
    */
@@ -991,7 +991,7 @@ lines 241-250 as amended in Task 2). Then replace the mid-backfill block
       //
       // A first sync's watermark stays unset so the next run resumes the
       // backfill instead of going incremental. An incremental pull moves its
-      // watermark to the last order it actually processed — that is what makes
+      // watermark to the last order it actually processed - that is what makes
       // a backlog drain instead of being handed back, bigger, every run.
       const canResume = !firstSync && sortedByModified && resumeFrom !== undefined
       const unsorted = !firstSync && !sortedByModified
@@ -1035,7 +1035,7 @@ describes both kinds of partial pull:
 - [ ] **Step 5: Run the tests and watch them pass**
 
 Run: `npx vitest run src/lib/woo/sync.test.ts`
-Expected: PASS. If a pre-existing backfill test now fails on `more`, read it —
+Expected: PASS. If a pre-existing backfill test now fails on `more`, read it -
 the unified exit reports `more: true` in exactly the cases the two old exits did,
 so a failure here means the storing loop and the exit are in the wrong order.
 
@@ -1064,7 +1064,7 @@ a broken store holding the front of the queue.
 
 **Interfaces:**
 - Consumes: `Shop.lastRunAt` (Task 2), `syncShop(shopId, { deadline })` (Task 5)
-- Produces: `syncAllShops(opts?: { deadline?: number }): Promise<SyncResult[]>` — omitting `deadline` keeps the current unbounded behaviour, so every existing caller and test stays meaningful
+- Produces: `syncAllShops(opts?: { deadline?: number }): Promise<SyncResult[]>` - omitting `deadline` keeps the current unbounded behaviour, so every existing caller and test stays meaningful
 
 > **Read this before writing the tests.** These are the only tests in the repo
 > that call `syncAllShops()`, and it syncs **every** shop in the database, not
@@ -1076,7 +1076,7 @@ a broken store holding the front of the queue.
 >
 > Two rules, therefore. Assert only on the **relative order of this file's own
 > shops** (`[sync-test] …`), never on the length or contents of the whole
-> result — the assertions below already do this, so do not "tighten" them. And
+> result - the assertions below already do this, so do not "tighten" them. And
 > if the suite's pass count moves between the two runs in Task 7 Step 6, that is
 > this race, not flakiness: fix it by mocking `syncShop` for these cases. Do
 > **not** reach for `--no-file-parallelism`; it was measured at 6.7× slower
@@ -1160,7 +1160,7 @@ describe('rotation', () => {
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `npx vitest run src/lib/woo/sync.test.ts -t "rotation"`
-Expected: FAIL — `syncAllShops` takes no argument, and the order is whatever
+Expected: FAIL - `syncAllShops` takes no argument, and the order is whatever
 Postgres returns.
 
 - [ ] **Step 3: Rotate and bound the loop**
@@ -1175,7 +1175,7 @@ In `src/lib/woo/sync.ts`, replace `syncAllShops` (lines 321-326):
  * missed out last run any priority on the next one, so once the work outgrew the
  * budget the stores at the far end simply stopped being reached. Ordered by
  * `lastRunAt`, a run that serves K stores serves every store within ⌈N/K⌉ runs,
- * whatever N is — and because `recordRun` moves `lastRunAt` even when a store
+ * whatever N is - and because `recordRun` moves `lastRunAt` even when a store
  * fails, a permanently broken store costs one slot per run instead of holding
  * the front of the queue forever.
  *
@@ -1292,7 +1292,7 @@ git commit -m "feat: the sync serves the longest-ignored store first and stops o
 ### Task 7: The shops page says what happened
 
 The page passes only `lastSyncAt`, so a failing store shows a frozen date and no
-reason — which is the reason "why did it stop" had no answer. It also has to stop
+reason - which is the reason "why did it stop" had no answer. It also has to stop
 reading a catching-up store as a broken one: Task 5 deliberately moves the
 watermark to an old timestamp while a backlog drains, so the raw date alone would
 call a healthy run a failure.
@@ -1369,7 +1369,7 @@ describe('what the Last sync column says', () => {
 - [ ] **Step 2: Run them and watch them fail**
 
 Run: `npx vitest run src/app/settings/shops/ShopsClient.test.tsx -t "what the Last sync column says"`
-Expected: FAIL — nothing renders "Sync failed"; TypeScript also rejects the
+Expected: FAIL - nothing renders "Sync failed"; TypeScript also rejects the
 unknown props, which is the same signal.
 
 - [ ] **Step 3: Pass the fields through the page**
@@ -1456,18 +1456,18 @@ Expected: PASS, new and pre-existing.
 
 - [ ] **Step 6: Run the whole suite twice**
 
-Run: `npx vitest run` — then run it a second time.
+Run: `npx vitest run` - then run it a second time.
 
 Expected: identical pass counts both times. Two runs, not one: these suites share
 a database and run in parallel, and a race shows up as a count that moves. If it
-does move, that is a real defect — find which two tests share a row, do not
+does move, that is a real defect - find which two tests share a row, do not
 serialize the suite (measured at 6.7× slower).
 
 - [ ] **Step 7: Type-check, lint, build**
 
 Run: `npx tsc --noEmit && npx eslint && npm run build`
 Expected: all clean. If `tsc` reports a stale route type, delete `.next` and
-retry — the route validator caches deleted routes.
+retry - the route validator caches deleted routes.
 
 - [ ] **Step 8: Commit**
 
@@ -1485,7 +1485,7 @@ problem was reported from:
 
 1. Merge and push. The Vercel build runs `prisma db push --skip-generate`, which
    adds the two columns.
-2. Confirm the deploy with `curl -s https://panetti.vercel.app/api/version` —
+2. Confirm the deploy with `curl -s https://panetti.vercel.app/api/version` -
    it returns the deployed commit sha.
 3. Wait for two cron runs (30 minutes) and open
    `https://panetti.vercel.app/settings/shops`.

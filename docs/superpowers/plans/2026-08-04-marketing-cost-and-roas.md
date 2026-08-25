@@ -1,10 +1,10 @@
-# Marketing as a cost, ROAS on the dashboard — Implementation Plan
+# Marketing as a cost, ROAS on the dashboard - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Drop the two dead columns (Shipping, Net revenue) from the dashboard's Compare table, and put Meta + Google ad spend in it as a real cost that reduces Net profit, with a ROAS column whose Total row is the blended figure.
 
-**Architecture:** Marketing enters through the metrics engine, not the browser. `Figures` gains a `marketing` field; `MetricsInput` gains an optional `adSpend` array that `loadMetricsInput` fills from `AdAccount` + `AdSpend`. The engine filters those rows by date itself, so `dailySeries` (which re-runs the engine once per day for the Trend chart) and the previous-period comparison both pick marketing up with no extra wiring. ROAS is *not* an engine field — it is a ratio of two figures already on the row, derived in `CompareTable`, which makes the footer cell the blended ROAS for free.
+**Architecture:** Marketing enters through the metrics engine, not the browser. `Figures` gains a `marketing` field; `MetricsInput` gains an optional `adSpend` array that `loadMetricsInput` fills from `AdAccount` + `AdSpend`. The engine filters those rows by date itself, so `dailySeries` (which re-runs the engine once per day for the Trend chart) and the previous-period comparison both pick marketing up with no extra wiring. ROAS is *not* an engine field - it is a ratio of two figures already on the row, derived in `CompareTable`, which makes the footer cell the blended ROAS for free.
 
 **Tech Stack:** Next.js 16 (App Router), React 19, TypeScript, Prisma 6 / Postgres, Vitest (`npm test`), Playwright (`npm run test:e2e`), Tailwind 4.
 
@@ -13,10 +13,10 @@
 ## Global Constraints
 
 - **All money is integer minor units.** Never introduce a float amount. Any division that produces money passes through `Math.round`.
-- **Money converts at its own day's rate**, never the range's — history must never shift when a rate moves.
-- **A ratio with a zero denominator prints `—`, never `0.00×`.** This rule is already set by `ratios()` in `src/lib/ads/marketing.ts` and must not be broken here.
+- **Money converts at its own day's rate**, never the range's - history must never shift when a rate moves.
+- **A ratio with a zero denominator prints `-`, never `0.00×`.** This rule is already set by `ratios()` in `src/lib/ads/marketing.ts` and must not be broken here.
 - **`adSpend` is optional on `MetricsInput`.** Absent means marketing is 0 and net profit is exactly what it was, so every existing caller and test keeps working untouched.
-- **Never run the dev server piped to another command** (e.g. `| head`) — it wedges the process and holds port 3000.
+- **Never run the dev server piped to another command** (e.g. `| head`) - it wedges the process and holds port 3000.
 - Test runner is `npx vitest run <path>` for a single file, `npm test` for the suite. Integration tests need `npm run db:seed` to have been run against the local test database.
 - Commit messages end with:
   ```
@@ -135,7 +135,7 @@ describe('computeMetrics and ad spend', () => {
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
 
-Expected: FAIL — TypeScript rejects `EngineAdSpend` (not exported) and `adSpend` (not a property of `MetricsInput`), and `res.total.marketing` is `undefined`.
+Expected: FAIL - TypeScript rejects `EngineAdSpend` (not exported) and `adSpend` (not a property of `MetricsInput`), and `res.total.marketing` is `undefined`.
 
 - [ ] **Step 3: Add the types**
 
@@ -143,7 +143,7 @@ In `src/lib/metrics/types.ts`, add this type after `EngineExpense`:
 
 ```ts
 /**
- * One day of one ad account's spend, in the ACCOUNT's own billing currency —
+ * One day of one ad account's spend, in the ACCOUNT's own billing currency -
  * which need not be its shop's: a Norwegian store can run a EUR ad account.
  * `date` is plain UTC midnight, the way Meta and Google report a day.
  */
@@ -191,7 +191,7 @@ Add this helper beside `fulfillmentOn`:
 
 ```ts
 /**
- * Ad spend is dated by plain UTC day, the way the platforms report it — unlike
+ * Ad spend is dated by plain UTC day, the way the platforms report it - unlike
  * an order, which belongs to its shop's own calendar day.
  */
 function spendInRange(date: Date, from: Date, to: Date): boolean {
@@ -220,7 +220,7 @@ Inside the `shops.map` callback, after the `transactionFees` block and before `c
     // Ad spend converts at ITS OWN day's rate, exactly as an order does, so a
     // rate move never rewrites last month's marketing cost. crossConvert, not
     // convert, because an account can bill in a currency that is neither the
-    // shop's nor USD — and because buildMarketing converts the same rows the
+    // shop's nor USD - and because buildMarketing converts the same rows the
     // same way, which is what keeps this page and the Marketing page agreeing.
     const marketing = sum(
       (spendByShop.get(shop.id) ?? [])
@@ -267,13 +267,13 @@ and add a line to the same comment block, after the `fees` line:
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npx vitest run src/lib/metrics/engine.test.ts`
-Expected: PASS — all seven new cases plus every pre-existing case in the file.
+Expected: PASS - all seven new cases plus every pre-existing case in the file.
 
-- [ ] **Step 6: Run the whole suite — nothing else may move**
+- [ ] **Step 6: Run the whole suite - nothing else may move**
 
 Run: `npm test`
 
-Expected: PASS. Every other test constructs figures via `...ZERO_FIGURES` or passes no `adSpend`, so marketing is 0 and no profit assertion anywhere changes. If a test fails on a net-profit figure, something in Step 4 is subtracting spend that was never supplied — fix that rather than editing the assertion.
+Expected: PASS. Every other test constructs figures via `...ZERO_FIGURES` or passes no `adSpend`, so marketing is 0 and no profit assertion anywhere changes. If a test fails on a net-profit figure, something in Step 4 is subtracting spend that was never supplied - fix that rather than editing the assertion.
 
 - [ ] **Step 7: Commit**
 
@@ -300,7 +300,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `MetricsInput.adSpend` and `Figures.marketing` from Task 1.
 - Produces: nothing new. This task is a guarantee, not a feature.
 
-This task adds **no implementation code**. Task 1 put the date filtering inside the engine precisely so that `dailySeries` — which calls `computeMetrics({ ...input, orders: <that day's> })` with `from = to = day` — picks the right day's spend by itself. This test is what proves that, and what fails if a later change moves the filtering out to the callers.
+This task adds **no implementation code**. Task 1 put the date filtering inside the engine precisely so that `dailySeries` - which calls `computeMetrics({ ...input, orders: <that day's> })` with `from = to = day` - picks the right day's spend by itself. This test is what proves that, and what fails if a later change moves the filtering out to the callers.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -349,7 +349,7 @@ Run: `npx vitest run src/lib/metrics/trend.test.ts`
 
 Expected: PASS immediately, with no implementation change. Task 1's engine-side range filter is what makes this true.
 
-If either case FAILS, the bug is in Task 1, not here — the spend is being summed over the whole range on every day, or not at all. Fix `spendInRange` / the `spendByShop` grouping in `src/lib/metrics/engine.ts` rather than weakening the test.
+If either case FAILS, the bug is in Task 1, not here - the spend is being summed over the whole range on every day, or not at all. Fix `spendInRange` / the `spendByShop` grouping in `src/lib/metrics/engine.ts` rather than weakening the test.
 
 - [ ] **Step 3: Commit**
 
@@ -378,7 +378,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the failing tests**
 
-Append these three cases inside the existing `describe('loadMetricsInput and B2B orders', ...)` block in `src/lib/data/load.integration.test.ts`. Its `afterEach` already deletes `[load-test]` shops, and `AdAccount.shop` / `AdSpend.account` both cascade on delete, so the accounts and their spend go with the shop — no new cleanup is needed.
+Append these three cases inside the existing `describe('loadMetricsInput and B2B orders', ...)` block in `src/lib/data/load.integration.test.ts`. Its `afterEach` already deletes `[load-test]` shops, and `AdAccount.shop` / `AdSpend.account` both cascade on delete, so the accounts and their spend go with the shop - no new cleanup is needed.
 
 ```ts
   it('loads a shop’s ad spend, in the ACCOUNT’s currency and not the shop’s', async () => {
@@ -436,7 +436,7 @@ Append these three cases inside the existing `describe('loadMetricsInput and B2B
 
   it('fetches rates for an ad account’s currency, which no shop need trade in', async () => {
     // A lone NOK shop needs no consolidation, so nothing else would ask for a
-    // rate — and its EUR ad spend would then convert on whatever stale rate
+    // rate - and its EUR ad spend would then convert on whatever stale rate
     // happened to be lying around.
     const shop = await db.shop.create({
       data: { name: 'Ad FX [load-test]', currency: 'NOK' },
@@ -461,7 +461,7 @@ Append these three cases inside the existing `describe('loadMetricsInput and B2B
 
 Run: `npx vitest run src/lib/data/load.integration.test.ts`
 
-Expected: FAIL — `input.adSpend` is `undefined` in the first two, and `ensureRates` is never called in the third (one NOK shop alone puts a single currency in play).
+Expected: FAIL - `input.adSpend` is `undefined` in the first two, and `ensureRates` is never called in the third (one NOK shop alone puts a single currency in play).
 
 If the whole file errors on connection, run `npm run db:seed` first: these tests need the local seeded database.
 
@@ -486,7 +486,7 @@ Insert this block after the `fulfillmentRates` loop and before `const feeRow = .
   const accountById = new Map(adAccounts.map((a) => [a.id, a]))
   const spendRows = adAccounts.length
     ? await db.adSpend.findMany({
-        // Platforms report a plain UTC day, so the window is a UTC day window —
+        // Platforms report a plain UTC day, so the window is a UTC day window -
         // the same one /api/marketing uses, so the two screens see the same rows.
         where: {
           accountId: { in: adAccounts.map((a) => a.id) },
@@ -511,7 +511,7 @@ Add the ad-account currencies to the `inPlay` set:
     ...orders.map((o) => o.currency),
     ...expenses.map((e) => e.currency),
     // An ad account can bill in a currency no shop trades in, and its spend is
-    // now a cost against profit — an unfetched rate is real money mis-stated.
+    // now a cost against profit - an unfetched rate is real money mis-stated.
     ...adAccounts.map((a) => a.currency),
     ...(processingFee ? [processingFee.currency] : []),
   ])
@@ -530,7 +530,7 @@ Add `adSpend` to the returned object, after `expenses`:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/lib/data/load.integration.test.ts`
-Expected: PASS — the three new cases and every pre-existing one in the file.
+Expected: PASS - the three new cases and every pre-existing one in the file.
 
 - [ ] **Step 5: Commit**
 
@@ -554,7 +554,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Modify: `src/app/api/marketing/route.ts:43-53` (delete the local rate top-up, use `input.rates`)
 
 **Interfaces:**
-- Consumes: the `inPlay` change from Task 3 — `loadMetricsInput` now guarantees rates for every ad-account currency in scope.
+- Consumes: the `inPlay` change from Task 3 - `loadMetricsInput` now guarantees rates for every ad-account currency in scope.
 - Produces: nothing new.
 
 - [ ] **Step 1: Delete the duplicate rate top-up**
@@ -581,7 +581,7 @@ In `src/app/api/marketing/route.ts`, delete this whole block:
 and replace it with:
 
 ```ts
-    // loadMetricsInput already tops up every ad-account currency in scope — it
+    // loadMetricsInput already tops up every ad-account currency in scope - it
     // has to, because that spend is now a cost against profit. Reusing its rate
     // table is what stops this page and the dashboard quoting different money
     // for the same spend.
@@ -624,7 +624,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 5: the Compare table — Fulfillment moves up, Marketing and ROAS arrive, Shipping and Net revenue go
+### Task 5: the Compare table - Fulfillment moves up, Marketing and ROAS arrive, Shipping and Net revenue go
 
 **Files:**
 - Modify: `src/components/dashboard/CompareTable.tsx`
@@ -644,7 +644,7 @@ Net profit · Margin
 
 - [ ] **Step 1: Update the fixture and write the failing tests**
 
-In `src/components/dashboard/CompareTable.test.tsx`, add `marketing` to the `row` fixture and lower its profit to match — marketing is a cost now, and a fixture whose profit ignores it would be teaching the reader something false:
+In `src/components/dashboard/CompareTable.test.tsx`, add `marketing` to the `row` fixture and lower its profit to match - marketing is a cost now, and a fixture whose profit ignores it would be teaching the reader something false:
 
 ```ts
 const row: ShopFigures = {
@@ -666,7 +666,7 @@ const row: ShopFigures = {
 }
 ```
 
-Replace the header list inside the existing first test (`'shows Gross revenue right after Orders — what the customer actually paid'`) and add the two absence checks to it:
+Replace the header list inside the existing first test (`'shows Gross revenue right after Orders - what the customer actually paid'`) and add the two absence checks to it:
 
 ```ts
     for (const label of [
@@ -677,7 +677,7 @@ Replace the header list inside the existing first test (`'shows Gross revenue ri
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
     }
 
-    // Shipping charged is zero in every shop and every period — these shops
+    // Shipping charged is zero in every shop and every period - these shops
     // ship free, and what shipping COSTS is already under Fulfillment. Net
     // revenue is net sales plus that zero, so it printed the same money twice.
     for (const gone of ['Shipping', 'Net revenue']) {
@@ -705,15 +705,15 @@ Then append these four new cases to the `describe('CompareTable', ...)` block:
     expect(screen.getAllByText('4.75×').length).toBe(2)
   })
 
-  it('dashes ROAS when no ads ran — never 0.00×', () => {
+  it('dashes ROAS when no ads ran - never 0.00×', () => {
     render(<CompareTable result={result} />)
 
     const idleRow = screen.getByText('Mazzetti Denmark').closest('tr')!
-    expect(idleRow.textContent).toContain('—')
+    expect(idleRow.textContent).toContain('-')
     expect(idleRow.textContent).not.toContain('0.00×')
   })
 
-  it('shows 0.00× when the ads ran and nothing sold — that is a true answer', () => {
+  it('shows 0.00× when the ads ran and nothing sold - that is a true answer', () => {
     const burned: ShopFigures = {
       ...ZERO_FIGURES,
       shopId: 's3',
@@ -750,7 +750,7 @@ Then append these four new cases to the `describe('CompareTable', ...)` block:
 
 Run: `npx vitest run src/components/dashboard/CompareTable.test.tsx`
 
-Expected: FAIL — no `Sort by Marketing` or `Sort by ROAS` button exists, `Sort by Shipping` and `Sort by Net revenue` still do, and `4.75×` is nowhere on the page.
+Expected: FAIL - no `Sort by Marketing` or `Sort by ROAS` button exists, `Sort by Shipping` and `Sort by Net revenue` still do, and `4.75×` is nowhere on the page.
 
 - [ ] **Step 3: Rework the columns and the row type**
 
@@ -770,7 +770,7 @@ type Row = ShopFigures & { roas: number | null }
 
 /**
  * Gross revenue per unit of ad spend. Derived here, not in the engine, because
- * it is a ratio of two figures already on the row — and because the footer IS
+ * it is a ratio of two figures already on the row - and because the footer IS
  * the totals row, which makes its cell the blended ROAS for free: all gross
  * revenue over all spend. No spend is not "0.00x", it is nothing to divide by,
  * so it prints a dash; spend with nothing sold really is 0.00x, and prints.
@@ -789,9 +789,9 @@ type Column = {
   hint?: string
   money?: boolean
   percent?: boolean
-  roas?: boolean // "4.75×" — and a dash where there is nothing to divide by
+  roas?: boolean // "4.75×" - and a dash where there is nothing to divide by
   tone?: boolean // colour by sign
-  shareOfNetRevenue?: boolean // append "(26.10%)" — this figure as a share of the row's net revenue
+  shareOfNetRevenue?: boolean // append "(26.10%)" - this figure as a share of the row's net revenue
 }
 ```
 
@@ -802,9 +802,9 @@ const COLUMNS: Column[] = [
   { key: 'orders', label: 'Orders' },
   { key: 'grossRevenue', label: 'Gross revenue', money: true, hint: 'What customers actually paid: net revenue + VAT (Nordic "brutto")' },
   { key: 'discounts', label: 'Discounts', money: true, hint: 'Coupon and code discounts, excl. VAT' },
-  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base, excl. VAT' },
+  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts - the commission base, excl. VAT' },
   { key: 'fulfillment', label: 'Fulfillment', money: true, hint: 'What shipping actually cost us: the per-order rate from Settings, or a B2B order’s own shipping cost' },
-  { key: 'taxes', label: 'VAT', money: true, hint: 'VAT collected (25% NO/SE/DK, 25.5% FI, 19% DE) — remitted to the tax office, never income or cost' },
+  { key: 'taxes', label: 'VAT', money: true, hint: 'VAT collected (25% NO/SE/DK, 25.5% FI, 19% DE) - remitted to the tax office, never income or cost' },
   { key: 'transactionFees', label: 'Transaction fees', money: true, hint: 'Payment gateway: % of the charged total + fixed part' },
   { key: 'cogs', label: 'COGS', money: true, shareOfNetRevenue: true, hint: 'Product cost + handling, and its share of net revenue' },
   { key: 'marketing', label: 'Marketing', money: true, hint: 'Meta and Google ad spend, converted at each day’s own rate' },
@@ -816,7 +816,7 @@ const COLUMNS: Column[] = [
 ]
 ```
 
-Note what is deliberately absent: `shippingCharged` and `netRevenue`. `useVisibleColumns` already drops saved keys that match no column, so a browser holding either of them in `localStorage['compare-columns']` needs no migration — and `marketing` and `roas` are in nobody's saved hidden list, so they arrive ticked.
+Note what is deliberately absent: `shippingCharged` and `netRevenue`. `useVisibleColumns` already drops saved keys that match no column, so a browser holding either of them in `localStorage['compare-columns']` needs no migration - and `marketing` and `roas` are in nobody's saved hidden list, so they arrive ticked.
 
 - [ ] **Step 4: Teach the cell to print a ratio and a dash**
 
@@ -839,10 +839,10 @@ function Cell({
   // A ratio with nothing to divide by is not a number, and printing one would
   // lie. The dash is muted so a column of them reads as absence, not as data.
   if (value === null) {
-    return <td className={`num px-4 py-2.5 text-right text-faint ${stripe}`}>—</td>
+    return <td className={`num px-4 py-2.5 text-right text-faint ${stripe}`}>-</td>
   }
 
-  // "$3,843.74 (26.10%)" — the share only exists when there is revenue to share.
+  // "$3,843.74 (26.10%)" - the share only exists when there is revenue to share.
   const share =
     column.shareOfNetRevenue && row.netRevenue > 0
       ? ` (${((value / row.netRevenue) * 100).toFixed(2)}%)`
@@ -882,7 +882,7 @@ In the `CompareTable` component, change the sort state and the row construction:
   })
 ```
 
-(`.map()` already returns a fresh array, so the previous `[...result.byShop]` copy is no longer needed — sorting in place here is safe.)
+(`.map()` already returns a fresh array, so the previous `[...result.byShop]` copy is no longer needed - sorting in place here is safe.)
 
 ```ts
   function sort(key: keyof Row) {
@@ -905,7 +905,7 @@ And the footer's row, replacing the inline object in the `<tfoot>` `Cell`:
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `npx vitest run src/components/dashboard/CompareTable.test.tsx`
-Expected: PASS — all nine cases in the file.
+Expected: PASS - all nine cases in the file.
 
 - [ ] **Step 7: Run the whole suite and the type check**
 
@@ -920,11 +920,11 @@ Expected: no errors.
 
 - [ ] **Step 8: Verify the dashboard end to end**
 
-The existing `e2e/admin.spec.ts` asserts `getByText('Net revenue')` is visible. Playwright's string matching is case-insensitive substring, so the top strip's `NET REVENUE` tile — which stays, because there is no Net sales tile up there to duplicate it — still satisfies it. Confirm rather than assume:
+The existing `e2e/admin.spec.ts` asserts `getByText('Net revenue')` is visible. Playwright's string matching is case-insensitive substring, so the top strip's `NET REVENUE` tile - which stays, because there is no Net sales tile up there to duplicate it - still satisfies it. Confirm rather than assume:
 
 Run: `npx playwright test e2e/admin.spec.ts`
 
-Expected: PASS. Playwright starts its own dev server (`webServer` in `playwright.config.ts`, `reuseExistingServer: true`), so no server needs starting by hand. If it fails on the `Net revenue` line, change that assertion to `page.getByTestId('stat-net-revenue')` — the tile, named unambiguously — rather than removing it.
+Expected: PASS. Playwright starts its own dev server (`webServer` in `playwright.config.ts`, `reuseExistingServer: true`), so no server needs starting by hand. If it fails on the `Net revenue` line, change that assertion to `page.getByTestId('stat-net-revenue')` - the tile, named unambiguously - rather than removing it.
 
 - [ ] **Step 9: Commit**
 
@@ -932,7 +932,7 @@ Expected: PASS. Playwright starts its own dev server (`webServer` in `playwright
 git add src/components/dashboard/CompareTable.tsx src/components/dashboard/CompareTable.test.tsx
 git commit -m "feat: Marketing and ROAS in the Compare table, Shipping and Net revenue out
 
-Shipping charged read zero for every shop in every period — these shops
+Shipping charged read zero for every shop in every period - these shops
 ship free, and what shipping COSTS was already under Fulfillment, which
 now takes its place. Net revenue was net sales plus that zero, so the
 table printed the same money twice.
@@ -954,7 +954,7 @@ Run:
 npx tsx --env-file=.env -e "import { db } from './src/lib/db'; db.operationalExpense.findMany({ select: { label: true, category: true, amount: true, currency: true, shop: { select: { name: true } } } }).then((r) => { console.table(r.map((e) => ({ shop: e.shop.name, label: e.label, category: e.category, amount: e.amount, currency: e.currency }))); return db.\$disconnect() })"
 ```
 
-Read the `label` and `category` of every row for anything meaning ads — "Meta", "Facebook", "Google", "Ads", "Marketing", "Annonser", "Markedsføring". Report what you find to the user with the shop and the amount. **Do not delete anything.** It is their bookkeeping; removal is their call, and this step exists to give them the list to decide from.
+Read the `label` and `category` of every row for anything meaning ads - "Meta", "Facebook", "Google", "Ads", "Marketing", "Annonser", "Markedsføring". Report what you find to the user with the shop and the amount. **Do not delete anything.** It is their bookkeeping; removal is their call, and this step exists to give them the list to decide from.
 
 ---
 
@@ -962,13 +962,13 @@ Read the `label` and `category` of every row for anything meaning ads — "Meta"
 
 After Task 5, the whole change is verifiable in one pass:
 
-- `npm test` — the full unit and integration suite.
-- `npx tsc --noEmit` — no type errors.
-- `npm run lint` — no lint errors.
-- `npx playwright test` — the full e2e suite.
-- `npm run dev`, then open `/dashboard`: the Compare table reads Orders · Gross revenue · Discounts · Net sales · Fulfillment · VAT · Transaction fees · COGS · Marketing · Op. expenses · ROAS · Commission · Net profit · Margin. Net profit is lower than before by the marketing total. The Total row's ROAS equals total gross revenue ÷ total marketing. Cross-check that marketing total against the AD SPEND tile on `/marketing` for the same period and shop filter — they must be identical to the cent.
+- `npm test` - the full unit and integration suite.
+- `npx tsc --noEmit` - no type errors.
+- `npm run lint` - no lint errors.
+- `npx playwright test` - the full e2e suite.
+- `npm run dev`, then open `/dashboard`: the Compare table reads Orders · Gross revenue · Discounts · Net sales · Fulfillment · VAT · Transaction fees · COGS · Marketing · Op. expenses · ROAS · Commission · Net profit · Margin. Net profit is lower than before by the marketing total. The Total row's ROAS equals total gross revenue ÷ total marketing. Cross-check that marketing total against the AD SPEND tile on `/marketing` for the same period and shop filter - they must be identical to the cent.
 
-Then tell the user, before they open it themselves: profit on the dashboard is now lower, by exactly the marketing total, and that is the correction landing rather than a bug. Give them the two figures — the old profit and the marketing total — so the difference explains itself.
+Then tell the user, before they open it themselves: profit on the dashboard is now lower, by exactly the marketing total, and that is the correction landing rather than a bug. Give them the two figures - the old profit and the marketing total - so the difference explains itself.
 
 ## Out of scope
 

@@ -8,7 +8,7 @@ Status: approved for implementation. Follows 2026-07-29-budget-and-connect-ux-de
 The client saved his App ID and secret, pressed Connect with Facebook, and
 Facebook answered "Can't load URL: the domain of this URL isn't included in
 the app's domains." His screenshot proves our side sent the right client_id
-and the exact right redirect_uri — the missing piece is inside his Meta app's
+and the exact right redirect_uri - the missing piece is inside his Meta app's
 settings (App Domains and the Facebook Login redirect URL), which only he can
 edit. Today the system lets that half-finished setup save silently and lets
 Facebook deliver the bad news later. It should be caught at save.
@@ -18,7 +18,7 @@ Facebook deliver the bad news later. It should be caught at save.
 **Validate the pair.** Saving the Meta platform setup now proves the App ID +
 secret against Meta first: `GET /oauth/access_token?grant_type=
 client_credentials` mints the app access token. A wrong pair is a 400 with
-Facebook's own words and nothing saved — a typo dies at the keyboard, not at
+Facebook's own words and nothing saved - a typo dies at the keyboard, not at
 the login dialog.
 
 **Read the app's own settings (best-effort).** With that token,
@@ -26,7 +26,7 @@ the login dialog.
 may read all its own fields). If `app_domains` does not contain our domain,
 the save still succeeds but returns a `warning` naming the exact two values to
 paste: the domain into App Domains, the callback URL into Facebook Login →
-Valid OAuth Redirect URIs. If the read fails for any reason, no warning — the
+Valid OAuth Redirect URIs. If the read fails for any reason, no warning - the
 check is a courtesy, never a blocker.
 
 **Show it where it happened.** The Meta setup card renders the warning as a

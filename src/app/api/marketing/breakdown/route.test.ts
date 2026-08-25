@@ -73,7 +73,7 @@ async function makeAccount(over: Record<string, unknown> = {}) {
   })
 }
 
-/** A minimal, valid BreakdownEntry — the id varies, and a test may override
+/** A minimal, valid BreakdownEntry - the id varies, and a test may override
  * any other field (e.g. spend, to check ordering). */
 const entry = (id: string, over: Record<string, unknown> = {}) => ({
   id,
@@ -164,7 +164,7 @@ describe('GET /api/marketing/breakdown', () => {
     expect(metaBreakdown).toHaveBeenCalledTimes(2)
   })
 
-  // C1: campaign level has no accountId — asking every account is the whole
+  // C1: campaign level has no accountId - asking every account is the whole
   // point there, and this must survive the fix below that scopes deeper
   // levels to one. Each account is made to return ITS OWN row (rather than
   // sharing one fixture, as the union test above does) so a fix that
@@ -195,7 +195,7 @@ describe('GET /api/marketing/breakdown', () => {
   })
 
   // C1's fix, the critical finding: a campaign id belongs to exactly one ad
-  // account, so a deeper level with an accountId must be scoped to it —
+  // account, so a deeper level with an accountId must be scoped to it -
   // exactly one driver call, for that account, and nothing attributed to the
   // other. Before the fix this fanned out to both, so account B's driver
   // call would have run too and its row would have been stamped onto the
@@ -226,7 +226,7 @@ describe('GET /api/marketing/breakdown', () => {
   // Task 5: the third instance of the same scoping trap already fixed in
   // load.ts and /api/marketing/route.ts. A split account's own default shop
   // can sit outside the filter while one of its campaigns still belongs to
-  // it — before the fix, filtering accounts on `shopId: opts.shopId` alone
+  // it - before the fix, filtering accounts on `shopId: opts.shopId` alone
   // produced an EMPTY drill-down (accountsChecked: 0) beneath a Marketing row
   // that was showing real spend for that same shop.
   it("includes a split account whose campaign is in scope even though the account's own shop is not", async () => {
@@ -242,7 +242,7 @@ describe('GET /api/marketing/breakdown', () => {
     metaBreakdown.mockResolvedValue([entry('c1')])
 
     // Filtered to `shopId` (this describe's own default shop, from
-    // beforeEach) — the split account's own default is `otherShop`, not this.
+    // beforeEach) - the split account's own default is `otherShop`, not this.
     const res = await get(`shopId=${shopId}`)
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -253,7 +253,7 @@ describe('GET /api/marketing/breakdown', () => {
     expect(body.rows[0].accountId).toBe(splitAccount.id)
   })
 
-  // I6: platform order carries no meaning on a page used to judge spending —
+  // I6: platform order carries no meaning on a page used to judge spending -
   // matches MarketingTable's own default sort (highest spend first).
   it('sorts rows by spend, richest first', async () => {
     await makeAccount()
@@ -274,7 +274,7 @@ describe('GET /api/marketing/breakdown', () => {
     const body = await res.json()
     expect(body.rows).toEqual([])
     expect(metaBreakdown).not.toHaveBeenCalled()
-    // Zero accounts consulted, not merely zero rows returned — Task 5's
+    // Zero accounts consulted, not merely zero rows returned - Task 5's
     // BreakdownTable reads this to say "no account" rather than "no campaigns".
     expect(body.accountsChecked).toBe(0)
   })
@@ -324,7 +324,7 @@ describe('GET /api/marketing/breakdown', () => {
     expect(body.errors).toHaveLength(1)
     expect(body.errors[0].accountId).toBe(broken.id)
     expect(body.errors[0].accountName).toBe(broken.name)
-    // Both accounts were consulted even though only one produced a row —
+    // Both accounts were consulted even though only one produced a row -
     // proves accountsChecked reflects accounts queried, not rows.length
     // (which is 1 here). Deriving it from rows would pass this fixture wrong.
     expect(body.accountsChecked).toBe(2)

@@ -49,7 +49,7 @@ describe('invite tokens', () => {
 
 /**
  * verifyInvite answers "may this token be redeemed?", and an expired one may not.
- * inspectInvite answers a different question — "who was this link for?" — which an
+ * inspectInvite answers a different question - "who was this link for?" - which an
  * expired token can still answer truthfully, because the signature says we wrote it.
  * That is what lets the invite page tell an ambassador their link was already used
  * instead of turning them away with a dead end once the seven days are up.
@@ -76,7 +76,7 @@ describe('inspecting an invite whose expiry has passed', () => {
     })
   })
 
-  it('returns null for a tampered token — the signature is still the whole point', async () => {
+  it('returns null for a tampered token - the signature is still the whole point', async () => {
     const token = await expiredToken('amb-123')
     expect(await inspectInvite(token.slice(0, -3) + 'aaa')).toBeNull()
   })

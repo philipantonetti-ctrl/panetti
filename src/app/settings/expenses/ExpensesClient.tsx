@@ -35,7 +35,7 @@ const RECURRENCE_LABEL: Record<string, string> = {
   ONE_TIME: 'One time', DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly', YEARLY: 'Yearly',
 }
 
-/** Every currency, once — the list never changes. */
+/** Every currency, once - the list never changes. */
 const CURRENCY_OPTIONS: SelectOption[] = allCurrencies().map((c) => ({
   value: c.code,
   label: c.label, // "USD - $"
@@ -67,7 +67,7 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
   const [adding, setAdding] = useState(false)
   const [loading, setLoading] = useState(true)
   // A page-load failure, not an action: a toast fades and would leave an empty
-  // table reading as "you have no expenses" — a lie. Say so in the table itself.
+  // table reading as "you have no expenses" - a lie. Say so in the table itself.
   const [loadError, setLoadError] = useState<string | null>(null)
 
   // Table controls
@@ -80,7 +80,7 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
 
   function load() {
     if (!shopId) {
-      // No shop to load for. Say so rather than spinning forever — expenses
+      // No shop to load for. Say so rather than spinning forever - expenses
       // belong to a shop, so there is genuinely nothing to fetch.
       setLoading(false)
       setLoadError(null)
@@ -123,18 +123,18 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
       const failed = results.filter((ok) => !ok).length
       if (failed === 0) return
       if (failed === ids.length) {
-        // Every delete failed — say so plainly rather than leaving the rows
+        // Every delete failed - say so plainly rather than leaving the rows
         // there with no explanation.
         toast.error(
           ids.length === 1 ? 'Could not delete that expense.' : `Could not delete any of the ${ids.length} expenses.`,
         )
       } else {
         // Some succeeded and some did not: report the truth, not a blanket
-        // success — Promise.all does not mean all-or-nothing.
+        // success - Promise.all does not mean all-or-nothing.
         toast.error(`Deleted ${ids.length - failed} of ${ids.length}. ${failed} could not be deleted.`)
       }
     } finally {
-      // Always close the menu and reload — the reload is what shows the true,
+      // Always close the menu and reload - the reload is what shows the true,
       // post-delete state, whichever rows actually went.
       setMenuFor(null)
       load()
@@ -267,7 +267,7 @@ export function ExpensesClient({ email, shops }: { email: string; shops: Shop[] 
                   <tr>
                     <td colSpan={10} className="px-3 py-10 text-center text-faint">
                       <span className="font-semibold text-ink">No shops connected yet.</span>{' '}
-                      Operational expenses belong to a shop —{' '}
+                      Operational expenses belong to a shop -{' '}
                       <Link href="/settings/shops" className="text-accent hover:underline">
                         connect one first
                       </Link>
@@ -532,7 +532,7 @@ function ExpenseModal({
 
           <div className="col-span-2">
             <label htmlFor="metric" className="block text-xs font-medium text-ink">Metric Allocation</label>
-            {/* Locked, as in BeProfit — everything on this screen is an operational expense. */}
+            {/* Locked, as in BeProfit - everything on this screen is an operational expense. */}
             <input id="metric" value="Operational Expenses" disabled readOnly
               className="mt-1 w-full cursor-not-allowed rounded-[var(--radius-control)] border border-line bg-panel px-3 py-2 text-sm text-muted" />
           </div>

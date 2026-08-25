@@ -146,7 +146,7 @@ describe('GET /api/marketing', () => {
   })
 
   it("shows a split account's spend on the shop its campaign resolves to, even when the account's own shop is filtered out", async () => {
-    // The split account's own default shop sits OUTSIDE the filter below — only
+    // The split account's own default shop sits OUTSIDE the filter below - only
     // its campaign, assigned to `shopId` (the filtered-in shop), is in scope.
     // This is the ordinary "filter the Marketing page to a couple of stores"
     // action, and exactly the case this feature exists for.
@@ -168,7 +168,7 @@ describe('GET /api/marketing', () => {
       data: { campaignId: campaign.id, date: new Date('2026-03-10T00:00:00Z'), spend: 12345, impressions: 0, clicks: 0 },
     })
 
-    // Filter to the campaign's shop only — the split account's own shop (B) is excluded.
+    // Filter to the campaign's shop only - the split account's own shop (B) is excluded.
     const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopId}`)
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -178,7 +178,7 @@ describe('GET /api/marketing', () => {
   })
 
   // Task 6: the design requires the unassigned-campaign fallback to be
-  // visible, not silent — a count of campaigns still on shopId: null, so an
+  // visible, not silent - a count of campaigns still on shopId: null, so an
   // admin can go assign them rather than never learning the fallback fired.
   it('counts campaigns still on the account default, so the fallback is visible', async () => {
     const splitAccount = await db.adAccount.create({
@@ -211,7 +211,7 @@ describe('GET /api/marketing', () => {
   // switching an ad account off after it spent money made that spend vanish
   // from the Spend Check panel too, with nothing saying anything went
   // missing. The panel must surface it (status 'inactive', needsAttention),
-  // while the headline totals stay exactly what they were — an inactive
+  // while the headline totals stay exactly what they were - an inactive
   // account is excluded from money on purpose.
   it('lists an inactive account with spend in range on the Spend Check panel, without moving the totals', async () => {
     const inactive = await db.adAccount.create({
@@ -266,7 +266,7 @@ describe('GET /api/marketing', () => {
   // FIX 4: "all stores" (no shops= param) still only ever means all ACTIVE
   // shops. A split account with a campaign resolving to a DEACTIVATED shop
   // therefore reads partial even when the caution driven off the selection
-  // (allStores) is suppressed — this is the false mismatch the caution
+  // (allStores) is suppressed - this is the false mismatch the caution
   // exists to prevent, firing exactly where the client-side signal cannot.
   it('reports partialAccounts=true for the all-stores view when a split account has a campaign on a deactivated shop', async () => {
     const deactivated = await db.shop.create({ data: { name: `Deactivated ${MARK}`, currency: 'NOK', active: false } })
@@ -304,7 +304,7 @@ describe('GET /api/marketing', () => {
 
   it('narrows every surface to one platform', async () => {
     // A second, google-provider account with its own in-range spend, so the
-    // filter has something to actually exclude — without it, byPlatform
+    // filter has something to actually exclude - without it, byPlatform
     // would read ['meta'] whether or not the filter worked at all.
     const google = await db.adAccount.create({
       data: {
@@ -341,7 +341,7 @@ describe('GET /api/marketing', () => {
 
   // Human ruling: filtering to a platform that IS connected somewhere in the
   // workspace, then scoping to a store that has no account on that platform,
-  // is a true empty result (the store spent nothing there) — not a typo. Only
+  // is a true empty result (the store spent nothing there) - not a typo. Only
   // a platform absent from the WHOLE workspace is the error case.
   it('answers with zeros, not an error, when the platform is connected elsewhere in the workspace but not to the selected shop', async () => {
     const otherShop = await db.shop.create({ data: { name: `Shop B ${MARK}`, currency: 'NOK' } })
@@ -355,7 +355,7 @@ describe('GET /api/marketing', () => {
       },
     })
 
-    // `shopId` only ever had the meta account from beforeEach — google is
+    // `shopId` only ever had the meta account from beforeEach - google is
     // real, just not here.
     const res = await get(`from=2026-03-01&to=2026-03-31&shops=${shopId}&platform=google`)
     expect(res.status).toBe(200)

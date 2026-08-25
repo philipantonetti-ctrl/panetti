@@ -3,7 +3,7 @@ import { readableErrorBody } from './error-body'
 
 /**
  * What WordPress serves when a site has a fatal error, tabs and newlines as
- * shipped. Its first 300 characters — the window the Woo client used to keep —
+ * shipped. Its first 300 characters - the window the Woo client used to keep -
  * are entirely <head>: doctype, three metas and the opening of <title>. The one
  * sentence a person needs sits in <body>, past the cut, which is how a client
  * came to read `WooCommerce responded 500: <!DOCTYPE html> <html lang="nb-NO">`
@@ -65,7 +65,7 @@ describe('readableErrorBody', () => {
 
   /**
    * A gateway error page is often a styled shell with the only words in the
-   * title — the reason this falls back rather than giving up.
+   * title - the reason this falls back rather than giving up.
    */
   it('falls back to the page title when the body carries no words', () => {
     const gateway = '<html><head><title>502 Bad Gateway</title></head><body><div></div></body></html>'

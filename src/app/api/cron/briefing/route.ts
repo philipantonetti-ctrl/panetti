@@ -7,7 +7,7 @@ import { sendOverdueAlerts } from '@/lib/finance/alerts'
  *
  * Its own route rather than a stage inside /api/cron/sync. That run is budgeted
  * tight against the 300s platform ceiling, and its own comments explain that the
- * delivery alert at the end is the one thing it cannot afford to have starved —
+ * delivery alert at the end is the one thing it cannot afford to have starved -
  * an unbounded model call in front of it is exactly that risk.
  */
 export const maxDuration = 300

@@ -38,7 +38,7 @@ export async function GET(req: Request) {
     // scope when one of ITS CAMPAIGNS resolves into scope, which can happen
     // even while the account's own default shop is filtered out. Filtering
     // this query on the account's shopId alone would silently drop that
-    // account's in-scope campaigns — the same bug attributedSpend's callers
+    // account's in-scope campaigns - the same bug attributedSpend's callers
     // already avoid.
     const ids = await accountIdsForShops(scopeIds)
     const [accounts, connectedCount, connectedProviders] = await Promise.all([
@@ -50,7 +50,7 @@ export async function GET(req: Request) {
         },
       }),
       db.adAccount.count({ where: { active: true } }),
-      // Workspace-wide, like connectedCount — NOT the shop-scoped `accounts`
+      // Workspace-wide, like connectedCount - NOT the shop-scoped `accounts`
       // below. Meta filtered onto a Meta-less store is a true empty result
       // (the store just spent nothing there); only a platform absent from
       // the whole workspace is a typo pretending to be a legitimate zero.
@@ -67,13 +67,13 @@ export async function GET(req: Request) {
         { status: 400, headers: NO_STORE },
       )
     }
-    // One scoped list feeds every surface — totals, chart, tables and the
-    // Spend Check panel — so the page cannot show two scopes at once.
+    // One scoped list feeds every surface - totals, chart, tables and the
+    // Spend Check panel - so the page cannot show two scopes at once.
     const scopedAccounts = platform
       ? accounts.filter((a) => a.provider === platform)
       : accounts
 
-    // loadMetricsInput already tops up every ad-account currency in scope — it
+    // loadMetricsInput already tops up every ad-account currency in scope - it
     // has to, because that spend is now a cost against profit. Reusing its rate
     // table is what stops this page and the dashboard quoting different money
     // for the same spend.
@@ -98,11 +98,11 @@ export async function GET(req: Request) {
     })
 
     // accountIdsForShops filters `active: true` in both its sub-queries
-    // (attribution.ts), so `accounts` above can only ever hold active ones —
+    // (attribution.ts), so `accounts` above can only ever hold active ones -
     // an account switched off after spending would otherwise just vanish,
     // from the headline (by design) but also from the Spend Check panel
-    // (not by design), with nothing saying money went missing. The panel —
-    // and ONLY the panel — also looks at inactive accounts belonging to
+    // (not by design), with nothing saying money went missing. The panel -
+    // and ONLY the panel - also looks at inactive accounts belonging to
     // these shops that still hold spend in the viewed range, so a human
     // sees them. `spend` and the totals above are left untouched.
     const inactiveAccounts = await db.adAccount.findMany({
@@ -119,7 +119,7 @@ export async function GET(req: Request) {
     const inactiveSpend = inactiveAccounts.length
       ? await accountSpendRows(inactiveAccounts.map((a) => a.id), scopeIds, from, to)
       : []
-    // Only ones that actually have spend in range are worth surfacing — an
+    // Only ones that actually have spend in range are worth surfacing - an
     // inactive account with none would just be noise nobody needs to see.
     const inactiveWithSpend = inactiveAccounts.filter((a) =>
       inactiveSpend.some((r) => r.accountId === a.id),
@@ -127,7 +127,7 @@ export async function GET(req: Request) {
 
     // "All stores" (an empty ShopFilter selection) still only ever means all
     // ACTIVE stores, so a split account with a campaign mapped to a
-    // deactivated shop can be partial even when nothing was filtered — the
+    // deactivated shop can be partial even when nothing was filtered - the
     // exact case the client-side caution (driven off the selection alone)
     // cannot see. Computed from the data so SpendCheck can show the caution
     // whenever it is actually true, not only when a filter is active.

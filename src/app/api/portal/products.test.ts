@@ -47,7 +47,7 @@ beforeEach(async () => {
     },
   })
 
-  // 11 chair orders — more than the old ten-row ceiling.
+  // 11 chair orders - more than the old ten-row ceiling.
   for (let i = 0; i < 11; i++) {
     await db.order.create({
       data: {

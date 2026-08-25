@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast/useToast'
 import type { Shop } from '@/components/filters/ShopFilter'
 import type { Customer } from './B2bClient'
 
-/** Every currency, once — the list never changes. */
+/** Every currency, once - the list never changes. */
 const CURRENCY_OPTIONS: SelectOption[] = allCurrencies().map((c) => ({ value: c.code, label: c.label }))
 
 type Product = { id: string; sku: string; name: string }
@@ -43,7 +43,7 @@ export function CustomerModal({
   const [canChangeShop, setCanChangeShop] = useState(true)
   // Creating: nothing to load, so Save stays enabled as it always has. Editing:
   // PATCH replaces the price list wholesale, so Save must stay disabled until
-  // their existing prices have actually arrived — otherwise a slow or failed
+  // their existing prices have actually arrived - otherwise a slow or failed
   // detail fetch lets Save fire with rows still [], wiping every agreed price.
   const [pricesLoaded, setPricesLoaded] = useState(!editing)
   const [busy, setBusy] = useState(false)

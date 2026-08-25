@@ -4,7 +4,7 @@
  * Pure arithmetic on integer minor units, in the CUSTOMER's currency. The field
  * names are deliberately the ones `mapOrder()` produces from WooCommerce, so an
  * order built from this lands in the database in exactly the shape the metrics
- * engine already reads — no special case anywhere downstream.
+ * engine already reads - no special case anywhere downstream.
  */
 import { pct, sum } from '../money'
 
@@ -24,7 +24,7 @@ export type LineTotals = { gross: number; discount: number; net: number }
 /**
  * One line's worth.
  *
- * An AMOUNT discount is PER UNIT — "20.00 off each chair" — which is the frame
+ * An AMOUNT discount is PER UNIT - "20.00 off each chair" - which is the frame
  * the unit price beside it on the form is already in. The discount is clamped
  * to [0, gross]: a discount reduces revenue and can never invent it, and a
  * negative one is a typo, not a surcharge.
@@ -53,7 +53,7 @@ export type OrderTotals = {
 /**
  * The whole order.
  *
- * `vatPercent` is a percentage — 25 means 25% — and it falls on the goods and
+ * `vatPercent` is a percentage - 25 means 25% - and it falls on the goods and
  * the shipping alike, because shipping follows the rate of what is being
  * shipped. VAT is recorded, never counted as revenue: the engine's
  * `netRevenue` is net sales plus shipping, and `grossRevenue` adds the VAT back

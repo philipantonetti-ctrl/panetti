@@ -4,7 +4,7 @@
  * Which ad platform the page describes.
  *
  * Options arrive as a prop from the server component (page.tsx), which reads
- * the distinct active providers straight from the database — not from the
+ * the distinct active providers straight from the database - not from the
  * response's own `byPlatform`, which narrows to whatever platform filter is
  * already active and would strand this control on the one option it just
  * picked. Either way, only platforms with a genuinely connected account are

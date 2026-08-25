@@ -19,7 +19,7 @@ async function cleanup() {
   // Events first: they hang off shipments, and the tag reaches them only
   // through a shipment that still exists.
   await db.shipmentEvent.deleteMany({ where: { shipment: { trackingNumber: { startsWith: TRACK } } } })
-  // By prefix, not by `orderId: null` — an unlinked parcel belongs to no shop,
+  // By prefix, not by `orderId: null` - an unlinked parcel belongs to no shop,
   // so `orderId: null` would delete another file's parcels too.
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: TRACK } } })
   await db.orderItem.deleteMany({ where: { order: { shop: { name: { contains: TAG } } } } })

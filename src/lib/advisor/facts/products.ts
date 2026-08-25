@@ -6,7 +6,7 @@ import type { Fact } from '../types'
  * Which products moved, per shop.
  *
  * ONE CURRENCY GROUP AT A TIME. `loadProductsInput` refuses to add NOK and EUR
- * together — it throws MixedCurrencyError — so the collector calls it once per
+ * together - it throws MixedCurrencyError - so the collector calls it once per
  * group and calls this once per result. Nothing here converts anything.
  *
  * The materiality share is therefore built in two hops, neither of which needs
@@ -53,7 +53,7 @@ export function productFacts(args: ProductFactsArgs): Fact[] {
 
       // movingFact divides impact by baseline, so scaling the baseline UP by
       // the reciprocal of the shop's share is the same arithmetic as scaling
-      // the share down — done here so movingFact keeps one meaning of baseline.
+      // the share down - done here so movingFact keeps one meaning of baseline.
       const scaledBaseline = shopShare > 0 ? shopBaseline / shopShare : 0
 
       const fact = movingFact({

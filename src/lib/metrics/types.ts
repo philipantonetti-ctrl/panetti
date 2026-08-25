@@ -1,5 +1,5 @@
 /**
- * The engine's own view of the world. Deliberately NOT the Prisma types —
+ * The engine's own view of the world. Deliberately NOT the Prisma types -
  * the engine must not care where the data came from.
  * All money is INTEGER MINOR UNITS in the currency named alongside it.
  */
@@ -12,7 +12,7 @@ export const VOIDED_STATUSES = ['refunded', 'cancelled', 'failed', 'trash'] as c
 /**
  * Not paid yet. Woo's `pending` means no payment received; `on-hold` means
  * payment awaited (bank transfer and the like). The webhook flips them to
- * `processing` the moment payment lands — and only from that moment do they
+ * `processing` the moment payment lands - and only from that moment do they
  * count. Money that has not arrived is not revenue.
  */
 export const UNPAID_STATUSES = ['pending', 'on-hold'] as const
@@ -35,7 +35,7 @@ export type EngineOrderItem = {
    *
    * Required rather than optional, the same call the `costCurrency` field below
    * makes: an OrderItem always carries a SKU, and a loader that quietly omitted
-   * it would make every per-SKU shipping rate silently stop applying — a change
+   * it would make every per-SKU shipping rate silently stop applying - a change
    * in profit with nothing on screen to explain it.
    */
   sku: string
@@ -56,7 +56,7 @@ export type EngineOrder = {
   voidedAt?: Date | null
   currency: string
   /**
-   * The currency this order's PRODUCT COSTS and FULFILLMENT RATE are held in —
+   * The currency this order's PRODUCT COSTS and FULFILLMENT RATE are held in -
    * its shop's. Usually the same as `currency`, and deliberately required
    * rather than defaulted: a B2B order can be invoiced in EUR while the shop's
    * costs stay in NOK, and silently reading one as the other is a tenfold
@@ -68,7 +68,7 @@ export type EngineOrder = {
   netSales: number // THE commission base
   shippingCharged: number
   taxTotal: number
-  total: number // what the customer was charged, incl VAT — the gateway-fee base
+  total: number // what the customer was charged, incl VAT - the gateway-fee base
   ambassadorId: string | null
   commissionRate: number // e.g. 0.10; 0 when unattributed
   /**
@@ -97,7 +97,7 @@ export type EngineExpense = {
 }
 
 /**
- * One day of one ad account's spend, in the ACCOUNT's own billing currency —
+ * One day of one ad account's spend, in the ACCOUNT's own billing currency -
  * which need not be its shop's: a Norwegian store can run a EUR ad account.
  * `date` is plain UTC midnight, the way Meta and Google report a day.
  */
@@ -110,7 +110,7 @@ export type EngineAdSpend = {
 
 /**
  * One (shop, day, currency) slice of affiliate cost (Addrevenue commission +
- * their fee), in the TRANSACTIONS' own currency — a FI sale can be in SEK, so
+ * their fee), in the TRANSACTIONS' own currency - a FI sale can be in SEK, so
  * one shop-day can hold two rows. `date` is plain UTC midnight, the
  * platform-reported day, like ad spend.
  */
@@ -140,7 +140,7 @@ export type Figures = {
   discounts: number
   netSales: number
   shippingCharged: number
-  taxes: number // VAT collected — reported, never revenue and never a cost
+  taxes: number // VAT collected - reported, never revenue and never a cost
   fulfillment: number // per-order fulfillment cost at the rate in effect that day
   transactionFees: number // payment gateway: % of charged total + fixed part
   netRevenue: number

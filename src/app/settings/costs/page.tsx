@@ -27,7 +27,7 @@ export default async function CostsPage() {
    * disagree about currency. Either way the page falls back to one webshop at a
    * time. A cost is stored in minor units of a shop's own currency, so a combined
    * input can only be labelled honestly when every shop behind it uses the same
-   * one — and an input labelled with the wrong currency is how a tenfold cost
+   * one - and an input labelled with the wrong currency is how a tenfold cost
    * error gets typed in good faith.
    */
   const currencies = [...new Set(sources.map((s) => s.currency))]

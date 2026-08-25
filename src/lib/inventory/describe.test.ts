@@ -25,7 +25,7 @@ describe('describeSources', () => {
 
   /**
    * The state every workspace is in until someone ticks a box. It must not read
-   * as a misconfiguration — nothing is wrong, every shop simply counts.
+   * as a misconfiguration - nothing is wrong, every shop simply counts.
    */
   it('says so plainly when no shop has been singled out', () => {
     expect(describeSources([], 9)).toBe('Stock and sales from all 9 shops.')

@@ -102,7 +102,7 @@ describe('POST /api/webhooks/woo/[shopId]', () => {
     expect(order.items[0].sku).toBe('MACBL661')
   })
 
-  it('a later delivery for the same order updates it — a refund lands as a refund', async () => {
+  it('a later delivery for the same order updates it - a refund lands as a refund', async () => {
     const shop = await connectedShop()
     await deliver(shop.id, JSON.stringify(wooOrder(9002)), { topic: 'order.created' })
 
@@ -136,7 +136,7 @@ describe('POST /api/webhooks/woo/[shopId]', () => {
     const shop = await connectedShop()
     await deliver(shop.id, JSON.stringify(wooOrder(9004)), { topic: 'order.created' })
 
-    // Trash sends only the id — no line items to store, just a status to land.
+    // Trash sends only the id - no line items to store, just a status to land.
     const res = await deliver(shop.id, JSON.stringify({ id: 9004 }), { topic: 'order.deleted' })
     expect(res.status).toBe(200)
 

@@ -4,7 +4,7 @@
 
 **Goal:** Connect Meta ad accounts by pasting one system user token, and delete the Facebook login dialog that never worked.
 
-**Architecture:** The pasted token becomes an `AdConnection` (no schema change — `secret` is already an encrypted credential and `expiresAt` is already nullable, which is exactly "never expires"). A new admin route proves the token and returns a connection id; the page opens the picker that already exists, and `POST /api/ad-accounts/bulk`, the per-account backfill and `resolveCredentials` all work untouched. The Meta half of the OAuth flow is then removed. Spec: `docs/superpowers/specs/2026-07-29-meta-system-user-token-design.md`.
+**Architecture:** The pasted token becomes an `AdConnection` (no schema change - `secret` is already an encrypted credential and `expiresAt` is already nullable, which is exactly "never expires"). A new admin route proves the token and returns a connection id; the page opens the picker that already exists, and `POST /api/ad-accounts/bulk`, the per-account backfill and `resolveCredentials` all work untouched. The Meta half of the OAuth flow is then removed. Spec: `docs/superpowers/specs/2026-07-29-meta-system-user-token-design.md`.
 
 **Tech Stack:** Next.js App Router, Prisma (no migration), vitest (stubbed-fetch unit tests, DB-backed route tests, jsdom component tests), Playwright.
 
@@ -152,7 +152,7 @@ describe('inspectMetaToken', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/lib/ads/token.test.ts`
-Expected: FAIL — `Failed to resolve import "./token"`.
+Expected: FAIL - `Failed to resolve import "./token"`.
 
 - [ ] **Step 3: Implement**
 
@@ -164,7 +164,7 @@ import { AdApiError } from './types'
  * Proving a pasted Meta system user token.
  *
  * Two questions, in order. `debug_token` asks what Facebook already knows
- * about the token — the app it belongs to, the permissions on it, when it
+ * about the token - the app it belongs to, the permissions on it, when it
  * dies. `/me` asks the only question that truly matters: does it work.
  *
  * The first is a courtesy and never blocks: neither `expires_at: 0` meaning
@@ -209,8 +209,8 @@ export async function metaAppToken(app: MetaApp): Promise<string> {
 }
 
 /**
- * What `debug_token` said, turned into a decision. `null` — an unreadable or
- * failed answer — is silence, and silence blocks nothing.
+ * What `debug_token` said, turned into a decision. `null` - an unreadable or
+ * failed answer - is silence, and silence blocks nothing.
  */
 export function tokenVerdict(data: DebugTokenData | null, clientId: string): TokenVerdict {
   if (!data) return { ok: true, expiresAt: null }
@@ -221,7 +221,7 @@ export function tokenVerdict(data: DebugTokenData | null, clientId: string): Tok
   if (data.app_id && data.app_id !== clientId) {
     return { ok: false, reason: 'This token belongs to a different Facebook app.' }
   }
-  // An absent or empty scope list is silence too — only a populated list that
+  // An absent or empty scope list is silence too - only a populated list that
   // leaves ads_read out is evidence the permission was never ticked.
   if (data.scopes?.length && !data.scopes.includes('ads_read')) {
     return {
@@ -442,7 +442,7 @@ describe('POST /api/ads/connections/meta', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/app/api/ads/connections/meta/route.test.ts`
-Expected: FAIL — `Failed to resolve import "./route"`.
+Expected: FAIL - `Failed to resolve import "./route"`.
 
 - [ ] **Step 3: Implement**
 
@@ -534,18 +534,18 @@ git commit -m "feat: one pasted token becomes the Meta connection the picker ope
 ### Task 3: The card on the page, and the dead button goes
 
 **Files:**
-- Modify: `src/app/settings/ad-accounts/AdAccountsClient.tsx` (read it first — match the existing card and field styling exactly)
+- Modify: `src/app/settings/ad-accounts/AdAccountsClient.tsx` (read it first - match the existing card and field styling exactly)
 - Test: `src/app/settings/ad-accounts/AdAccountsClient.test.tsx`
 
 Four edits: drop the Meta `ConnectButton` at line 129; add `MetaTokenCard` after the Advanced link; fix the two strings that still name the dead button (`:126` subtitle, `:169` empty state); widen the picker's empty-list line at `:408` to say what to do about it.
 
 - [ ] **Step 1: Write the failing component test**
 
-In `src/app/settings/ad-accounts/AdAccountsClient.test.tsx`, first **delete** the test at lines 185-187 that asserts the `'The Facebook app was just fixed. Press Connect with Facebook again.'` notice renders. That notice IS the loop, and after Task 4 nothing can ever produce it. It would keep passing — a green test guarding a message that can no longer happen is worse than no test.
+In `src/app/settings/ad-accounts/AdAccountsClient.test.tsx`, first **delete** the test at lines 185-187 that asserts the `'The Facebook app was just fixed. Press Connect with Facebook again.'` notice renders. That notice IS the loop, and after Task 4 nothing can ever produce it. It would keep passing - a green test guarding a message that can no longer happen is worse than no test.
 
 (Leave the `initialNotice` prop itself alone. `?error=` still reaches the page from the Google callback, and the notice plumbing costs nothing; removing it would touch `page.tsx` for no user-visible gain.)
 
-Then replace the two tests named `'walks you to the setup when a connect button is pressed too early'` and `'links the connect buttons straight to the oauth start when ready'` with these — the Meta halves of both assert behaviour that is being deleted.
+Then replace the two tests named `'walks you to the setup when a connect button is pressed too early'` and `'links the connect buttons straight to the oauth start when ready'` with these - the Meta halves of both assert behaviour that is being deleted.
 
 ```tsx
   it('walks you to the setup when the Google connect button is pressed too early', async () => {
@@ -617,7 +617,7 @@ Then replace the two tests named `'walks you to the setup when a connect button 
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run src/app/settings/ad-accounts/AdAccountsClient.test.tsx`
-Expected: FAIL — `Unable to find a label with the text of: System user access token`.
+Expected: FAIL - `Unable to find a label with the text of: System user access token`.
 
 - [ ] **Step 3: Remove the Meta connect button**
 
@@ -650,7 +650,7 @@ Line 169, the empty table:
                     Google setup and press “Connect with Google”.
 ```
 
-Line 408, the picker's empty list — the most likely stumble, so it says what to do:
+Line 408, the picker's empty list - the most likely stumble, so it says what to do:
 
 ```tsx
               <p className="text-sm text-muted">
@@ -736,7 +736,7 @@ function MetaTokenCard({
 
         {!saved && (
           <p className="mt-3 text-xs text-warn">
-            Fill in the Meta app ID and secret under Platform setup below first — they are what
+            Fill in the Meta app ID and secret under Platform setup below first - they are what
             proves the token.
           </p>
         )}
@@ -773,7 +773,7 @@ function MetaTokenCard({
 - [ ] **Step 6: Run the component tests**
 
 Run: `npx vitest run src/app/settings/ad-accounts/AdAccountsClient.test.tsx`
-Expected: PASS. If `Save token` is found twice, the card was inserted inside `PlatformSetupSection` instead of before it — move it out.
+Expected: PASS. If `Save token` is found twice, the card was inserted inside `PlatformSetupSection` instead of before it - move it out.
 
 - [ ] **Step 7: Commit**
 
@@ -863,7 +863,7 @@ Run: `npx tsc --noEmit`
 Expected: no errors. Then run the full unit suite:
 
 Run: `npm test`
-Expected: PASS. A failure naming `ensureMetaApp` means a test file still drives the deleted path — delete that case, do not restore the function.
+Expected: PASS. A failure naming `ensureMetaApp` means a test file still drives the deleted path - delete that case, do not restore the function.
 
 - [ ] **Step 7: Commit**
 
@@ -902,7 +902,7 @@ npm run build
 npx eslint src/lib/ads/token.ts src/app/api/ads/connections/meta/route.ts src/app/settings/ad-accounts/AdAccountsClient.tsx
 ```
 
-Expected: unit suite green, Playwright green, build succeeds, lint clean. Do not proceed on a red suite — `superpowers:verification-before-completion` applies: paste the actual output, do not claim it passed.
+Expected: unit suite green, Playwright green, build succeeds, lint clean. Do not proceed on a red suite - `superpowers:verification-before-completion` applies: paste the actual output, do not claim it passed.
 
 - [ ] **Step 3: Commit**
 

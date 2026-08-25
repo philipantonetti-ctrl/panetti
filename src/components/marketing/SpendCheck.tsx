@@ -17,7 +17,7 @@ import type { SpendCheckAccount, SpendCheckResult } from '@/lib/ads/spend-check'
  * is filtered to a subset, its nativeTotal only covers the campaigns for
  * those stores (see src/lib/ads/attribution.ts:191-195). Read against the
  * whole account in Ads Manager, that partial total looks like missing spend
- * when nothing is actually missing — so the panel says so, in plain words,
+ * when nothing is actually missing - so the panel says so, in plain words,
  * whenever the page isn't showing every store.
  *
  * `partialAccounts` covers the same caution for the one case `allStores`
@@ -53,13 +53,13 @@ function formatDay(day: string): string {
 
 /**
  * "3 / 10" alone reads the same whether an account synced 1-3 Aug then
- * stopped, or delivered on the 8th, 9th and 10th — those mean completely
+ * stopped, or delivered on the 8th, 9th and 10th - those mean completely
  * different things. `null` means no data at all, which is handled by simply
  * showing nothing here (the count on its own already says "0").
  */
 function dataSpan(a: Pick<SpendCheckAccount, 'firstDay' | 'lastDay'>): string | null {
   if (!a.firstDay || !a.lastDay) return null
-  return a.firstDay === a.lastDay ? formatDay(a.firstDay) : `${formatDay(a.firstDay)}–${formatDay(a.lastDay)}`
+  return a.firstDay === a.lastDay ? formatDay(a.firstDay) : `${formatDay(a.firstDay)}-${formatDay(a.lastDay)}`
 }
 
 export function SpendCheck({
@@ -71,7 +71,7 @@ export function SpendCheck({
   data: SpendCheckResult
   currency: string
   allStores: boolean
-  /** True when a split account in scope has a campaign resolving outside it — see the note above. */
+  /** True when a split account in scope has a campaign resolving outside it - see the note above. */
   partialAccounts?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -120,7 +120,7 @@ export function SpendCheck({
               <thead>
                 <tr className="border-b border-line text-[11px] font-semibold tracking-wide text-faint">
                   <th scope="col" className="px-5 py-3 text-left">ACCOUNT</th>
-                  <th scope="col" className="px-5 py-3 text-right" title="The account's own currency, unconverted — compare this against Ads Manager">
+                  <th scope="col" className="px-5 py-3 text-right" title="The account's own currency, unconverted - compare this against Ads Manager">
                     NATIVE TOTAL
                   </th>
                   <th scope="col" className="px-5 py-3 text-right">IN {currency}</th>

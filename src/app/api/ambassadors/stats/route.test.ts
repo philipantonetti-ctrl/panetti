@@ -73,7 +73,7 @@ const stats = () =>
 
 /**
  * These moved here from /api/metrics when the Dashboard's Top ambassadors card
- * was taken out. The behaviour they cover is unchanged and still shipping — it
+ * was taken out. The behaviour they cover is unchanged and still shipping - it
  * is the Ambassadors page that renders the leaderboard now, and this is the
  * route that builds it.
  */

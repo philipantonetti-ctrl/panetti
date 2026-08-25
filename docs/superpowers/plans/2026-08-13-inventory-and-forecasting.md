@@ -16,7 +16,7 @@
 - **Read only, both directions.** Nothing writes to WooCommerce or Visma.
 - **Voided orders are not demand.** `VOIDED_STATUSES` is `['refunded', 'cancelled', 'failed', 'trash']` from `src/lib/metrics/types.ts`.
 - **Null is not zero.** A missing stock figure reads "no stock data" and produces no dates. Zero means sold out.
-- **Test placement.** Pure unit tests are `src/lib/inventory/*.test.ts` and run in the `app` vitest project. Any test touching the database MUST use SKUs unique to that test (e.g. `TEST-BURN-${Date.now()}`), because the `app` project runs in parallel. **Do not add patterns to `vitest.config.ts`** — its three projects partition the suite exactly and the file says so.
+- **Test placement.** Pure unit tests are `src/lib/inventory/*.test.ts` and run in the `app` vitest project. Any test touching the database MUST use SKUs unique to that test (e.g. `TEST-BURN-${Date.now()}`), because the `app` project runs in parallel. **Do not add patterns to `vitest.config.ts`** - its three projects partition the suite exactly and the file says so.
 - **Default cover days is 90.** Constant `DEFAULT_COVER_DAYS`.
 - **Forecast horizon is 365 days.** Constant `HORIZON_DAYS`.
 
@@ -25,27 +25,27 @@
 ## File Structure
 
 **Created:**
-- `src/lib/inventory/sku.ts` — what counts as a usable SKU
-- `src/lib/inventory/stock.ts` — agree one stock figure across shops
-- `src/lib/inventory/burn.ts` — sales rate and seasonal index
-- `src/lib/inventory/forecast.ts` — the run-out walk, order-by date, quantity
-- `src/lib/inventory/supply-items.ts` — create a SupplyItem per usable SKU
-- `src/lib/inventory/load.ts` — assemble the above from Prisma
-- `src/app/api/inventory/route.ts` — GET the forecast and stock
-- `src/app/api/inventory/suppliers/route.ts` — supplier CRUD
-- `src/app/api/inventory/items/route.ts` — per-SKU purchasing settings
-- `src/app/api/inventory/purchase-orders/route.ts` — purchase order CRUD
-- `src/app/inventory/InventoryTabs.tsx` — the button bar, rendered by all four pages
-- `src/app/inventory/page.tsx` + `InventoryClient.tsx` — Forecast
+- `src/lib/inventory/sku.ts` - what counts as a usable SKU
+- `src/lib/inventory/stock.ts` - agree one stock figure across shops
+- `src/lib/inventory/burn.ts` - sales rate and seasonal index
+- `src/lib/inventory/forecast.ts` - the run-out walk, order-by date, quantity
+- `src/lib/inventory/supply-items.ts` - create a SupplyItem per usable SKU
+- `src/lib/inventory/load.ts` - assemble the above from Prisma
+- `src/app/api/inventory/route.ts` - GET the forecast and stock
+- `src/app/api/inventory/suppliers/route.ts` - supplier CRUD
+- `src/app/api/inventory/items/route.ts` - per-SKU purchasing settings
+- `src/app/api/inventory/purchase-orders/route.ts` - purchase order CRUD
+- `src/app/inventory/InventoryTabs.tsx` - the button bar, rendered by all four pages
+- `src/app/inventory/page.tsx` + `InventoryClient.tsx` - Forecast
 - `src/app/inventory/stock/page.tsx` + `StockClient.tsx`
 - `src/app/inventory/purchase-orders/page.tsx` + `PurchaseOrdersClient.tsx`
 - `src/app/inventory/suppliers/page.tsx` + `SuppliersClient.tsx`
 
 **Modified:**
-- `prisma/schema.prisma` — stock columns on Product; Supplier, SupplyItem, PurchaseOrder
-- `src/lib/woo/client.ts:335-356` — `fetchCatalogPrices` becomes `fetchCatalog`
-- `src/lib/woo/sync.ts:644-660` — store stock alongside catalog price
-- `src/components/shell/AppShell.tsx:105-115` — one new nav item after Products
+- `prisma/schema.prisma` - stock columns on Product; Supplier, SupplyItem, PurchaseOrder
+- `src/lib/woo/client.ts:335-356` - `fetchCatalogPrices` becomes `fetchCatalog`
+- `src/lib/woo/sync.ts:644-660` - store stock alongside catalog price
+- `src/components/shell/AppShell.tsx:105-115` - one new nav item after Products
 
 ---
 
@@ -94,7 +94,7 @@ describe('isUsableSku', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/inventory/sku.test.ts`
-Expected: FAIL — "Failed to resolve import ./sku"
+Expected: FAIL - "Failed to resolve import ./sku"
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -105,7 +105,7 @@ Expected: FAIL — "Failed to resolve import ./sku"
  * One product is one SKU, trimmed and uppercased.
  *
  * `Product` is shop-scoped, so the same physical item is up to nine rows. Every
- * purchasing fact — who makes it, how long it takes, how many fit a container —
+ * purchasing fact - who makes it, how long it takes, how many fit a container -
  * belongs to the object rather than to a German listing, so SKU is the key.
  * `AmbassadorProduct` already keys on SKU for the same reason.
  */
@@ -117,7 +117,7 @@ export function normaliseSku(raw: string): string {
  * False for a SKU that cannot identify a product.
  *
  * Blank is obvious. All-zeros is not: six live products carry the SKU "0", and
- * they are not one product — the set spans Panetti Pizzetta Primo AND Mazzetti
+ * they are not one product - the set spans Panetti Pizzetta Primo AND Mazzetti
  * Advanced Comfort. Treating that as a key would pool a pizza oven's sales with
  * a massage chair's and order containers of the average. Such products are
  * excluded from the forecast and named on the page, never silently merged.
@@ -220,7 +220,7 @@ describe('agreeStock', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/inventory/stock.test.ts`
-Expected: FAIL — "Failed to resolve import ./stock"
+Expected: FAIL - "Failed to resolve import ./stock"
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -247,16 +247,16 @@ export type AgreedStock = {
  *
  * The shops are not nine warehouses. Denmark, Finland, Norway and Sweden carry
  * IDENTICAL quantities for the same SKU, which is one physical warehouse
- * mirrored into each store. So the job is not to sum them — that would multiply
- * the warehouse by five — but to agree on what the one number is.
+ * mirrored into each store. So the job is not to sum them - that would multiply
+ * the warehouse by five - but to agree on what the one number is.
  *
  * The most common value wins, because a mirror that has drifted is outvoted by
  * the ones that have not. On 2026-08-13 that was exactly the situation: four
  * shops said 906 and Germany said 939.
  *
  * `disagrees` is the point of the function as much as `quantity` is. A drifting
- * mirror is invisible by nature — each store looks perfectly consistent on its
- * own — so the disagreement has to be said out loud.
+ * mirror is invisible by nature - each store looks perfectly consistent on its
+ * own - so the disagreement has to be said out loud.
  */
 export function agreeStock(rows: ShopStock[]): AgreedStock {
   const known = rows.filter((r) => r.quantity !== null)
@@ -363,7 +363,7 @@ describe('fetchCatalog', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/woo/client.test.ts -t fetchCatalog`
-Expected: FAIL — `fetchCatalog` is not exported
+Expected: FAIL - `fetchCatalog` is not exported
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -423,7 +423,7 @@ export async function fetchCatalog(creds: WooCredentials): Promise<Map<string, C
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/woo/client.test.ts`
-Expected: PASS — all existing tests plus the 3 new ones
+Expected: PASS - all existing tests plus the 3 new ones
 
 - [ ] **Step 5: Commit**
 
@@ -451,7 +451,7 @@ In `prisma/schema.prisma`, inside `model Product`, after `catalogPrice`:
 
 ```prisma
   /// Units on hand as this shop reports them. Null = the store does not manage
-  /// stock for this item, which is NOT zero — zero is sold out.
+  /// stock for this item, which is NOT zero - zero is sold out.
   ///
   /// Per shop, deliberately, even though the shops mirror ONE warehouse. Storing
   /// only an agreed figure would throw away the disagreement, and the
@@ -526,7 +526,7 @@ describe('storeCatalog', () => {
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/woo/sync.stock.test.ts`
-Expected: FAIL — `storeCatalog` is not exported
+Expected: FAIL - `storeCatalog` is not exported
 
 - [ ] **Step 4: Write the implementation**
 
@@ -537,7 +537,7 @@ In `src/lib/woo/sync.ts`, change the import from `fetchCatalogPrices` to `fetchC
  * Write a shop's catalogue readings onto its products.
  *
  * Exported so it can be tested without running a whole sync. Only products the
- * catalogue actually mentioned are touched — a truncated page or a product the
+ * catalogue actually mentioned are touched - a truncated page or a product the
  * store no longer lists must never blank a figure we already hold.
  */
 export async function storeCatalog(
@@ -573,7 +573,7 @@ Then replace the catalog block at `src/lib/woo/sync.ts:644-660` with:
 
 ```ts
       // Best-effort on a COMPLETED sync only: refresh each known product's own
-      // listed price and its stock. A failure here never fails the sync — order
+      // listed price and its stock. A failure here never fails the sync - order
       // data is the priority, and the next completed sync simply retries.
       try {
         await storeCatalog(shop.id, await fetchCatalog(creds))
@@ -590,7 +590,7 @@ Expected: PASS, 3 tests
 - [ ] **Step 6: Run the woo suite to prove nothing regressed**
 
 Run: `npx vitest run src/lib/woo/ --testTimeout=20000`
-Expected: PASS. (If 2-3 `sync.test.ts` tests time out on a full run, that is known contention — re-run that file alone to confirm.)
+Expected: PASS. (If 2-3 `sync.test.ts` tests time out on a full run, that is known contention - re-run that file alone to confirm.)
 
 - [ ] **Step 7: Commit**
 
@@ -635,12 +635,12 @@ model SupplyItem {
   id                String   @id @default(cuid())
   sku               String   @unique
   /// Snapshot for display, so a row still reads sensibly when no Product for it
-  /// is loaded — and so a shop renaming its listing cannot rewrite a purchase
+  /// is loaded - and so a shop renaming its listing cannot rewrite a purchase
   /// history, exactly as OrderItem.name already guarantees.
   name              String
   supplierId        String?
   /// Estimates. A purchase order's own ETA overrides them, because production
-  /// time varies with the season and how busy the factory is — the person who
+  /// time varies with the season and how busy the factory is - the person who
   /// placed the order knows that, a per-product average cannot.
   productionDays    Int?
   deliveryDays      Int?
@@ -816,7 +816,7 @@ describe('ensureSupplyItems', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/inventory/supply-items.test.ts`
-Expected: FAIL — "Failed to resolve import ./supply-items"
+Expected: FAIL - "Failed to resolve import ./supply-items"
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -832,8 +832,8 @@ import { isUsableSku, normaliseSku } from './sku'
  * Nobody types 63 SKUs by hand. Run after a completed sync.
  *
  * Never updates and never deletes. A product whose shops stop listing it keeps
- * its lead times and its open orders — `active` is what hides a row, not
- * absence from a catalogue — and settings someone has entered are never
+ * its lead times and its open orders - `active` is what hides a row, not
+ * absence from a catalogue - and settings someone has entered are never
  * overwritten by a name discovered later.
  */
 export async function ensureSupplyItems(): Promise<number> {
@@ -967,7 +967,7 @@ describe('seasonalIndex', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/inventory/burn.test.ts`
-Expected: FAIL — "Failed to resolve import ./burn"
+Expected: FAIL - "Failed to resolve import ./burn"
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -983,7 +983,7 @@ export const BURN_WINDOW_DAYS = 60
 
 /**
  * A year plus margin. Below this a SKU has no "same time last year" to compare
- * against, whatever the shop's age — Panetti Germany opened in September 2025.
+ * against, whatever the shop's age - Panetti Germany opened in September 2025.
  */
 export const SEASON_MIN_HISTORY_DAYS = 400
 
@@ -1018,7 +1018,7 @@ export function hasSeasonalHistory(sales: Sale[], today: Date): boolean {
 /**
  * How much busier than average this date was a year ago.
  *
- * Returns exactly 1 when there is not enough history — a flat rate stated
+ * Returns exactly 1 when there is not enough history - a flat rate stated
  * honestly, rather than a seasonal shape invented from ten months of data. The
  * caller shows "no seasonal history yet" on those rows.
  */
@@ -1176,7 +1176,7 @@ describe('forecast', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/inventory/forecast.test.ts`
-Expected: FAIL — "Failed to resolve import ./forecast"
+Expected: FAIL - "Failed to resolve import ./forecast"
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -1249,7 +1249,7 @@ export function forecast(input: ForecastInput, today: Date): Forecast {
   const from = startOfDay(today)
   const landing = new Map<number, number>()
   for (const a of input.arrivals) {
-    if (!a.eta) continue // no date, no effect — a guessed arrival is worse than none
+    if (!a.eta) continue // no date, no effect - a guessed arrival is worse than none
     const k = startOfDay(a.eta).getTime()
     landing.set(k, (landing.get(k) ?? 0) + a.quantity)
   }
@@ -1278,7 +1278,7 @@ export function forecast(input: ForecastInput, today: Date): Forecast {
   const late = Math.ceil((from.getTime() - orderBy.getTime()) / DAY)
 
   // Cover the lead time and then the cover period, counted from when the shelf
-  // empties — that is the stretch the new stock has to carry.
+  // empties - that is the stretch the new stock has to carry.
   const horizon = leadDays + (input.coverDays ?? DEFAULT_COVER_DAYS)
   let quantity = 0
   for (let i = 0; i < horizon; i++) {
@@ -1449,7 +1449,7 @@ describe('loadInventory', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/inventory/load.test.ts`
-Expected: FAIL — "Failed to resolve import ./load"
+Expected: FAIL - "Failed to resolve import ./load"
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -1591,7 +1591,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   })
 
   // Soonest first. A row with no run-out date has nothing to chase, so it sorts
-  // after every row that does — but it is still present, because a product that
+  // after every row that does - but it is still present, because a product that
   // stopped selling or lost its stock figure is worth seeing.
   rows.sort((a, b) => {
     const at = a.forecast.runsOutOn?.getTime() ?? Infinity
@@ -1658,7 +1658,7 @@ describe('GET /api/inventory', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/inventory/route.test.ts`
-Expected: FAIL — "Failed to resolve import ./route"
+Expected: FAIL - "Failed to resolve import ./route"
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -1731,7 +1731,7 @@ git commit -m "feat(inventory): serve the forecast, and name what it had to leav
 
 ---
 
-### Task 11: The write API — suppliers, settings, purchase orders
+### Task 11: The write API - suppliers, settings, purchase orders
 
 **Files:**
 - Create: `src/app/api/inventory/suppliers/route.ts`
@@ -1742,9 +1742,9 @@ git commit -m "feat(inventory): serve the forecast, and name what it had to leav
 **Interfaces:**
 - Consumes: Prisma models from Task 5, `ensureSupplyItems` from Task 6
 - Produces:
-  - `GET/POST/DELETE /api/inventory/suppliers` — `{ id?, name, active?, notes? }`
-  - `GET/PUT /api/inventory/items` — PUT body `{ sku, supplierId, productionDays, deliveryDays, moq, unitsPerContainer, coverDays }`, all nullable but `sku`
-  - `GET/POST/PUT/DELETE /api/inventory/purchase-orders` — `{ id?, supplyItemId, quantity, orderedAt, eta, receivedAt, notes }`
+  - `GET/POST/DELETE /api/inventory/suppliers` - `{ id?, name, active?, notes? }`
+  - `GET/PUT /api/inventory/items` - PUT body `{ sku, supplierId, productionDays, deliveryDays, moq, unitsPerContainer, coverDays }`, all nullable but `sku`
+  - `GET/POST/PUT/DELETE /api/inventory/purchase-orders` - `{ id?, supplyItemId, quantity, orderedAt, eta, receivedAt, notes }`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1824,7 +1824,7 @@ describe('inventory write routes', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/inventory/write.test.ts`
-Expected: FAIL — cannot resolve `./suppliers/route`
+Expected: FAIL - cannot resolve `./suppliers/route`
 
 - [ ] **Step 3: Write the suppliers route**
 
@@ -2108,7 +2108,7 @@ describe('InventoryTabs', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/inventory/InventoryTabs.test.tsx`
-Expected: FAIL — cannot resolve `./InventoryTabs`
+Expected: FAIL - cannot resolve `./InventoryTabs`
 
 - [ ] **Step 3: Add the nav item**
 
@@ -2160,7 +2160,7 @@ export function InventoryTabs() {
   return (
     <div role="tablist" className="flex flex-wrap gap-1">
       {VIEWS.map((v) => {
-        // Exact match for the index, prefix for the rest — otherwise /inventory
+        // Exact match for the index, prefix for the rest - otherwise /inventory
         // would light up on every child route at once.
         const active = v.href === '/inventory' ? pathname === v.href : pathname.startsWith(v.href)
         return (
@@ -2235,7 +2235,7 @@ const row = (over: Partial<Row> = {}): Row => ({
 
 // Assert against the rendered text as a whole rather than getByText. A phrase
 // like "61 days late" lives in a <span> inside a <td>, and both elements match
-// it — getByText throws on multiple matches, so it would fail on correct markup.
+// it - getByText throws on multiple matches, so it would fail on correct markup.
 const shows = (ui: ReactElement, pattern: RegExp) =>
   expect(render(ui).container.textContent).toMatch(pattern)
 
@@ -2302,7 +2302,7 @@ describe('InventoryClient', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/inventory/InventoryClient.test.tsx`
-Expected: FAIL — cannot resolve `./InventoryClient`
+Expected: FAIL - cannot resolve `./InventoryClient`
 
 - [ ] **Step 3: Write InventoryClient**
 
@@ -2368,7 +2368,7 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
                     )}
                   </td>
                   <td className="px-4 py-2.5">
-                    {r.stock.quantity ?? '—'}
+                    {r.stock.quantity ?? '-'}
                     {r.stock.disagrees && (
                       <span className="ml-2 text-[11px]" style={{ color: 'var(--warn)' }}>
                         shops disagree
@@ -2387,11 +2387,11 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
                         order now, {r.forecast.daysLate} days late
                       </span>
                     ) : (
-                      (when(r.forecast.orderBy) ?? <span className="text-muted">—</span>)
+                      (when(r.forecast.orderBy) ?? <span className="text-muted">-</span>)
                     )}
                   </td>
                   <td className="px-4 py-2.5 tabular-nums">
-                    {r.forecast.quantity ?? '—'}
+                    {r.forecast.quantity ?? '-'}
                     {r.forecast.onOrderWithoutEta > 0 && (
                       <span className="ml-2 text-[11px] text-muted">
                         {r.forecast.onOrderWithoutEta} on order, no ETA
@@ -2418,7 +2418,7 @@ export function InventoryClient({ rows, unusable }: { rows: Row[]; unusable: { s
           <ul className="mt-3 space-y-1 text-[12px] text-muted">
             {unusable.map((u, i) => (
               <li key={`${u.shopName}-${u.sku}-${i}`}>
-                <span className="text-ink">{u.name}</span> — {u.shopName}
+                <span className="text-ink">{u.name}</span> - {u.shopName}
               </li>
             ))}
           </ul>
@@ -2532,7 +2532,7 @@ export type StockRow = {
  * What each shop says, side by side.
  *
  * Disagreements sort to the top, because a mirror that has drifted is invisible
- * on any single store — each one looks perfectly consistent with itself.
+ * on any single store - each one looks perfectly consistent with itself.
  */
 export function StockClient({ rows }: { rows: StockRow[] }) {
   const sorted = [...rows].sort((a, b) => Number(b.disagrees) - Number(a.disagrees))
@@ -2566,7 +2566,7 @@ export function StockClient({ rows }: { rows: StockRow[] }) {
             <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-muted">
               {r.byShop.map((s) => (
                 <li key={s.shopName}>
-                  {s.shopName}: <span className="tabular-nums text-ink">{s.quantity ?? '—'}</span>
+                  {s.shopName}: <span className="tabular-nums text-ink">{s.quantity ?? '-'}</span>
                 </li>
               ))}
             </ul>
@@ -2654,7 +2654,7 @@ describe('SuppliersClient', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/inventory/suppliers/SuppliersClient.test.tsx`
-Expected: FAIL — cannot resolve `./SuppliersClient`
+Expected: FAIL - cannot resolve `./SuppliersClient`
 
 - [ ] **Step 3: Write SuppliersClient**
 
@@ -2745,7 +2745,7 @@ export function SuppliersClient({ items, suppliers }: { items: Item[]; suppliers
                   }
                   className="rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
                 >
-                  <option value="">—</option>
+                  <option value="">-</option>
                   {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
@@ -2807,7 +2807,7 @@ const when = (iso: string | null) =>
  * What is on order and when it lands.
  *
  * An order with no ETA is listed with the reason spelled out, because it is
- * doing nothing for the forecast until someone sets one — counting stock whose
+ * doing nothing for the forecast until someone sets one - counting stock whose
  * arrival nobody knows would push a run-out date out on a guess.
  */
 export function PurchaseOrdersClient({
@@ -2977,7 +2977,7 @@ Expected: PASS, 3 tests
 - [ ] **Step 6: Run the whole suite and the build**
 
 Run: `npx vitest run --testTimeout=20000`
-Expected: PASS. Known flake: 2-3 `src/lib/woo/sync.test.ts` timeouts under full-suite load are contention, not a regression — re-run that file alone to confirm.
+Expected: PASS. Known flake: 2-3 `src/lib/woo/sync.test.ts` timeouts under full-suite load are contention, not a regression - re-run that file alone to confirm.
 
 Run: `npx tsc --noEmit && npm run build`
 Expected: both clean.
@@ -2998,9 +2998,9 @@ importer creates and updates those rows instead of a person typing them, and
 nothing downstream changes.
 
 It cannot be planned yet without guessing. We have no Visma access, and the path
-to it — register a developer organisation at `oauth.developers.visma.com`,
+to it - register a developer organisation at `oauth.developers.visma.com`,
 register a Service application, get the API integration approved by Visma, then
-publish invite-only to the App Store for the customer's own approval — has not
+publish invite-only to the App Store for the customer's own approval - has not
 started. Writing endpoint-level steps against a response shape nobody has seen
 would be exactly the guessing this work is meant to replace.
 

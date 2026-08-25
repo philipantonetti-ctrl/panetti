@@ -7,12 +7,12 @@ import { anthropicModel, generateBrief, type BriefingModel } from './brief'
 /**
  * Compute a morning's facts, ask for a briefing, and store both.
  *
- * Upsert on `day`, so a re-run replaces rather than duplicates — which is what
+ * Upsert on `day`, so a re-run replaces rather than duplicates - which is what
  * makes both the cron and the page's Refresh button safe to press twice.
  *
  * The facts are written BEFORE the model is ever called, then the same row is
  * updated with the result. A platform kill mid-model-call skips straight past
- * generateBrief's own catch — nothing after the kill runs — so if the facts
+ * generateBrief's own catch - nothing after the kill runs - so if the facts
  * waited for the model too, a hard kill would persist nothing at all and
  * GET /api/advisor would keep serving yesterday's row with no sign today's
  * run ever happened. Writing the facts first means the worst a kill can do is

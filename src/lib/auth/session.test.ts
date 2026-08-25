@@ -13,7 +13,7 @@ describe('session', () => {
 
   it('rejects a tampered token', async () => {
     const token = await signSession(admin)
-    // Flip the role in the payload — the signature must no longer verify.
+    // Flip the role in the payload - the signature must no longer verify.
     const tampered = token.slice(0, -4) + 'aaaa'
     expect(await verifySession(tampered)).toBeNull()
   })

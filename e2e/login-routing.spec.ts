@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 /**
  * Signing in lands you on the side you asked for. An ambassador only ever has a
  * portal. An admin using the admin door gets the dashboard. (The owner using the
- * AMBASSADOR door lands on their own portal — covered in
+ * AMBASSADOR door lands on their own portal - covered in
  * admin-ambassador-portal.spec.ts, which owns that fixture.)
  */
 
@@ -18,7 +18,7 @@ test('a real ambassador signing in on /login lands on their own portal', async (
   await signIn(page, '/login', 'emma@ambassador.test')
   await page.waitForURL(/\/portal/)
   await expect(page.getByText('Your sales')).toBeVisible()
-  // The portal is the focused ambassador view — no company-wide compare table.
+  // The portal is the focused ambassador view - no company-wide compare table.
   await expect(page.getByText('Compare shops')).toHaveCount(0)
 })
 

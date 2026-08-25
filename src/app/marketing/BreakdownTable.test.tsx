@@ -29,7 +29,7 @@ const row = (over: Partial<BreakdownRow>): BreakdownRow => ({
 })
 
 function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status }) // fresh Response per call — a body reads once
+  return new Response(JSON.stringify(body), { status }) // fresh Response per call - a body reads once
 }
 
 /**
@@ -90,7 +90,7 @@ describe('BreakdownTable', () => {
     await waitFor(() => expect(screen.getByText('No spend yet')).toBeTruthy())
 
     const roasCell = screen.getByText('No spend yet').closest('tr')!.children[2] as HTMLElement
-    expect(roasCell.textContent).toBe('—')
+    expect(roasCell.textContent).toBe('-')
     expect(roasCell.textContent).not.toContain('Infinity')
     expect(roasCell.textContent).not.toContain('NaN')
   })
@@ -107,7 +107,7 @@ describe('BreakdownTable', () => {
 
     // Index 7, not 5: CPA and CPM sit ahead of CTR now.
     const ctrCell = screen.getByText('No impressions').closest('tr')!.children[7] as HTMLElement
-    expect(ctrCell.textContent).toBe('—')
+    expect(ctrCell.textContent).toBe('-')
   })
 
   it('expands a campaign into its ad sets', async () => {
@@ -141,7 +141,7 @@ describe('BreakdownTable', () => {
     const ad = row({ id: 'ad1', name: 'Ad Alpha', accountId: 'acc1', spend: 9000 })
     // Keyed on parentId identity, not a level= substring: 'level=ad' is a
     // PREFIX of 'level=adset', the exact trap this plan's own ledger flags
-    // twice already (meta.test.ts, google.test.ts) — a naive substring check
+    // twice already (meta.test.ts, google.test.ts) - a naive substring check
     // here would silently match the wrong fixture to the wrong request.
     const fetchMock = vi.fn((url: string) => {
       const u = String(url)
@@ -162,7 +162,7 @@ describe('BreakdownTable', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(3)
     const url = String(fetchMock.mock.calls[2][0])
-    // Exact param value, not toContain('level=ad') — that substring is also
+    // Exact param value, not toContain('level=ad') - that substring is also
     // true of 'level=adset' and would not catch the level being wrong.
     expect(new URL(url, 'http://x').searchParams.get('level')).toBe('ad')
     expect(url).toContain('parentId=as1')
@@ -277,7 +277,7 @@ describe('BreakdownTable', () => {
 
   // Beyond the brief's nine: the endpoint's own contract says both arrays can
   // be populated together, and dropping errors silently is the one outcome
-  // the task calls "worst possible" — worth its own assertion at the top level.
+  // the task calls "worst possible" - worth its own assertion at the top level.
   it('renders errors even when rows is non-empty', async () => {
     const campaign = row({ id: 'c1', name: 'Campaign One', accountId: 'acc1' })
     vi.stubGlobal(
@@ -323,14 +323,14 @@ describe('BreakdownTable', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
     fireEvent.click(screen.getByText('Ad Alpha'))
     await act(async () => {})
-    expect(fetchMock).toHaveBeenCalledTimes(3) // unchanged — a leaf takes no click
+    expect(fetchMock).toHaveBeenCalledTimes(3) // unchanged - a leaf takes no click
   })
 
   // Also beyond the nine: "What to build" requires a refetch on every prop
   // change, not just on mount, and a stale campaign's cached children must
   // not survive into the new list. The same campaign id recurring in both
   // months (a real campaign that ran in both) is the case that would expose
-  // a July expansion leaking into August under the "same" row — asserting
+  // a July expansion leaking into August under the "same" row - asserting
   // only that new rows appear is not enough to catch that; a component that
   // refetches rows but forgets to drop the child cache would still pass a
   // weaker version of this test.
@@ -368,7 +368,7 @@ describe('BreakdownTable', () => {
 
   // Task 5: the route now says how many of the shop's accounts on this
   // provider it consulted. Zero and "ran no campaigns" must read as different
-  // sentences — reading the second when the first is true is how someone
+  // sentences - reading the second when the first is true is how someone
   // concludes a platform is dead when it was never connected.
   it('says there are no ad accounts when none exist for this platform', async () => {
     vi.stubGlobal(
@@ -383,7 +383,7 @@ describe('BreakdownTable', () => {
     expect(screen.queryByText('No campaigns ran in this period.')).toBeNull()
   })
 
-  // Names the platform actually selected, not a hardcoded "Meta" — the self-
+  // Names the platform actually selected, not a hardcoded "Meta" - the self-
   // review question this branch's own briefs ask by name.
   it('names Google, not Meta, when Google has no accounts', async () => {
     vi.stubGlobal(
@@ -399,7 +399,7 @@ describe('BreakdownTable', () => {
   })
 
   // The other side of the same distinction: an account exists and was asked,
-  // it simply spent nothing — that is the pre-existing empty state, not the
+  // it simply spent nothing - that is the pre-existing empty state, not the
   // new one.
   it('says nothing ran, not that no account exists, once an account was actually checked', async () => {
     vi.stubGlobal(
@@ -414,7 +414,7 @@ describe('BreakdownTable', () => {
 
   // C1: a campaign id belongs to exactly one ad account. The row being
   // expanded knows which one (row.accountId), so a child request must carry
-  // it — otherwise a second account on the same connection gets asked the
+  // it - otherwise a second account on the same connection gets asked the
   // same object id and its ad sets come back mislabelled as the first
   // account's (see breakdown.ts / meta.ts). The top-level request must NOT
   // carry it: campaign level is the one place the fan-out across every
@@ -442,7 +442,7 @@ describe('BreakdownTable', () => {
   })
 
   // I3: `toggle` marks a row "fetched" before the request resolves and never
-  // un-marks it, so a failed expansion used to be stuck that way forever —
+  // un-marks it, so a failed expansion used to be stuck that way forever -
   // collapsing and re-expanding replayed the same cached error instead of
   // asking again. Transient failures (rate limits, a brief 500, a token
   // blip) are exactly what a live platform read hits.
@@ -508,7 +508,7 @@ describe('BreakdownTable', () => {
   })
 
   // I4: accountsChecked === 1 and rows.length === 0 used to always render "No
-  // campaigns ran in this period" — a false claim about the client's own
+  // campaigns ran in this period" - a false claim about the client's own
   // money when the real reason is that the only account errored, not that it
   // spent nothing. The per-account reason (from `errors`) stays visible in
   // the banner above; only the false claim underneath it is suppressed.
@@ -534,7 +534,7 @@ describe('BreakdownTable', () => {
   })
 
   // I8: the breakdown is live from one platform, in the ad account's own
-  // currency, while MarketingTable above it is consolidated stored data —
+  // currency, while MarketingTable above it is consolidated stored data -
   // both right, but nothing else on the page says why the two spend figures
   // can differ for the same store.
   it('captions the table with where the numbers come from, naming the platform actually selected', async () => {
@@ -552,7 +552,7 @@ describe('BreakdownTable', () => {
 })
 
 /**
- * CPA, CPM and Impressions — the three the client asked for on top of the
+ * CPA, CPM and Impressions - the three the client asked for on top of the
  * five that were already here. Nothing new is fetched for them: impressions
  * were always in the response and only CTR ever read them.
  */
@@ -584,7 +584,7 @@ describe('cost and delivery columns', () => {
 
   // 478395 / 7 = 68342.14…, which is not a whole number of øre. Money in this
   // app is an integer number of minor units (money.ts), so it rounds before
-  // it formats — otherwise Intl silently truncates and the column drifts a
+  // it formats - otherwise Intl silently truncates and the column drifts a
   // half-øre from the same figure computed anywhere else.
   it('divides spend by purchases for CPA, rounded to whole minor units', async () => {
     showing({ name: 'Brief 4', spend: 478395, purchases: 7 })
@@ -598,7 +598,7 @@ describe('cost and delivery columns', () => {
     await waitFor(() => expect(screen.getByText('Nothing sold')).toBeTruthy())
 
     const cpa = cellsOf('Nothing sold')[3]
-    expect(cpa).toBe('—')
+    expect(cpa).toBe('-')
     expect(cpa).not.toContain('Infinity')
     expect(cpa).not.toContain('NaN')
   })
@@ -610,7 +610,7 @@ describe('cost and delivery columns', () => {
     showing({ name: 'Free somehow', spend: 0, purchases: 5 })
     await waitFor(() => expect(screen.getByText('Free somehow')).toBeTruthy())
 
-    expect(cellsOf('Free somehow')[3]).toBe('—')
+    expect(cellsOf('Free somehow')[3]).toBe('-')
   })
 
   it('costs CPM per thousand impressions, not per impression', async () => {
@@ -626,7 +626,7 @@ describe('cost and delivery columns', () => {
     showing({ name: 'No impressions', spend: 478395, impressions: 0 })
     await waitFor(() => expect(screen.getByText('No impressions')).toBeTruthy())
 
-    expect(cellsOf('No impressions')[6]).toBe('—')
+    expect(cellsOf('No impressions')[6]).toBe('-')
   })
 
   it('groups impressions in thousands', async () => {
@@ -637,7 +637,7 @@ describe('cost and delivery columns', () => {
   })
 
   // Unlike every ratio beside it, zero impressions is a true statement about
-  // delivery — the campaign ran and was shown to nobody — not a division with
+  // delivery - the campaign ran and was shown to nobody - not a division with
   // nothing to divide by. A dash here would hide a real answer.
   it('prints zero impressions as zero, not as a dash', async () => {
     showing({ name: 'Never delivered', impressions: 0 })
@@ -646,7 +646,7 @@ describe('cost and delivery columns', () => {
     expect(cellsOf('Never delivered')[8]).toBe('0')
   })
 
-  // Campaign, ad set and ad share one renderRow, so this should be free — but
+  // Campaign, ad set and ad share one renderRow, so this should be free - but
   // "should be free" is exactly the assumption worth pinning, and the child
   // rows are the half of the table the tests above never reach.
   it('carries the new columns down into an expanded ad set', async () => {

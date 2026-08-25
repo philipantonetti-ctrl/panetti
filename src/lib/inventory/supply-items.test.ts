@@ -57,7 +57,7 @@ describe('ensureSupplyItems', () => {
 
     // Scoped to this test's own tag, not a global count. `ensureSupplyItems`
     // deliberately scans every product in the database, and a suite running
-    // beside this one both creates AND deletes its own rows — so an unscoped
+    // beside this one both creates AND deletes its own rows - so an unscoped
     // count can move in either direction between these two reads.
     const before = await db.supplyItem.count({ where: { sku: { startsWith: TAG } } })
     await ensureSupplyItems()

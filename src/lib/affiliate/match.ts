@@ -2,7 +2,7 @@ import type { AffiliateMarket } from './client'
 
 /**
  * Which shop an Addrevenue market belongs to, decided by DOMAIN: the
- * advertiser's market URL against Shop.wooUrl. Exact or nothing — a market
+ * advertiser's market URL against Shop.wooUrl. Exact or nothing - a market
  * with no matching shop is reported, never guessed from names. (Compare
  * src/lib/dhl/link.ts, which refuses unknown codes for the same reason.)
  */

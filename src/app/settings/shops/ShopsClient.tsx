@@ -143,7 +143,7 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
     try {
       const res = await fetch('/api/sync', { method: 'POST' })
       if (!res.ok) {
-        // A failed sync must say so — "Synced 0 orders" would be a lie.
+        // A failed sync must say so - "Synced 0 orders" would be a lie.
         toast.error((await res.json().catch(() => null))?.error ?? 'Sync failed')
         return
       }
@@ -350,7 +350,7 @@ function ConnectModal({ shop, onClose, onSaved }: { shop: Row; onClose: () => vo
     } catch {
       toast.error('Could not reach the server')
     } finally {
-      setBusy(false) // always — the button must never stick on "Saving…"
+      setBusy(false) // always - the button must never stick on "Saving…"
     }
   }
 

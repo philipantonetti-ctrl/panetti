@@ -31,7 +31,7 @@ describe('PlatformTable', () => {
       />,
     )
     // 'en-US' grouping, matching MarketingTable's own count cells: 5,560,745.
-    // Verified against the repo convention at MarketingTable.tsx:110 — do not
+    // Verified against the repo convention at MarketingTable.tsx:110 - do not
     // switch to a space-grouped locale, the two tables sit on the same page.
     const cells = within(screen.getByRole('row', { name: /Meta/ })).getAllByRole('cell')
     expect(cells.map((c) => c.textContent)).toEqual(
@@ -43,7 +43,7 @@ describe('PlatformTable', () => {
     // A platform with no clicks has no cost per click. Printing 0 would claim
     // clicks were free.
     render(<PlatformTable rows={[row({ spend: 100_00, clicks: 0, cpc: null })]} currency="NOK" />)
-    expect(screen.getByTestId('cpc-meta')).toHaveTextContent('—')
+    expect(screen.getByTestId('cpc-meta')).toHaveTextContent('-')
   })
 
   it('renders nothing at all when there are no platforms', () => {

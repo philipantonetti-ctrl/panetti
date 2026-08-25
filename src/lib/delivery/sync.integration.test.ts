@@ -11,18 +11,18 @@ const NONE: Milestones = {
 const now = new Date('2026-08-05T12:00:00Z')
 const HOUR = 60 * 60 * 1000
 
-// Unique to THIS file — see "Test data convention" in the Global Constraints.
+// Unique to THIS file - see "Test data convention" in the Global Constraints.
 // This suite creates no shop or order, so a shop-name TAG is not needed; only
 // the tracking-number prefix is.
 //
 // DEVIATION FROM BRIEF: the brief's beforeEach ran bare
-// `db.shipmentEvent.deleteMany()` / `db.shipment.deleteMany()` — no tag or
-// prefix — which would sweep up every other delivery suite's shipments and
+// `db.shipmentEvent.deleteMany()` / `db.shipment.deleteMany()` - no tag or
+// prefix - which would sweep up every other delivery suite's shipments and
 // events, exactly what the Global Constraints forbid ("Give your fixtures a
 // tag and tracking-number prefix unique to your file, and scope every cleanup
 // to them"). It also ran `db.deliveryConfig.deleteMany()` then `.create()`,
 // which the Global Constraints separately and explicitly forbid for the
-// DeliveryConfig singleton ("Never deleteMany() then create() — use upsert,
+// DeliveryConfig singleton ("Never deleteMany() then create() - use upsert,
 // and blank the fields rather than deleting the row. Two files racing must
 // not make each other's row vanish."). This was already flagged once, in the
 // Task 1 review (progress.md: "Task 8's sync test uses bare deleteMany on
@@ -44,7 +44,7 @@ const BRING_FIELDS = {
 
 async function cleanup() {
   await db.shipmentEvent.deleteMany({ where: { shipment: { trackingNumber: { startsWith: TRACK } } } })
-  // By prefix, not by `orderId: null` — an unlinked parcel belongs to no
+  // By prefix, not by `orderId: null` - an unlinked parcel belongs to no
   // shop, so `orderId: null` would delete another file's parcels too.
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: TRACK } } })
 }
@@ -162,19 +162,19 @@ describe('syncShipments', () => {
      *
      * Parcels written by the DHL import before nextPollAt was set carry NULL in
      * that column. The poller selected `nextPollAt: { lte: now }`, and in SQL
-     * `NULL <= now()` is NULL, not true — so those rows were never returned.
+     * `NULL <= now()` is NULL, not true - so those rows were never returned.
      * Not "polled late": never polled, by any run, ever. Nothing backfills the
      * column, so they were stranded showing whatever the file last said.
      *
      * Found live 2026-08-18: five DHL parcels sat on the delivery page as "In
      * transit" and counted as late, while DHL's own API reported every one of
-     * them delivered — one of them five days earlier.
+     * them delivered - one of them five days earlier.
      *
      * NULL means "never scheduled", which is the strongest possible claim on a
      * poller's attention, not the weakest. The query's own
      * `orderBy: { nulls: 'first' }` already said so; only the where disagreed.
      *
-     * Carrier-neutral — the where clause has no carrier in it — but written
+     * Carrier-neutral - the where clause has no carrier in it - but written
      * against DHL because that is the import that produced the NULLs.
      */
     it('polls a parcel that was never given a due date, rather than stranding it', async () => {
@@ -264,7 +264,7 @@ describe('syncShipments', () => {
      *
      * Oldest-scheduled-first is a fair rule between equals, and these are not
      * equals. A parcel the warehouse file already reports delivered is not
-     * terminal — only a poll makes a parcel terminal — so it stays in the
+     * terminal - only a poll makes a parcel terminal - so it stays in the
      * rotation forever holding its ancient import-time nextPollAt, which is the
      * OLDEST there is. Meanwhile nextPollFor gives a parcel near or past its
      * promise `nextPollAt: now`, the NEWEST value there is, meaning "check this
@@ -294,7 +294,7 @@ describe('syncShipments', () => {
         })
       }
       // One still moving, scheduled later precisely BECAUSE it was reached
-      // recently — which is what puts it at the back of an oldest-first queue.
+      // recently - which is what puts it at the back of an oldest-first queue.
       await db.shipment.create({
         data: {
           trackingNumber: `${TRACK}M`,
@@ -314,7 +314,7 @@ describe('syncShipments', () => {
 
     /**
      * The state this ships in. Nobody has set DHL_API_KEY yet, and a DHL parcel
-     * must then sit exactly as it is — not be marked failed, which would paint
+     * must then sit exactly as it is - not be marked failed, which would paint
      * the Delivery page red for a carrier nobody has connected.
      */
     it('leaves a DHL parcel completely alone when no key is configured', async () => {
@@ -358,7 +358,7 @@ describe('syncShipments', () => {
      * The gap between two DHL calls is six seconds of real time, and the run has
      * a deadline. Checking the clock, then sleeping past it, then asking anyway
      * gets a request with a 1ms budget, an abort, and a healthy parcel marked
-     * failed — the poller inventing a failure out of its own waiting.
+     * failed - the poller inventing a failure out of its own waiting.
      *
      * The clock is stubbed rather than slept through, so the suite does not take
      * six seconds to assert it.
@@ -435,7 +435,7 @@ describe('syncShipments', () => {
     await syncShipments({ now })
 
     // DEVIATION FROM BRIEF: the brief asserted a bare, whole-table
-    // `db.shipmentEvent.count()`. Scoped to this shipment's id instead — the
+    // `db.shipmentEvent.count()`. Scoped to this shipment's id instead - the
     // same fix as the cleanup above, for the same reason: a bare query over a
     // shared table reads other suites' rows, not just this file's.
     const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
@@ -454,14 +454,14 @@ describe('syncShipments', () => {
 
   // DEVIATION FROM BRIEF: titled "...and stops asking forever" in the brief,
   // which contradicts its own assertions (terminal: false, nextPollAt not
-  // null) and the rule it is proving — "A number Bring does not know is not
+  // null) and the rule it is proving - "A number Bring does not know is not
   // an error... Record it and try later; do not mark it terminal." Retitled
   // to match what the test actually asserts; the body is unchanged.
   it('records a number Bring does not know, and keeps asking later', async () => {
     await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
     // The REAL shape, captured from api.bring.com on 2026-08-07 with the
     // client's own credentials. Bring answers an unknown number with HTTP 200
-    // and a consignmentSet holding an ERROR entry — not the empty array this
+    // and a consignmentSet holding an ERROR entry - not the empty array this
     // test used to assume, and not an HTTP error either. The outcome is the
     // same (the number never reaches byNumber, so it is recorded as unknown),
     // but the shape we assert against is now one Bring actually sends.
@@ -477,7 +477,7 @@ describe('syncShipments', () => {
   it('reports itself unconfigured rather than throwing', async () => {
     // DEVIATION FROM BRIEF: deleteMany() on the DeliveryConfig singleton,
     // forbidden by the Global Constraints. Blank the credential fields
-    // instead — getDeliveryConfig reads exactly the same "not connected"
+    // instead - getDeliveryConfig reads exactly the same "not connected"
     // state from a row with null credentials as it does from no row at all.
     await db.deliveryConfig.update({
       where: { id: 'singleton' },
@@ -486,7 +486,7 @@ describe('syncShipments', () => {
     await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
     const r = await syncShipments({ now })
     // Wording widened when this poller took on DHL: with two carriers it can no
-    // longer name Bring. The claim is unchanged — nothing configured, nothing
+    // longer name Bring. The claim is unchanged - nothing configured, nothing
     // polled, and no throw.
     expect(r.error).toMatch(/no carrier is connected/i)
     expect(r.polled).toBe(0)
@@ -506,7 +506,7 @@ describe('syncShipments', () => {
   // Fix round 1: the per-parcel success-path db.$transaction had no guard, so
   // a single failing write (a connection blip, a transaction timeout on a
   // parcel with a long history) propagated out of syncShipments entirely and
-  // aborted every batch still queued behind it — worse under oldest-first
+  // aborted every batch still queued behind it - worse under oldest-first
   // ordering, since the failing row would then sit at the head of the queue
   // and starve everything else on every later run too.
   it('a failed write for one parcel does not abort the batch behind it', async () => {
@@ -552,7 +552,7 @@ describe('syncShipments', () => {
    * The blind spot behind the client's "it says In transit, but DHL says
    * delivered".
    *
-   * With no DHL_API_KEY every DHL parcel is skipped BY DESIGN — no error on
+   * With no DHL_API_KEY every DHL parcel is skipped BY DESIGN - no error on
    * the parcel and no change to its schedule, so that connecting DHL later
    * picks them all up exactly where they were. That part is right and stays.
    *
@@ -588,8 +588,8 @@ describe('syncShipments', () => {
   /**
    * The other way this run reaches nothing and calls it a success.
    *
-   * syncShipments is LAST in the cron and its deadline is absolute — run start
-   * plus 275s — while the shop sync ahead of it is allowed 240s and three of
+   * syncShipments is LAST in the cron and its deadline is absolute - run start
+   * plus 275s - while the shop sync ahead of it is allowed 240s and three of
    * the four Visma imports between them carry no deadline at all. When those
    * stages use the run up, the poll's first deadline check breaks the loop
    * before a single parcel is asked about. polled and failed are then both
@@ -616,7 +616,7 @@ describe('syncShipments', () => {
 
   it('does not claim a successful sync when it reached no parcel at all', async () => {
     // A revoked Mybring key fails every request. Before this, the run still
-    // stamped lastSyncAt and cleared lastError — and since this is the only
+    // stamped lastSyncAt and cleared lastError - and since this is the only
     // writer of that field, it could never be non-null. The settings page read
     // "Last synced: a minute ago" forever while nothing was being tracked.
     await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
@@ -653,18 +653,18 @@ describe('syncShipments', () => {
   // This file mocks the global fetch, not a fetchTracking function, so the
   // request shape is read off the URL's own `q` params rather than a mock's
   // call args. Three due parcels, not two: two due parcels makes the count
-  // and shape assertions redundant — any batch size >= 2 collapses both into
+  // and shape assertions redundant - any batch size >= 2 collapses both into
   // one call and trips a count-floor check, while a batch size of 1 makes
   // "length 1" true by construction either way, so the count assertion would
   // always decide the test's fate first and the shape assertion would never
   // independently fail. Three is the smallest number that can produce a
   // PARTIAL batch (e.g. size 2 then size 1), which is what makes checking the
-  // shape of every call — not just whether more than one call happened —
+  // shape of every call - not just whether more than one call happened -
   // actually load-bearing. With a batch size above 1, at least one request
   // would carry more than one `q` param, and Bring answers about only one of
   // them (see file banner on client.ts / sync.ts), leaving the rest falsely
   // marked "does not know this number yet".
-  it('asks Bring about one parcel per request — it answers about only one', async () => {
+  it('asks Bring about one parcel per request - it answers about only one', async () => {
     for (const n of [T1, T2, T3]) {
       await db.shipment.create({ data: { trackingNumber: n, nextPollAt: new Date('2026-01-01') } })
     }

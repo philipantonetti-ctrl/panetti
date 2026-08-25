@@ -32,7 +32,7 @@ type Settings = {
   hasBringKey: boolean
   /**
    * Whether DHL_API_KEY is set on the server. Not a stored setting like the
-   * others — DHL's key is a Vercel environment variable — so there is no
+   * others - DHL's key is a Vercel environment variable - so there is no
    * matching input on this page, only this flag and the test button.
    */
   hasDhlKey: boolean
@@ -49,7 +49,7 @@ type Settings = {
   imports: ImportRow[]
 }
 
-const DASH = '—'
+const DASH = '-'
 
 const field =
   'mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink'
@@ -59,7 +59,7 @@ const primaryBtn =
 const quietBtn =
   'rounded-[var(--radius-control)] border border-line bg-surface px-4 py-2 text-[13px] font-semibold text-ink transition-opacity duration-150 hover:opacity-90 disabled:opacity-60'
 
-/** One card per section of the page — Bring, Slack, promises, tracked shops, imports. */
+/** One card per section of the page - Bring, Slack, promises, tracked shops, imports. */
 function Card({
   title,
   subtitle,
@@ -108,7 +108,7 @@ async function runTest(target: 'bring' | 'dhl' | 'slack'): Promise<{ ok: boolean
  * Bring and Slack credentials, per-country delivery promises, which shops are
  * tracked, and the two buttons that prove the integrations actually work.
  * Follows DeliveryClient's own shape: the client fetches its data, a plain
- * effect loads it once, and every mutation calls `load()` again afterward —
+ * effect loads it once, and every mutation calls `load()` again afterward -
  * there is no filter UI here to make a live-fetch loop worthwhile.
  */
 export function DeliverySettingsClient({ email }: { email: string }) {
@@ -118,7 +118,7 @@ export function DeliverySettingsClient({ email }: { email: string }) {
 
   // No synchronous setState at the top: `loading` already starts true, and
   // this page has no filter that re-arms it, so the only transition needed is
-  // false once the fetch settles — the same shape DeliveryClient's own effect
+  // false once the fetch settles - the same shape DeliveryClient's own effect
   // uses, and calling setState synchronously inside an effect body is flagged
   // by react-hooks/set-state-in-effect.
   function load() {
@@ -273,13 +273,13 @@ const VERCEL_ENV_URL = 'https://vercel.com/panetti-intelligence/panetti/settings
  * DHL, which has no fields to fill in.
  *
  * Bring's credentials are stored settings, so its panel is a form. DHL's key is
- * a deployment secret in Vercel, which means this page cannot set it — and
+ * a deployment secret in Vercel, which means this page cannot set it - and
  * until this panel existed, could not report on it either. Somebody pasted a
  * key into Vercel, redeployed, and had nothing anywhere to confirm it worked.
  *
  * Two claims, kept apart on purpose. "Key set" is what the server can see
  * without spending a call. "DHL accepted it" needs an actual request, so it
- * lives behind the button — a set variable and a working key are not the same
+ * lives behind the button - a set variable and a working key are not the same
  * thing, and a panel that blurred them would be the same silent failure one
  * step further along.
  */
@@ -306,7 +306,7 @@ function DhlSection({ data }: { data: Settings }) {
       subtitle="Tracking for the parcels DHL carries. The key lives in Vercel, not on this page."
     >
       {/* Words, not a status dot. Every other state on this page is stated in
-          text, and a lone coloured circle would be the only one of its kind —
+          text, and a lone coloured circle would be the only one of its kind -
           as well as decoration in a palette whose green is reserved for money. */}
       <p className={`text-[13px] font-medium ${data.hasDhlKey ? 'text-ink' : 'text-muted'}`}>
         {data.hasDhlKey ? 'Key set' : 'No key set'}

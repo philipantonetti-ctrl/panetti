@@ -1,4 +1,4 @@
-# Refund Reversal and Twelve Months — Implementation Plan
+# Refund Reversal and Twelve Months - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -19,7 +19,7 @@
 - **The negative entry adds 0 to the order count, not −1.**
 - Admin-only endpoints keep `assertAdmin` first inside the `try`, `AuthError` → 403, `Cache-Control: private, no-store` on every response.
 - Tests use `fireEvent`; `@testing-library/user-event` is **not** a dependency of this project.
-- **Edit files with the Edit/Write tools only** — PowerShell `Get-Content`/`Set-Content` corrupts the UTF-8 here.
+- **Edit files with the Edit/Write tools only** - PowerShell `Get-Content`/`Set-Content` corrupts the UTF-8 here.
 - **Never run `git stash`, `git checkout --`, `git restore`, `git reset --hard`, `git clean`.**
 - **Re-check the branch before every commit** (`git branch --show-current`). A background process in this repo merges branches into `main` and moves the checkout underneath you. Expected branch: `feat/refund-reversal-and-12-months`.
 - Never pipe `npm run dev` into anything; do not redirect test output into the repo.
@@ -61,7 +61,7 @@ Append to `src/app/b2b/B2bClient.test.tsx`, following its existing `renderWithTo
 ```tsx
 it('asks for twelve months of B2B orders, not ninety days', async () => {
   // The card is a working surface, but a business customer may order twice a
-  // year — ninety days hid orders the client knew they had placed.
+  // year - ninety days hid orders the client knew they had placed.
   const calls: string[] = []
   mockFetchCapturing(calls, [customer], [])
   renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
@@ -87,7 +87,7 @@ If the file's existing capture helper is named differently, use whatever it alre
 
 - [ ] **Step 2: Run to verify they fail**
 
-`npx vitest run src/app/b2b/B2bClient.test.tsx` — expect 90 where 365 is asserted, and no "last 12 months" text.
+`npx vitest run src/app/b2b/B2bClient.test.tsx` - expect 90 where 365 is asserted, and no "last 12 months" text.
 
 - [ ] **Step 3: Implement**
 
@@ -95,7 +95,7 @@ In `src/app/b2b/B2bClient.tsx`, replace the constant and its comment:
 
 ```tsx
 /**
- * The orders card is a working surface, not an archive — but a business
+ * The orders card is a working surface, not an archive - but a business
  * customer may order only twice a year, and ninety days hid orders the client
  * knew they had placed. A year covers the real rhythm; "See all" still leads
  * to the Orders page for anything older.
@@ -107,7 +107,7 @@ Then change both label sites from `last {RECENT_DAYS} days` to `last 12 months`,
 
 - [ ] **Step 4: Tests pass, full suite, commit**
 
-`npx vitest run src/app/b2b/B2bClient.test.tsx`, then `npm test` (925), then — after `git branch --show-current` confirms the branch:
+`npx vitest run src/app/b2b/B2bClient.test.tsx`, then `npm test` (925), then - after `git branch --show-current` confirms the branch:
 
 ```bash
 git add src/app/b2b/B2bClient.tsx src/app/b2b/B2bClient.test.tsx
@@ -136,11 +136,11 @@ In `prisma/schema.prisma`, in `model Order` after `fulfillmentCost`:
   // order that arrives already refunded gets null, because we genuinely do not
   // know when it happened and a guessed date in a profit figure is worse than
   // an honest gap. Null therefore means "never voided, or voided before we
-  // started recording" — and such an order contributes nothing, anywhere.
+  // started recording" - and such an order contributes nothing, anywhere.
   voidedAt DateTime?
 ```
 
-Run `npx prisma db push && npx prisma generate`. If it prompts about data loss, STOP and report BLOCKED — this must be additive.
+Run `npx prisma db push && npx prisma generate`. If it prompts about data loss, STOP and report BLOCKED - this must be additive.
 
 - [ ] **Step 2: Write the failing sync tests**
 
@@ -181,7 +181,7 @@ describe('voidedAt', () => {
     expect((await db.order.findFirstOrThrow({ where: { externalId: '7004' } })).voidedAt).toBeNull()
   })
 
-  it('does not stamp an unpaid order — pending is not a refund', async () => {
+  it('does not stamp an unpaid order - pending is not a refund', async () => {
     await storeOrder(shopId, wooOrder({ id: 7005, status: 'completed' }), new Map())
     await storeOrder(shopId, wooOrder({ id: 7005, status: 'on-hold' }), new Map())
     expect((await db.order.findFirstOrThrow({ where: { externalId: '7005' } })).voidedAt).toBeNull()
@@ -193,7 +193,7 @@ Use the file's own WooCommerce-order fixture builder; if it has none, write a sm
 
 - [ ] **Step 3: Run to verify they fail**
 
-`npx vitest run src/lib/woo/sync.test.ts` — `voidedAt` is never set.
+`npx vitest run src/lib/woo/sync.test.ts` - `voidedAt` is never set.
 
 - [ ] **Step 4: Implement the stamp in `storeOrder`**
 
@@ -201,7 +201,7 @@ In `src/lib/woo/sync.ts`, inside `storeOrder`, before the `db.$transaction` that
 
 ```ts
   // Was this order already voided in our own records? The stamp marks a
-  // TRANSITION, so an order that arrives already refunded keeps a null date —
+  // TRANSITION, so an order that arrives already refunded keeps a null date -
   // we do not know when it happened, and the engine leaves such an order out
   // entirely rather than reversing it on a guessed day.
   const held = await db.order.findUnique({
@@ -371,7 +371,7 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
 
   it('leaves an order refunded before we recorded dates out entirely', () => {
     // voidedAt null: we do not know when. It counts nowhere, which is exactly
-    // what the engine did before this change — no existing figure moves.
+    // what the engine did before this change - no existing figure moves.
     const old = order({ status: 'refunded' })
     for (const [from, to] of [['2026-07-01', '2026-07-01'], ['2026-07-08', '2026-07-08'], ['2026-07-01', '2026-07-31']]) {
       const res = computeMetrics({
@@ -383,7 +383,7 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
     }
   })
 
-  it('does not reverse an unpaid order — pending is not a refund', () => {
+  it('does not reverse an unpaid order - pending is not a refund', () => {
     const pending = order({ status: 'pending', voidedAt: new Date('2026-07-08') })
     const res = computeMetrics({
       shops: [shops[0]], orders: [pending], expenses: [], costs, rates,
@@ -396,7 +396,7 @@ Append to `src/lib/metrics/engine.test.ts`, inside `describe('computeMetrics', .
 
 - [ ] **Step 2: Run to verify they fail**
 
-`npx vitest run src/lib/metrics/engine.test.ts` — the refunded order currently contributes nothing anywhere, so the first four fail.
+`npx vitest run src/lib/metrics/engine.test.ts` - the refunded order currently contributes nothing anywhere, so the first four fail.
 
 - [ ] **Step 3: Add the field**
 
@@ -447,7 +447,7 @@ function entriesIn(orders: EngineOrder[], from: Date, to: Date, tzFor: (id: stri
       continue
     }
 
-    // Voided but we never learned when — leave every existing figure alone.
+    // Voided but we never learned when - leave every existing figure alone.
     if (!order.voidedAt) continue
 
     if (inRange(order.placedAt, from, to, tz)) out.push({ order, sign: 1 })
@@ -464,7 +464,7 @@ and in `computeMetrics`:
   const live = entriesIn(orders, from, to, tzFor)
 ```
 
-Import `UNPAID_STATUSES` and `VOIDED_STATUSES` from `./types`; `EXCLUDED_STATUSES` may become unused here — remove it from this file's imports if so, but **do not** delete it from `types.ts`, where other files use it.
+Import `UNPAID_STATUSES` and `VOIDED_STATUSES` from `./types`; `EXCLUDED_STATUSES` may become unused here - remove it from this file's imports if so, but **do not** delete it from `types.ts`, where other files use it.
 
 - [ ] **Step 5: Multiply every figure by the sign**
 
@@ -534,7 +534,7 @@ and the count keeps only the positive entries:
 
 - [ ] **Step 6: Tests pass**
 
-`npx vitest run src/lib/metrics/engine.test.ts` — the six new cases **and** every pre-existing one, with no assertion edited. A pre-existing failure means a sign was applied where it should not have been.
+`npx vitest run src/lib/metrics/engine.test.ts` - the six new cases **and** every pre-existing one, with no assertion edited. A pre-existing failure means a sign was applied where it should not have been.
 
 - [ ] **Step 7: Carry `voidedAt` through the loader**
 

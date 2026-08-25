@@ -18,17 +18,17 @@
 - **Never run `git stash`, `git checkout <path>`, `git restore`, `git reset --hard`, or `git clean`.** Work in this repo has been silently reverted this way. If you think you need one, stop and report instead.
 - **Re-check the branch immediately before every commit** (`git rev-parse --abbrev-ref HEAD`). A background sync worktree merges branches into `main` and moves the checkout mid-session. Expected branch: `feat/delivery-warehouse-intake`.
 - **Edit files with the Edit/Write tools only.** PowerShell `Get-Content`/`Set-Content` corrupts UTF-8 in this environment.
-- **Every new API route is admin-only** — `assertAdmin(await currentUser())` plus `Cache-Control: private, no-store` — **except `/api/delivery/inbound`**, which is machine-to-machine and authenticates with a shared secret instead (Task 5). It must never call `currentUser()`.
+- **Every new API route is admin-only** - `assertAdmin(await currentUser())` plus `Cache-Control: private, no-store` - **except `/api/delivery/inbound`**, which is machine-to-machine and authenticates with a shared secret instead (Task 5). It must never call `currentUser()`.
 - **No customer PII in the repository.** The sample file and the Bring responses carry real names, emails, phone numbers and home addresses. Every fixture you commit must use invented values. Tracking numbers may be kept structurally realistic (18 digits) but must not be the real ones.
 - **Tests are colocated** next to their subject as `<name>.test.ts`. Tests that touch the database are named `<name>.integration.test.ts`.
-- **Integration tests in `src/lib/bring/**` and `src/app/api/delivery/**` already run in the `delivery` Vitest project** with `fileParallelism: false` (`vitest.config.ts:64-95`). Its `include` list and the `app` project's `exclude` list must stay an exact partition of the suite. Task 5's new file `src/app/api/delivery/inbound/route.integration.test.ts` is matched by the existing glob `src/app/api/delivery/**/*.integration.test.ts` — **no config change is needed.** Do not edit `vitest.config.ts`.
-- **Test data convention — this one will bite you.** Files in the `app` project run in parallel against one shared local Postgres, so a test may never delete a row it did not create.
+- **Integration tests in `src/lib/bring/**` and `src/app/api/delivery/**` already run in the `delivery` Vitest project** with `fileParallelism: false` (`vitest.config.ts:64-95`). Its `include` list and the `app` project's `exclude` list must stay an exact partition of the suite. Task 5's new file `src/app/api/delivery/inbound/route.integration.test.ts` is matched by the existing glob `src/app/api/delivery/**/*.integration.test.ts` - **no config change is needed.** Do not edit `vitest.config.ts`.
+- **Test data convention - this one will bite you.** Files in the `app` project run in parallel against one shared local Postgres, so a test may never delete a row it did not create.
 
   1. **Every fixture carries a tag unique to its own file.** This plan's tags are `[intake-match-test]` (Task 4) and `[intake-route-test]` (Task 5). No two files may share one.
   2. **Every `deleteMany` is scoped to that tag.** A bare `db.shop.deleteMany()` or `db.order.deleteMany()` destroys the seeded shops that `src/lib/data/load.integration.test.ts:29` asserts, for every checkout sharing that database.
   3. **Rows with no shop to tag get their own per-file prefix.** A `Shipment` whose `orderId` is null belongs to no shop. Task 4 uses tracking-number prefix `IMTCH`, Task 5 uses `IMRTE`, and each cleans by `{ trackingNumber: { startsWith: PREFIX } }`.
   4. **`TrackingImport` has no shop and no natural key.** Scope its cleanup by the exact filenames the file uses.
-  5. **`DeliveryConfig` is a fixed-id singleton (`id: 'singleton'`).** Never `deleteMany()` then `create()` — always `upsert`, so two racing files cannot make each other's row vanish.
+  5. **`DeliveryConfig` is a fixed-id singleton (`id: 'singleton'`).** Never `deleteMany()` then `create()` - always `upsert`, so two racing files cannot make each other's row vanish.
 
 - **Bring accepts exactly one tracking number per request.** Measured against the live API on 2026-08-12: asking for 10 returned 1 consignment, asking for 2 returned 0, asking for 1 returned the right one 27 times out of 27. Never send more than one `q`.
 
@@ -132,7 +132,7 @@ describe('xlsxToText', () => {
 - [ ] **Step 3: Run the test to verify it fails**
 
 Run: `npx vitest run src/lib/bring/xlsx.test.ts`
-Expected: FAIL — `Failed to resolve import "./xlsx"`.
+Expected: FAIL - `Failed to resolve import "./xlsx"`.
 
 - [ ] **Step 4: Write the implementation**
 
@@ -163,7 +163,7 @@ export function xlsxToText(buf: Buffer): string {
   try {
     files = unzipSync(new Uint8Array(buf))
   } catch {
-    // Written for the person who uploaded it — ImportParseError passes this
+    // Written for the person who uploaded it - ImportParseError passes this
     // through to the client verbatim.
     throw new Error('This file could not be read as an Excel file.')
   }
@@ -174,8 +174,8 @@ export function xlsxToText(buf: Buffer): string {
     parts.push(strFromU8(files[name]))
   }
 
-  // Every tag becomes a space. That is what keeps two adjacent cells —
-  // `<v>111</v><v>222</v>` — from fusing into one 6-digit token that belongs to
+  // Every tag becomes a space. That is what keeps two adjacent cells -
+  // `<v>111</v><v>222</v>` - from fusing into one 6-digit token that belongs to
   // neither of them.
   return parts.join(' ').replace(/<[^>]*>/g, ' ')
 }
@@ -210,7 +210,7 @@ git commit -m "feat(delivery): read an xlsx into plain text"
 
 `extractPairs`, `looksLikeTracking`, `countParcelNumbers` and `parseTrackingFile` all stay exactly as they are. They are still the PDF/order-number path, still tested, and removing them is not this plan's job.
 
-**The threshold is 15 digits and it is load-bearing.** `KolliID` is 18 and `Sändningsref` is 17, so both clear it. `COD` and `COD ID` are 6. `Datum` is `2026-08-11 08:19:24`, which collapses to 14 digits (`20260811081924`) if a reader ever hands it over as one unsplit token — one digit of margin, on purpose. **Do not reuse `looksLikeTracking` here:** at 8-plus digits it swallows that timestamp whole.
+**The threshold is 15 digits and it is load-bearing.** `KolliID` is 18 and `Sändningsref` is 17, so both clear it. `COD` and `COD ID` are 6. `Datum` is `2026-08-11 08:19:24`, which collapses to 14 digits (`20260811081924`) if a reader ever hands it over as one unsplit token - one digit of margin, on purpose. **Do not reuse `looksLikeTracking` here:** at 8-plus digits it swallows that timestamp whole.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -289,7 +289,7 @@ describe('parseTrackingNumbers', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/lib/bring/parse.test.ts`
-Expected: FAIL — `extractLongNumbers is not a function`.
+Expected: FAIL - `extractLongNumbers is not a function`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -356,7 +356,7 @@ export async function parseTrackingNumbers(buf: Buffer, filename: string): Promi
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/lib/bring/parse.test.ts`
-Expected: PASS. The pre-existing `looksLikeTracking` / `extractPairs` / `parseTrackingFile` tests must still pass unchanged — if any of them now fail, you edited something you should not have.
+Expected: PASS. The pre-existing `looksLikeTracking` / `extractPairs` / `parseTrackingFile` tests must still pass unchanged - if any of them now fail, you edited something you should not have.
 
 - [ ] **Step 5: Commit**
 
@@ -380,7 +380,7 @@ git commit -m "feat(delivery): pull tracking numbers out of a file without readi
   - `type ResolvedConsignment = { consignmentId: string; packageNumbers: string[]; recipientEmail: string | null; recipientName: string | null }`
   - `resolveConsignments(creds: BringCredentials, numbers: string[], opts?: { deadline?: number }): Promise<{ consignments: ResolvedConsignment[]; unresolved: string[] }>`
 
-One request per number, because Bring answers about only one. After each response we record every number that response accounted for — its `consignmentId` and all of its `packageNumber`s — and skip those later. Measured by running the committed parser over the sample file, that is what turns its **61 distinct long numbers** — 27 seventeen-digit shipment references plus 34 eighteen-digit package numbers — into **27 requests**, which then write **34 `Shipment` rows**: a two-parcel order is one consignment carrying both packages.
+One request per number, because Bring answers about only one. After each response we record every number that response accounted for - its `consignmentId` and all of its `packageNumber`s - and skip those later. Measured by running the committed parser over the sample file, that is what turns its **61 distinct long numbers** - 27 seventeen-digit shipment references plus 34 eighteen-digit package numbers - into **27 requests**, which then write **34 `Shipment` rows**: a two-parcel order is one consignment carrying both packages.
 
 `unresolved` is every input number Bring returned nothing for. It is reported, never guessed at.
 
@@ -398,7 +398,7 @@ const { resolveConsignments } = await import('./consignments')
 
 const CREDS = { uid: 'a@b.test', key: 'k', clientUrl: 'https://example.test/' }
 
-/** Shaped like Bring's real reply — see src/lib/bring/__fixtures__/. */
+/** Shaped like Bring's real reply - see src/lib/bring/__fixtures__/. */
 const reply = (
   consignmentId: string,
   packages: { packageNumber: string; recipientEmailAddress?: string }[],
@@ -408,7 +408,7 @@ const reply = (
 beforeEach(() => fetchTracking.mockReset())
 
 describe('resolveConsignments', () => {
-  it('asks for exactly one number per request — Bring answers about only one', async () => {
+  it('asks for exactly one number per request - Bring answers about only one', async () => {
     fetchTracking.mockResolvedValue([])
     await resolveConsignments(CREDS, ['111111111111111', '222222222222222'])
     expect(fetchTracking).toHaveBeenCalledTimes(2)
@@ -501,7 +501,7 @@ describe('resolveConsignments', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/lib/bring/consignments.test.ts`
-Expected: FAIL — `Failed to resolve import "./consignments"`.
+Expected: FAIL - `Failed to resolve import "./consignments"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -532,7 +532,7 @@ const str = (v: unknown): string | null =>
  * Turn the numbers found in a warehouse file into consignments.
  *
  * ONE NUMBER PER REQUEST. Bring answers about a single `q` however many are
- * sent — measured against the live API on 2026-08-12: ten in returned one
+ * sent - measured against the live API on 2026-08-12: ten in returned one
  * consignment, two in returned none, one in returned the right parcel 27 times
  * out of 27. Batching here would look like it worked and silently lose parcels.
  *
@@ -541,8 +541,8 @@ const str = (v: unknown): string | null =>
  * a response names its consignment AND all of its packages, everything it
  * accounted for can be struck off before the next request. Measured by running
  * the committed parser over the real 2026-08-11 file, that is what takes its 61
- * distinct long numbers — 27 seventeen-digit shipment references plus 34
- * eighteen-digit package numbers — down to 27 lookups.
+ * distinct long numbers - 27 seventeen-digit shipment references plus 34
+ * eighteen-digit package numbers - down to 27 lookups.
  */
 export async function resolveConsignments(
   creds: BringCredentials,
@@ -642,7 +642,7 @@ git commit -m "feat(delivery): resolve warehouse numbers into Bring consignments
 
 This is the heart of the plan. The rule, in full: orders whose `customerEmail` equals the recipient email case-insensitively, in a shop with `deliveryTrackingFrom` set, with `placedAt` at or before `receivedAt` and no more than 30 days before it, and `voidedAt` null. Exactly one match links. Zero or several is refused with a reason.
 
-**Refusing rather than taking the newest is deliberate**, and follows the rule `link.ts:46` already sets for ambiguous order numbers: a wrong link poisons that order's delivery figure permanently and invisibly, while a refused one is on screen. On the sample this costs nothing — all 27 are unique.
+**Refusing rather than taking the newest is deliberate**, and follows the rule `link.ts:46` already sets for ambiguous order numbers: a wrong link poisons that order's delivery figure permanently and invisibly, while a refused one is on screen. On the sample this costs nothing - all 27 are unique.
 
 The upper bound is when the file reached us, not the file's `Datum` column, because reading `Datum` means parsing their table again and that is the dependency this whole design removes. Receipt is hours after dispatch, which only widens the candidate set, and the exact-email match plus the refusal rule handle that.
 
@@ -655,7 +655,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { db } from '@/lib/db'
 import { matchByEmail } from './match'
 
-// Unique to THIS file — see "Test data convention" in the Global Constraints.
+// Unique to THIS file - see "Test data convention" in the Global Constraints.
 const TAG = '[intake-match-test]'
 const scoped = { shop: { name: { contains: TAG } } }
 
@@ -773,7 +773,7 @@ describe('matchByEmail', () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run --project delivery src/lib/bring/match.integration.test.ts`
-Expected: FAIL — `Failed to resolve import "./match"`.
+Expected: FAIL - `Failed to resolve import "./match"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -793,7 +793,7 @@ export type MatchOutcome = { orderId: string } | { orderId: null; reason: string
  * Find the order a parcel belongs to, from the recipient email Bring returns.
  *
  * The warehouse's own `Order` column cannot do this job. It is their internal
- * counter — Bring carries it as `senderReference` — and it happens to fall in
+ * counter - Bring carries it as `senderReference` - and it happens to fall in
  * the same numeric range as Panetti Norway's order numbers, so every value
  * matches a real order and none of them match the right one. Measured on the
  * 2026-08-11 sample: 0 of 27 correct. The recipient email scored 27 of 27.
@@ -861,14 +861,14 @@ git commit -m "feat(delivery): match a parcel to its order by the recipient emai
 
 **Interfaces:**
 - Consumes: `parseTrackingNumbers` (Task 2), `resolveConsignments` / `ResolvedConsignment` (Task 3), `matchByEmail` / `MatchOutcome` (Task 4), and `ImportParseError` from `./import`.
-- Also consumes `getDeliveryConfig` from **`../delivery/config`** — note the directory: it lives in `src/lib/delivery/config.ts`, not in `src/lib/bring/`. Its real signature is `getDeliveryConfig(): Promise<{ creds: BringCredentials | null; slackWebhookUrl: string | null }>`. It **never returns null and never throws**: an unreadable key yields `creds: null`, which is the "reconnect Bring" case. Destructure `creds` and test that, not the outer object.
+- Also consumes `getDeliveryConfig` from **`../delivery/config`** - note the directory: it lives in `src/lib/delivery/config.ts`, not in `src/lib/bring/`. Its real signature is `getDeliveryConfig(): Promise<{ creds: BringCredentials | null; slackWebhookUrl: string | null }>`. It **never returns null and never throws**: an unreadable key yields `creds: null`, which is the "reconnect Bring" case. Destructure `creds` and test that, not the outer object.
 - Produces:
   - `importWarehouseFile(buf: Buffer, filename: string, source: 'UPLOAD' | 'EMAIL', opts?: { deadline?: number }): Promise<ImportResult>`
   - `ImportResult` gains nothing; reuse the existing type from `import.ts:5`.
 
 `importTrackingFile` stays exactly as it is. This is a second, additive entry point. Wiring the upload page over to it is not this plan's job.
 
-One `Shipment` per `packageNumber`, all pointing at the matched order, `linkSource: 'BRING_EMAIL'`, `nextPollAt: new Date()` so the next cron run picks them up. Use `upsert` keyed on `trackingNumber`, updating only `orderId` and `linkSource` — a re-import must never undo a week of tracking, exactly as `link.ts:54-66` already does.
+One `Shipment` per `packageNumber`, all pointing at the matched order, `linkSource: 'BRING_EMAIL'`, `nextPollAt: new Date()` so the next cron run picks them up. Use `upsert` keyed on `trackingNumber`, updating only `orderId` and `linkSource` - a re-import must never undo a week of tracking, exactly as `link.ts:54-66` already does.
 
 The route is machine-to-machine. It must **not** call `currentUser()` or `assertAdmin`.
 
@@ -921,7 +921,7 @@ beforeAll(async () => {
 
   // importWarehouseFile refuses to run when Bring is not connected, so the
   // singleton must hold readable credentials. UPSERT, never delete-then-create:
-  // it is a fixed-id row no tag can isolate — see the Global Constraints.
+  // it is a fixed-id row no tag can isolate - see the Global Constraints.
   const connected = {
     bringApiUid: 'test@example.test',
     bringApiKey: encryptSecret('test-key'),
@@ -997,7 +997,7 @@ describe('importWarehouseFile', () => {
     expect(row?.rowsLinked).toBe(2)
   })
 
-  it('is safe to run twice — the second import adopts, never rebuilds', async () => {
+  it('is safe to run twice - the second import adopts, never rebuilds', async () => {
     const before = await db.shipment.findFirst({
       where: { trackingNumber: `${PREFIX}0001` },
     })
@@ -1055,7 +1055,7 @@ describe('importWarehouseFile', () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run --project delivery src/lib/bring/import-email.integration.test.ts`
-Expected: FAIL — `importWarehouseFile is not a function`.
+Expected: FAIL - `importWarehouseFile is not a function`.
 
 - [ ] **Step 3: Implement `importWarehouseFile`**
 
@@ -1267,7 +1267,7 @@ describe('POST /api/delivery/inbound', () => {
 - [ ] **Step 6: Run it to verify it fails**
 
 Run: `npx vitest run --project delivery src/app/api/delivery/inbound/route.integration.test.ts`
-Expected: FAIL — `Failed to resolve import "./route"`.
+Expected: FAIL - `Failed to resolve import "./route"`.
 
 - [ ] **Step 7: Implement the route**
 
@@ -1313,7 +1313,7 @@ type Attachment = { Name?: unknown; Content?: unknown }
  *
  * Answers 200 to almost everything on purpose. Postmark redelivers on a
  * non-2xx, and a file we have already taken and failed to parse will fail
- * exactly the same way on every retry — so a failure is RECORDED, in
+ * exactly the same way on every retry - so a failure is RECORDED, in
  * TrackingImport, and acknowledged. The delivery page is where a bad morning
  * becomes visible; the retry queue is not.
  */
@@ -1407,7 +1407,7 @@ Measured against the live API on 2026-08-12: ten numbers in returned one consign
 Append to `src/lib/bring/sync.integration.test.ts`, following the mocking style already used in that file for `fetchTracking`:
 
 ```ts
-it('asks Bring about one parcel per request — it answers about only one', async () => {
+it('asks Bring about one parcel per request - it answers about only one', async () => {
   // Two due parcels. With a batch size above 1 they go out in a single request
   // and Bring replies about one of them, leaving the other falsely marked
   // unknown. Reuse this file's existing fixture helpers and its fetchTracking
@@ -1423,7 +1423,7 @@ Read the surrounding file first and place this inside the describe block that al
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run --project delivery src/lib/bring/sync.integration.test.ts`
-Expected: FAIL — one call carrying 2 numbers.
+Expected: FAIL - one call carrying 2 numbers.
 
 - [ ] **Step 3: Change the batch size**
 
@@ -1434,7 +1434,7 @@ In `src/lib/bring/sync.ts`, replace the `BATCH` declaration and its comment:
  * How many parcels go out in one request.
  *
  * One. Bring's tracking endpoint answers about a SINGLE `q` however many are
- * sent — measured 2026-08-12: ten in returned one consignment, two in returned
+ * sent - measured 2026-08-12: ten in returned one consignment, two in returned
  * none, one in returned the right parcel 27 times out of 27. A larger number
  * looks like it works, because the batch succeeds and most of its parcels are
  * then marked "Bring does not know this number yet" and quietly retried.
@@ -1461,7 +1461,7 @@ In `prisma/schema.prisma`, update the `linkSource` doc comment (currently `/// W
   linkSource     String?
 ```
 
-This is a comment. Do **not** run `npm run db:push` — the column is unchanged.
+This is a comment. Do **not** run `npm run db:push` - the column is unchanged.
 
 - [ ] **Step 6: Commit**
 
@@ -1480,7 +1480,7 @@ git commit -m "fix(delivery): Bring answers about one parcel per request, not te
 - [ ] **Step 1: Run the whole suite**
 
 Run: `npm run test`
-Expected: PASS. Note the total file count before and after — a bad glob silently runs fewer tests, which looks like success. `src/lib/woo/sync.test.ts` is known to flake under DB contention and is unrelated to this branch; re-run it alone to confirm before treating a failure there as real.
+Expected: PASS. Note the total file count before and after - a bad glob silently runs fewer tests, which looks like success. `src/lib/woo/sync.test.ts` is known to flake under DB contention and is unrelated to this branch; re-run it alone to confirm before treating a failure there as real.
 
 - [ ] **Step 2: Lint and build**
 
@@ -1516,18 +1516,18 @@ Send one message to the inbound address and open Postmark's **Activity** view fo
 
 Check this before anything else, because both ways it can fail are silent on our side:
 
-- **401** — the `token` in the webhook URL does not match `DELIVERY_INBOUND_SECRET` in Vercel. The route refuses before it does anything at all.
-- **308** — the middleware exemption for `/api/delivery/inbound` (`src/middleware.ts`, `MACHINE_PATHS`) is missing or the path changed, so the canonical-host redirect caught the delivery.
+- **401** - the `token` in the webhook URL does not match `DELIVERY_INBOUND_SECRET` in Vercel. The route refuses before it does anything at all.
+- **308** - the middleware exemption for `/api/delivery/inbound` (`src/middleware.ts`, `MACHINE_PATHS`) is missing or the path changed, so the canonical-host redirect caught the delivery.
 
 In both cases **nothing is written**: no `TrackingImport` row, no `Shipment`, no error anywhere in our logs. The delivery page then looks like a quiet day, permanently, and the only place the truth exists is Postmark's Activity view. That is why this is a step and not a footnote.
 
 - [ ] **Step 7: Switch the two Norway shops on**
 
-On `https://panetti.vercel.app/settings/delivery`, set the tracking-from date for **Panetti Norway** and **Mazzetti Norway** to **today** — the day you switch on, not a backdated one. Leave Sweden, Denmark, Germany and Finland empty until we know whether the warehouse reports on them. This is data, not code.
+On `https://panetti.vercel.app/settings/delivery`, set the tracking-from date for **Panetti Norway** and **Mazzetti Norway** to **today** - the day you switch on, not a backdated one. Leave Sweden, Denmark, Germany and Finland empty until we know whether the warehouse reports on them. This is data, not code.
 
 **Today, and not earlier, on purpose.** There is no historical backfill in this design: the only parcels we will ever hold are the ones the warehouse reports from now on. But `src/lib/delivery/alerts.ts` treats an order in a delivery-tracked shop with no shipment as a late-alert candidate across a 90-day window (`ALERT_WINDOW_DAYS = 90`). Backdate the date and the first cron run after switch-on posts a Slack message about hundreds of orders that shipped perfectly normally, months ago, and simply predate the feed.
 
-**Expected corollary: for roughly the first week the delivery page will look sparse.** Parcels dispatched now belong to orders placed days earlier — before the switch-on date — so those orders are outside tracking and their parcels have no order to attach to. This is correct behaviour, not a fault, and it resolves on its own as orders placed after switch-on start shipping. Do not respond to it by backdating the date.
+**Expected corollary: for roughly the first week the delivery page will look sparse.** Parcels dispatched now belong to orders placed days earlier - before the switch-on date - so those orders are outside tracking and their parcels have no order to attach to. This is correct behaviour, not a fault, and it resolves on its own as orders placed after switch-on start shipping. Do not respond to it by backdating the date.
 
 - [ ] **Step 8: Prove it with the real file**
 
@@ -1535,9 +1535,9 @@ Upload `LTAS_Eod_Report_20260811.xlsx` on `https://panetti.vercel.app/delivery`,
 
 Expected, on the sample file: 61 distinct long numbers read out of it, **27 consignments resolved**, **34 shipments written** (one per package), and **0 unmatched**.
 
-The delivery page will say **"Parsed 27, Linked 27, Unmatched 0"**, and 27 is the right number to see there — `rowsParsed` counts consignments plus the numbers Bring could not resolve, not raw long numbers. A file lists two long numbers per parcel, so counting numbers would report a flawless import as half of them vanishing. Do not read the 27 as 7 parcels having gone missing.
+The delivery page will say **"Parsed 27, Linked 27, Unmatched 0"**, and 27 is the right number to see there - `rowsParsed` counts consignments plus the numbers Bring could not resolve, not raw long numbers. A file lists two long numbers per parcel, so counting numbers would report a flawless import as half of them vanishing. Do not read the 27 as 7 parcels having gone missing.
 
-If the unmatched count is not zero, read the reasons on the page before changing any code — every refusal names itself, and the most likely honest cause is a shop that has not been switched on.
+If the unmatched count is not zero, read the reasons on the page before changing any code - every refusal names itself, and the most likely honest cause is a shop that has not been switched on.
 
 ---
 
@@ -1545,10 +1545,10 @@ If the unmatched count is not zero, read the reasons on the page before changing
 
 **Spec coverage.** Every section of the spec maps to a task: intake flow → Tasks 2/3/5; which number is stored → Task 3 produces `packageNumbers`, Task 5 writes one `Shipment` each; matching rule → Task 4; receipt-time upper bound → Task 4; `linkSource: BRING_EMAIL` → Tasks 5 and 6; inbound route, secret, attachment limits, `TrackingImport` on every delivery → Task 5; `.xlsx` support → Tasks 1 and 2; the `BATCH` bug → Task 6; switching on Norway only → Task 7; anonymised fixtures → Global Constraints, and every fixture in this plan uses invented values.
 
-**Placeholders.** None. Task 6 Step 1 is the one place that says "read the surrounding file first" — that is deliberate, because `sync.integration.test.ts` is 14.5 KB with its own fixture helpers and mock names, and inventing a parallel set of fixtures for it would be worse than reusing what is there.
+**Placeholders.** None. Task 6 Step 1 is the one place that says "read the surrounding file first" - that is deliberate, because `sync.integration.test.ts` is 14.5 KB with its own fixture helpers and mock names, and inventing a parallel set of fixtures for it would be worse than reusing what is there.
 
-**Type consistency.** `ResolvedConsignment` is produced in Task 3 and consumed in Task 5 with the same four fields. `MatchOutcome` is produced in Task 4 and destructured in Task 5 as `outcome.orderId`. `ImportResult` is reused from `import.ts:5` unchanged, and `UnmatchedRow` from `link.ts:4` keeps its `{ orderNumber, trackingNumber, reason }` shape — Task 5 fills `orderNumber` with the recipient name because that is the honest label for a row identified by person rather than by number.
+**Type consistency.** `ResolvedConsignment` is produced in Task 3 and consumed in Task 5 with the same four fields. `MatchOutcome` is produced in Task 4 and destructured in Task 5 as `outcome.orderId`. `ImportResult` is reused from `import.ts:5` unchanged, and `UnmatchedRow` from `link.ts:4` keeps its `{ orderNumber, trackingNumber, reason }` shape - Task 5 fills `orderNumber` with the recipient name because that is the honest label for a row identified by person rather than by number.
 
-**Resolved during review, not left to the implementer:** `getDeliveryConfig` is in `src/lib/delivery/config.ts`, not `src/lib/bring/`, so `import.ts` reaches it as `'../delivery/config'`. It returns `{ creds, slackWebhookUrl }` and never returns null or throws — an unreadable key surfaces as `creds: null`. Task 5's code and its test fixture both reflect that: the test upserts a connected `DeliveryConfig` in `beforeAll`, because without one `importWarehouseFile` refuses to run and every assertion in the file would fail for the wrong reason.
+**Resolved during review, not left to the implementer:** `getDeliveryConfig` is in `src/lib/delivery/config.ts`, not `src/lib/bring/`, so `import.ts` reaches it as `'../delivery/config'`. It returns `{ creds, slackWebhookUrl }` and never returns null or throws - an unreadable key surfaces as `creds: null`. Task 5's code and its test fixture both reflect that: the test upserts a connected `DeliveryConfig` in `beforeAll`, because without one `importWarehouseFile` refuses to run and every assertion in the file would fail for the wrong reason.
 
 **Known risk, accepted:** Task 5's integration test mocks `./consignments` rather than the network, so it never proves the real Bring call shape. That is Task 3's job, and Task 3 mocks `./client` for the same reason. The only thing neither covers is `client.ts` itself, which is unchanged by this plan and already has `client.test.ts`. Task 7 Step 7 is what exercises the whole chain against the live API with the real file.

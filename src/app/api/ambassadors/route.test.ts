@@ -101,7 +101,7 @@ describe('POST /api/ambassadors', () => {
     expect(again.status).toBe(409)
   })
 
-  it('lets an admin be an ambassador too — same email is allowed and tracked', async () => {
+  it('lets an admin be an ambassador too - same email is allowed and tracked', async () => {
     await asAdmin()
     // The admin's own email already has a login. Creating an ambassador on it is
     // fine: the code is tracked without a separate ambassador login, and the admin
@@ -249,7 +249,7 @@ describe('POST /api/ambassadors with products', () => {
     // A refused create writes neither the ambassador nor its gifts. Note what
     // this does and does not prove: the 409 comes from the ambassador insert
     // itself, so a two-step create-then-gift version would pass this too. The
-    // failure a single nested write actually rules out is the other order —
+    // failure a single nested write actually rules out is the other order -
     // ambassador written, gifts fail, 500 returned, and the retry meets "that
     // email is taken" with no way to finish the job. That one is prevented by
     // construction, not by this test.

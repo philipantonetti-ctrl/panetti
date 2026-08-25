@@ -4,7 +4,7 @@
  * a gateway's HTML page never reaches a log line.
  *
  * The host is the trap. The Developer Portal advertises
- * `https://api.finance.visma.net/erp/service`, which is the token's AUDIENCE —
+ * `https://api.finance.visma.net/erp/service`, which is the token's AUDIENCE -
  * every path under it 404s. Requests go to `https://integration.visma.net/API`.
  * Confirmed by probing unauthenticated: 404 means no route, 401 means the route
  * is there and only auth is missing.
@@ -41,7 +41,7 @@ export class VismaError extends Error {
  * The three values from the environment, or null when they are not all there.
  *
  * Null is not a failure. An unconfigured integration is skipped quietly, the
- * same way ensureWebhooks skips with no APP_URL — a deployment without Visma
+ * same way ensureWebhooks skips with no APP_URL - a deployment without Visma
  * credentials is a normal deployment.
  */
 export function vismaCredentials(): VismaCredentials | null {
@@ -106,7 +106,7 @@ export type VismaRequestOpts = { deadline?: number }
  * Without this a deadline does not bound anything. The sync route gives the B2B
  * sales import until 265s of a 300s platform ceiling; a request starting at
  * 264.9s and taking its full 60 seconds finishes around 325s, overruns the
- * invocation, and takes the parcel poll and the delivery alert down with it —
+ * invocation, and takes the parcel poll and the delivery alert down with it -
  * exactly what the deadline exists to prevent. `bring/client.ts` clamps for
  * this reason and this is the same rule.
  *
@@ -116,7 +116,7 @@ export type VismaRequestOpts = { deadline?: number }
  * Each is clamped to what remains when IT starts, so the pair cannot together
  * outlive the budget either.
  *
- * A caller that passes no deadline — the other three Visma imports — is
+ * A caller that passes no deadline - the other three Visma imports - is
  * unaffected and still gets the full ceiling.
  *
  * Never below 1ms: an expired budget still has to be a timeout a caller can

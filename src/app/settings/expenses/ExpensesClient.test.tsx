@@ -47,7 +47,7 @@ describe('ExpensesClient with no shops (the live production state)', () => {
     renderWithToast(<ExpensesClient email="admin@test.local" shops={[]} />)
 
     // An expense needs a shopId and a category list. With no shop there is
-    // neither, so the modal could never save — do not offer the door.
+    // neither, so the modal could never save - do not offer the door.
     await waitFor(() => {
       expect(screen.queryByText('Loading…')).toBeNull()
     })
@@ -85,7 +85,7 @@ const EXPENSE_B = {
   createdAt: '2024-01-01T00:00:00.000Z',
 }
 
-describe('ExpensesClient — load() fails (a page-load failure)', () => {
+describe('ExpensesClient - load() fails (a page-load failure)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -101,7 +101,7 @@ describe('ExpensesClient — load() fails (a page-load failure)', () => {
   }
 
   // The bug: load() discarded res.ok, so `d.expenses ?? []` quietly became `[]`
-  // and the table said "No expenses." — a lie when the fetch actually failed.
+  // and the table said "No expenses." - a lie when the fetch actually failed.
   it('shows the server error inline in the table, not a toast that fades', async () => {
     vi.stubGlobal('fetch', mockFailingList())
 
@@ -111,7 +111,7 @@ describe('ExpensesClient — load() fails (a page-load failure)', () => {
       expect(screen.getByText('Database is unreachable')).toBeTruthy()
     })
 
-    // Inline, in the table body, matching the existing empty-row convention —
+    // Inline, in the table body, matching the existing empty-row convention -
     // not a toast that fades and leaves an unexplained blank table.
     const cell = screen.getByText('Database is unreachable').closest('td')
     expect(cell?.getAttribute('colspan')).toBe('10')
@@ -129,7 +129,7 @@ describe('ExpensesClient — load() fails (a page-load failure)', () => {
   })
 })
 
-describe('ExpensesClient — bulk delete fails', () => {
+describe('ExpensesClient - bulk delete fails', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -156,7 +156,7 @@ describe('ExpensesClient — bulk delete fails', () => {
   }
 
   // The bug: remove() awaited Promise.all and ignored every result, so a failed
-  // DELETE was reported exactly like a successful one — nothing told the user.
+  // DELETE was reported exactly like a successful one - nothing told the user.
   it('says the delete failed, rather than silently leaving the row', async () => {
     vi.stubGlobal('fetch', mockListThenTotalDeleteFailure())
 
@@ -171,7 +171,7 @@ describe('ExpensesClient — bulk delete fails', () => {
       expect(screen.queryByText(/could not delete/i)).not.toBeNull()
     })
 
-    // The row is still there — the delete did not actually happen, and the
+    // The row is still there - the delete did not actually happen, and the
     // reload (ground truth from the server) proves it.
     expect(screen.getByText('Office rent')).toBeTruthy()
   })
@@ -204,7 +204,7 @@ describe('ExpensesClient — bulk delete fails', () => {
     })
   }
 
-  // Partial failure must be reported honestly — not folded into a blanket
+  // Partial failure must be reported honestly - not folded into a blanket
   // success, and not folded into a blanket failure either.
   it('reports a partial bulk-delete failure honestly', async () => {
     vi.stubGlobal('fetch', mockListThenPartialDeleteFailure())
@@ -218,7 +218,7 @@ describe('ExpensesClient — bulk delete fails', () => {
     fireEvent.click(screen.getByLabelText('Select Software license'))
     fireEvent.click(screen.getByRole('button', { name: 'Delete 2' }))
 
-    // Says 1 succeeded and 1 failed — not "deleted" and not "failed" outright.
+    // Says 1 succeeded and 1 failed - not "deleted" and not "failed" outright.
     await waitFor(() => {
       expect(screen.queryByText(/1 of 2|1 could not be deleted/i)).not.toBeNull()
     })
@@ -232,7 +232,7 @@ describe('ExpensesClient — bulk delete fails', () => {
   })
 })
 
-describe('ExpensesClient — the add-expense modal save() fails', () => {
+describe('ExpensesClient - the add-expense modal save() fails', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })

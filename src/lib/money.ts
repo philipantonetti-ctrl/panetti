@@ -1,6 +1,6 @@
 /**
  * All money in this app is an INTEGER number of minor units (øre, cents).
- * Never use a float for money — 0.1 + 0.2 !== 0.3.
+ * Never use a float for money - 0.1 + 0.2 !== 0.3.
  * This file is the only place allowed to know about that convention.
  */
 
@@ -24,7 +24,7 @@ export function toMajor(minor: number): number {
 /**
  * Minor units -> major, keeping "nobody said" as null.
  *
- * `toMajor` is a division, and `null / 100` is 0 in JavaScript — so a nullable
+ * `toMajor` is a division, and `null / 100` is 0 in JavaScript - so a nullable
  * money column read through `toMajor` silently becomes a real zero, and the
  * difference between "this cost nothing" and "nobody entered anything" is lost
  * without a word. That is not academic: `Order.fulfillmentCost` is exactly such
@@ -98,7 +98,7 @@ export function formatMoney(minor: number, currency: string): string {
 /**
  * The same amount, to the krone. For the dashboard's headline figures.
  *
- * Øre are real everywhere else in this app — an order's total, a product's
+ * Øre are real everywhere else in this app - an order's total, a product's
  * cost, a carrier's invoice line all have to reconcile to the øre against
  * someone else's books. These four figures reconcile to nothing: they are
  * sums over a whole period, consolidated across four currencies at each

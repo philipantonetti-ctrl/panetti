@@ -29,22 +29,22 @@ type Payload = {
   connected: boolean
   // How many campaigns on a split account in scope still have no store. Their
   // spend already lands on the account's default shop (never dropped), but
-  // the design requires that fallback to be visible, not silent — the same
+  // the design requires that fallback to be visible, not silent - the same
   // reasoning as ProductsClient's uncosted-products notice.
   unassignedCampaigns: number
   // True when a split account in scope has a campaign resolving outside
-  // scope — "all stores" still only ever means all ACTIVE stores, so this
+  // scope - "all stores" still only ever means all ACTIVE stores, so this
   // can be true even with nothing filtered (src/lib/ads/attribution.ts,
   // hasPartialSplitAccounts). Drives SpendCheck's partial-scope caution
   // alongside the ShopFilter selection itself.
   partialAccounts: boolean
-  // Already sent by the route (src/app/api/marketing/route.ts) — the resolved
+  // Already sent by the route (src/app/api/marketing/route.ts) - the resolved
   // range for whichever preset or custom dates are in effect. BreakdownTable
   // needs concrete dates, not a preset name, so this is read rather than
   // re-derived: re-resolving 'this_month' client-side would risk disagreeing
   // with the server's own timezone-aware resolution near a day boundary.
   range: { from: string; to: string }
-  // Echoed straight from the query the route actually served (route.ts) —
+  // Echoed straight from the query the route actually served (route.ts) -
   // NOT re-derived from the client's own `platform` state, which is pending
   // the instant a filter changes and can outrun the fetch it triggered. The
   // chart and table divide whole-store figures by spend; they must gate that
@@ -67,7 +67,7 @@ function asBreakdownProvider(platform: string | null): 'meta' | 'google' | null 
   return platform === 'meta' || platform === 'google' ? platform : null
 }
 
-/** Two options, so a segmented control — a dropdown would hide half of them. */
+/** Two options, so a segmented control - a dropdown would hide half of them. */
 function PlatformSwitcher({
   provider,
   onChange,
@@ -101,7 +101,7 @@ function PlatformSwitcher({
 
 /**
  * Campaigns belong to one ad account. Summing them across stores would look
- * like a real table and mean nothing — so the breakdown only ever mounts for
+ * like a real table and mean nothing - so the breakdown only ever mounts for
  * exactly one selected shop, never "all" (the default) and never several.
  */
 function SingleStoreOnly() {
@@ -113,7 +113,7 @@ function SingleStoreOnly() {
   )
 }
 
-/** Skeletons in the shape of the content — never a spinner in the middle of a table. */
+/** Skeletons in the shape of the content - never a spinner in the middle of a table. */
 function Skeleton() {
   return (
     <div className="space-y-4">
@@ -156,7 +156,7 @@ export function MarketingClient({
   initialPreset?: Preset
   hasAccounts: boolean
   // Workspace-level list of connected platforms, from the server component
-  // (src/app/marketing/page.tsx) — never from a /api/marketing response,
+  // (src/app/marketing/page.tsx) - never from a /api/marketing response,
   // whose byPlatform narrows to whatever platform filter is active and would
   // strand the dropdown on the one option already chosen.
   platforms?: { provider: string; label: string }[]
@@ -217,14 +217,14 @@ export function MarketingClient({
   }, [preset, from, to, selected, platform, tick, refreshNonce, hasAccounts])
 
   const currency = data?.displayCurrency ?? 'USD'
-  // A real shop id only when exactly one is chosen — ShopFilter's own "all"
+  // A real shop id only when exactly one is chosen - ShopFilter's own "all"
   // (empty array) and its explicit "none" sentinel both fail this on purpose.
   const singleShopId = selected.length === 1 && selected[0] !== NO_SHOPS ? selected[0] : null
   // A page filter narrowed to Meta and a drill-down open on Google would put
   // two scopes on one screen under one header. Read off the pending
   // `platform` selection (not `data.platform`): BreakdownTable makes its own
-  // independent fetch and shows its own loading/error state, so — unlike the
-  // whole-store ratios in Finding 1 — there is no stale-data risk in
+  // independent fetch and shows its own loading/error state, so - unlike the
+  // whole-store ratios in Finding 1 - there is no stale-data risk in
   // following the filter immediately.
   const lockedProvider = asBreakdownProvider(platform)
   const breakdownProvider = lockedProvider ?? provider
@@ -287,7 +287,7 @@ export function MarketingClient({
                 if (next.to !== undefined) setTo(next.to)
               }}
             />
-            {/* Syncs AD spend — meaningless without an ad account, so it keeps
+            {/* Syncs AD spend - meaningless without an ad account, so it keeps
                 the narrower gate. */}
             {hasAccounts && (
               <button
@@ -339,7 +339,7 @@ export function MarketingClient({
                     series={data.series}
                     currency={currency}
                     // Gated on the platform that produced `data`, not the
-                    // pending `platform` selection — see the `Payload.platform`
+                    // pending `platform` selection - see the `Payload.platform`
                     // comment above for why that distinction is load-bearing.
                     platformFiltered={data.platform !== null}
                   />

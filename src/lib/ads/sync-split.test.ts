@@ -15,7 +15,7 @@ const ROW = (campaignId: string, campaignName: string, spend: number) => ({
   reach: 0,
 })
 
-// vi.mock is HOISTED to the top of the module — it must never sit inside
+// vi.mock is HOISTED to the top of the module - it must never sit inside
 // beforeEach or a describe block. Partial-mock so the rest of ./google is real.
 vi.mock('./google', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./google')>()),

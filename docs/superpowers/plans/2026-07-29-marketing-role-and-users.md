@@ -6,7 +6,7 @@
 
 **Architecture:** Third value in the existing role string; a new `assertStaff` guard allow-lists exactly four API surfaces; a top-level `/ambassadors` staff page (stats + roster); `/settings/users` + `/api/users` for login management; middleware/nav/landing fences per role. Spec: `docs/superpowers/specs/2026-07-29-marketing-role-and-users-design.md`.
 
-**Tech Stack:** Next.js App Router, Prisma (no migration — role is a string), vitest (DB-backed route tests, jsdom component tests), Playwright.
+**Tech Stack:** Next.js App Router, Prisma (no migration - role is a string), vitest (DB-backed route tests, jsdom component tests), Playwright.
 
 ---
 
@@ -35,12 +35,12 @@ export function canViewAmbassador(user: SessionUser | null, ambassadorId: string
   return user?.ambassadorId === ambassadorId
 }
 
-/** Ambassador management and statistics — the marketing half of the house. */
+/** Ambassador management and statistics - the marketing half of the house. */
 export function assertStaff(user: SessionUser | null): asserts user is SessionUser {
   if (!isStaff(user)) throw new AuthError('Staff only')
 }
 
-// login/route.ts — replace the cast and the landing block
+// login/route.ts - replace the cast and the landing block
 import type { Role } from '@/lib/auth/session'
 role: user.role as Role,
 let redirectTo = '/dashboard'
@@ -73,8 +73,8 @@ if (user.role === 'MARKETING' && !MARKETING_PAGES.some((p) => req.nextUrl.pathna
 
 **Files:** Modify `src/app/api/ambassadors/route.ts`, `src/app/api/ambassadors/[id]/route.ts`, `src/app/api/ambassadors/[id]/codes/route.ts` (assertAdmin → assertStaff). Create test `src/app/api/marketing-role.test.ts`.
 
-- [x] **Step 1: Failing tests** (new file, cookie-mock pattern from `leaderboard.test.ts`): with a MARKETING session — GET `/api/ambassadors` 200; POST creates one (marked email, wiped after); GET `/api/metrics` 403; GET `/api/orders` 403; GET `/api/settings` 403.
-- [x] **Step 2: Flip the three route files' guards** (import assertStaff, replace assertAdmin call sites — nothing else).
+- [x] **Step 1: Failing tests** (new file, cookie-mock pattern from `leaderboard.test.ts`): with a MARKETING session - GET `/api/ambassadors` 200; POST creates one (marked email, wiped after); GET `/api/metrics` 403; GET `/api/orders` 403; GET `/api/settings` 403.
+- [x] **Step 2: Flip the three route files' guards** (import assertStaff, replace assertAdmin call sites - nothing else).
 - [x] **Step 3: Green. Commit** `feat: marketing manages ambassadors; every financial door still answers 403`.
 
 ### Task 4: The stats endpoint
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
   /* const me = await currentUser(); assertAdmin(me); const { id } = await params;
      if (me.userId === id) 409 'You cannot remove your own login.';
-     deleteMany({ where: { id, role: { in: ['ADMIN','MARKETING'] } } }) — ambassador logins are not this page's to delete;
+     deleteMany({ where: { id, role: { in: ['ADMIN','MARKETING'] } } }) - ambassador logins are not this page's to delete;
      count 0 → 404 'No such login' */
 }
 ```
@@ -172,9 +172,9 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
 - Modify: `src/app/settings/ambassadors/page.tsx` → `redirect('/ambassadors')`; `src/components/shell/AppShell.tsx` (role-aware nav); `src/app/page.tsx`, `src/app/admin/page.tsx` (marketing → `/ambassadors`); the account page passes the user's role to AppShell if it renders staff nav.
 - Test: `src/app/ambassadors/AmbassadorsHubClient.test.tsx`
 
-- [x] **Step 1: Failing component test:** stub fetch of `/api/ambassadors/stats` (one row, one shopOption) and `/api/ambassadors` (empty roster); marketing render shows 'Top ambassadors', the row, the shop filter — and NO 'Dashboard' nav link; admin render DOES show 'Dashboard'.
+- [x] **Step 1: Failing component test:** stub fetch of `/api/ambassadors/stats` (one row, one shopOption) and `/api/ambassadors` (empty roster); marketing render shows 'Top ambassadors', the row, the shop filter - and NO 'Dashboard' nav link; admin render DOES show 'Dashboard'.
 - [x] **Step 2: Implement.** Page guard: no user → `/login`; AMBASSADOR → `/portal`; else render hub with `email` and `role`. Hub: `AppShell role={role}` + `PageHeader title="Ambassadors"` carrying a shop `<select>` (from shopOptions, 'All shops' default) and preset `<select>` (reuse the dashboard's preset list), refetching stats on change; `Leaderboard rows currency` on top; the moved `AmbassadorsClient` below. AppShell: `role?: 'ADMIN' | 'MARKETING'` prop, default `'ADMIN'`; marketing sees one nav group (`People` → Ambassadors) and the wordmark links `/ambassadors`; the admin NAV's Analytics group gains the Ambassadors item after Marketing.
-- [x] **Step 3: Green (component test + full suite — settings/ambassadors component test moved, page redirect test via e2e).**
+- [x] **Step 3: Green (component test + full suite - settings/ambassadors component test moved, page redirect test via e2e).**
 - [x] **Step 4: Commit** `feat: a staff ambassadors page - statistics on top, the roster below`.
 
 ### Task 7: The Users settings page

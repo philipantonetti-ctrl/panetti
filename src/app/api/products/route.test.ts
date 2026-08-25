@@ -76,7 +76,7 @@ describe('GET /api/products', () => {
 
   it('keeps a product that has no purchasing row at all', async () => {
     // ensureSupplyItems skips a blank or all-zeros SKU, so such a product can
-    // never be hidden. It must still be costable — silently dropping it would
+    // never be hidden. It must still be costable - silently dropping it would
     // lose money on every order of it.
     admin()
     expect(await skus()).toContain(`${SKU}-NONE`)

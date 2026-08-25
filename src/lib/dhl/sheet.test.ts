@@ -39,7 +39,7 @@ describe('xlsxToRows', () => {
   /**
    * The bug that made DHL's real export look empty.
    *
-   * Excel writes an unused cell as `<c r="B2" s="1"/>` — self-closing, no
+   * Excel writes an unused cell as `<c r="B2" s="1"/>` - self-closing, no
    * value. A reader that only matches the paired `<c ...>…</c>` form skips past
    * it and swallows the NEXT cell's value, filing it under the wrong column. On
    * the real file that made "Receiver Reference" read as blank and "VAT Country

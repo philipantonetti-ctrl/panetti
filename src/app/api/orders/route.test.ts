@@ -16,7 +16,7 @@ let shopA = ''
 let shopB = ''
 let prodA = ''
 let shopId = ''
-// A fixed day used only by the cross-currency COGS test's FxRate fixtures —
+// A fixed day used only by the cross-currency COGS test's FxRate fixtures -
 // never used as an order date anywhere else in this file, so cleaning up by
 // this exact date can never touch a row another test depends on.
 const FX_DATE = new Date('2026-07-20')
@@ -35,22 +35,22 @@ async function wipe() {
   await db.shop.deleteMany({ where: { name: { contains: MARK } } })
   await db.ambassador.deleteMany({ where: { email: { contains: 'orders-test' } } })
   await db.processingFee.deleteMany({ where: { gateway: 'Dintero Checkout' } })
-  // Scoped to the exact date and currencies this file seeds — never a blanket
+  // Scoped to the exact date and currencies this file seeds - never a blanket
   // wipe of FxRate, which other tests and real data depend on.
   await db.fxRate.deleteMany({ where: { date: FX_DATE, base: { in: ['NOK', 'EUR'] }, quote: 'USD' } })
   // DeliveryPromise has no shop to tag. Scoped to the fake, file-exclusive
-  // country code below — a bare '*' would race the delivery route suite's own
+  // country code below - a bare '*' would race the delivery route suite's own
   // '*' fixture in the shared database (see src/app/api/delivery/route.integration.test.ts).
   await db.deliveryPromise.deleteMany({ where: { country: PROMISE_COUNTRY } })
   // ShippingRate hangs off a SKU, not a shop, so there is no `contains: MARK`
-  // to sweep it by. Cleaned by the file-exclusive SKU prefix below instead —
+  // to sweep it by. Cleaned by the file-exclusive SKU prefix below instead -
   // and by prefix rather than by id, so a run that crashes before its
   // afterEach cannot leave a rate behind that silently re-prices another
   // file's orders.
   // insensitive because a SKU is matched case-insensitively everywhere else
   // (normaliseSku) and this file deliberately types one in lower case. A
   // case-sensitive sweep left that row behind, and the next run then read a
-  // rate that was supposed to be absent — the leak this comment exists to stop.
+  // rate that was supposed to be absent - the leak this comment exists to stop.
   await db.shippingRate.deleteMany({
     where: { sku: { startsWith: SHIP_SKU_PREFIX, mode: 'insensitive' } },
   })
@@ -61,7 +61,7 @@ async function wipe() {
 const SHIP_SKU_PREFIX = 'ZZORDTEST'
 const SHIP_SKU = `${SHIP_SKU_PREFIX}-OVEN`
 
-// Reserved for this file's delivery-state fixtures only — never the real
+// Reserved for this file's delivery-state fixtures only - never the real
 // wildcard '*', which src/app/api/delivery/route.integration.test.ts owns.
 const PROMISE_COUNTRY = 'ZZ-ORDERS-TEST'
 
@@ -134,7 +134,7 @@ describe('GET /api/orders', () => {
     await asAdmin()
     await order(shopA, prodA, 'A-await', '2026-03-21T12:00:00Z', [{ name: 'Awaiting', sku: 'AW', quantity: 1 }], { status: 'pending' })
 
-    // No includeVoided: the default view hides voided orders — but a pending
+    // No includeVoided: the default view hides voided orders - but a pending
     // order is live and must appear, just with dashes instead of profit.
     // (Scoped to our own shops: test files share one database in parallel, and
     // an unscoped page would race other files' fixtures.)
@@ -253,7 +253,7 @@ describe('GET /api/orders', () => {
     await order(shopA, prodA, 'A-figured', '2026-03-25T12:00:00Z', [{ name: 'Gun', sku: 'G', quantity: 2 }], {
       ambassadorId: amb.id, couponCode: 'EMMA10',
     })
-    // Same gateway fee, same shop, same day — but hand-entered for a business
+    // Same gateway fee, same shop, same day - but hand-entered for a business
     // customer. Proves the fee gate itself discriminates: a feeRow exists and
     // still charges A-figured above, yet charges this order nothing.
     const b2bOnA = await db.b2bCustomer.create({
@@ -280,13 +280,13 @@ describe('GET /api/orders', () => {
     expect(o.figures.margin).toBeCloseTo(2810 / 12000, 5)
 
     // Reverting the gate to the old unconditional "feeRow ? ... : 0" would
-    // make this fail while A-figured's fee above kept passing — the pairing
+    // make this fail while A-figured's fee above kept passing - the pairing
     // is what proves the gate, not just an absent fee row, zeroes it.
     const b2b = body.orders.find((x: { number: string }) => x.number === 'A-figured-B2B')
     expect(b2b.figures.fee).toBe(0)
   })
 
-  it('a voided order gets null figures — it earns nothing, and the list never pretends otherwise', async () => {
+  it('a voided order gets null figures - it earns nothing, and the list never pretends otherwise', async () => {
     await asAdmin()
     await order(shopA, prodA, 'A-void', '2026-03-18T12:00:00Z', [{ name: 'Back', sku: 'B-2', quantity: 1 }], { status: 'cancelled' })
 
@@ -355,7 +355,7 @@ describe('B2B orders in the order list', () => {
 
   it('charges shipping per unit by SKU, and leaves an uncosted SKU exactly as it was', async () => {
     await asAdmin()
-    // 15.00 per order, flat, from March 1st — what this shop has always charged.
+    // 15.00 per order, flat, from March 1st - what this shop has always charged.
     await db.fulfillmentRate.create({
       data: { shopId: shopA, perOrder: 1500, effectiveFrom: new Date('2026-03-01') },
     })
@@ -381,7 +381,7 @@ describe('B2B orders in the order list', () => {
     const shipping = (body: { orders: { number: string; figures: { fulfillment: number } }[] }, number: string) =>
       body.orders.find((x) => x.number === number)!.figures.fulfillment
 
-    // Before a single rate is typed — the state every installation is in on the
+    // Before a single rate is typed - the state every installation is in on the
     // day this ships. Every order must carry the figure it always has.
     const before = await (await get(day)).json()
     expect(shipping(before, 'A-perunit')).toBe(1500)
@@ -406,7 +406,7 @@ describe('B2B orders in the order list', () => {
   it('charges a B2B order no gateway fee and its own shipping cost', async () => {
     await asAdmin()
     // No ProcessingFee row exists here, so a zero fee alone doesn't prove the
-    // gate discriminates — that's proven where a live fee actually applies,
+    // gate discriminates - that's proven where a live fee actually applies,
     // in "computes each order figure ... exactly like the engine" above
     // (that test's B2B order pays 0 under the very feeRow its webshop
     // sibling pays 290 under). This test confirms the other half: a B2B
@@ -417,7 +417,7 @@ describe('B2B orders in the order list', () => {
     expect(body.orders[0].figures.fulfillment).toBe(4200)
   })
 
-  it("converts COGS from the shop's currency, not the order's — a EUR order on a NOK shop", async () => {
+  it("converts COGS from the shop's currency, not the order's - a EUR order on a NOK shop", async () => {
     await asAdmin()
     // Every other fixture in this file has costCurrency === order currency,
     // so crossConvert takes its from===to identity short-circuit (fx.ts:110)
@@ -461,7 +461,7 @@ describe('B2B orders in the order list', () => {
     const body = await (await get(`from=2026-07-20&to=2026-07-20&shops=${shopId}`)).json()
     const o = body.orders.find((x: { number: string }) => x.number === 'B-0002')
 
-    // 10000 NOK -> EUR at (0.1 / 1.1) = crossConvert's real output, 909 — a
+    // 10000 NOK -> EUR at (0.1 / 1.1) = crossConvert's real output, 909 - a
     // wrong-basis or swapped-argument bug would instead leave this at the
     // raw 10000 (EUR -> EUR is crossConvert's identity short-circuit).
     expect(o.figures.cogs).toBe(909)
@@ -470,7 +470,7 @@ describe('B2B orders in the order list', () => {
   it("dates an order by its own shop's clock, the way the dashboard already does", async () => {
     await asAdmin()
     // The workspace runs on Europe/Oslo (UTC+2 in August). This store keeps its
-    // own clock in Helsinki (UTC+3) — a setting the shop page offers and the
+    // own clock in Helsinki (UTC+3) - a setting the shop page offers and the
     // metrics engine already honours, bucketing each shop's orders in ITS zone.
     const fi = (
       await db.shop.create({
@@ -482,7 +482,7 @@ describe('B2B orders in the order list', () => {
         data: { shopId: fi, externalId: 'pf', sku: 'PF', name: 'PF', lastPrice: 5000 },
       })
     ).id
-    // 21:30 UTC is half past midnight on 6 August in Helsinki — but still the
+    // 21:30 UTC is half past midnight on 6 August in Helsinki - but still the
     // evening of the 5th in Oslo. Listing it under the workspace day put it on
     // a different date from the one the dashboard counted it on, so the same
     // order was visible on one screen and missing from the other.
@@ -509,7 +509,7 @@ describe('order delivery state', () => {
     await db.deliveryPromise.create({
       data: { country: PROMISE_COUNTRY, days: 3, businessDays: true, effectiveFrom: new Date('2026-01-01') },
     })
-    // Placed months ago, no shipment ever booked — comfortably past any promise.
+    // Placed months ago, no shipment ever booked - comfortably past any promise.
     await db.order.create({
       data: {
         shopId: shop, externalId: 'dlv-1001', number: 'D-1001', placedAt: new Date('2026-01-06T09:00:00Z'),

@@ -14,7 +14,7 @@ import { MIN_PASSWORD_LENGTH } from '@/lib/auth/account-rules'
  * who has done one should recognise the other.
  *
  * The two checks below are the route's own rules answered faster. The route
- * applies them regardless — a rule enforced only in the browser is not a rule —
+ * applies them regardless - a rule enforced only in the browser is not a rule -
  * but a mistyped confirmation is the likeliest thing to happen on this screen,
  * and the link is single use: spending one on a typo would mean asking for
  * another email and waiting for it.
@@ -56,13 +56,13 @@ export function ResetClient({ token }: { token: string }) {
 
       if (!res.ok) {
         // Shown as it comes. The route's refusals name which of the two things
-        // went wrong — expired, or already used — and each points at a
+        // went wrong - expired, or already used - and each points at a
         // different next step for the person reading it.
         setError(data?.error ?? 'Could not set your password.')
         return
       }
 
-      // Already signed in — the route set the session cookie on this very response.
+      // Already signed in - the route set the session cookie on this very response.
       router.push(data?.redirectTo ?? '/portal')
       router.refresh()
     } catch {

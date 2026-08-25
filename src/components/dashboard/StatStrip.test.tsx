@@ -5,7 +5,7 @@ import { StatStrip, type Comparison } from './StatStrip'
 import { ZERO_FIGURES, type Figures } from '@/lib/metrics/types'
 
 /**
- * The figures from the client's own screenshot, to the øre — the run where
+ * The figures from the client's own screenshot, to the øre - the run where
  * "NOK 1,006,370.25" was wide enough at 32px to leave the Net Profit card and
  * paint over the Net Revenue figure beside it.
  */
@@ -14,9 +14,9 @@ const total: Figures = {
   orders: 801,
   netProfit: 100637025, // 1,006,370.25
   netRevenue: 370913717, // 3,709,137.17
-  avgOrderValue: 463063, // 4,630.63 — rounds UP, which is the point
+  avgOrderValue: 463063, // 4,630.63 - rounds UP, which is the point
   ambassadorSales: 22319711, // 223,197.11
-  affiliate: 1988019, // 19,880.19 — the real 30-day figure the day this shipped
+  affiliate: 1988019, // 19,880.19 - the real 30-day figure the day this shipped
   netMargin: 0.271,
 }
 
@@ -65,7 +65,7 @@ describe('StatStrip', () => {
    * carrier invoice line has to reconcile to the øre against somebody else's
    * books. These do not: they are period sums consolidated from four
    * currencies at each order's own rate, so the last two digits are arithmetic
-   * rather than money anyone can look up — and they cost the hero figure the
+   * rather than money anyone can look up - and they cost the hero figure the
    * three characters that made it overflow its card.
    */
   it('shows the hero profit to the krone, not the øre', () => {
@@ -160,12 +160,12 @@ describe('StatStrip', () => {
     strip()
     const cell = screen.getByTestId('stat-affiliate-cost').parentElement!
 
-    // Against the period before, the cost FELL 5.3% — good news, green.
+    // Against the period before, the cost FELL 5.3% - good news, green.
     const before = within(cell).getByTitle('vs 20 days before: 2026-07-12 → 2026-07-31')
     expect(before.textContent).toContain('5.3%')
     expect(before.className).toContain('text-gain')
 
-    // Against last year it ROSE 468% — real money out, red.
+    // Against last year it ROSE 468% - real money out, red.
     const yoy = within(cell).getByTitle('vs last year: 2025-08-01 → 2025-08-20')
     expect(yoy.textContent).toContain('468.0%')
     expect(yoy.className).toContain('text-loss')

@@ -1,4 +1,4 @@
-# One ad account, several stores — design
+# One ad account, several stores - design
 
 **Date:** 2026-08-07
 **Status:** approved, ready for an implementation plan
@@ -27,7 +27,7 @@ page and every profit figure follow. Change what feeds that line and everything
 downstream is correct automatically.
 
 The deeper blocker is storage. `AdSpend` is keyed `(accountId, date)` and holds
-account-level daily totals only — `fetchGoogleDaily` queries `FROM customer`, so
+account-level daily totals only - `fetchGoogleDaily` queries `FROM customer`, so
 there is no campaign dimension in the database at all. An account's daily total
 cannot be split across stores without knowing which campaign spent what.
 **Campaign-level storage is unavoidable for an honest answer.**
@@ -60,7 +60,7 @@ Contribution Profit.
 
 Assigning a campaign re-attributes **all** of its history. The campaign always
 did belong to that store; assigning corrects our knowledge, not the facts. This
-matches [[order-belongs-to-its-placed-day]] — the record lands where it always
+matches [[order-belongs-to-its-placed-day]] - the record lands where it always
 belonged.
 
 If sync wrote `shopId` onto each spend row, a reassignment would mean rewriting a
@@ -84,7 +84,7 @@ the sync enforces it at the point of writing and a test asserts it.
 
 ### Unassigned campaign spend falls back to the default store, loudly
 
-A campaign with `shopId: null` — a brand new one, or one nobody has got to yet —
+A campaign with `shopId: null` - a brand new one, or one nobody has got to yet -
 attributes to the account's default store, and the Marketing page carries a
 count of how many campaigns still need one, linking to the assignment screen.
 
@@ -154,7 +154,7 @@ Reach does not sum across days (`AdSpend`'s own comment says so), and nothing
 reads the video columns per campaign. They can be added the day something needs
 them.
 
-### `src/lib/ads/google.ts` and `meta.ts` — one new fetcher each
+### `src/lib/ads/google.ts` and `meta.ts` - one new fetcher each
 
 ```ts
 fetchGoogleCampaignDaily(creds, customerId, from, to): Promise<CampaignDailyRow[]>
@@ -164,7 +164,7 @@ fetchMetaCampaignDaily(creds, externalId, from, to): Promise<CampaignDailyRow[]>
 `CampaignDailyRow` is a `DailyRow` plus `campaignId` and `campaignName`.
 
 Google: `fetchGoogleBreakdown` keeps `segments.date` in the WHERE and out of the
-SELECT on purpose — in the SELECT it segments by day, "which is a different table
+SELECT on purpose - in the SELECT it segments by day, "which is a different table
 and a far larger one" (`google.ts:250`). Here that segmentation is exactly what
 is wanted, so the new query puts it in both.
 
@@ -172,13 +172,13 @@ Meta: `level: 'campaign'` with `time_increment: 1`, which is the daily fetcher's
 `time_increment` and the breakdown's `level` in one call.
 
 Both parse through the existing shared row mappers so a campaign's numbers can
-never disagree with the same campaign's numbers on the breakdown table — the
+never disagree with the same campaign's numbers on the breakdown table - the
 reason `meta.ts:60` gives for sharing them in the first place.
 
 ### The paging trap, and why the range is fetched in chunks
 
 `meta.ts:150` warns against exactly this query: *"Deliberately no
-`time_increment` — asking per day would return entities × days and page for a
+`time_increment` - asking per day would return entities × days and page for a
 very long time."* That warning is correct and it is load-bearing.
 
 Meta caps a fetch at `PAGE_LIMIT` 500 × `MAX_PAGES` 10 = **5 000 rows**, and
@@ -213,8 +213,8 @@ same chunked windowing so both providers share one code path and one test.
 
 `syncAdAccount` branches once on `account.splitByCampaign`:
 
-- **false** — exactly what it does today. Untouched.
-- **true** — fetch campaign×day, upsert an `AdCampaign` per campaign id seen
+- **false** - exactly what it does today. Untouched.
+- **true** - fetch campaign×day, upsert an `AdCampaign` per campaign id seen
   (refreshing `name`, never touching `shopId`), then upsert `AdCampaignSpend` on
   `(campaignId, date)`. **Writes no `AdSpend` row.**
 
@@ -244,14 +244,14 @@ change and it gets its own test.
 
 `src/app/api/marketing/route.ts:44` reads `adSpend` directly and needs the same
 treatment, so the resolution lives in one shared helper rather than being written
-twice — two copies would drift and the two screens would disagree.
+twice - two copies would drift and the two screens would disagree.
 
 ### `src/app/api/ad-accounts/[id]/campaigns/route.ts` (new)
 
 `GET` lists the account's campaigns with their current assignment. `PATCH`
 accepts `{ campaignId, shopId | null }` pairs. Admin-only, the same boundary as
 every other ad route. Rejects a `shopId` that is not a real shop, and a
-`campaignId` that does not belong to that account — a hand-typed id must not
+`campaignId` that does not belong to that account - a hand-typed id must not
 reassign someone else's campaign.
 
 ### UI
@@ -261,7 +261,7 @@ modal listing every campaign with a store dropdown, defaulting to "Use the
 account's store". Toggling `splitByCampaign` lives in the same modal, so the flag
 and the assignments are set in one place.
 
-The modal follows `PickerModal`'s existing shape — the pattern for "list things
+The modal follows `PickerModal`'s existing shape - the pattern for "list things
 from a platform and assign each to a shop" already exists and should not be
 invented twice.
 
@@ -292,7 +292,7 @@ correctness regression in the money; all were triaged as non-blocking.
 - **`attribution.test.ts` "ignores a whole account…" cannot fail.** Its fixture
   account has no `AdCampaign` rows, so the unassigned count is 0 whether or not
   the `account: { splitByCampaign: true }` predicate exists. That predicate is
-  the real guard — an account flipped back to whole KEEPS its campaign rows —
+  the real guard - an account flipped back to whole KEEPS its campaign rows -
   and nothing exercises it. The correct fixture is a whole account that still
   carries `shopId: null` campaigns.
 - **The breakdown drill-down can list another shop's campaigns.** Scoping it via
@@ -303,7 +303,7 @@ correctness regression in the money; all were triaged as non-blocking.
 - **The unassigned-campaign notice is range-independent.** It counts unassigned
   campaigns on in-scope split accounts even when their fallback shop sits outside
   the current filter, so it can name campaigns whose spend is not on screen.
-  Defensible — it is an admin call to action, not a figure — but it is not
+  Defensible - it is an admin call to action, not a figure - but it is not
   scoped the way the numbers beside it are.
 - **The notice's singular branch ("1 campaign has") is untested.**
 - **`load.ts` runs `attributedSpend` and `relevantAdCurrencies` separately**, so

@@ -14,7 +14,7 @@ vi.mock('next/link', () => ({
 }))
 // AffiliateSection fetches its own figures and decides for itself whether it
 // has anything to show; standing in for itself here leaves these tests proving
-// only what DashboardClient controls — that it is mounted, on the page's filters.
+// only what DashboardClient controls - that it is mounted, on the page's filters.
 vi.mock('@/components/dashboard/AffiliateSection', () => ({
   AffiliateSection: (props: { preset: string; shops: string[]; tick: number }) => (
     <div data-testid="affiliate-section">{JSON.stringify(props)}</div>
@@ -37,7 +37,7 @@ const payload = {
   lastYearRange: { from: '2025-08-01T00:00:00.000Z', to: '2025-08-21T00:00:00.000Z' },
 }
 
-/** A fresh Response per call — a body can only be read once. */
+/** A fresh Response per call - a body can only be read once. */
 function renderPage() {
   const fetchMock = vi.fn(() =>
     Promise.resolve(new Response(JSON.stringify(payload), { status: 200 })),
@@ -81,7 +81,7 @@ describe('DashboardClient consolidation notice', () => {
 })
 
 describe('DashboardClient live refresh', () => {
-  it('refetches metrics when the window regains focus — silently, nothing dims', async () => {
+  it('refetches metrics when the window regains focus - silently, nothing dims', async () => {
     vi.useFakeTimers()
     const fetchMock = renderPage()
     await act(async () => {})
@@ -92,7 +92,7 @@ describe('DashboardClient live refresh', () => {
     fireEvent(window, new Event('focus'))
     await act(async () => {})
 
-    // Two metrics fetches — the tick also asks /api/version, so count by URL.
+    // Two metrics fetches - the tick also asks /api/version, so count by URL.
     const metricCalls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0])).filter((u) => u.includes('/api/metrics'))
     expect(metricCalls.length).toBe(2)
     // The refresh never re-enters the loading state: no dimmed aria-busy veil.

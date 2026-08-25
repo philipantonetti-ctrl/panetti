@@ -32,7 +32,7 @@ export function formatDay(d: Date): string {
 /**
  * The small print under the recurrence, e.g. "on the 1st, spread daily".
  * "Spread daily" is the important part: a monthly cost is charged day by day, so
- * profit is right for any date range you look at — not just whole months.
+ * profit is right for any date range you look at - not just whole months.
  */
 export function recurrenceDetail(recurrence: string, startDate: Date): string {
   const day = utcDay(startDate)

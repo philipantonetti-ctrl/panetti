@@ -44,7 +44,7 @@ grep -n "stockSource" prisma/schema.prisma src/lib/inventory/load.ts
 ```
 
 - **Landed:** line 143 has moved. Find the `arrivals:` mapping wherever it now
-  lives — it is the only place a purchase order becomes an arrival — and apply
+  lives - it is the only place a purchase order becomes an arrival - and apply
   Task 4's subtraction there. The arithmetic is unchanged.
 - **Still in flight:** do not rebase onto it and do not merge it. Apply Task 4 as
   written and resolve the overlap when whichever branch lands second is merged.
@@ -72,33 +72,33 @@ db.\$queryRawUnsafe(\`select column_name from information_schema.columns where t
 ## File Structure
 
 **Create:**
-- `src/lib/visma/client.ts` — token + GET. One dependency on the outside world.
+- `src/lib/visma/client.ts` - token + GET. One dependency on the outside world.
 - `src/lib/visma/client.test.ts`
-- `src/lib/visma/types.ts` — the shape of a Visma purchase order as we read it.
-- `src/lib/visma/purchase-orders.ts` — pure mapping, no DB, no network.
+- `src/lib/visma/types.ts` - the shape of a Visma purchase order as we read it.
+- `src/lib/visma/purchase-orders.ts` - pure mapping, no DB, no network.
 - `src/lib/visma/purchase-orders.test.ts`
-- `src/lib/visma/__fixtures__/purchase-order.json` — one real order, recorded in Task 1, secrets and prices stripped.
-- `src/lib/visma/import.ts` — fetch, map, upsert, report.
+- `src/lib/visma/__fixtures__/purchase-order.json` - one real order, recorded in Task 1, secrets and prices stripped.
+- `src/lib/visma/import.ts` - fetch, map, upsert, report.
 - `src/lib/visma/import.test.ts`
 
 **Modify:**
-- `prisma/schema.prisma:655-671` — `externalId` gains `@unique`; add `receivedQuantity Int?`.
-- `src/lib/inventory/load.ts:59` and `:143` — select and subtract `receivedQuantity`.
-- `src/lib/inventory/load.test.ts` — regression tests for the subtraction.
-- `src/app/api/cron/sync/route.ts` — call the import, best-effort.
-- `src/app/api/inventory/purchase-orders/route.ts:40-46` — return the new fields.
-- `src/app/inventory/purchase-orders/PurchaseOrdersClient.tsx` — source column, three numbers, no "Mark received" on Visma rows.
+- `prisma/schema.prisma:655-671` - `externalId` gains `@unique`; add `receivedQuantity Int?`.
+- `src/lib/inventory/load.ts:59` and `:143` - select and subtract `receivedQuantity`.
+- `src/lib/inventory/load.test.ts` - regression tests for the subtraction.
+- `src/app/api/cron/sync/route.ts` - call the import, best-effort.
+- `src/app/api/inventory/purchase-orders/route.ts:40-46` - return the new fields.
+- `src/app/inventory/purchase-orders/PurchaseOrdersClient.tsx` - source column, three numbers, no "Mark received" on Visma rows.
 - `src/app/inventory/purchase-orders/PurchaseOrdersClient.test.tsx`
 
 ---
 
-## Task 1: Confirm the receipt date, and record fixtures — DONE 2026-08-14
+## Task 1: Confirm the receipt date, and record fixtures - DONE 2026-08-14
 
 **Already completed by the session lead against the live company. Do not re-run
 it.** The findings below are the input to Tasks 3 and 5, and six fixtures are
 committed under `src/lib/visma/__fixtures__/`.
 
-The full evidence is in the spec under "When an order counts as received —
+The full evidence is in the spec under "When an order counts as received -
 measured, not assumed". The four results that change the code:
 
 **1. The company is small enough to read in one page.** 227 purchase orders, 719
@@ -128,19 +128,19 @@ No exceptions. Cancellation is checked first, because cancelled lines also carry
 Order `purchaseReceipts[].receiptNumber` → `controller/api/v1/purchasereceipt`
 `receiptNbr` → `date`: **195 of 195 resolved, 0 missing.** Meanwhile orders
 500023-500025 carry a receipt date of `2023-11-14` and a
-`lastModifiedDateTime` of `2026-07-29` — out by nearly three years. So the
+`lastModifiedDateTime` of `2026-07-29` - out by nearly three years. So the
 receipt date is used where it exists; `lastModifiedDateTime` remains the
 fallback for the 7 Closed orders with no receipt, and the page labels that
 column "recorded" rather than "received".
 
 **5. There is real stock to gain.** Open orders include `PANPIZPRO` × 3055 and
 `PANPIZOVEBRU` × 1000. 653 of 719 lines belong to the other brands sharing the
-ERP and are skipped as "not our product" — expect that count to be large and do
+ERP and are skipped as "not our product" - expect that count to be large and do
 not treat it as a fault.
 
 ### The fixtures
 
-`src/lib/visma/__fixtures__/purchase-orders.json` — six real orders, costs and
+`src/lib/visma/__fixtures__/purchase-orders.json` - six real orders, costs and
 supplier contacts stripped, one per shape the mapper must handle:
 
 | order | status | why it is there |
@@ -148,11 +148,11 @@ supplier contacts stripped, one per shape the mapper must handle:
 | 500254 | Open | our products, nothing received yet |
 | 500259 | Open | one large Panetti line (3055 units) |
 | 500017 | Closed | has a receipt, so a real received date exists |
-| **500148** | **Closed** | **no receipt, `qtyOnReceipts: 0` — the trap** |
+| **500148** | **Closed** | **no receipt, `qtyOnReceipts: 0` - the trap** |
 | 500000 | Cancelled | must be skipped |
 | 500235 | Hold | never released, must be skipped |
 
-`src/lib/visma/__fixtures__/purchase-receipts.json` — the receipts those orders
+`src/lib/visma/__fixtures__/purchase-receipts.json` - the receipts those orders
 reference, so the date join is testable with no network.
 
 - [x] **Done.** Fixtures recorded and committed; findings above are authoritative.
@@ -166,10 +166,10 @@ reference, so the date join is testable with no network.
 **Interfaces:**
 - Produces:
   - `export type VismaCredentials = { clientId: string; clientSecret: string; tenantId: string }`
-  - `export function vismaCredentials(): VismaCredentials | null` — reads env, null when unconfigured
+  - `export function vismaCredentials(): VismaCredentials | null` - reads env, null when unconfigured
   - `export async function vismaToken(creds: VismaCredentials, now?: number): Promise<string>`
   - `export async function vismaGet<T>(creds: VismaCredentials, path: string): Promise<T>`
-  - `export function resetVismaTokenCache(): void` — tests only
+  - `export function resetVismaTokenCache(): void` - tests only
   - `export class VismaError extends Error`
 
 - [ ] **Step 1: Write the failing test**
@@ -292,7 +292,7 @@ describe('vismaGet', () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/lib/visma/client.test.ts`
-Expected: FAIL — `Failed to resolve import "./client"`.
+Expected: FAIL - `Failed to resolve import "./client"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -305,7 +305,7 @@ Create `src/lib/visma/client.ts`:
  * a gateway's HTML page never reaches a log line.
  *
  * The host is the trap. The Developer Portal advertises
- * `https://api.finance.visma.net/erp/service`, which is the token's AUDIENCE —
+ * `https://api.finance.visma.net/erp/service`, which is the token's AUDIENCE -
  * every path under it 404s. Requests go to `https://integration.visma.net/API`.
  * Confirmed by probing unauthenticated: 404 means no route, 401 means the route
  * is there and only auth is missing.
@@ -329,7 +329,7 @@ export class VismaError extends Error {}
  * The three values from the environment, or null when they are not all there.
  *
  * Null is not a failure. An unconfigured integration is skipped quietly, the
- * same way ensureWebhooks skips with no APP_URL — a deployment without Visma
+ * same way ensureWebhooks skips with no APP_URL - a deployment without Visma
  * credentials is a normal deployment.
  */
 export function vismaCredentials(): VismaCredentials | null {
@@ -421,10 +421,10 @@ git commit -m "feat(visma): read-only client, and the host the portal does not n
 - Read: `src/lib/visma/__fixtures__/purchase-orders.json`, `src/lib/visma/__fixtures__/purchase-receipts.json` (recorded in Task 1)
 
 **Interfaces:**
-- Consumes: the Task 1 findings. Nothing else — pure, no network, no database.
+- Consumes: the Task 1 findings. Nothing else - pure, no network, no database.
 - Produces:
   ```ts
-  // types.ts — what Visma sends. Scalars arrive EITHER bare or wrapped as
+  // types.ts - what Visma sends. Scalars arrive EITHER bare or wrapped as
   // { value: x }, so every field goes through unwrap().
   export type Wrapped<T> = T | { value: T } | null | undefined
   export type VismaOrderLine = {
@@ -450,7 +450,7 @@ git commit -m "feat(visma): read-only client, and the host the portal does not n
   }
   export type VismaReceipt = { receiptNbr?: Wrapped<string>; status?: Wrapped<string>; date?: Wrapped<string> }
 
-  // purchase-orders.ts — ours.
+  // purchase-orders.ts - ours.
   export type MappedOrder = {
     externalId: string
     sku: string
@@ -701,7 +701,7 @@ describe('mapVismaOrders, against the recorded orders', () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/lib/visma/purchase-orders.test.ts`
-Expected: FAIL — `Failed to resolve import "./purchase-orders"`.
+Expected: FAIL - `Failed to resolve import "./purchase-orders"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -719,7 +719,7 @@ export type { VismaOrder, VismaOrderLine, VismaReceipt, VismaReceiptRef } from '
 export type MappedOrder = {
   externalId: string
   sku: string
-  /** What was ordered. Never the outstanding amount — see the design doc. */
+  /** What was ordered. Never the outstanding amount - see the design doc. */
   quantity: number
   /** What Visma says has landed. Subtracted at the one place that counts arrivals. */
   receivedQuantity: number
@@ -742,7 +742,7 @@ export type MapResult = {
   skipped: { reason: SkipReason; count: number }[]
 }
 
-/** Visma wraps most scalars as `{ value: x }` — but not all of them. */
+/** Visma wraps most scalars as `{ value: x }` - but not all of them. */
 export function unwrap<T>(v: unknown): T | null {
   if (v === null || v === undefined) return null
   if (typeof v === 'object' && 'value' in (v as Record<string, unknown>)) {
@@ -783,7 +783,7 @@ export function receiptDatesByNumber(receipts: VismaReceipt[]): Map<string, Date
  * The latest of its receipts, because an order delivered in two shipments is
  * done when the last one lands. Falls back to `lastModifiedDateTime` for the
  * seven closed orders that carry no receipt at all, and to the order date if
- * even that is missing — all three are real dates Visma recorded, which is why
+ * even that is missing - all three are real dates Visma recorded, which is why
  * the page labels the column "recorded" rather than "received".
  *
  * Never the clock. `lastModifiedDateTime` alone would have been badly wrong:
@@ -816,7 +816,7 @@ function finishedOn(
  * could never show what arrived. The subtraction happens once, in load.ts.
  *
  * Completion is `line.completed`, NOT a quantity comparison. Visma closes orders
- * without booking receipts against them — 59 closed lines in the live company
+ * without booking receipts against them - 59 closed lines in the live company
  * have fewer receipts than they ordered, and order 500148 has none at all. A
  * quantity test leaves those counting as incoming stock forever.
  *
@@ -848,7 +848,7 @@ export function mapVismaOrders(
     }
 
     // An order on hold has not been placed with the supplier. Counting it would
-    // push a run-out date out on stock that may never be ordered — the same
+    // push a run-out date out on stock that may never be ordered - the same
     // reason an order with no ETA moves no date.
     if (status === 'hold' || truthy(order.hold)) {
       skip('order on hold', lines.length)
@@ -916,7 +916,7 @@ Run: `npx vitest run src/lib/visma/purchase-orders.test.ts`
 Expected: PASS, every case.
 
 If a fixture case fails, the recorded data is shaped differently than the mapper
-assumes. **Fix the mapper to match the real data — never edit the fixture to
+assumes. **Fix the mapper to match the real data - never edit the fixture to
 match the mapper.** The fixtures are the evidence.
 
 - [ ] **Step 5: Commit**
@@ -947,7 +947,7 @@ In `prisma/schema.prisma`, in `model PurchaseOrder`:
 ```prisma
   quantity     Int
   /// What has landed so far, from Visma's `qtyOnReceipts`. Null on every
-  /// hand-entered row, which tracks no receipts — so a null falls back to
+  /// hand-entered row, which tracks no receipts - so a null falls back to
   /// counting the whole quantity as incoming, exactly as before this existed.
   receivedQuantity Int?
 ```
@@ -958,13 +958,13 @@ and add `@unique` to `externalId`:
   externalId   String?   @unique
 ```
 
-- [ ] **Step 2: Add the columns to the local database — with SQL, NOT `db:push`**
+- [ ] **Step 2: Add the columns to the local database - with SQL, NOT `db:push`**
 
 **Do not run `npm run db:push`.** Verified on 2026-08-14: the shared local
 Postgres already carries `Shop.stockSource` from the in-flight branch described
 at the top of this plan, and that column is not in this branch's
 `schema.prisma`. `prisma db push` makes the database match the schema file, so it
-would DROP their column and break their tests — the failure mode recorded in the
+would DROP their column and break their tests - the failure mode recorded in the
 `shared-local-postgres-drops-columns` note, arrived at from the other direction.
 
 Two additive statements do exactly what this task needs and touch nothing else:
@@ -991,10 +991,10 @@ npx prisma generate
 Expected: `ok`, then a successful generate. Postgres allows many nulls in a
 unique index, so the index applies cleanly to existing hand-entered rows. If it
 reports a duplicate key, some row already holds a repeated non-null `externalId`
-— stop and report, because nothing writes that column yet.
+- stop and report, because nothing writes that column yet.
 
 Prisma names an index on a single column `<Table>_<column>_key`, which is what a
-later `db push` will look for — so using that exact name means the eventual push
+later `db push` will look for - so using that exact name means the eventual push
 finds the index already present and does not recreate it.
 
 Extra columns the client does not declare are harmless: Prisma selects columns
@@ -1060,7 +1060,7 @@ it stays true however the forecast is tuned.
   it('leaves a hand-entered order counting its whole quantity', async () => {
     // The regression guard for the new column. Every row that exists today has
     // no receivedQuantity, and must forecast exactly as it did before the column
-    // was added — which is to say, identically to one that has received nothing.
+    // was added - which is to say, identically to one that has received nothing.
     await sell(`${TAG}-no`, SKU, 100, 60, 5, 'NO')
     const item = await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
     const po = orderShape(item.id)
@@ -1079,9 +1079,9 @@ it stays true however the forecast is tuned.
 - [ ] **Step 4: Run them to verify they fail**
 
 Run: `npx vitest run src/lib/inventory/load.test.ts --testTimeout=20000`
-Expected: the first two FAIL. The first because `load.ts` still counts the whole 800, so `asEightMinusThree` equals `asEightHundred` rather than `asFiveHundred`. The second because an over-receipt is not yet clamped. The third should already PASS — it is a regression guard for behaviour that must not change.
+Expected: the first two FAIL. The first because `load.ts` still counts the whole 800, so `asEightMinusThree` equals `asEightHundred` rather than `asFiveHundred`. The second because an over-receipt is not yet clamped. The third should already PASS - it is a regression guard for behaviour that must not change.
 
-If the first test passes BEFORE the change, stop: either the assertion is not reaching `load.ts` or the two orders are not distinguishable. The `expect(asEightHundred).not.toEqual(asFiveHundred)` line exists to catch exactly that — if it fails, the burn rate is too low for a 300-unit difference to move the date, so raise the units sold in `sell()` until it does.
+If the first test passes BEFORE the change, stop: either the assertion is not reaching `load.ts` or the two orders are not distinguishable. The `expect(asEightHundred).not.toEqual(asFiveHundred)` line exists to catch exactly that - if it fails, the burn rate is too low for a 300-unit difference to move the date, so raise the units sold in `sell()` until it does.
 
 - [ ] **Step 5: Make the change**
 
@@ -1372,7 +1372,7 @@ describe('importVismaPurchaseOrders', () => {
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/lib/visma/import.test.ts --testTimeout=20000`
-Expected: FAIL — `Failed to resolve import "./import"`.
+Expected: FAIL - `Failed to resolve import "./import"`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1391,7 +1391,7 @@ import type { VismaOrder, VismaReceipt } from './types'
  * each and needs no date filter.
  *
  * If Visma ever returns exactly this many, the page is full and orders beyond it
- * were silently dropped — which would look identical to a company that simply
+ * were silently dropped - which would look identical to a company that simply
  * has no more. That case reports itself; see `truncated` below. The fix when it
  * fires is paging, not a bigger number.
  */
@@ -1421,7 +1421,7 @@ const nothing = (over: Partial<VismaImportResult> = {}): VismaImportResult => ({
  * Pull purchase orders from Visma into our own table.
  *
  * Never throws. The scheduled sync calls this alongside the store pull, and
- * Visma being down must never fail that — the next run simply tries again.
+ * Visma being down must never fail that - the next run simply tries again.
  *
  * Idempotent: every row is keyed on Visma's `orderNbr-lineNbr`, so a re-run
  * updates rather than duplicates. Rows someone typed here have no externalId and
@@ -1573,7 +1573,7 @@ there was harmed, but a test must not do it at all.
 `@/lib/fx/rates` for the same reason. Add a third, next to them:
 
 ```ts
-// Nor is Visma. This one is not merely slow, it is the CLIENT'S LIVE ERP — and
+// Nor is Visma. This one is not merely slow, it is the CLIENT'S LIVE ERP - and
 // without this mock the test really does reach it, because the route sees the
 // VISMA_* credentials from .env even though a plain unit test does not. Left
 // unmocked it read 719 real order lines and wrote 62 rows into the local
@@ -1590,7 +1590,7 @@ vi.mock('@/lib/visma/import', () => ({
 
 Run: `npx vitest run src/app/api/cron --testTimeout=20000`
 Expected: PASS, in normal time. A 20-second timeout here means the mock above is
-missing or misnamed, and the test is talking to Visma — stop and fix it rather
+missing or misnamed, and the test is talking to Visma - stop and fix it rather
 than raising the timeout.
 
 - [ ] **Step 4: Commit**
@@ -1616,7 +1616,7 @@ git commit -m "feat(visma): pull purchase orders on the hourly sync"
 
 - [ ] **Step 1: Write the failing tests**
 
-The file already has a module-scope `order()` builder (around line 18). **Extend it** with the two new fields defaulting to the hand-entered shape — that keeps every existing test passing unchanged:
+The file already has a module-scope `order()` builder (around line 18). **Extend it** with the two new fields defaulting to the hand-entered shape - that keeps every existing test passing unchanged:
 
 ```tsx
 const order = (over: Partial<Order> = {}): Order => ({
@@ -1720,11 +1720,11 @@ Then append these cases inside the existing `describe('PurchaseOrdersClient', ..
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npx vitest run src/app/inventory/purchase-orders/PurchaseOrdersClient.test.tsx`
-Expected: FAIL — TypeScript rejects `receivedQuantity` and `externalId` on `Order`, and the new text is absent.
+Expected: FAIL - TypeScript rejects `receivedQuantity` and `externalId` on `Order`, and the new text is absent.
 
 - [ ] **Step 3: Return the new fields from the API**
 
-In `src/app/api/inventory/purchase-orders/route.ts`, the `GET` already returns whole rows via `findMany`, so `externalId` and `receivedQuantity` come back automatically once the schema has them. Confirm by reading the handler — if it grows an explicit `select`, add both fields. No change is expected here.
+In `src/app/api/inventory/purchase-orders/route.ts`, the `GET` already returns whole rows via `findMany`, so `externalId` and `receivedQuantity` come back automatically once the schema has them. Confirm by reading the handler - if it grows an explicit `select`, add both fields. No change is expected here.
 
 - [ ] **Step 4: Update the component**
 
@@ -1761,7 +1761,7 @@ function units(o: Order) {
 
   // Finished, per Visma. It closes some orders without ever booking a receipt
   // against them, so "0 landed" on a closed row is the paperwork rather than the
-  // pallet — and saying "none landed yet" there would imply we are still waiting.
+  // pallet - and saying "none landed yet" there would imply we are still waiting.
   if (o.receivedAt) {
     return o.receivedQuantity === 0
       ? `${o.quantity} ordered · closed with no receipt`
@@ -1820,7 +1820,7 @@ Replace the actions cell so a Visma row explains itself rather than offering a b
 - [ ] **Step 5: Run the tests**
 
 Run: `npx vitest run src/app/inventory/purchase-orders/PurchaseOrdersClient.test.tsx`
-Expected: PASS, including every pre-existing case — extending the shared `order()` builder is what keeps them passing. If any test builds an `Order` literal inline rather than through the builder, add `receivedQuantity: null` and `externalId: null` to it; that is the correct shape for a hand-entered row.
+Expected: PASS, including every pre-existing case - extending the shared `order()` builder is what keeps them passing. If any test builds an `Order` literal inline rather than through the builder, add `receivedQuantity: null` and `externalId: null` to it; that is the correct shape for a hand-entered row.
 
 - [ ] **Step 6: Check the page compiles**
 
@@ -1851,13 +1851,13 @@ earlier draft of Task 4's tests failed three runs out of three with
 `Inconsistent query result: Field shop is required to return data`, a different
 test each time, because `loadInventory` reads every Product, Shop and OrderItem
 and other files delete rows underneath it. If that message appears, the fix is
-to stop calling `loadInventory` so often — not to retry, and not to raise the
+to stop calling `loadInventory` so often - not to retry, and not to raise the
 timeout.
 
 - [ ] **Step 2: Lint**
 
 Run: `npm run lint`
-Expected: **13 problems, 8 errors, 5 warnings** — all pre-existing, none in any
+Expected: **13 problems, 8 errors, 5 warnings** - all pre-existing, none in any
 file this plan touches. They sit in `B2bClient.tsx`, `CustomerClient.tsx` and
 `ExpensesClient.tsx` (`react-hooks/set-state-in-effect` and
 `react-hooks/static-components`). Confirm the count matches by running lint on
@@ -1871,12 +1871,12 @@ Expected: clean.
 
 - [ ] **Step 4: Build**
 
-Run: `npx next build` — **not** `npm run build`.
+Run: `npx next build` - **not** `npm run build`.
 
 `npm run build` runs `scripts/db-push.mjs` first, and `decide()` returns `push`
 for any local build (no `VERCEL_ENV`). That would hand `prisma db push` a schema
 without the other branch's `stockSource` column. It fails rather than destroying
-anything — dropping a column is not in that script's retry allowlist — but it is
+anything - dropping a column is not in that script's retry allowlist - but it is
 still the wrong command to run while two branches share one database.
 
 Expected: `✓ Compiled successfully`, 71 static pages, exit 0.
@@ -1906,14 +1906,14 @@ Before this does anything in production:
 
 1. **Rotate the Visma client secret.** It was pasted into a chat transcript, so treat it as compromised. Generate a fresh one in the Visma Developer Portal.
 2. Set in Vercel (all environments): `VISMA_CLIENT_ID`, `VISMA_TENANT_ID`, `VISMA_CLIENT_SECRET`.
-3. Until those exist, `importVismaPurchaseOrders` returns `configured: false` and the sync is unchanged — deploying early is safe.
+3. Until those exist, `importVismaPurchaseOrders` returns `configured: false` and the sync is unchanged - deploying early is safe.
 4. After the first scheduled run, check the sync response:
-   - `vismaImported` — should be non-zero.
-   - `vismaSkipped` — a large `not our product` count is expected, since Cosori, Levoit and the rest share the ERP. A large `unusable line` count is not; investigate it.
+   - `vismaImported` - should be non-zero.
+   - `vismaSkipped` - a large `not our product` count is expected, since Cosori, Levoit and the rest share the ERP. A large `unusable line` count is not; investigate it.
    - `vismaTruncated: true` means the page came back full and orders were dropped. Add paging before trusting any forecast.
-   - `vismaError` — a string here means the ERP was unreachable; the run is otherwise unaffected and the next one retries.
+   - `vismaError` - a string here means the ERP was unreachable; the run is otherwise unaffected and the next one retries.
 
 ## Still open with Philip
 
 - Is "Oslo Lagerhotell" the only physical warehouse? The forecast treats stock as one pool.
-- The Chinese supplier on order 500000 is recorded as `CH — SWITZERLAND` in Visma; the address is Guangdong. His to fix, and it would corrupt any country-based supplier reporting.
+- The Chinese supplier on order 500000 is recorded as `CH - SWITZERLAND` in Visma; the address is Guangdong. His to fix, and it would corrupt any country-based supplier reporting.

@@ -56,7 +56,7 @@ describe('password-reset tokens', () => {
   /**
    * The single-use guarantee, with no table to store spent links in.
    *
-   * bcrypt salts every hash, so setting a password — even to the SAME string —
+   * bcrypt salts every hash, so setting a password - even to the SAME string -
    * produces a different hash and therefore a different fingerprint. A link
    * issued before that no longer matches what the row holds, and the route
    * refuses it.
@@ -76,7 +76,7 @@ describe('password-reset tokens', () => {
   /**
    * A JWT payload is base64, not encryption: anyone holding the link can read
    * it. The fingerprint is what travels, never the bcrypt hash itself, so a
-   * leaked reset link — forwarded, logged, or sitting in a mailbox — hands over
+   * leaked reset link - forwarded, logged, or sitting in a mailbox - hands over
    * nothing that could be attacked offline.
    */
   it('never carries the password hash itself in the token', async () => {

@@ -15,7 +15,7 @@ async function order(shopId: string, number: string) {
   })
 }
 
-// Both unique to THIS file — see "Test data convention" in the Global
+// Both unique to THIS file - see "Test data convention" in the Global
 // Constraints. Test files run in parallel against one database.
 const TAG = '[delivery-link-test]'
 const TRACK = 'TLINK' // every tracking number below starts with it
@@ -24,14 +24,14 @@ const mine = { trackingNumber: { startsWith: TRACK } }
 
 // IMPLEMENTER: the tests below are written with 'T1' and 'T2' for readability.
 // Use these two constants instead of those string literals everywhere they
-// appear — a bare 'T1' has no prefix, so cleanup() would leave it behind and
+// appear - a bare 'T1' has no prefix, so cleanup() would leave it behind and
 // the next run's unique-constraint check would fail against a stale row.
 const T1 = `${TRACK}1`
 const T2 = `${TRACK}2`
 
 async function cleanup() {
   await db.shipmentEvent.deleteMany({ where: { shipment: mine } })
-  // By prefix, not by `orderId: null` — an unlinked parcel belongs to no shop,
+  // By prefix, not by `orderId: null` - an unlinked parcel belongs to no shop,
   // so `orderId: null` would delete another file's parcels too.
   await db.shipment.deleteMany({ where: mine })
   await db.orderItem.deleteMany({ where: { order: scoped } })

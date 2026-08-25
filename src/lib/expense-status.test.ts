@@ -11,7 +11,7 @@ describe('expense status', () => {
     expect(EXPENSE_STATUSES).toEqual(['ACTIVE', 'ENDED', 'ACTIVE_WITH_END_DATE'])
   })
 
-  it('Active runs indefinitely — no end date', () => {
+  it('Active runs indefinitely - no end date', () => {
     expect(fieldsForStatus('ACTIVE', '2026-09-01')).toEqual({ active: true, endDate: null })
   })
 

@@ -56,7 +56,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       _count: { _all: true },
       _sum: { netSales: true, shippingCharged: true },
     })
-    // Any order at all locks the shop, not just an earning one — a refunded
+    // Any order at all locks the shop, not just an earning one - a refunded
     // order is still history reported under this store.
     const everOrdered = await db.order.count({ where: { b2bCustomerId: id } })
     const today = new Date()
@@ -120,7 +120,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       return NextResponse.json({ error: 'No such customer' }, { status: 404, headers: NO_STORE })
 
     // Any order at all locks both the shop and the currency, not just an
-    // earning one — a refunded order is still history recorded under them.
+    // earning one - a refunded order is still history recorded under them.
     const movingShop = d.shopId !== undefined && d.shopId !== existing.shopId
     const changingCurrency = d.currency.toUpperCase() !== existing.currency
     const hasOrders = (movingShop || changingCurrency)
@@ -146,7 +146,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
     await assertProductsBelongToShop(shopId, d.prices.map((p) => p.productId))
 
-    // Rewrite the price list rather than diff it — storeOrder()'s rule for
+    // Rewrite the price list rather than diff it - storeOrder()'s rule for
     // order lines, for the same reason: simpler and always right. Replacing a
     // price never touches an order already placed, because the price actually
     // charged is frozen on the OrderItem.

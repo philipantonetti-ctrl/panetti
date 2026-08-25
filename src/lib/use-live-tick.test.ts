@@ -48,7 +48,7 @@ describe('useLiveTick', () => {
     expect(result.current).toBe(1)
   })
 
-  it('swallows a focus event racing the first render — the mount already fetched', () => {
+  it('swallows a focus event racing the first render - the mount already fetched', () => {
     const { result } = renderHook(() => useLiveTick(60_000))
 
     act(() => {

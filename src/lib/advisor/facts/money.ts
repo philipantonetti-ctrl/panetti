@@ -7,7 +7,7 @@ import type { Fact } from '../types'
  * What the money did, per shop, against the equally-long period before.
  *
  * Every figure here already came out of `computeMetrics` and `buildMarketing`,
- * so a fact and the number on the Dashboard can never disagree — this file
+ * so a fact and the number on the Dashboard can never disagree - this file
  * compares, it does not calculate.
  */
 
@@ -25,7 +25,7 @@ export type MoneyFactsArgs = {
  *
  * Deliberately NOT `Partial<MarketingShopRow>` forced back with `as`. That
  * cast claims three fields are all twenty-six, so a later read of a fourth
- * compiles cleanly and yields undefined — which reaches severity.ts as NaN,
+ * compiles cleanly and yields undefined - which reaches severity.ts as NaN,
  * and `NaN < MIN_SHARE` is false, so the materiality gate fails OPEN and a
  * junk fact ships. Narrowing the type makes that a compile error instead.
  */
@@ -37,8 +37,8 @@ export function moneyFacts(args: MoneyFactsArgs): Fact[] {
   const { now, before, nowMarketing, beforeMarketing } = args
   const days = args.days ?? 7
 
-  // Every shop is measured against ONE baseline — the previous window's total
-  // revenue — so a NOK store and a EUR one are ranked against each other rather
+  // Every shop is measured against ONE baseline - the previous window's total
+  // revenue - so a NOK store and a EUR one are ranked against each other rather
   // than each against itself.
   const baseline = before.total.netRevenue
 

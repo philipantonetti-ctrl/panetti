@@ -26,13 +26,13 @@ const row: ShopFigures = {
   netMargin: 45205 / 95000,
 }
 
-// A shop that sold nothing this period — every figure zero.
+// A shop that sold nothing this period - every figure zero.
 const idle: ShopFigures = { ...ZERO_FIGURES, shopId: 's2', shopName: 'Mazzetti Denmark' }
 
 const result: EngineResult = { displayCurrency: 'NOK', byShop: [row, idle], total: row }
 
 describe('CompareTable', () => {
-  it('shows Gross revenue right after Orders — what the customer actually paid', () => {
+  it('shows Gross revenue right after Orders - what the customer actually paid', () => {
     render(<CompareTable result={result} />)
 
     for (const label of [
@@ -43,7 +43,7 @@ describe('CompareTable', () => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy()
     }
 
-    // Shipping charged is zero in every shop and every period — these shops
+    // Shipping charged is zero in every shop and every period - these shops
     // ship free, and what shipping COSTS is already under Fulfillment. Net
     // revenue is net sales plus that zero, so it printed the same money twice.
     for (const gone of ['Shipping', 'Net revenue']) {
@@ -52,7 +52,7 @@ describe('CompareTable', () => {
     }
 
     // ONE gross figure only. "Gross sales" (the Shopify sense) sat next to
-    // Gross revenue and read like a contradiction — it is gone from the table.
+    // Gross revenue and read like a contradiction - it is gone from the table.
     expect(screen.queryByRole('button', { name: 'Sort by Gross sales' })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: 'Gross sales' })).toBeNull()
 
@@ -75,11 +75,11 @@ describe('CompareTable', () => {
   it('shows COGS with its share of net revenue, on shop rows and the total alike', () => {
     render(<CompareTable result={result} />)
 
-    // 24,795 / 95,000 = 26.10% — the row and the identical total both show it.
+    // 24,795 / 95,000 = 26.10% - the row and the identical total both show it.
     const cogsText = `${formatMoney(24795, 'NOK')} (26.10%)`
     expect(screen.getAllByText((_t, el) => el?.textContent === cogsText).length).toBe(2)
 
-    // A shop with no revenue shows a plain figure — no share of nothing.
+    // A shop with no revenue shows a plain figure - no share of nothing.
     const idleRow = screen.getByText('Mazzetti Denmark').closest('tr')!
     expect(idleRow.textContent).not.toContain('(')
   })
@@ -105,7 +105,7 @@ describe('CompareTable', () => {
   })
 
   it('ignores a stale hidden-column choice for a metric that no longer exists', () => {
-    // The client's browser hid "salesInclVat" before it became grossRevenue —
+    // The client's browser hid "salesInclVat" before it became grossRevenue -
     // the saved key no longer matches anything, so the new column must show.
     localStorage.setItem('compare-columns', JSON.stringify(['salesInclVat']))
     render(<CompareTable result={result} />)
@@ -139,15 +139,15 @@ describe('CompareTable', () => {
     expect(screen.getAllByText('4.75×').length).toBe(2)
   })
 
-  it('dashes ROAS when no ads ran — never 0.00×', () => {
+  it('dashes ROAS when no ads ran - never 0.00×', () => {
     render(<CompareTable result={result} />)
 
     const idleRow = screen.getByText('Mazzetti Denmark').closest('tr')!
-    expect(idleRow.textContent).toContain('—')
+    expect(idleRow.textContent).toContain('-')
     expect(idleRow.textContent).not.toContain('0.00×')
   })
 
-  it('shows 0.00× when the ads ran and nothing sold — that is a true answer', () => {
+  it('shows 0.00× when the ads ran and nothing sold - that is a true answer', () => {
     const burned: ShopFigures = {
       ...ZERO_FIGURES,
       shopId: 's3',

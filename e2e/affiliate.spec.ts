@@ -42,7 +42,7 @@ async function seed() {
       data: { name: `${MARKER} Shop`, currency: 'NOK' },
     })
     // Active on purpose: the Marketing page shows its filter controls for a
-    // workspace with a live affiliate account even when no ad account exists —
+    // workspace with a live affiliate account even when no ad account exists -
     // which is exactly this database. Token 'seed' never reaches the real
     // platform from a page walk; if a parallel forced sync ever sweeps it, the
     // 403 lands in lastError and the rows stay put.

@@ -121,7 +121,7 @@ describe('inspectMetaToken', () => {
 
   it('accepts a good token even when the app ID and secret are wrong', async () => {
     // metaAppToken throws here, inside the courtesy try. A wrong app secret
-    // must cost us the expiry date and nothing else — never a working token.
+    // must cost us the expiry date and nothing else - never a working token.
     // Hoisting that call out of the try would silently break this.
     vi.stubGlobal(
       'fetch',

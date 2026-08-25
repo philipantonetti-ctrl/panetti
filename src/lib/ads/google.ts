@@ -18,8 +18,8 @@ import { CHUNK_DAYS, chunkRange } from './windows'
  * refresh token first. Reports come from GoogleAdsService.SearchStream: a GAQL
  * query against the `customer` resource segmented by date gives one row per
  * calendar day at account level for the daily sync, while a query against
- * `campaign`, `ad_group` or `ad_group_ad` — totalled over a range instead of
- * segmented by day — feeds the breakdown table below. `cost_micros` is
+ * `campaign`, `ad_group` or `ad_group_ad` - totalled over a range instead of
+ * segmented by day - feeds the breakdown table below. `cost_micros` is
  * millionths of a whole unit of the account currency, so one minor unit
  * (cent/øre) is 10 000 micros.
  */
@@ -141,7 +141,7 @@ async function searchStream(
   // parse failure silently becomes zero rows and the sync records success
   // with lastError: null. Chunked windowing (windows.ts) turns one request
   // into five per sync, so one bad chunk would otherwise discard up to 90
-  // days of campaign spend and report a plausible-looking short year — the
+  // days of campaign spend and report a plausible-looking short year - the
   // same silent-truncation class the Meta page-cap guard exists to prevent.
   const PARSE_FAILED = Symbol('parse-failed')
   let body: unknown
@@ -180,7 +180,7 @@ export async function fetchGoogleDaily(
 
 /**
  * The current daily budget across ENABLED campaigns, minor units. A budget
- * shared by several campaigns counts once — that is what the money really is.
+ * shared by several campaigns counts once - that is what the money really is.
  */
 export async function fetchGoogleDailyBudget(
   creds: GoogleCredentials,
@@ -241,8 +241,8 @@ const BREAKDOWN_GAQL: Record<
 
 /**
  * Pull the level's id/name out of whichever nested resource GAQL returned it
- * under. Null for a row with no id — a total row, the same reason Meta's own
- * breakdown parser skips one (meta.ts) — an id-less row has nothing to key on
+ * under. Null for a row with no id - a total row, the same reason Meta's own
+ * breakdown parser skips one (meta.ts) - an id-less row has nothing to key on
  * and would collide with every other id-less row under the same account in
  * BreakdownTable's `accountId:id` React key.
  */
@@ -256,7 +256,7 @@ function mapBreakdownRow(level: BreakdownLevel, r: GoogleResult): BreakdownEntry
   return {
     id: entity.id,
     // Most modern ad types (responsive search, Performance Max) leave the
-    // ad's own name unset — it is an optional label, not every ad has one.
+    // ad's own name unset - it is an optional label, not every ad has one.
     // Falling back to the id, as Meta's breakdown does, beats a blank cell
     // sitting next to real numbers.
     name: entity.name || entity.id,
@@ -300,7 +300,7 @@ export async function fetchGoogleBreakdown(
 /**
  * One row per campaign per day, for a split account.
  *
- * `fetchGoogleBreakdown` keeps segments.date out of its SELECT on purpose — in
+ * `fetchGoogleBreakdown` keeps segments.date out of its SELECT on purpose - in
  * the SELECT it segments by day, "which is a different table and a far larger
  * one". Here that segmentation is exactly what is wanted, so it goes in both,
  * and the range is fetched in windows to keep any one answer small.
@@ -329,7 +329,7 @@ export async function fetchGoogleCampaignDaily(
  *
  * Not exported: its only consumer is fetchGoogleCampaignDaily above, and its
  * own behaviour (campaign-id extraction, dropping id-less rows) is already
- * proven through it in google.test.ts — a second, direct test would only
+ * proven through it in google.test.ts - a second, direct test would only
  * duplicate those assertions without covering anything fetchGoogleCampaignDaily
  * does not.
  */

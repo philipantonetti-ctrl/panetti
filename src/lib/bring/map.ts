@@ -1,8 +1,8 @@
 /**
  * Bring's tracking JSON into our own shape.
  *
- * Pure: no database, no network. What the resulting events MEAN — when a parcel
- * counts as delivered, returned, available — is not decided here but in
+ * Pure: no database, no network. What the resulting events MEAN - when a parcel
+ * counts as delivered, returned, available - is not decided here but in
  * src/lib/delivery/milestones.ts, so that DHL's mapper and this one cannot
  * drift into measuring different things.
  */
@@ -14,15 +14,15 @@ import { milestonesFrom, str, type MappedEvent, type MappedPackage } from '../de
  *
  * The field selectors below (`packageSet`, `packageNumber`, `eventSet`,
  * `status`, `dateIso`, `description`, `city`, `countryCode`) are CONFIRMED
- * against a recorded real response — __fixtures__/real-package.json, exercised
+ * against a recorded real response - __fixtures__/real-package.json, exercised
  * by map.test.ts's 'maps the recorded real response', which runs rather than
  * skips. (This comment used to say the opposite, describing them as provisional
  * and the probe as not yet run; that was true when written and stopped being
  * true when the fixture landed.)
  *
  * Timestamps need no interpretation here, unlike DHL's. Bring sends
- * `dateIso` with an explicit offset — "2026-08-18T08:52:56+02:00", verified
- * live 2026-08-18 — so `new Date()` reads it exactly, with no assumption about
+ * `dateIso` with an explicit offset - "2026-08-18T08:52:56+02:00", verified
+ * live 2026-08-18 - so `new Date()` reads it exactly, with no assumption about
  * which zone was meant. See the long note in dhl/map.ts for the carrier that
  * gives no offset at all.
  *

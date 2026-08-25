@@ -2,7 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { db } from '@/lib/db'
 import { matchByEmail, MATCH_WINDOW_DAYS } from './match'
 
-// Unique to THIS file — see "Test data convention" in the Global Constraints.
+// Unique to THIS file - see "Test data convention" in the Global Constraints.
 const TAG = '[intake-match-test]'
 const scoped = { shop: { name: { contains: TAG } } }
 
@@ -77,8 +77,8 @@ describe('matchByEmail', () => {
 
   /**
    * A refusal that names nothing is a dead end. This is the message the client
-   * actually saw on the 2026-08-18 file — "matched 2 orders in the last 30
-   * days" — and having read it he still had no way to learn WHICH two, so the
+   * actually saw on the 2026-08-18 file - "matched 2 orders in the last 30
+   * days" - and having read it he still had no way to learn WHICH two, so the
    * only route to an answer was to ask us. Repeat customers are the ordinary
    * case here, not the exception, so this message gets read often.
    *

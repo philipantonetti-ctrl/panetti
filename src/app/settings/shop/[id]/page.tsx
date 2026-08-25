@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
 import { ShopSettingsClient } from './ShopSettingsClient'
 
-/** The shop names carry their country ("Panetti Norway") — use it as the default. */
+/** The shop names carry their country ("Panetti Norway") - use it as the default. */
 function countryFromName(name: string): string {
   const known = ['Norway', 'Sweden', 'Denmark', 'Finland', 'Germany']
   return known.find((c) => name.toLowerCase().includes(c.toLowerCase())) ?? 'Norway'

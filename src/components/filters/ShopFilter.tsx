@@ -13,7 +13,7 @@ export const NO_SHOPS = 'none'
 /**
  * Which shops am I looking at?
  *
- * An empty selection means "all of them" — the common case, so it needs no clicks.
+ * An empty selection means "all of them" - the common case, so it needs no clicks.
  * "Only" isolates one shop, which is the fastest way to read it in its own currency.
  * Deselect all empties the board ([NO_SHOPS]) so a couple of shops can be picked
  * without un-ticking the other seven first.

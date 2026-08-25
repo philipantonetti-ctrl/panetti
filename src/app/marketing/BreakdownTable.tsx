@@ -7,9 +7,9 @@ import type { BreakdownLevel } from '@/lib/ads/types'
 
 /**
  * Campaign -> ad set -> ad, one row shape at every depth, asked for live and
- * never stored (see the design doc). ROAS and CTR are never in the response —
+ * never stored (see the design doc). ROAS and CTR are never in the response -
  * carrying a derived figure beside its inputs is how two numbers on one screen
- * come to disagree — so both are computed here, once, in one helper each, and
+ * come to disagree - so both are computed here, once, in one helper each, and
  * every level renders through the same row.
  */
 
@@ -32,22 +32,22 @@ function rowKey(row: Pick<BreakdownRow, 'accountId' | 'id'>): string {
 /**
  * A ratio with nothing to divide by is unknown, never a number pretending to
  * be one. Formatted to match MarketingTable.tsx's own `cellText` ('roas' and
- * 'pct' cases, and its null dash) rather than inventing a second convention —
+ * 'pct' cases, and its null dash) rather than inventing a second convention -
  * this table sits on the same page, and a client should never see the same
  * ROAS labelled two different ways within one screen.
  */
 function roasText(spend: number, purchaseValue: number): string {
-  if (spend === 0) return '—'
+  if (spend === 0) return '-'
   return `${(purchaseValue / spend).toFixed(2)}×`
 }
 
 function ctrText(clicks: number, impressions: number): string {
-  if (impressions === 0) return '—'
+  if (impressions === 0) return '-'
   return `${((clicks / impressions) * 100).toFixed(1)}%`
 }
 
 /**
- * Spend per attributed purchase — what Ads Manager calls "Cost per purchase",
+ * Spend per attributed purchase - what Ads Manager calls "Cost per purchase",
  * and what marketing.ts calls `costPerPurchase`. Deliberately NOT the `cpa`
  * of the table above, which is spend per paid STORE order: a store order
  * carries no campaign id, so that figure cannot be told apart campaign by
@@ -58,13 +58,13 @@ function ctrText(clicks: number, impressions: number): string {
  * state two different ways.
  */
 function cpaText(spend: number, purchases: number, currency: string): string {
-  if (spend === 0 || purchases === 0) return '—'
+  if (spend === 0 || purchases === 0) return '-'
   return formatMoney(Math.round(spend / purchases), currency)
 }
 
 /** Cost per thousand impressions. */
 function cpmText(spend: number, impressions: number, currency: string): string {
-  if (impressions === 0) return '—'
+  if (impressions === 0) return '-'
   return formatMoney(Math.round((spend / impressions) * 1000), currency)
 }
 
@@ -104,11 +104,11 @@ async function readBreakdown(url: string): Promise<BreakdownResponse> {
 type BreakdownTableProps = { shopId: string; provider: 'meta' | 'google'; from: string; to: string }
 
 /**
- * A campaign list belongs to one (shopId, provider, from, to) — changing any
+ * A campaign list belongs to one (shopId, provider, from, to) - changing any
  * of them means a different set of campaigns, so whatever was expanded and
  * cached under the old ones must not survive into the new list. Rather than
  * clearing five pieces of state by hand on every change (a synchronous
- * setState-in-effect React itself warns against — it renders the old data one
+ * setState-in-effect React itself warns against - it renders the old data one
  * extra frame before wiping it, and invites exactly the kind of half-reset bug
  * where one piece of state is forgotten), the params are the React `key`: a
  * change mounts a fresh instance, which starts clean because that is what a
@@ -164,7 +164,7 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
 
   function loadChildren(row: BreakdownRow, level: BreakdownLevel, key: string) {
     setCache((prev) => ({ ...prev, [key]: { status: 'loading', rows: [], errors: [] } }))
-    // A campaign/ad set id belongs to exactly one ad account — scoping the
+    // A campaign/ad set id belongs to exactly one ad account - scoping the
     // child request to it is what stops a second account on the same
     // provider from being asked for the same object id (see breakdown.ts).
     const params = new URLSearchParams({
@@ -182,7 +182,7 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
       })
       .catch((e: Error) => {
         // The request itself failing (network, non-2xx) is shown the same way
-        // as a per-account failure inside a 200 — one reason, under this row.
+        // as a per-account failure inside a 200 - one reason, under this row.
         setCache((prev) => ({
           ...prev,
           [key]: {
@@ -192,7 +192,7 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
           },
         }))
         // A transient failure (rate limit, a brief 500, a token blip) must be
-        // retryable by collapsing and re-expanding — leaving this key marked
+        // retryable by collapsing and re-expanding - leaving this key marked
         // "fetched" is what would make a failure permanent, the same trap
         // `toggle`'s own comment names for a successful expansion.
         fetchedKeys.current.delete(key)
@@ -330,20 +330,20 @@ function BreakdownTablePanel({ shopId, provider, from, to }: BreakdownTableProps
       )}
 
       {rows === null ? (
-        // A failed initial load must not sit under its own "Loading…" — the
+        // A failed initial load must not sit under its own "Loading…" - the
         // banner above already says what happened, and Try again is the
         // only next step, not a spinner that was never going to resolve.
         loadError ? null : (
           <p className="px-5 py-8 text-center text-[13px] text-muted">Loading campaigns…</p>
         )
       ) : accountsChecked === 0 ? (
-        // Nothing connected, not merely nothing spent — a different sentence
+        // Nothing connected, not merely nothing spent - a different sentence
         // from the one below, checked first so it wins when both are empty.
         <p className="px-5 py-8 text-center text-[13px] text-muted">
           No {PLATFORM_NAME[provider]} ad accounts on this store yet.
         </p>
       ) : errors.length > 0 && rows.length === 0 ? (
-        // Not "nothing ran" — that is not something we actually know here.
+        // Not "nothing ran" - that is not something we actually know here.
         // Every account that could have said so failed; its reason is in
         // the banner above, not a claim about the client's own money.
         <p className="px-5 py-8 text-center text-[13px] text-muted">Could not read this period.</p>

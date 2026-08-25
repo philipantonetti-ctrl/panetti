@@ -23,8 +23,8 @@ const item: BriefItem = {
  * ambient seed alone: prisma/seed.ts anchors "today" at a literal 2026-07-14,
  * so it never reaches the 2026-08-03..09 week no matter when it is re-run).
  *
- * Mirrors collect.integration.test.ts (Task 6) exactly — same shape of
- * fixture, same two-window trick — but named distinctly so it cannot collide
+ * Mirrors collect.integration.test.ts (Task 6) exactly - same shape of
+ * fixture, same two-window trick - but named distinctly so it cannot collide
  * with that file's '[advisor-test] Shop', and torn down in afterAll so
  * load.integration.test.ts's hardcoded "the seeded eleven" sees exactly
  * eleven again once this file finishes.
@@ -64,9 +64,9 @@ beforeAll(async () => {
   })
   productId = product.id
 
-  // Previous window (27 Jul – 2 Aug): 1_000_000 NOK.
+  // Previous window (27 Jul - 2 Aug): 1_000_000 NOK.
   await order('A1', day('2026-07-29'), 1_000_000)
-  // Current window (3 – 9 Aug): 400_000 NOK — a 60% fall, a real move to find.
+  // Current window (3 - 9 Aug): 400_000 NOK - a 60% fall, a real move to find.
   await order('A2', day('2026-08-05'), 400_000)
 })
 

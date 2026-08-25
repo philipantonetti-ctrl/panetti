@@ -4,7 +4,7 @@
 
 **Goal:** Restore "Connect with Facebook" so Meta connects by login and account picker, exactly the way our Google path and BeProfit both already work.
 
-**Architecture:** Meta rejoins the provider-generic OAuth pipeline it was removed from in `fb4686d`. `buildMetaAuthUrl` and `exchangeMetaCode` come back from git unchanged because they were already correct; `ensureMetaApp` stays deleted because it was the loop. The start and callback routes drop their `provider !== 'google'` gate. Everything downstream of the callback — the picker, `/me/adaccounts`, bulk connect, the 365-day backfill — already exists and is tested.
+**Architecture:** Meta rejoins the provider-generic OAuth pipeline it was removed from in `fb4686d`. `buildMetaAuthUrl` and `exchangeMetaCode` come back from git unchanged because they were already correct; `ensureMetaApp` stays deleted because it was the loop. The start and callback routes drop their `provider !== 'google'` gate. Everything downstream of the callback - the picker, `/me/adaccounts`, bulk connect, the 365-day backfill - already exists and is tested.
 
 **Tech Stack:** Next.js 16 App Router, React 19, Prisma 6 + PostgreSQL, Vitest (jsdom + DB-backed + stubbed fetch), Playwright, Tailwind 4.
 
@@ -124,7 +124,7 @@ import { AdApiError } from './types'
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/lib/ads/oauth.test.ts`
-Expected: FAIL — `buildMetaAuthUrl` and `exchangeMetaCode` are not exported from `./oauth`.
+Expected: FAIL - `buildMetaAuthUrl` and `exchangeMetaCode` are not exported from `./oauth`.
 
 - [ ] **Step 3: Restore the implementation**
 
@@ -152,7 +152,7 @@ Add `buildMetaAuthUrl` beside `buildGoogleAuthUrl`:
  * The dialog BeProfit's own login popup runs on, same endpoint and version.
  *
  * No `config_id`. Meta recommends one for Facebook Login for Business, but its
- * reference calls it optional and says `scope` "can still be included" — and a
+ * reference calls it optional and says `scope` "can still be included" - and a
  * configuration id would be one more value the client has to create and paste.
  * The redirect URI is the only thing this dialog needs that no API can set.
  */
@@ -222,7 +222,7 @@ Update the file's header comment, which currently describes Google only:
  * calls that Standard Access, and a Business type app gets it automatically.
  *
  * There is no app-settings healing here any more. `ensureMetaApp` used to
- * prove the App ID, read the app's `app_domains` and write ours in — eighty
+ * prove the App ID, read the app's `app_domains` and write ours in - eighty
  * lines aimed at a field that was never the problem. The redirect URI was.
  */
 ```
@@ -267,7 +267,7 @@ git commit -m "feat: the Meta auth URL and code exchange come back, without the 
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `src/app/api/ads/oauth.test.ts`. The file already has `start`, `callback`, `asAdmin`, `wipe`, `restoreSeedApps`, and a `beforeEach` that already upserts **both** app rows — meta as `clientId: 'oauth-test-app'` and google as `clientId: 'oauth-test-google'`. No setup change is needed; the assertions below use `oauth-test-app` because that is the row already there.
+Add to `src/app/api/ads/oauth.test.ts`. The file already has `start`, `callback`, `asAdmin`, `wipe`, `restoreSeedApps`, and a `beforeEach` that already upserts **both** app rows - meta as `clientId: 'oauth-test-app'` and google as `clientId: 'oauth-test-google'`. No setup change is needed; the assertions below use `oauth-test-app` because that is the row already there.
 
 Add:
 
@@ -376,7 +376,7 @@ describe('unknown providers', () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/app/api/ads/oauth.test.ts`
-Expected: FAIL — the meta start and callback answer 404, so the status and location assertions fail.
+Expected: FAIL - the meta start and callback answer 404, so the status and location assertions fail.
 
 - [ ] **Step 3: Open the start route to meta**
 
@@ -414,7 +414,7 @@ Update the route's header comment:
  * foreign redirect cannot plant a connection.
  *
  * Nothing is asked of the platform here. An earlier version proved the app and
- * healed its domains first, then told the admin to press the button again —
+ * healed its domains first, then told the admin to press the button again -
  * which it could do forever.
  */
 ```
@@ -489,7 +489,7 @@ git commit -m "feat: the Facebook login round trip works again, end to end"
 
 - [ ] **Step 1: Write the failing tests**
 
-In `src/app/settings/ad-accounts/AdAccountsClient.test.tsx`, replace the three token-card tests — `'offers Meta a token box instead of a Facebook login that never worked'`, `'saves a pasted Meta token and opens the picker on what comes back'`, and `'keeps the card open and says why when Facebook refuses the token'` — plus `'asks Meta for nothing but the token'`, with:
+In `src/app/settings/ad-accounts/AdAccountsClient.test.tsx`, replace the three token-card tests - `'offers Meta a token box instead of a Facebook login that never worked'`, `'saves a pasted Meta token and opens the picker on what comes back'`, and `'keeps the card open and says why when Facebook refuses the token'` - plus `'asks Meta for nothing but the token'`, with:
 
 ```ts
   it('links Connect with Facebook straight to the oauth start when ready', () => {
@@ -538,7 +538,7 @@ Also fix the existing test `'saves the platform setup and never demands a saved 
 
 The rest of that test is unchanged.
 
-Update `'still offers the manual path behind Advanced, with provider fields switching'` — the Meta card has no Developer token field, so the count stays 1 before the tab switch and the modal's Meta label is unchanged:
+Update `'still offers the manual path behind Advanced, with provider fields switching'` - the Meta card has no Developer token field, so the count stays 1 before the tab switch and the modal's Meta label is unchanged:
 
 ```ts
   it('still offers the manual path behind Advanced, with provider fields switching', () => {
@@ -560,7 +560,7 @@ Update `'still offers the manual path behind Advanced, with provider fields swit
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/app/settings/ad-accounts/AdAccountsClient.test.tsx`
-Expected: FAIL — no "Connect with Facebook" text, no `meta client id` label, and "Platform setup" still reads "Google setup".
+Expected: FAIL - no "Connect with Facebook" text, no `meta client id` label, and "Platform setup" still reads "Google setup".
 
 - [ ] **Step 3: Delete MetaTokenCard and restore the Meta button**
 
@@ -760,7 +760,7 @@ In `src/lib/ads/sync.test.ts:193` and `:197`, change both expectations from `'Fa
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npx vitest run src/lib/ads/sync.test.ts`
-Expected: FAIL — the message still reads "Facebook token expired".
+Expected: FAIL - the message still reads "Facebook token expired".
 
 - [ ] **Step 3: Update the messages and comments**
 
@@ -781,7 +781,7 @@ Expected: FAIL — the message still reads "Facebook token expired".
 
 ```ts
 /**
- * The client's own Meta and Google apps — the one-time setup that makes the
+ * The client's own Meta and Google apps - the one-time setup that makes the
  * connect buttons work. Secrets go in, never out.
  *
  * Saving does not call either platform. Four designs tried to make the app
@@ -802,7 +802,7 @@ Expected: FAIL — the message still reads "Facebook token expired".
 and the `AdConnection` comment:
 
 ```prisma
-// One way in — a Facebook or Google login someone completed.
+// One way in - a Facebook or Google login someone completed.
 // Many ad accounts can hang off it.
 ```
 
@@ -816,7 +816,7 @@ and the `expiresAt` comment:
 - [ ] **Step 4: Verify the schema change is comments only**
 
 Run: `npx prisma db push`
-Expected: "The database is already in sync with the Prisma schema." If it reports a migration, a real field was changed by mistake — revert it.
+Expected: "The database is already in sync with the Prisma schema." If it reports a migration, a real field was changed by mistake - revert it.
 
 - [ ] **Step 5: Run everything**
 
@@ -847,7 +847,7 @@ Two things remain that code cannot do.
 
 **The client's one manual step.** Open `https://developers.facebook.com/apps/1526277315425302/`, add the **Facebook Login for Business** product, and paste `https://panetti.vercel.app/api/ads/oauth/meta/callback` under Valid OAuth Redirect URIs. Save changes. Until this is done, pressing Connect with Facebook still shows "Can't load URL", and the setup card now prints the exact URL to paste.
 
-**Renaming the legacy Meta connection, before the first real login.** The callback upserts an `AdConnection` by `provider` and `label`, and `label` is whatever `/me?fields=name` answers. A person's login returns that person's name; the system user token the old flow stored returned the system user's name instead, so the row already sitting in production carries the wrong label to match against. The first genuine "Connect with Facebook" will not find it, and will create a second Meta connection next to it. The picker then marks an account `alreadyConnected` from any `AdAccount` row for the provider, regardless of which connection owns it, so every account still shows up checked and disabled under that new connection too — the picker has nothing left to tick, and Save can only answer "Tick at least one account." None of this needs a code fix: before that first login, rename the legacy connection's `label` in the database to the exact name Facebook will hand back for the person logging in, and the upsert adopts the existing row in place, keeping every `AdAccount` binding and all its spend history intact. The durable fix — letting the bulk route re-point an existing account's `connectionId` when the provider already matches, so a relabel is never load-bearing again — is deliberately left out of this branch.
+**Renaming the legacy Meta connection, before the first real login.** The callback upserts an `AdConnection` by `provider` and `label`, and `label` is whatever `/me?fields=name` answers. A person's login returns that person's name; the system user token the old flow stored returned the system user's name instead, so the row already sitting in production carries the wrong label to match against. The first genuine "Connect with Facebook" will not find it, and will create a second Meta connection next to it. The picker then marks an account `alreadyConnected` from any `AdAccount` row for the provider, regardless of which connection owns it, so every account still shows up checked and disabled under that new connection too - the picker has nothing left to tick, and Save can only answer "Tick at least one account." None of this needs a code fix: before that first login, rename the legacy connection's `label` in the database to the exact name Facebook will hand back for the person logging in, and the upsert adopts the existing row in place, keeping every `AdAccount` binding and all its spend history intact. The durable fix - letting the bulk route re-point an existing account's `connectionId` when the provider already matches, so a relabel is never load-bearing again - is deliberately left out of this branch.
 
 **Who presses the button.** BeProfit shows Google under Philip Antonetti and Facebook under Jacob Kjos Hanssen, so the Facebook ad accounts sit under Jacob's login. Whoever logs in must be the person who can see those accounts, or the picker comes back empty. That is real information, not a bug.
 
@@ -857,7 +857,7 @@ Two things remain that code cannot do.
 
 Recorded here because the review that found them was thorough and the reasoning should not evaporate.
 
-**No warning before a Meta connection expires.** `expiresAt` now holds a real date, and exactly one place reads it — the expiry guard in `sync.ts` — which only fires after the date has already passed. So Meta ingestion stops roughly every 60 days and the only signal is an "Error" pill in a settings table nobody is watching, on a dashboard whose entire job is spend reporting. The reactive path does work: the same person logs in again, the label matches, the upsert refreshes the token. But the recurring chore is new, and it arrived with the decision to trade a never-expiring system user token for a user token. A banner when any connection expires inside seven days is the small fix.
+**No warning before a Meta connection expires.** `expiresAt` now holds a real date, and exactly one place reads it - the expiry guard in `sync.ts` - which only fires after the date has already passed. So Meta ingestion stops roughly every 60 days and the only signal is an "Error" pill in a settings table nobody is watching, on a dashboard whose entire job is spend reporting. The reactive path does work: the same person logs in again, the label matches, the upsert refreshes the token. But the recurring chore is new, and it arrived with the decision to trade a never-expiring system user token for a user token. A banner when any connection expires inside seven days is the small fix.
 
 **The bulk route cannot re-point an account to a different connection.** `alreadyConnected` is computed from any `AdAccount` row for the provider, ignoring which connection owns it, and the bulk route skips those rows. That is what makes the relabel above load-bearing. Letting bulk move an existing account's `connectionId` when the provider already matches would make "Press Connect with Facebook to renew it" true in every case instead of most, and would retire a manual database step.
 
@@ -865,4 +865,4 @@ Recorded here because the review that found them was thorough and the reasoning 
 
 **`AdConnection` has no `@@unique([provider, label])`.** Both upsert sites do `findFirst` then `create`, which is a time-of-check-to-time-of-use race. Pre-existing, and realistic traffic is one admin clicking at human speed, but this branch doubles the paths through it. A unique constraint plus a real `upsert` would remove the pattern rather than narrow it.
 
-**`next-env.d.ts` goes dirty on every Next command.** The committed copy imports `./.next/types/routes.d.ts`; the installed Next regenerates it as `./.next/dev/types/routes.d.ts`. Nothing in this branch touched the file — it was last committed in `4e631ef` — but it dirties the tree constantly and invites exactly the kind of `git checkout` reflex that has already cost this project uncommitted work once. Either commit what Next now generates, or gitignore it.
+**`next-env.d.ts` goes dirty on every Next command.** The committed copy imports `./.next/types/routes.d.ts`; the installed Next regenerates it as `./.next/dev/types/routes.d.ts`. Nothing in this branch touched the file - it was last committed in `4e631ef` - but it dirties the tree constantly and invites exactly the kind of `git checkout` reflex that has already cost this project uncommitted work once. Either commit what Next now generates, or gitignore it.

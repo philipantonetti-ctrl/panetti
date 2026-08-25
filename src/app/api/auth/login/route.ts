@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
   const user = await db.user.findUnique({ where: { email: parsed.data.email.toLowerCase() } })
 
-  // Same message whether the email is unknown or the password is wrong —
+  // Same message whether the email is unknown or the password is wrong -
   // never reveal which accounts exist.
   const bad = NextResponse.json({ error: 'Wrong email or password' }, { status: 401 })
   if (!user) return bad
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   })
 
   // Where to land. An ambassador only has a portal; marketing has the
-  // ambassadors page. An admin normally gets the dashboard — but if they came
+  // ambassadors page. An admin normally gets the dashboard - but if they came
   // through the AMBASSADOR door and have an ambassador of their own (same
   // email), show them that side, which is what they just asked for.
   let redirectTo = '/dashboard'

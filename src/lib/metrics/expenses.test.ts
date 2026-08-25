@@ -22,11 +22,11 @@ describe('expenseInRange', () => {
     expect(expenseInRange(make(), new Date('2026-07-01'), new Date('2026-07-07'))).toBe(316129)
   })
 
-  it('charges exactly the full amount when the whole month is selected — no øre lost', () => {
+  it('charges exactly the full amount when the whole month is selected - no øre lost', () => {
     expect(expenseInRange(make(), new Date('2026-07-01'), new Date('2026-07-31'))).toBe(1400000)
   })
 
-  it('uses each month own length — February is not July', () => {
+  it('uses each month own length - February is not July', () => {
     expect(expenseInRange(make(), new Date('2026-02-01'), new Date('2026-02-28'))).toBe(1400000)
   })
 

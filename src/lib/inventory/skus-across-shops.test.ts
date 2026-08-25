@@ -32,7 +32,7 @@ describe('skusAcrossShops', () => {
   /**
    * Two shops typing the same code in different case is one SKU, exactly as it
    * is everywhere else in the purchasing side. Counted as two, this diagnostic
-   * would report per-country SKUs in a workspace that has none — the wrong
+   * would report per-country SKUs in a workspace that has none - the wrong
    * answer to the only question it is here to answer.
    */
   it('treats a SKU written in another case or with stray spaces as the same SKU', () => {
@@ -146,7 +146,7 @@ describe('skusAcrossShops', () => {
 
   /**
    * A sales key that misses its SKU reads as "no units", and no units reads as
-   * "no blind spot" — the reassuring answer, arrived at by a lookup failure.
+   * "no blind spot" - the reassuring answer, arrived at by a lookup failure.
    * The listings are normalised on the way in, so the sales side must be too,
    * rather than trusting every caller to have done it first.
    */
@@ -167,7 +167,7 @@ describe('skusAcrossShops', () => {
   /**
    * Two keys for one product are two halves of its demand. Keeping the last one
    * seen would report a fraction of the units and make the blind spot look
-   * smaller than it is — and which fraction would depend on iteration order.
+   * smaller than it is - and which fraction would depend on iteration order.
    */
   it('adds up sales keys that turn out to be the same SKU', () => {
     const report = skusAcrossShops(
@@ -222,7 +222,7 @@ describe('skuStem', () => {
 
   /**
    * Real SKUs end in real letters. Stripping down to almost nothing pools
-   * unrelated products into one stem, and a false family is worse than none —
+   * unrelated products into one stem, and a false family is worse than none -
    * it is the report inventing the very pattern it was asked to look for.
    */
   it('keeps the code when stripping it would leave almost nothing', () => {
@@ -354,7 +354,7 @@ describe('SKUs that are really Woo product ids', () => {
    * `map.ts` stores `li.sku || String(li.product_id)`, so a listing with no SKU
    * arrives carrying its Woo product id as one. Those ids are per-store
    * sequential, so such a "SKU" can never match another shop's and the product
-   * can never be forecast — but it looks like an ordinary code, and the report
+   * can never be forecast - but it looks like an ordinary code, and the report
    * would otherwise send someone hunting for a product that is really a blank
    * field in the webshop.
    */

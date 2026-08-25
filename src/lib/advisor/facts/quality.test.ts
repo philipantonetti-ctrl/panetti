@@ -50,7 +50,7 @@ describe('qualityFacts', () => {
     expect(isQuality(facts[0])).toBe(true)
   })
 
-  it('reports even a single uncosted product — this gate is trust, not size', () => {
+  it('reports even a single uncosted product - this gate is trust, not size', () => {
     const facts = qualityFacts({
       uncostedByShop: [{ shopId: 'shop_no', shopName: 'Panetti Norway', count: 1 }],
       failingShops: [],

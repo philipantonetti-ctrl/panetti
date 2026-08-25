@@ -8,7 +8,7 @@
  * the warehouse booked the shipment, so no lookup is needed at all.
  *
  * Measured on the real 62-row export from 2026-08-15: 57 rows carry an order
- * number. Of the 5 that do not, 4 are genuinely not customer deliveries —
+ * number. Of the 5 that do not, 4 are genuinely not customer deliveries -
  * pallet freight (`DHL Road Freight Standard`, references like `LET19703987R`)
  * and inbound stock (`DHL Parti`, `PO: 223730`). They are reported, never
  * silently dropped.

@@ -34,21 +34,21 @@ export async function verifyInvite(token: string): Promise<string | null> {
 }
 
 /**
- * Who a link was for and whether its seven days are up — or null if it is missing,
+ * Who a link was for and whether its seven days are up - or null if it is missing,
  * tampered with, or not an invite.
  *
  * verifyInvite answers "may this be redeemed?", and folds every refusal into one
  * null. That is right for the API, and wrong for the page, because it throws away
  * the one fact the page needs to say something useful: the name on the link. An
  * ambassador who already set their password and comes back to their old link on day
- * eight was being told "not valid, ask for a new one" — a dead end, and untrue, since
+ * eight was being told "not valid, ask for a new one" - a dead end, and untrue, since
  * their account is fine and waiting at /login.
  *
  * So expiry is reported here rather than enforced. Everything else is enforced as
  * strictly as ever: the signature must be ours, so a forged link learns nothing, and
  * the audience must be an invite, so a session cookie cannot be read as one. Whoever
  * holds an authentic link already held a legitimate invite for that person, and the
- * live page has always told them this much — this only stops the answer expiring.
+ * live page has always told them this much - this only stops the answer expiring.
  *
  * Redemption is untouched: POST /api/invite still goes through verifyInvite, and an
  * expired token still cannot set a password.
@@ -58,7 +58,7 @@ export async function inspectInvite(
 ): Promise<{ ambassadorId: string; expired: boolean } | null> {
   if (!token) return null
   try {
-    // compactVerify checks the signature and nothing else — the claims are ours to
+    // compactVerify checks the signature and nothing else - the claims are ours to
     // read, and to judge, once it has proved we wrote them.
     const { payload } = await compactVerify(token, secret())
     const claims = JSON.parse(new TextDecoder().decode(payload)) as {

@@ -60,7 +60,7 @@ const DATE_PROPS = {
  *
  * Without it, TypeScript infers one distinct object type per tool (their
  * `properties` keys differ), and the test that walks every tool's
- * `properties` by key — `Object.keys(...).map((key) => properties[key])` —
+ * `properties` by key - `Object.keys(...).map((key) => properties[key])` -
  * cannot index a string-keyed union of types that each name only their own
  * fixed keys. The values below are unchanged; only the type they are read
  * back as gets an index signature.
@@ -124,7 +124,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'get_orders',
     description:
-      'Individual orders in a range: number, date, status, customer, country and value. Call this only when the question is about specific orders — use get_metrics for totals.',
+      'Individual orders in a range: number, date, status, customer, country and value. Call this only when the question is about specific orders - use get_metrics for totals.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -152,7 +152,7 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
     const engine = computeMetrics(loaded)
     const shopIds = engine.byShop.map((s) => s.shopId)
     // Through accountIdsForShops, so a split account's in-scope campaigns are
-    // not dropped — see the same note in collect.ts.
+    // not dropped - see the same note in collect.ts.
     const accountIds = await accountIdsForShops(shopIds)
     const accounts = await db.adAccount.findMany({
       where: { id: { in: accountIds } },

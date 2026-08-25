@@ -16,7 +16,7 @@ export type ResolvedConsignment = {
  * different responses and are indistinguishable once flattened to a count: a
  * number Bring does not know is a conversation with the warehouse, a Bring
  * error is a shrug, and a run that expired is a capacity problem on our side.
- * The 2026-08-18 file lost three parcels to this — see the docstring on
+ * The 2026-08-18 file lost three parcels to this - see the docstring on
  * `unresolved` in import.ts.
  */
 export type UnresolvedNumber = {
@@ -38,7 +38,7 @@ const str = (v: unknown): string | null =>
  * Turn the numbers found in a warehouse file into consignments.
  *
  * ONE NUMBER PER REQUEST. Bring answers about a single `q` however many are
- * sent — measured against the live API on 2026-08-12: ten in returned one
+ * sent - measured against the live API on 2026-08-12: ten in returned one
  * consignment, two in returned none, one in returned the right parcel 27 times
  * out of 27. Batching here would look like it worked and silently lose parcels.
  *
@@ -47,8 +47,8 @@ const str = (v: unknown): string | null =>
  * a response names its consignment AND all of its packages, everything it
  * accounted for can be struck off before the next request. Measured by running
  * the committed parser over the real 2026-08-11 file, that is what takes its 61
- * distinct long numbers — 27 seventeen-digit shipment references plus 34
- * eighteen-digit package numbers — down to 27 lookups.
+ * distinct long numbers - 27 seventeen-digit shipment references plus 34
+ * eighteen-digit package numbers - down to 27 lookups.
  */
 export async function resolveConsignments(
   creds: BringCredentials,
@@ -65,7 +65,7 @@ export async function resolveConsignments(
     // Checked before the request, not after: starting a lookup we have no time
     // to finish spends the budget for nothing. Same rule as sync.ts:120.
     if (opts.deadline !== undefined && Date.now() >= opts.deadline) {
-      // Says nothing about the parcel, which is almost certainly fine — only
+      // Says nothing about the parcel, which is almost certainly fine - only
       // that this run stopped before reaching it. Sending someone to ask the
       // warehouse about a number nobody ever looked up wastes their morning.
       unresolved.push({
@@ -81,7 +81,7 @@ export async function resolveConsignments(
     } catch (e) {
       // One dead lookup must not stop the file. The number is reported so a
       // half-read import is visible rather than silently short. Bring's own
-      // words are carried through — client.ts has already truncated the body,
+      // words are carried through - client.ts has already truncated the body,
       // so a gateway's HTML error page cannot arrive here whole.
       unresolved.push({
         number,
@@ -111,7 +111,7 @@ export async function resolveConsignments(
     if (!consignmentId || packageNumbers.length === 0) {
       // Bring answered, and had nothing. Either the warehouse booked this
       // parcel with another carrier, or the number is not a parcel number at
-      // all — parse.ts takes every run of 15+ digits it finds, so an invoice
+      // all - parse.ts takes every run of 15+ digits it finds, so an invoice
       // or customer number in the file reaches this exact line. Both are the
       // warehouse's to answer, which is why the number is kept.
       unresolved.push({ number, reason: 'Bring has no parcel with this number' })

@@ -28,7 +28,7 @@ Teknologi's customer numbers, so Bring invoices the client directly, and the
 client's own Mybring login can read those invoices. Everything in this document
 follows from that.
 
-`GET https://www.mybring.com/reports/api/generate` — HTTP 200:
+`GET https://www.mybring.com/reports/api/generate` - HTTP 200:
 
 | customer number | name |
 |---|---|
@@ -45,7 +45,7 @@ company's freight entirely, and nothing on screen would say so.
 ## What is actually reachable
 
 `GET https://www.mybring.com/invoicearchive/api/invoices/{customerNumber}.json`
-— HTTP 200, real invoices, all three headers we already send for tracking
+- HTTP 200, real invoices, all three headers we already send for tracking
 (`X-Mybring-API-Uid`, `X-Mybring-API-Key`, `X-Bring-Client-URL`):
 
 | customer | invoice | date | total | currency | issuer | spec |
@@ -72,7 +72,7 @@ otherwise will quietly under-count freight.
 
 **The specification carries the parcel number.** Every one of the four accounts
 offers `MASTER-SPECIFIED_INVOICE`. One was downloaded and measured on
-2026-08-20 — invoice 4710001522, customer 20020467369:
+2026-08-20 - invoice 4710001522, customer 20020467369:
 
 | | |
 |---|---|
@@ -101,7 +101,7 @@ So a parcel's cost is the **sum** of its lines, which is the second reason
 Two fields worth knowing and not using. `ORDER_NUMBER` is Bring's own order id,
 not a shop order number. `SENDER_REFERENCE` is a six-digit warehouse reference
 (`024426`, `024917`) in the same shape as the `Order` column of the warehouse's
-daily file — a possible second join, deliberately not relied on until someone
+daily file - a possible second join, deliberately not relied on until someone
 confirms what it refers to.
 
 Also offered on all four, unused for now and recorded so nobody re-discovers
@@ -109,7 +109,7 @@ them: `COMPLETE_STATUS_INCLUDING_FREIGHT_COST`,
 `PARCELS-FREIGHT_STATISTICS_SUMMED`, `PARCELS-FREIGHT_STATISTICS_DETAILED`,
 `PARCELS-ECONOMY_AND_STATISTICS`.
 
-## The download is refusing API credentials — measured 2026-08-21
+## The download is refusing API credentials - measured 2026-08-21
 
 **This section overrules the reachability claim above.** Everything below was
 measured at 02:00 GMT on 2026-08-21 against the same credentials, from the same
@@ -130,7 +130,7 @@ Bring still builds the report. It will not hand over the file.
 | **`reports/api/generate/{customer}/`** (report list) | **406 Not Acceptable** |
 
 So the credentials are good, the reports subsystem answers, the report reaches
-`DONE` — and the two endpoints that return report CONTENT refuse. Both of those
+`DONE` - and the two endpoints that return report CONTENT refuse. Both of those
 two worked on 2026-08-20: the fixture is a real download stamped
 `FinishedAt 2026-08-20T15:30:35.752+02:00`, and the list of report types this
 document quotes further up came from the endpoint that now 406s.
@@ -152,7 +152,7 @@ each on a freshly generated report:
 **200 and a 3 881-byte HTML login page**. So the gateway serves that path to a
 browser session and refuses it to an API key. Whether that is a deliberate
 change, a permission that has come off this Mybring user, or a fault, cannot be
-told from outside — and this is the point at which the honest answer is to ask
+told from outside - and this is the point at which the honest answer is to ask
 Bring rather than to guess again.
 
 ### What this does and does not change
@@ -162,7 +162,7 @@ work and both succeed: production will hold a `BringReportRun` row for all 27
 invoices, correctly split into the 25 with a specification and the 2 without.
 Only `collect` fails, and the fix wave committed on 2026-08-21 is exactly what
 makes that survivable rather than destructive: the failure is written to the row
-with Bring's own message, backed off an hour, and retried — so the first tick
+with Bring's own message, backed off an hour, and retried - so the first tick
 after Bring serves a file again completes the collect with nothing lost and
 nothing to re-run by hand.
 
@@ -189,7 +189,7 @@ than being replaced by it.
 
 ## What we store
 
-### `ShipmentCost` — one row per invoice line
+### `ShipmentCost` - one row per invoice line
 
 Not a column on `Shipment`. A parcel can appear on more than one invoice: a
 surcharge, a re-weigh, a correction, a credit note. Collapsing that into one
@@ -278,7 +278,7 @@ A summed `costMinor` and `costCurrency` are denormalised onto `Shipment` and
 rewritten on every ingest, precisely as the milestone columns already are:
 rows are the truth, the column is for speed.
 
-### `BringReportRun` — the job
+### `BringReportRun` - the job
 
 ```
 model BringReportRun {
@@ -344,7 +344,7 @@ rows forever.
 
 Measured, the report generated fast enough to be `DONE` on the first status
 check, so most invoices will land in a single tick. The design does not depend
-on that — it simply means the backlog usually clears faster than the worst case
+on that - it simply means the backlog usually clears faster than the worst case
 below.
 
 **A first backfill is therefore slow, and that is acceptable.** Roughly six
@@ -383,7 +383,7 @@ own comment warns that reading one currency as another is a tenfold error.
 
 **An order can have several parcels.** Its invoiced shipping is the sum of the
 matched lines for every parcel on it. An order with two parcels where only one
-matched is **not** invoiced-costed at all — it falls through to the next rung —
+matched is **not** invoiced-costed at all - it falls through to the next rung -
 because half a shipping cost is worse than an estimate.
 
 ## What this fixes for free
@@ -480,6 +480,6 @@ Nothing blocks slice 1. Two operational facts are worth confirming before slice
   appear three times on invoice 4710001522, at 1 140.84 NOK a time for the
   service alone. Three deliveries to one address, three packages under one
   waybill, and a billing error all look identical from here. This is not a
-  blocker — the design stores what the invoice says either way — but it is the
+  blocker - the design stores what the invoice says either way - but it is the
   first thing this feature will surface, and it is worth knowing which it is
   before the client sees it.

@@ -21,7 +21,7 @@ const row = (over: Partial<Row> = {}): Row => ({
 
 // Assert against the rendered text as a whole rather than getByText. A phrase
 // like "61 days late" lives in a <span> inside a <td>, and both elements match
-// it — getByText throws on multiple matches, so it would fail on correct markup.
+// it - getByText throws on multiple matches, so it would fail on correct markup.
 const shows = (ui: ReactElement, pattern: RegExp) =>
   expect(render(ui).container.textContent).toMatch(pattern)
 

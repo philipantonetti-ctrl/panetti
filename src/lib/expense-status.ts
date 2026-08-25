@@ -3,7 +3,7 @@ import { utcDay } from './dates'
 /**
  * An operational expense's lifecycle, as the Add Expense modal offers it.
  *
- * The important part: an expense that has ENDED is NOT switched off — it keeps its end
+ * The important part: an expense that has ENDED is NOT switched off - it keeps its end
  * date. That way the months it actually ran are still charged, and last quarter's profit
  * never silently changes. "Off" would erase it from history.
  */

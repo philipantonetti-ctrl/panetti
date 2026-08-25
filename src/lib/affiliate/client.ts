@@ -1,7 +1,7 @@
 import { toMinor } from '../money'
 
 /**
- * Addrevenue's v2 API, as MEASURED on 2026-08-24 — the public docs are thin
+ * Addrevenue's v2 API, as MEASURED on 2026-08-24 - the public docs are thin
  * and partly wrong (they promise `http_code`/`count` at the top level; the
  * real envelope is `{ results, meta }`). One life-time token per brand
  * account; these are advertiser accounts, so /channels and /payouts answer
@@ -30,7 +30,7 @@ export type AffiliateAdvertiser = {
 
 /** One transaction, parsed: money in integer minor units of `currency`. */
 export type AffiliateTxRow = {
-  externalId: string // their numeric id, stringified — platform ids are Strings here
+  externalId: string // their numeric id, stringified - platform ids are Strings here
   date: Date // UTC midnight of the platform-reported sale day
   market: string
   channelId: string
@@ -57,7 +57,7 @@ async function get(token: string, path: string): Promise<Envelope> {
   }
   if (res.status === 403) {
     // Their 403 covers a missing header, an unknown token and an inactive
-    // account alike — one message a person can act on.
+    // account alike - one message a person can act on.
     throw new AffiliateApiError('Addrevenue rejected the token. Check it in Addrevenue and paste it again.')
   }
   if (!res.ok) {
@@ -76,7 +76,7 @@ async function get(token: string, path: string): Promise<Envelope> {
 /** "2026-01-02" (their plain sale day) -> UTC midnight. */
 function utcDayOf(s: string | null | undefined): Date {
   // Loud, and in provider voice: the sync stores this message verbatim as
-  // lastError, where a raw TypeError would point at us instead of the data —
+  // lastError, where a raw TypeError would point at us instead of the data -
   // and an Invalid Date would not surface until some later read.
   const d = s ? new Date(`${s.slice(0, 10)}T00:00:00.000Z`) : null
   if (!d || Number.isNaN(d.getTime())) {
@@ -86,7 +86,7 @@ function utcDayOf(s: string | null | undefined): Date {
 }
 
 /**
- * The account's advertiser: id, display name, and each market's webshop URL —
+ * The account's advertiser: id, display name, and each market's webshop URL -
  * the key the sync matches against Shop.wooUrl.
  */
 export async function fetchAdvertiser(token: string): Promise<AffiliateAdvertiser> {
@@ -106,7 +106,7 @@ export async function fetchAdvertiser(token: string): Promise<AffiliateAdvertise
 
 type RawTx = {
   id: number
-  date?: string | null // guarded in utcDayOf — the wire has no schema
+  date?: string | null // guarded in utcDayOf - the wire has no schema
   channelId: number
   channelName?: string
   market?: string
@@ -121,7 +121,7 @@ type RawTx = {
 
 /**
  * Every transaction in the window, all pages. The whole history is ~2,200
- * rows against a 5,000-per-page cap, so today this is one request per brand —
+ * rows against a 5,000-per-page cap, so today this is one request per brand -
  * the loop and its cap are for the day it is not.
  */
 export async function fetchTransactions(
@@ -156,6 +156,6 @@ export async function fetchTransactions(
     if (!body.meta?.hasNextPage || batch.length === 0) return rows
     offset += batch.length
   }
-  // Cap and say so — a silent truncation would be read as a real total.
-  throw new AffiliateApiError(`Addrevenue kept paging past ${MAX_PAGES} pages — refusing to run away.`)
+  // Cap and say so - a silent truncation would be read as a real total.
+  throw new AffiliateApiError(`Addrevenue kept paging past ${MAX_PAGES} pages - refusing to run away.`)
 }

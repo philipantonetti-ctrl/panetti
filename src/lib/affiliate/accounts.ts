@@ -1,7 +1,7 @@
 import { db } from '../db'
 
 /**
- * What the settings page may see of a connected brand — and, just as much, what
+ * What the settings page may see of a connected brand - and, just as much, what
  * it may not.
  *
  * One shape, used by the page's server render AND by GET /api/affiliate/accounts,
@@ -18,7 +18,7 @@ export type PublicAffiliateAccount = {
   lastError: string | null
   /** Sales imported for this brand, all time. */
   transactions: number
-  /** Of those, the ones whose market matched no shop — the number worth acting on. */
+  /** Of those, the ones whose market matched no shop - the number worth acting on. */
   unmatched: number
 }
 
@@ -65,7 +65,7 @@ export async function withCounts(accounts: AccountRow[]): Promise<PublicAffiliat
   }))
 }
 
-/** Every connected brand, oldest first — the order they were added in. */
+/** Every connected brand, oldest first - the order they were added in. */
 export async function listAffiliateAccounts(): Promise<PublicAffiliateAccount[]> {
   return withCounts(await db.affiliateAccount.findMany({ orderBy: { createdAt: 'asc' } }))
 }

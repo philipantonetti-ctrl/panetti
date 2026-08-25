@@ -52,7 +52,7 @@ async function seed() {
       { ...base, externalId: '5', date: new Date('2026-03-01'), commission: 7777, brokerageFee: 777 },
       // Unmatched market: no shop, so no per-shop cost.
       { ...base, externalId: '6', shopId: null, date: new Date('2026-01-02'), commission: 5555, brokerageFee: 555 },
-      // A second in-range day stays its own row — days must never collapse.
+      // A second in-range day stays its own row - days must never collapse.
       { ...base, externalId: '7', date: new Date('2026-01-05'), commission: 100, brokerageFee: 10 },
     ],
   })
@@ -64,7 +64,7 @@ describe('affiliateCosts', () => {
     const { shop } = await seed()
     const rows = await affiliateCosts([shop.id], new Date('2026-01-01'), new Date('2026-01-31'))
     expect(rows).toHaveLength(3)
-    // The two NOK rows are two different DAYS — the day dimension must survive.
+    // The two NOK rows are two different DAYS - the day dimension must survive.
     const nokRows = rows.filter((r) => r.currency === 'NOK')
     expect(new Set(nokRows.map((r) => r.date.toISOString())).size).toBe(2)
     const nok = nokRows.find((r) => r.date.toISOString().startsWith('2026-01-02'))!
@@ -87,7 +87,7 @@ describe('affiliateCosts', () => {
 describe('affiliateGroups', () => {
   it('keeps channel slices apart while reaching the same verdicts as affiliateCosts', async () => {
     const { shop, account } = await seed()
-    // A second channel on the same shop, day and currency as externalIds 1+2 —
+    // A second channel on the same shop, day and currency as externalIds 1+2 -
     // a slice the engine roll-up must merge and the Marketing page must not.
     await db.affiliateTransaction.create({
       data: {
@@ -125,7 +125,7 @@ describe('affiliateGroups', () => {
     const ch2 = groups.find((g) => g.channelId === '2')!
     expect(ch2).toMatchObject({ commission: 500, brokerageFee: 50, orderValue: 5000, sales: 1 })
 
-    // Denied (4), out-of-range (5) and unmatched (6) rows are absent — the same
+    // Denied (4), out-of-range (5) and unmatched (6) rows are absent - the same
     // verdicts affiliateCosts reaches, because this is now the same query. The
     // grand total holds exactly the included rows' money and nothing else.
     const totalCommission = groups.reduce((sum, g) => sum + g.commission, 0)

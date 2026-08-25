@@ -12,7 +12,7 @@ import { AdApiError } from '@/lib/ads/types'
  * The platform sends the admin back here with a one-time code. Trade it for
  * the durable token, remember who logged in, and open the account picker.
  * Logging in again with the same identity refreshes the stored token instead
- * of piling up connections — that IS the "reconnect" story.
+ * of piling up connections - that IS the "reconnect" story.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ provider: string }> }) {
   const back = (query: string) => {

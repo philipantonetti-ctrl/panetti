@@ -15,7 +15,7 @@ import type { SeriesPoint } from '@/lib/metrics/trend'
 /**
  * Revenue and profit over the selected range.
  *
- * Two series of the SAME measure (money), so they share one axis — never a second
+ * Two series of the SAME measure (money), so they share one axis - never a second
  * y-scale. Colours are the validated pair from DESIGN.md: distinguishable under
  * every common form of colour-blindness, and each line is named in the legend so
  * identity never rests on colour alone.
@@ -24,14 +24,14 @@ import type { SeriesPoint } from '@/lib/metrics/trend'
 const REVENUE = 'var(--color-series-revenue)'
 const PROFIT = 'var(--color-series-profit)'
 
-/** "1 Jul" — short enough to sit under a tick without collision. */
+/** "1 Jul" - short enough to sit under a tick without collision. */
 function tickDate(iso: string): string {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
     new Date(iso),
   )
 }
 
-/** "$120k" — the axis says the magnitude; the tooltip says the exact figure. */
+/** "$120k" - the axis says the magnitude; the tooltip says the exact figure. */
 function tickMoney(minor: number, currency: string): string {
   const major = toMajor(minor)
   const compact = new Intl.NumberFormat('en-US', {

@@ -8,7 +8,7 @@ import { importVismaB2bSales } from './import'
  *
  * importVismaB2bSales reads EVERY linked customer in the workspace, so one
  * B2bCustomer left behind by a run that died mid-test silently becomes a second
- * customer for the next run — an extra request, an extra pause, and assertions
+ * customer for the next run - an extra request, an extra pause, and assertions
  * about "one customer" failing for a reason that is nowhere in this file.
  * Cleaning the prefix rather than the timestamp makes the next run heal it.
  */
@@ -63,7 +63,7 @@ let asked: string[] = []
 
 /**
  * Routes the token call, then answers each request with that CUSTOMER's
- * invoices — which is how the real endpoint behaves once `customer=` scopes it.
+ * invoices - which is how the real endpoint behaves once `customer=` scopes it.
  * Keyed on the account number, so a request that dropped or renamed the
  * parameter is served nothing and the test that depends on rows fails.
  */
@@ -91,7 +91,7 @@ const linkSecondCustomer = () =>
 
 // FK-safe order: Order.b2bCustomer is onDelete: Restrict, so orders must go
 // before their B2B customers, which must go before the shop everything hangs
-// off — products and customers both cascade with it.
+// off - products and customers both cascade with it.
 async function cleanup() {
   // The run record is a workspace singleton nothing else writes, so each test
   // starts with no record rather than the one the test before it left.
@@ -138,8 +138,8 @@ const storedOrder = () =>
  *
  * Real pacing is two seconds before every request, which is right in production
  * and would add half a minute to this file. The deadline arithmetic does not
- * depend on the wait actually happening — it asks whether the wait WOULD end
- * past the deadline before starting it — so a no-op sleep changes nothing this
+ * depend on the wait actually happening - it asks whether the wait WOULD end
+ * past the deadline before starting it - so a no-op sleep changes nothing this
  * file asserts, except the one test that is specifically about elapsed time.
  */
 const runImport = (opts: Parameters<typeof importVismaB2bSales>[0] = {}) =>
@@ -177,8 +177,8 @@ describe('importVismaB2bSales', () => {
 
   /**
    * The double-counting guard, end to end. Visma raises an invoice for every
-   * webshop order against a "… - Webkunde" house account — 994 of the first
-   * 1000 open documents — and those orders already arrive from WooCommerce.
+   * webshop order against a "… - Webkunde" house account - 994 of the first
+   * 1000 open documents - and those orders already arrive from WooCommerce.
    */
   it('ignores an invoice for a customer nobody linked', async () => {
     // Belt and braces, deliberately: `customer=` already scopes the request, so
@@ -237,7 +237,7 @@ describe('importVismaB2bSales', () => {
     stubCustomers({ [NUMBER]: { body: [invoice()] } })
     await runImport()
     resetVismaTokenCache()
-    // Quantity and line total move together, as a real invoice's would — the
+    // Quantity and line total move together, as a real invoice's would - the
     // mapper checks one against the other before believing either.
     stubCustomers({
       [NUMBER]: { body: [invoice({ invoiceLines: [line({ quantity: 3, amountInCurrency: 11997 })] })] },
@@ -253,7 +253,7 @@ describe('importVismaB2bSales', () => {
    * Nothing here knows what a product it has never sold is worth, and inventing
    * a catalogue row from an ERP line would put a product on the shop's pages
    * that the shop does not sell. Losing the whole invoice over one odd line
-   * would be worse, so the line goes and the order stays — counted, because a
+   * would be worse, so the line goes and the order stays - counted, because a
    * line dropped in silence looks exactly like a line that never existed.
    */
   it('drops a line for a product this shop does not have, keeps the order, and says so', async () => {
@@ -272,7 +272,7 @@ describe('importVismaB2bSales', () => {
    * The rate limit is a rolling window shared with three other Visma imports,
    * and a burst exhausts it for minutes. Pacing BEFORE the first request, not
    * only between customers, is what keeps this import from arriving on the
-   * heels of whatever else the run has just done — and this import is the one
+   * heels of whatever else the run has just done - and this import is the one
    * whose loss produces a wrong revenue picture rather than a stale
    * operational one.
    */
@@ -345,12 +345,12 @@ describe('importVismaB2bSales', () => {
 
     expect(result.partial).toBe(true)
     expect(result.error).toBeNull()
-    // What did arrive is still stored — this is an upsert feed, not a snapshot.
+    // What did arrive is still stored - this is an upsert feed, not a snapshot.
     expect(await storedOrder()).not.toBeNull()
   })
 
   /**
-   * 429 is "try next run", not a failure — measured 2026-08-18, six attempts at
+   * 429 is "try next run", not a failure - measured 2026-08-18, six attempts at
    * one page with backoff of 20 to 120 seconds were all refused. Unlike the
    * receivables SNAPSHOT, a partial read here is safe to write: every order is
    * an upsert keyed on its own reference, so the customers we did reach are
@@ -384,7 +384,7 @@ describe('importVismaB2bSales', () => {
    *
    * The second returns HTTP 200 and someone else's invoices. An import built on
    * it would file real orders under the wrong customer with no error anywhere,
-   * and `customerNumber` is the more natural-looking name of the two — so this
+   * and `customerNumber` is the more natural-looking name of the two - so this
    * test exists to stop it being "tidied" back. The parameter is `customer`.
    */
   it('asks for one named customer’s invoices, by the parameter that actually works', async () => {
@@ -402,7 +402,7 @@ describe('importVismaB2bSales', () => {
 
   /**
    * A whitespace-only number trims to '', and an invoice with no customer
-   * number at all reads as '' too — so a blank key would match EVERY such
+   * number at all reads as '' too - so a blank key would match EVERY such
    * invoice and open the one guard the product's revenue rests on. Both write
    * paths clean the field today; the guard must not depend on an invariant
    * enforced two files away.
@@ -425,7 +425,7 @@ describe('importVismaB2bSales', () => {
   /**
    * This runs after the shops have already spent 240 of the route's 300
    * seconds, and one request per linked customer at a 60-second timeout apiece
-   * would run past the platform ceiling — killing the parcel poll and the
+   * would run past the platform ceiling - killing the parcel poll and the
    * delivery alert that follow it. Every other greedy stage takes a deadline.
    */
   it('does not start when the run is already out of time, and says it was partial', async () => {
@@ -464,7 +464,7 @@ describe('importVismaB2bSales', () => {
   /**
    * Everything this import knows lived only in the cron's JSON response, which
    * nothing reads. So "it 429s on every run" and "there are no B2B invoices"
-   * looked identical from inside the product — and so would a jump in
+   * looked identical from inside the product - and so would a jump in
    * `imported` if the allowlist ever leaked. The row is what the B2B page
    * shows.
    */

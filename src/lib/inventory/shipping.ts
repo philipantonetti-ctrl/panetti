@@ -12,7 +12,7 @@
  * a shipping cost belongs to the object rather than to a Norwegian listing of
  * it.
  *
- * Pure and database-free on purpose — this is the one place that decides what an
+ * Pure and database-free on purpose - this is the one place that decides what an
  * order's shipping cost was, and both callers (the orders list and the metrics
  * engine) must get the identical answer or the two screens disagree about the
  * same order's profit.
@@ -27,7 +27,7 @@ export type CostedLine = { sku: string; quantity: number }
  * The rate in force on `date`, or null when no rate covers it.
  *
  * The newest `effectiveFrom` at or before the date wins, and a tie is broken by
- * the first row given — the same two rules `fulfillmentOn` in metrics/engine.ts
+ * the first row given - the same two rules `fulfillmentOn` in metrics/engine.ts
  * has always used, deliberately copied rather than improved on. These two
  * functions answer the same question about the same order, so any difference
  * between them is a difference in what an order cost.
@@ -50,25 +50,25 @@ export function shippingRateOn(points: ShippingPoint[], date: Date): ShippingPoi
 }
 
 /**
- * What the lines cost to ship, or null when NO line has a rate — which means
+ * What the lines cost to ship, or null when NO line has a rate - which means
  * "unknown", and the caller falls back to the per-order figure.
  *
  * **null is not 0, and the difference is the whole point of this return type.**
  * 0 asserts that shipping this order was free, which would silently overstate
  * its profit and, worse, would do so for every order ever placed the moment this
- * shipped — there is real trading history in these numbers. null asserts nothing
+ * shipped - there is real trading history in these numbers. null asserts nothing
  * at all, so the caller keeps the flat `FulfillmentRate` figure it has always
  * used and an installation with no SKU rates behaves exactly as it did before.
  * That is what makes this change safe to deploy before a single rate is typed.
  *
  * A line whose SKU has no rate contributes 0 while the others still count:
- * partial knowledge about an order is better than none, and the alternative —
- * discarding the whole order's per-SKU cost because one item is uncosted — would
+ * partial knowledge about an order is better than none, and the alternative -
+ * discarding the whole order's per-SKU cost because one item is uncosted - would
  * make the feature useless until the very last SKU had been entered. The "no
  * line at all" case above is what stops that leniency from becoming a lie.
  *
  * `ratesBySku` must be keyed by `normaliseSku`, and every point in it must be
- * held in ONE currency — see `ratesInCurrency`.
+ * held in ONE currency - see `ratesInCurrency`.
  */
 export function shippingCostOf(
   lines: CostedLine[],
@@ -90,7 +90,7 @@ export function shippingCostOf(
  * The rates held in `currency`, keyed as they came in.
  *
  * A `ShippingRate` is keyed by SKU, and a SKU is not shop-scoped, so unlike
- * `FulfillmentRate.perOrder` there is no shop currency for it to inherit — the
+ * `FulfillmentRate.perOrder` there is no shop currency for it to inherit - the
  * row has to name its own. `shippingCostOf` then sums bare integers, so it can
  * only ever be handed one currency's worth of them; this is how a caller picks
  * which.
@@ -98,7 +98,7 @@ export function shippingCostOf(
  * Rates in any other currency are dropped rather than converted. Converting
  * would mean guessing an exchange rate for a figure someone typed against a
  * named currency, and reading a 900 EUR rate as 900 NOK is an elevenfold cost
- * error entered in good faith — the same failure the costs page avoids by
+ * error entered in good faith - the same failure the costs page avoids by
  * refusing to label a combined input when the source shops disagree about
  * currency. Dropping is visible (the flat per-order rate keeps applying and
  * profit does not move); guessing is not.

@@ -83,7 +83,7 @@ describe('asking for a reset link', () => {
   /**
    * A send failure must not become a signal. If a broken mailer answered
    * differently from a working one, the form would still tell a stranger which
-   * addresses have accounts — the exact thing the identical answer above buys.
+   * addresses have accounts - the exact thing the identical answer above buys.
    */
   it('answers the same when the mailer throws', async () => {
     sent.mockRejectedValue(new Error('Postmark responded 401: Bad token'))

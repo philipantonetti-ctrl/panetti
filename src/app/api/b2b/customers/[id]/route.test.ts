@@ -82,8 +82,8 @@ describe('GET /api/b2b/customers/[id]', () => {
     const body = await (await GET(new Request('http://localhost/x'), params(c.id))).json()
     expect(body.customer.prices[0]).toMatchObject({
       productId, sku: 'SKU-1', name: 'Massage gun',
-      unitPrice: 8900,   // EUR — the customer's currency
-      costPerItem: 4000, // NOK — the shop's
+      unitPrice: 8900,   // EUR - the customer's currency
+      costPerItem: 4000, // NOK - the shop's
       handlingCost: 500,
     })
     expect(body.customer.shopCurrency).toBe('NOK')
@@ -96,7 +96,7 @@ describe('GET /api/b2b/customers/[id]', () => {
   })
 
   it('locks the shop on a refunded order too, not just an earning one', async () => {
-    // A refunded order is still history reported under this shop — canChangeShop
+    // A refunded order is still history reported under this shop - canChangeShop
     // must come from an UNFILTERED count, not the revenue aggregate, which
     // deliberately excludes refunds. This is what tells the two apart.
     await asAdmin()
@@ -152,7 +152,7 @@ describe('PATCH /api/b2b/customers/[id]', () => {
   })
 
   it('refuses to move a customer whose only order was refunded', async () => {
-    // A refunded order is still history reported under the old shop — the
+    // A refunded order is still history reported under the old shop - the
     // move guard must key off ANY order, not just an earning one.
     await asAdmin()
     const c = await db.b2bCustomer.create({
@@ -265,7 +265,7 @@ describe('PATCH /api/b2b/customers/[id]', () => {
     const detail = await (await GET(new Request('http://localhost/x'), params(c.id))).json()
     expect(detail.customer.vismaCustomerNumber).toBe('20012')
 
-    // Clearing the field must genuinely unlink them — '' would be a customer
+    // Clearing the field must genuinely unlink them - '' would be a customer
     // number Visma will never send, but it is not the same as "not linked".
     await patch(c.id, {
       name: `Link ${TAG}`, currency: 'SEK', vatPercent: 0, vismaCustomerNumber: '', prices: [],

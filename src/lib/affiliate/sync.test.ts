@@ -63,7 +63,7 @@ function stub(markets: Record<string, { market: string; url: string }>, txs: unk
     vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       // Only OUR token gets data. A foreign account swept up by a syncAll test
       // (another file's row, or seeded sample data in the shared dev DB) gets a
-      // 403 and stores its own lastError — its transactions are never touched,
+      // 403 and stores its own lastError - its transactions are never touched,
       // because the mirror rewrite only runs on success.
       const auth = (init?.headers as Record<string, string> | undefined)?.Authorization
       if (auth !== 'Bearer plain-token') return json({ message: 'Invalid token' }, 403)
@@ -154,7 +154,7 @@ describe('syncAffiliateAccount', () => {
   })
 
   it('a market with no matching shop stays unmatched and is reported', async () => {
-    await makeShop() // affiliate-test.no — deliberately not panetti.fi
+    await makeShop() // affiliate-test.no - deliberately not panetti.fi
     const account = await makeAccount()
     // The tagged domain family, NOT a real store's: this file shares its
     // database with the real connected shops, and the day Panetti Finland got
@@ -178,7 +178,7 @@ describe('syncAffiliateAccount', () => {
 
     // The shop is connected afterwards; the next mirror rewrite must fill
     // shopId on the OLD row too. (The ads sync deliberately never touches its
-    // campaigns' shopId — applying that instinct here would break this.)
+    // campaigns' shopId - applying that instinct here would break this.)
     const shop = await makeShop()
     await syncAffiliateAccount(account)
     const rows = await db.affiliateTransaction.findMany({ where: { accountId: account.id } })
@@ -200,8 +200,8 @@ describe('syncAffiliateAccount', () => {
 })
 
 describe('syncAllAffiliateAccounts', () => {
-  // syncAll reads every active account in the shared dev DB — other suites'
-  // rows and seeded sample data included — so assertions only count accounts
+  // syncAll reads every active account in the shared dev DB - other suites'
+  // rows and seeded sample data included - so assertions only count accounts
   // this file created, the ads/sync.test.ts discipline.
   const mine = <T extends { name: string }>(results: T[]) =>
     results.filter((r) => r.name.includes(MARKER))
@@ -221,7 +221,7 @@ describe('syncAllAffiliateAccounts', () => {
   it('leaves inactive accounts alone', async () => {
     await makeAccount({ active: false })
     // Any foreign ACTIVE account force sweeps up hits the stub, never the
-    // real network — and its wrong token gets the stub's 403.
+    // real network - and its wrong token gets the stub's 403.
     stub(NO('https://www.affiliate-test.no'), [tx()])
     expect(mine(await syncAllAffiliateAccounts({ force: true }))).toHaveLength(0)
   })

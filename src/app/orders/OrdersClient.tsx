@@ -59,7 +59,7 @@ type OrderRow = {
   customer: string | null // the B2B customer's name; null on a webshop order
   itemCount: number
   products: Product[]
-  figures: Figures | null // null = voided; it earns nothing and shows "—"
+  figures: Figures | null // null = voided; it earns nothing and shows "-"
   delivery: Delivery
 }
 
@@ -78,7 +78,7 @@ const STATUS_OPTIONS = [
 ] as const
 
 /**
- * When an order was placed, on the SHOP's clock — never the viewer's.
+ * When an order was placed, on the SHOP's clock - never the viewer's.
  *
  * These formatters used to carry no `timeZone`, which makes Intl fall back to
  * whatever zone the reader's own computer is set to. The same sale then read as
@@ -107,7 +107,7 @@ export function placedFormats(timeZone: string) {
 
 /**
  * One Woo status, read as the two facts the reference tool shows side by side:
- * did the money arrive, and did the goods go out. Precise words — "Refunded"
+ * did the money arrive, and did the goods go out. Precise words - "Refunded"
  * tells you more than a generic "Voided" ever would.
  */
 export function paymentBadge(status: string): { label: string; tone: string } {
@@ -136,9 +136,9 @@ function Badge({ label, tone }: { label: string; tone: string }) {
   )
 }
 
-/** "—" for a voided order: it earns nothing, and the table never pretends. */
+/** "-" for a voided order: it earns nothing, and the table never pretends. */
 function Money({ minor, currency, strong }: { minor: number | null | undefined; currency: string; strong?: boolean }) {
-  if (minor === null || minor === undefined) return <span className="text-faint">—</span>
+  if (minor === null || minor === undefined) return <span className="text-faint">-</span>
   return <span className={strong ? 'font-semibold text-ink' : undefined}>{formatMoney(minor, currency)}</span>
 }
 
@@ -146,11 +146,11 @@ function Money({ minor, currency, strong }: { minor: number | null | undefined; 
  * One honest sentence per delivery state, never a bare number. UNTRACKED
  * ("this shop is not delivery-tracked") and BEFORE_TRACKING ("placed before
  * tracking started") explain themselves via `title` so neither can be
- * mistaken for NO_TRACKING ("we expected a parcel and have none") — the same
+ * mistaken for NO_TRACKING ("we expected a parcel and have none") - the same
  * three-way split view.ts's deliveryFor() draws.
  *
  * Only AVAILABLE and NO_TRACKING turn text-loss when late. BOOKED and
- * IN_TRANSIT are still moving rather than a settled outcome — the Delivery
+ * IN_TRANSIT are still moving rather than a settled outcome - the Delivery
  * page's own state badge draws this same line (still-moving reads as
  * at-risk, not loss), so this column does not flash red on every order
  * merely still in transit past its promise.
@@ -196,17 +196,17 @@ function DeliveryCell({ d, placedAt, timezone, now }: { d: Delivery; placedAt: s
     case 'CANCELLED':
       return <span>Cancelled</span>
     case 'VOIDED':
-      return <span className="text-faint">—</span>
+      return <span className="text-faint">-</span>
     case 'BEFORE_TRACKING':
       return (
         <span className="text-faint" title="Placed before delivery tracking started">
-          —
+          -
         </span>
       )
     case 'UNTRACKED':
       return (
         <span className="text-faint" title="This shop is not delivery-tracked">
-          —
+          -
         </span>
       )
   }
@@ -215,7 +215,7 @@ function DeliveryCell({ d, placedAt, timezone, now }: { d: Delivery; placedAt: s
 /**
  * The orders list. Pick one day or a stretch of days, narrow to a shop, a
  * status or a search, then open any order to see exactly what the customer
- * bought — and what the order truly earned after every cost. Each order shows
+ * bought - and what the order truly earned after every cost. Each order shows
  * in its own currency; an order only ever has one.
  */
 /** The URL params this page accepts, read once on mount. */
@@ -227,8 +227,8 @@ function initialParams() {
 
 export function OrdersClient({ email, shops }: { email: string; shops: Shop[] }) {
   const initial = initialParams()
-  // A search arriving in the URL comes from somewhere specific — a Slack
-  // delivery alert, or the Delivery page's late list — and those orders are old
+  // A search arriving in the URL comes from somewhere specific - a Slack
+  // delivery alert, or the Delivery page's late list - and those orders are old
   // by definition, because that is what being late means. Opening on the
   // default month would hide the very order the link was about, so a seeded
   // search widens the range to match. An order number is specific enough that a
@@ -272,7 +272,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
       p.set('preset', preset)
     }
     if (selected.length) p.set('shops', selected.join(','))
-    // An order browser shows refunds and cancellations — that a refund HAPPENED
+    // An order browser shows refunds and cancellations - that a refund HAPPENED
     // is exactly what someone comes here to see. The metric screens still exclude them.
     if (status) p.set('status', status)
     else p.set('includeVoided', 'true')
@@ -283,7 +283,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
     return p
   }
 
-  // The subtitle promises the page keeps itself current — this delivers it for a
+  // The subtitle promises the page keeps itself current - this delivers it for a
   // tab that is already open: refetch on focus and once a minute while visible.
   const tick = useLiveTick()
   const seenTick = useRef(0)
@@ -533,7 +533,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                                 <DeliveryCell d={o.delivery} placedAt={o.placedAt} timezone={o.timezone} now={now} />
                               </td>
                               <td className="max-w-[160px] truncate py-2.5 pr-4 text-muted" title={o.customerEmail || undefined}>
-                                {o.customerName || o.customerEmail || <span className="text-faint">—</span>}
+                                {o.customerName || o.customerEmail || <span className="text-faint">-</span>}
                               </td>
                               <td className="whitespace-nowrap py-2.5 pr-4 text-muted">{o.shop}</td>
                               <td className="num py-2.5 pr-4 text-right text-muted">{o.itemCount}</td>
@@ -562,7 +562,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                                 <Money minor={f?.profit ?? null} currency={o.currency} />
                               </td>
                               <td className={`num whitespace-nowrap py-2.5 pr-6 text-right ${f ? (f.profit < 0 ? 'text-loss' : 'text-gain') : ''}`}>
-                                {f ? `${(f.margin * 100).toFixed(2)}%` : <span className="text-faint">—</span>}
+                                {f ? `${(f.margin * 100).toFixed(2)}%` : <span className="text-faint">-</span>}
                               </td>
                             </tr>
 

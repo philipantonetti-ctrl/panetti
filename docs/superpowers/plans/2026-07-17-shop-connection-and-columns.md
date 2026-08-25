@@ -6,7 +6,7 @@
 
 **Architecture:** A tiny crypto module (`src/lib/secrets.ts`) wraps AES-256-GCM with a key derived from the existing `AUTH_SECRET`; the shop PATCH route encrypts on write and gains "blank = keep" semantics; `syncShop` decrypts on read and fails loudly. A new `POST /api/shops` plus an Add-shop modal complete the front door. Separately, the metrics engine gains a `taxes` figure and the Compare table displays five already-computed figures.
 
-**Tech Stack:** Next.js 16 App Router, Prisma 6 + PostgreSQL, zod v4, Vitest (node env for lib/routes, jsdom docblock for components), Node built-in `crypto` — **no new dependencies, no schema change, no migration.**
+**Tech Stack:** Next.js 16 App Router, Prisma 6 + PostgreSQL, zod v4, Vitest (node env for lib/routes, jsdom docblock for components), Node built-in `crypto` - **no new dependencies, no schema change, no migration.**
 
 **Specs:** `docs/superpowers/specs/2026-07-17-shop-connection-design.md` and `docs/superpowers/specs/2026-07-17-compare-columns-design.md`
 
@@ -14,9 +14,9 @@
 
 ## Ground rules for this repo (read first)
 
-- **Local only.** Tests hit the local PG17 database `ecom_analytics` via `.env`. NEVER run anything against the production (Neon) database. No `prisma db push` is needed — this plan changes no schema.
-- **Never** commit `.env`, never `git add .` or `git add -A` — stage files **by name**.
-- Commands are for Windows PowerShell 5.1 — no `&&`; run commands one at a time.
+- **Local only.** Tests hit the local PG17 database `ecom_analytics` via `.env`. NEVER run anything against the production (Neon) database. No `prisma db push` is needed - this plan changes no schema.
+- **Never** commit `.env`, never `git add .` or `git add -A` - stage files **by name**.
+- Commands are for Windows PowerShell 5.1 - no `&&`; run commands one at a time.
 - Test fixtures created in the shared local DB must carry `[test]` in their name and be deleted in `beforeEach`/`afterEach` (`deleteMany({ where: { name: { contains: '[test]' } } })`). Never `deleteMany({})`.
 - Money is integer minor units everywhere. Commission rates are fractions (0.10 = 10%).
 - Component tests need the `// @vitest-environment jsdom` docblock as line 1 and mock `next/navigation` + `next/link` (copy the pattern from `src/app/settings/expenses/ExpensesClient.test.tsx`).
@@ -88,12 +88,12 @@ describe('secrets', () => {
 })
 ```
 
-- [ ] **Step 1.2: Run it — must fail (module does not exist)**
+- [ ] **Step 1.2: Run it - must fail (module does not exist)**
 
 ```powershell
 npx vitest run src/lib/secrets.test.ts
 ```
-Expected: FAIL — cannot resolve `./secrets`.
+Expected: FAIL - cannot resolve `./secrets`.
 
 - [ ] **Step 1.3: Implement**
 
@@ -104,11 +104,11 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'crypto'
 /**
  * Shop API keys, encrypted at rest.
  *
- * AES-256-GCM with a key derived (HKDF-SHA256) from AUTH_SECRET — the one secret
+ * AES-256-GCM with a key derived (HKDF-SHA256) from AUTH_SECRET - the one secret
  * that already exists on Vercel, so connecting a shop needs no extra setup.
  * A value without the prefix is returned as-is: rows written before this module
  * (local dev) keep working. If AUTH_SECRET ever changes, decryption throws and
- * the sync reports "reconnect this shop" — a visible failure, never a silent one.
+ * the sync reports "reconnect this shop" - a visible failure, never a silent one.
  */
 
 const PREFIX = 'enc:v1:'
@@ -144,7 +144,7 @@ export function decryptSecret(stored: string): string {
 }
 ```
 
-- [ ] **Step 1.4: Run it — must pass**
+- [ ] **Step 1.4: Run it - must pass**
 
 ```powershell
 npx vitest run src/lib/secrets.test.ts
@@ -160,7 +160,7 @@ git commit -m "feat: encrypt shop API keys at rest with a key derived from AUTH_
 
 ---
 
-### Task 2: PATCH /api/shops/[id] — blank keeps, values encrypt
+### Task 2: PATCH /api/shops/[id] - blank keeps, values encrypt
 
 **Files:**
 - Modify: `src/app/api/shops/[id]/route.ts`
@@ -230,13 +230,13 @@ describe('PATCH /api/shops/[id]', () => {
     expect(decryptSecret(saved.wooSecret!)).toBe('cs_live_1')
   })
 
-  it('a blank field keeps the stored value — saving must never wipe keys', async () => {
+  it('a blank field keeps the stored value - saving must never wipe keys', async () => {
     await asAdmin()
     const shop = await db.shop.create({ data: { name: 'Patch [test]', currency: 'NOK' } })
     await patch(shop.id, { wooUrl: 'https://mazzetti.no', wooKey: 'ck_1', wooSecret: 'cs_1' })
 
     // The day-one bug: the edit form posts blank key fields and the old code
-    // wrote `'' || null` — erasing the connection it claimed to save.
+    // wrote `'' || null` - erasing the connection it claimed to save.
     const res = await patch(shop.id, { wooUrl: 'https://mazzetti.se', wooKey: '', wooSecret: '' })
     expect(res.status).toBe(200)
 
@@ -248,12 +248,12 @@ describe('PATCH /api/shops/[id]', () => {
 })
 ```
 
-- [ ] **Step 2.2: Run it — the "blank keeps" and "encrypted" tests must fail**
+- [ ] **Step 2.2: Run it - the "blank keeps" and "encrypted" tests must fail**
 
 ```powershell
 npx vitest run src/app/api/shops/[id]/route.test.ts
 ```
-Expected: FAIL — `wooKey` equals `'ck_live_1'` (stored raw), and blanks null the keys.
+Expected: FAIL - `wooKey` equals `'ck_live_1'` (stored raw), and blanks null the keys.
 
 - [ ] **Step 2.3: Rewrite the route's data mapping**
 
@@ -279,7 +279,7 @@ import { encryptSecret } from '@/lib/secrets'
 
 The zod `Body` schema stays exactly as it is.
 
-- [ ] **Step 2.4: Run it — must pass**
+- [ ] **Step 2.4: Run it - must pass**
 
 ```powershell
 npx vitest run src/app/api/shops/[id]/route.test.ts
@@ -295,7 +295,7 @@ git commit -m "fix: saving a shop never wipes its keys, and keys are stored encr
 
 ---
 
-### Task 3: POST /api/shops — create a shop
+### Task 3: POST /api/shops - create a shop
 
 **Files:**
 - Modify: `src/app/api/shops/route.ts` (add POST; GET stays untouched)
@@ -366,12 +366,12 @@ describe('POST /api/shops', () => {
 })
 ```
 
-- [ ] **Step 3.2: Run it — must fail (no POST export)**
+- [ ] **Step 3.2: Run it - must fail (no POST export)**
 
 ```powershell
 npx vitest run src/app/api/shops/route.test.ts
 ```
-Expected: FAIL — `POST` is undefined.
+Expected: FAIL - `POST` is undefined.
 
 - [ ] **Step 3.3: Add POST to the route**
 
@@ -408,7 +408,7 @@ export async function POST(req: Request) {
 
 (zod v4: `.trim()` / `.toUpperCase()` are overwrites, so chaining `.regex()` after them works.)
 
-- [ ] **Step 3.4: Run it — must pass**
+- [ ] **Step 3.4: Run it - must pass**
 
 ```powershell
 npx vitest run src/app/api/shops/route.test.ts
@@ -472,7 +472,7 @@ describe('fetchOrders', () => {
 })
 ```
 
-- [ ] **Step 4.2: Run it — the cap test must fail**
+- [ ] **Step 4.2: Run it - the cap test must fail**
 
 ```powershell
 npx vitest run src/lib/woo/client.test.ts
@@ -490,15 +490,15 @@ In `src/lib/woo/client.ts`, replace the end of the `for` loop body:
 
     if (page === 50) {
       // 50 full pages and more behind them. Stopping here quietly would move
-      // the sync watermark past orders we never fetched — refuse instead.
+      // the sync watermark past orders we never fetched - refuse instead.
       throw new Error(
         'This store returned over 5,000 orders in one pull. Sync stopped so nothing ' +
-          'is skipped silently — this store needs a staged first sync.',
+          'is skipped silently - this store needs a staged first sync.',
       )
     }
 ```
 
-and change the final `return all` after the loop to `return all` only if still reachable — the function now returns from inside the loop, so the code after the loop becomes unreachable; end the function with the loop followed by `return all` removed (TypeScript will flag unreachable code — the loop itself is the body). The finished function:
+and change the final `return all` after the loop to `return all` only if still reachable - the function now returns from inside the loop, so the code after the loop becomes unreachable; end the function with the loop followed by `return all` removed (TypeScript will flag unreachable code - the loop itself is the body). The finished function:
 
 ```ts
 export async function fetchOrders(creds: WooCredentials, since: Date | null): Promise<WooOrder[]> {
@@ -528,10 +528,10 @@ export async function fetchOrders(creds: WooCredentials, since: Date | null): Pr
 
     if (page === 50) {
       // 50 full pages and more behind them. Stopping here quietly would move
-      // the sync watermark past orders we never fetched — refuse instead.
+      // the sync watermark past orders we never fetched - refuse instead.
       throw new Error(
         'This store returned over 5,000 orders in one pull. Sync stopped so nothing ' +
-          'is skipped silently — this store needs a staged first sync.',
+          'is skipped silently - this store needs a staged first sync.',
       )
     }
   }
@@ -540,7 +540,7 @@ export async function fetchOrders(creds: WooCredentials, since: Date | null): Pr
 }
 ```
 
-- [ ] **Step 4.4: Run it — must pass**
+- [ ] **Step 4.4: Run it - must pass**
 
 ```powershell
 npx vitest run src/lib/woo/client.test.ts
@@ -586,7 +586,7 @@ describe('syncShop', () => {
     expect(result.ok).toBe(true)
     expect(result.ordersSynced).toBe(0)
 
-    // The decrypted key — not the enc:v1: blob — must reach WooCommerce.
+    // The decrypted key - not the enc:v1: blob - must reach WooCommerce.
     const auth = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>
     expect(auth.Authorization).toBe(`Basic ${Buffer.from('ck_real:cs_real').toString('base64')}`)
 
@@ -618,12 +618,12 @@ describe('syncShop', () => {
 })
 ```
 
-- [ ] **Step 4.6: Run it — must fail**
+- [ ] **Step 4.6: Run it - must fail**
 
 ```powershell
 npx vitest run src/lib/woo/sync.test.ts
 ```
-Expected: FAIL — first test's Authorization contains the `enc:v1:` blob (sync sends the encrypted key as-is); second test calls fetch and errors with a Woo message, not "reconnect".
+Expected: FAIL - first test's Authorization contains the `enc:v1:` blob (sync sends the encrypted key as-is); second test calls fetch and errors with a Woo message, not "reconnect".
 
 - [ ] **Step 4.7: Decrypt in syncShop**
 
@@ -653,14 +653,14 @@ with:
     secret = decryptSecret(shop.wooSecret)
   } catch {
     // Only possible if AUTH_SECRET changed after the shop was connected.
-    return { ...base, ok: false, ordersSynced: 0, error: "Saved keys can't be read — reconnect this shop." }
+    return { ...base, ok: false, ordersSynced: 0, error: "Saved keys can't be read - reconnect this shop." }
   }
 
   try {
     const orders = await fetchOrders({ url: shop.wooUrl, key, secret }, shop.lastSyncAt)
 ```
 
-- [ ] **Step 4.8: Run it — must pass, then run the whole woo folder**
+- [ ] **Step 4.8: Run it - must pass, then run the whole woo folder**
 
 ```powershell
 npx vitest run src/lib/woo
@@ -676,7 +676,7 @@ git commit -m "fix: sync decrypts stored keys and refuses to truncate or lie"
 
 ---
 
-### Task 5: ShopsClient — Add shop, honest sync, honest labels
+### Task 5: ShopsClient - Add shop, honest sync, honest labels
 
 **Files:**
 - Modify: `src/app/settings/shops/ShopsClient.tsx`
@@ -732,7 +732,7 @@ describe('ShopsClient', () => {
     expect(screen.queryByText('Sample data')).toBeNull()
   })
 
-  it('a failed sync says so — never "Synced 0 orders"', async () => {
+  it('a failed sync says so - never "Synced 0 orders"', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: 'Sync failed' }), { status: 500 }),
     ))
@@ -762,12 +762,12 @@ describe('ShopsClient', () => {
 })
 ```
 
-- [ ] **Step 5.3: Run it — must fail**
+- [ ] **Step 5.3: Run it - must fail**
 
 ```powershell
 npx vitest run src/app/settings/shops/ShopsClient.test.tsx
 ```
-Expected: FAIL — "Not connected" not found; no "Add shop" button; failed sync shows "Synced 0 orders from 0 shop(s)".
+Expected: FAIL - "Not connected" not found; no "Add shop" button; failed sync shows "Synced 0 orders from 0 shop(s)".
 
 - [ ] **Step 5.4: Rework ShopsClient**
 
@@ -796,7 +796,7 @@ const toast = useToast()
     try {
       const res = await fetch('/api/sync', { method: 'POST' })
       if (!res.ok) {
-        // A failed sync must say so — "Synced 0 orders" would be a lie.
+        // A failed sync must say so - "Synced 0 orders" would be a lie.
         toast.error((await res.json().catch(() => null))?.error ?? 'Sync failed')
         return
       }
@@ -820,12 +820,12 @@ const toast = useToast()
   }
 ```
 
-4. Header: subtitle becomes `"Connect each WooCommerce store with its API keys — synced orders update every screen."` and the children become two buttons:
+4. Header: subtitle becomes `"Connect each WooCommerce store with its API keys - synced orders update every screen."` and the children become two buttons:
 
 ```tsx
       <PageHeader
         title="Shops"
-        subtitle="Connect each WooCommerce store with its API keys — synced orders update every screen."
+        subtitle="Connect each WooCommerce store with its API keys - synced orders update every screen."
       >
         <div className="flex items-center gap-2">
           <button
@@ -891,7 +891,7 @@ function AddShopModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not add the shop')
         return
       }
-      toast.success(`${name.trim()} added — now connect it`)
+      toast.success(`${name.trim()} added - now connect it`)
       onSaved()
     } catch {
       toast.error('Could not reach the server')
@@ -905,7 +905,7 @@ function AddShopModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       <div className="w-full max-w-md rounded-[var(--radius-card)] bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-base font-bold text-ink">Add shop</h2>
         <p className="mt-1 text-xs text-muted">
-          Name it the way you say it — "Panetti Norway" — and pick the currency it trades in.
+          Name it the way you say it - "Panetti Norway" - and pick the currency it trades in.
         </p>
 
         <label className="mt-4 block text-xs font-medium text-muted">Name</label>
@@ -936,7 +936,7 @@ function AddShopModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 }
 ```
 
-8. In `ConnectModal`: key and secret placeholders become conditional, and first-time connects must be complete. Add `const canKeepBlank = shop.connected` at the top of the component, change the two placeholders to `placeholder={canKeepBlank ? 'saved — leave blank to keep' : 'ck_…'}` (and `'cs_…'`), and add to the top of `save()`:
+8. In `ConnectModal`: key and secret placeholders become conditional, and first-time connects must be complete. Add `const canKeepBlank = shop.connected` at the top of the component, change the two placeholders to `placeholder={canKeepBlank ? 'saved - leave blank to keep' : 'ck_…'}` (and `'cs_…'`), and add to the top of `save()`:
 
 ```ts
     if (!shop.connected && (!wooUrl || !wooKey || !wooSecret)) {
@@ -945,7 +945,7 @@ function AddShopModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     }
 ```
 
-- [ ] **Step 5.5: Run it — must pass**
+- [ ] **Step 5.5: Run it - must pass**
 
 ```powershell
 npx vitest run src/app/settings/shops/ShopsClient.test.tsx
@@ -968,7 +968,7 @@ git commit -m "feat: Add shop button, honest sync reporting, Not connected label
 - Modify: `src/lib/metrics/engine.ts`
 - Test: `src/lib/metrics/engine.test.ts` (extend)
 
-- [ ] **Step 6.1: Write the failing test** — add to the existing `describe('computeMetrics')` block (the `order()` fixture already sets `taxTotal: 22500`):
+- [ ] **Step 6.1: Write the failing test** - add to the existing `describe('computeMetrics')` block (the `order()` fixture already sets `taxTotal: 22500`):
 
 ```ts
   it('reports VAT for the period without letting it touch profit', () => {
@@ -982,7 +982,7 @@ git commit -m "feat: Add shop button, honest sync reporting, Not connected label
       displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
     })
     expect(res.total.taxes).toBe(22500) // the one live order's VAT
-    expect(res.total.netProfit).toBe(73000) // unchanged — VAT is not a cost
+    expect(res.total.netProfit).toBe(73000) // unchanged - VAT is not a cost
     expect(res.byShop[0].taxes).toBe(22500)
   })
 
@@ -995,19 +995,19 @@ git commit -m "feat: Add shop button, honest sync reporting, Not connected label
   })
 ```
 
-- [ ] **Step 6.2: Run it — must fail (property does not exist / undefined)**
+- [ ] **Step 6.2: Run it - must fail (property does not exist / undefined)**
 
 ```powershell
 npx vitest run src/lib/metrics/engine.test.ts
 ```
-Expected: FAIL — `taxes` is `undefined`.
+Expected: FAIL - `taxes` is `undefined`.
 
 - [ ] **Step 6.3: Implement**
 
-`src/lib/metrics/types.ts` — in `Figures`, after `shippingCharged`:
+`src/lib/metrics/types.ts` - in `Figures`, after `shippingCharged`:
 
 ```ts
-  taxes: number // VAT collected — reported, never revenue and never a cost
+  taxes: number // VAT collected - reported, never revenue and never a cost
 ```
 
 and in `ZERO_FIGURES`, after `shippingCharged: 0,`:
@@ -1016,7 +1016,7 @@ and in `ZERO_FIGURES`, after `shippingCharged: 0,`:
   taxes: 0,
 ```
 
-`src/lib/metrics/engine.ts` — in the per-shop block, after the `shippingCharged` line:
+`src/lib/metrics/engine.ts` - in the per-shop block, after the `shippingCharged` line:
 
 ```ts
     const taxes = sum(shopOrders.map((o) => conv(o.taxTotal, o)))
@@ -1028,7 +1028,7 @@ add `taxes,` to the returned shop object (after `shippingCharged,`), and in `tot
     taxes: add((r) => r.taxes),
 ```
 
-- [ ] **Step 6.4: Run the engine suite + typecheck — must pass**
+- [ ] **Step 6.4: Run the engine suite + typecheck - must pass**
 
 ```powershell
 npx vitest run src/lib/metrics
@@ -1090,12 +1090,12 @@ describe('CompareTable', () => {
 })
 ```
 
-- [ ] **Step 7.2: Run it — must fail (new columns missing)**
+- [ ] **Step 7.2: Run it - must fail (new columns missing)**
 
 ```powershell
 npx vitest run src/components/dashboard/CompareTable.test.tsx
 ```
-Expected: FAIL — no "Sort by Gross sales" button.
+Expected: FAIL - no "Sort by Gross sales" button.
 
 - [ ] **Step 7.3: Replace the `COLUMNS` array**
 
@@ -1104,7 +1104,7 @@ const COLUMNS: Column[] = [
   { key: 'orders', label: 'Orders' },
   { key: 'grossSales', label: 'Gross sales', money: true, hint: 'Before discounts, excl. VAT' },
   { key: 'discounts', label: 'Discounts', money: true, hint: 'Coupon and code discounts, excl. VAT' },
-  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts — the commission base' },
+  { key: 'netSales', label: 'Net sales', money: true, hint: 'After discounts - the commission base' },
   { key: 'shippingCharged', label: 'Shipping', money: true, hint: 'Shipping charged to customers, excl. VAT' },
   { key: 'netRevenue', label: 'Net revenue', money: true, hint: 'Net sales + shipping' },
   { key: 'cogs', label: 'COGS', money: true, hint: 'Product cost + handling' },
@@ -1112,11 +1112,11 @@ const COLUMNS: Column[] = [
   { key: 'commission', label: 'Commission', money: true },
   { key: 'netProfit', label: 'Net profit', money: true, tone: true },
   { key: 'netMargin', label: 'Margin', percent: true, tone: true },
-  { key: 'taxes', label: 'Taxes', money: true, hint: 'VAT collected — passed on to the tax office, not income or cost' },
+  { key: 'taxes', label: 'Taxes', money: true, hint: 'VAT collected - passed on to the tax office, not income or cost' },
 ]
 ```
 
-- [ ] **Step 7.4: Run it — must pass**
+- [ ] **Step 7.4: Run it - must pass**
 
 ```powershell
 npx vitest run src/components/dashboard/CompareTable.test.tsx
@@ -1141,16 +1141,16 @@ npm test
 npx tsc --noEmit
 npm run build
 ```
-Expected: every test file passes — 38 files (31 existing + 7 new), tsc exit 0, build compiles. Any failure: stop and fix before continuing.
+Expected: every test file passes - 38 files (31 existing + 7 new), tsc exit 0, build compiles. Any failure: stop and fix before continuing.
 
 - [ ] **Step 8.2: E2E** (needs the dev server per `playwright.config`)
 
 ```powershell
 npm run test:e2e
 ```
-Expected: all E2E pass (18 today; update any that asserted the old "Sample data" copy — Step 5.1 already located them).
+Expected: all E2E pass (18 today; update any that asserted the old "Sample data" copy - Step 5.1 already located them).
 
-- [ ] **Step 8.3: Verify the real flow in a browser** (dev server + seeded local DB): log in as the admin seed user → Settings → Shops → Add shop "Verify Shop [test]" / NOK → row appears "Not connected" → Connect it with dummy keys → badge flips to Connected → Sync all → the summary line names the shop as failed (dummy URL — that's the honest reporting working). Delete the row afterwards:
+- [ ] **Step 8.3: Verify the real flow in a browser** (dev server + seeded local DB): log in as the admin seed user → Settings → Shops → Add shop "Verify Shop [test]" / NOK → row appears "Not connected" → Connect it with dummy keys → badge flips to Connected → Sync all → the summary line names the shop as failed (dummy URL - that's the honest reporting working). Delete the row afterwards:
 
 ```powershell
 npx tsx --env-file=.env -e "import('./src/lib/db').then(async ({db}) => { await db.shop.deleteMany({ where: { name: { contains: '[test]' } } }); process.exit(0) })"
@@ -1160,7 +1160,7 @@ npx tsx --env-file=.env -e "import('./src/lib/db').then(async ({db}) => { await 
 
 ### Task 9: Ship
 
-- [ ] **Step 9.1:** Merge to main (fast-forward is fine), push — Vercel deploys `main` automatically:
+- [ ] **Step 9.1:** Merge to main (fast-forward is fine), push - Vercel deploys `main` automatically:
 
 ```powershell
 git checkout main
@@ -1168,7 +1168,7 @@ git merge feat/shop-connection
 git push origin main
 ```
 
-- [ ] **Step 9.2:** Prove the deploy landed — the new POST route is the cleanest signal (yesterday it would 405, now it must 403 for an anonymous caller):
+- [ ] **Step 9.2:** Prove the deploy landed - the new POST route is the cleanest signal (yesterday it would 405, now it must 403 for an anonymous caller):
 
 ```powershell
 curl.exe -s -o NUL -w "%{http_code}" -X POST https://panetti.vercel.app/api/shops

@@ -7,7 +7,7 @@ const json = (body: unknown, status = 200) =>
 afterEach(() => vi.unstubAllGlobals())
 
 // Trimmed from a real /advertisers answer (2026-08-24). The markets object is
-// keyed by market code and carries the webshop URL — the shop-mapping key.
+// keyed by market code and carries the webshop URL - the shop-mapping key.
 const advertisers = {
   results: [
     {
@@ -192,7 +192,7 @@ describe('fetchTransactions', () => {
   })
 
   it('refuses to run away when the platform pages forever', async () => {
-    // Fresh Response per call — a body can only be read once.
+    // Fresh Response per call - a body can only be read once.
     const spy = vi
       .fn()
       .mockImplementation(() =>

@@ -105,8 +105,8 @@ describe('mapVismaB2bSales', () => {
   })
 
   /**
-   * The field on the customer editor is free text, so one typo — the account
-   * number of a "… - Webkunde" house account — would turn every webshop invoice
+   * The field on the customer editor is free text, so one typo - the account
+   * number of a "… - Webkunde" house account - would turn every webshop invoice
    * booked to it into a duplicate order. That is the exact failure this whole
    * design exists to prevent, reachable by one keystroke, so being linked is
    * not enough on its own.
@@ -122,7 +122,7 @@ describe('mapVismaB2bSales', () => {
   })
 
   /**
-   * Line amounts come from `unitPriceInCurrency` — the INVOICE's currency —
+   * Line amounts come from `unitPriceInCurrency` - the INVOICE's currency -
    * while the order is labelled with the customer's, and the B2B customer page
    * sums those columns without converting. Recording 45 000 NOK as 45 000 EUR
    * is a tenfold error nothing downstream could notice.
@@ -163,7 +163,7 @@ describe('mapVismaB2bSales', () => {
   /**
    * A WooCommerce order id and a Visma reference number are both bare integers.
    * Unprefixed, invoice 123194 and Woo order 123194 would be the same row on
-   * `@@unique([shopId, externalId])` — one silently overwriting the other.
+   * `@@unique([shopId, externalId])` - one silently overwriting the other.
    */
   it('namespaces the external id so it cannot collide with a WooCommerce order id', () => {
     const { orders } = mapVismaB2bSales([invoice({ referenceNumber: '123194' })], linked)
@@ -191,7 +191,7 @@ describe('mapVismaB2bSales', () => {
    * is already inside the unit price. The only evidence for that was a fixture
    * reading `discountAmount: 0`; it has never been seen on a real discounted
    * invoice. If `unitPriceInCurrency` is in fact the LIST price, every
-   * discounted invoice imports with overstated net sales — the direction that
+   * discounted invoice imports with overstated net sales - the direction that
    * flatters the numbers, for a client who reconciles line by line.
    *
    * The payload settles it itself: `amountInCurrency` is the line total. When
@@ -260,7 +260,7 @@ describe('mapVismaB2bSales', () => {
 
   /**
    * Losing a whole order because one line is odd is worse than an order with
-   * one line missing — and a line dropped in silence is indistinguishable from
+   * one line missing - and a line dropped in silence is indistinguishable from
    * a line that never existed, which is how a missing sale goes unnoticed.
    */
   it('drops a line whose SKU cannot identify a product but keeps the order', () => {

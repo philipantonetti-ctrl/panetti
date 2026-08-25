@@ -26,7 +26,7 @@ export type LateOrder = {
   number: string
   /**
    * Who is waiting. Null when we hold no name, '' when the shop was checked
-   * and had none — see the schema comment on Order.customerName. Both print as
+   * and had none - see the schema comment on Order.customerName. Both print as
    * a dash, which is why the cells below use `||` rather than `??`.
    */
   customerName: string | null
@@ -36,7 +36,7 @@ export type LateOrder = {
   /**
    * Days since the order was placed. The No-tracking list is mostly orders
    * still INSIDE their promise, for which `daysOver` is zero and says nothing
-   * — how long we have been in the dark is the figure that ranks them.
+   * - how long we have been in the dark is the figure that ranks them.
    */
   waitingDays: number
   /**
@@ -47,7 +47,7 @@ export type LateOrder = {
    * waitingDays is counted on, so the two columns can never disagree by a day
    * about one order. And it is the clock the noon cutoff is written in, so the
    * time on screen is the one that decides which warehouse file the order
-   * belongs to — a date alone cannot answer that.
+   * belongs to - a date alone cannot answer that.
    *
    * Fixed-width, so lexical comparison IS chronological comparison, down to
    * the minute.
@@ -75,7 +75,7 @@ type ImportRow = {
   error: string | null
   /** 'UPLOAD' or 'EMAIL' today; typed loosely because it is a plain column. */
   source: string
-  /** JSON text, written by the import. Never trusted — see refusalsOf below. */
+  /** JSON text, written by the import. Never trusted - see refusalsOf below. */
   unmatched: string | null
 }
 
@@ -84,7 +84,7 @@ type Payload = {
   late: LateOrder[]
   lateTotal: number
   /**
-   * Every order with no parcel at all — see the NoTracking section. This is
+   * Every order with no parcel at all - see the NoTracking section. This is
    * the same set stats.noTracking counts, so the tile and the list agree by
    * construction; it used to hold only the ones also past their promise.
    */
@@ -119,11 +119,11 @@ function whyBlank(s: DeliveryStats): string | null {
 }
 
 /**
- * A missing figure prints "—", never "0" — a zero reads as "delivered same
+ * A missing figure prints "-", never "0" - a zero reads as "delivered same
  * day" or "nothing is late", and both are lies when the truth is "we don't
  * know yet". Every formatter below returns this for a null input.
  */
-const DASH = '—'
+const DASH = '-'
 
 function formatDays(v: number | null): string {
   if (v === null) return DASH
@@ -137,7 +137,7 @@ function formatPct(v: number | null): string {
 
 /**
  * Every link on this page is built on the server, beside the data, so the page
- * never has to know which carrier a number belongs to — except this one. Import
+ * never has to know which carrier a number belongs to - except this one. Import
  * refusals are parsed out of TrackingImport.unmatched here in the browser, and
  * that file is the warehouse's Bring report (lib/bring/import.ts), so its
  * numbers are Bring's by construction. Named rather than defaulted, so the
@@ -188,14 +188,14 @@ const STATE_TONE: Record<DeliveryState, string> = {
   // All three arrivals are quiet now. The first two were amber because the
   // only lists that draw a badge were the Late one and the No-tracking one,
   // where an order that HAD arrived had arrived past its promise. Neither list
-  // routes an arrival any more — lib/delivery/view.ts's `stillLate` is what
-  // drops them — so amber here could only ever paint "past its promise" onto a
+  // routes an arrival any more - lib/delivery/view.ts's `stillLate` is what
+  // drops them - so amber here could only ever paint "past its promise" onto a
   // parcel nobody is waiting for. Kept in the map because DeliveryState is
   // exhaustive, not because a row is expected to carry one.
   AVAILABLE: 'bg-panel text-muted',
   DELIVERED: 'bg-panel text-muted',
-  // Never late by construction — the parcel is with the customer and we simply
-  // hold no date for it — so this one was quiet before the two above joined it.
+  // Never late by construction - the parcel is with the customer and we simply
+  // hold no date for it - so this one was quiet before the two above joined it.
   DELIVERED_UNDATED: 'bg-panel text-muted',
   RETURNED: 'bg-warn-soft text-loss',
   CANCELLED: 'bg-warn-soft text-loss',
@@ -209,7 +209,7 @@ function StateBadge({ state }: { state: DeliveryState }) {
   )
 }
 
-/** Skeletons in the shape of the content — never a spinner in the middle of a table. */
+/** Skeletons in the shape of the content - never a spinner in the middle of a table. */
 function Skeleton() {
   return (
     <div className="space-y-4">
@@ -222,7 +222,7 @@ function Skeleton() {
 
 /**
  * Nothing below this would be honest: every tile would show a real-looking
- * zero, implying orders were checked and none were late — when really none
+ * zero, implying orders were checked and none were late - when really none
  * were ever looked at. So the page says the true thing instead.
  */
 function EmptyState() {
@@ -286,10 +286,10 @@ function Tile({
 }
 
 /**
- * The headline. Median, never average — two parcels stuck in customs would
+ * The headline. Median, never average - two parcels stuck in customs would
  * drag a mean into fiction. On-time rate judges the WHOLE set that missed its
  * promise (including ones that arrived late); "late right now" is the
- * narrower live queue — the two must not be swapped.
+ * narrower live queue - the two must not be swapped.
  */
 export function Tiles({
   stats,
@@ -304,7 +304,7 @@ export function Tiles({
         <Tile
           label="MEDIAN DAYS TO DELIVERY"
           value={stats.medianDays === null ? DASH : `${formatDays(stats.medianDays)} days`}
-          hint="Placed to available for pickup or delivered — the middle order, not the average."
+          hint="Placed to available for pickup or delivered - the middle order, not the average."
           note={stats.medianDays === null ? whyBlank(stats) : `across ${stats.delivered} delivered`}
         />
       </div>
@@ -330,9 +330,9 @@ export function Tiles({
           // "has a parcel" is load-bearing, not decoration. This tile used to
           // count orders with no tracking number too, and read 155 against a
           // Late list of 8. Saying what it counts is half of what stops that
-          // returning; the other half is the count itself, in stats.ts — which
+          // returning; the other half is the count itself, in stats.ts - which
           // now counts with the very function the list is filtered by.
-          hint="Has a parcel, missed its promise, and still not with the customer — exactly the Late list below."
+          hint="Has a parcel, missed its promise, and still not with the customer - exactly the Late list below."
         />
       </div>
       <Tile
@@ -341,7 +341,7 @@ export function Tiles({
         tone={stats.noTracking > 0 ? 'text-warn' : undefined}
         hint="Expected a parcel for this order; the warehouse has not booked one."
         // A number with no way to reach what it counts is an accusation you
-        // cannot answer — the client's words were "there is no way for me to
+        // cannot answer - the client's words were "there is no way for me to
         // press the no tracking to actually see which orders are missing".
         onClick={stats.noTracking > 0 ? onShowNoTracking : undefined}
         // The largest, loudest figure on the page on any young workspace, and
@@ -403,8 +403,8 @@ export function Pipeline({ stats, lastCheckedAt }: { stats: DeliveryStats; lastC
     // quieter state than the carrier moving it.
     { label: 'At the warehouse', count: stats.booked, color: 'var(--color-muted)' },
     { label: 'In transit', count: stats.inTransit, color: 'var(--color-accent)' },
-    // Two positions, not one. This segment counted `delivered` — every order
-    // whose clock had stopped — so a parcel sitting uncollected at a pickup
+    // Two positions, not one. This segment counted `delivered` - every order
+    // whose clock had stopped - so a parcel sitting uncollected at a pickup
     // point was reported as delivered, directly above a badge now saying it is
     // not. Waiting at the pickup point is a real position on the journey and
     // gets its own; the two sum to `delivered`, so nothing is counted twice.
@@ -492,12 +492,12 @@ function SplitBar({ label, value, max }: { label: string; value: number | null; 
 
 /**
  * Warehouse against transit, on one scale, so the longer half is obvious at a
- * glance — or, when neither half can be measured, the reason instead of two
+ * glance - or, when neither half can be measured, the reason instead of two
  * dashes.
  *
  * Both halves are counted from a HANDOVER moment, and that only ever arrives as
  * a carrier event (`handedInAt`, milestones.ts). An order already delivered the
- * first time we saw it never recorded one, so this panel sat at "— / —" while
+ * first time we saw it never recorded one, so this panel sat at "- / -" while
  * two dozen orders were delivered perfectly well. A dash reads identically to
  * "zero days", to "nothing delivered" and to "still loading"; the state is
  * knowable, so it gets said. Same rule the headline tiles follow with whyBlank.
@@ -545,7 +545,7 @@ export function Split({ stats }: { stats: DeliveryStats }) {
   )
 }
 
-/** Every day count that occurred — the tail a median alone hides. */
+/** Every day count that occurred - the tail a median alone hides. */
 function Distribution({
   data,
   waiting,
@@ -633,14 +633,14 @@ function CountryTable({ rows, waiting }: { rows: CountryStat[]; waiting: string 
  * These used to sit in the Late list, and on 2026-08-18 that meant roughly 120
  * rows of which SIX had a parcel. Two separate harms in one section: the six
  * rows anyone could act on were unfindable, and the other ~114 were filed under
- * "missed its promise" — a claim the data cannot support. A missing file is not
+ * "missed its promise" - a claim the data cannot support. A missing file is not
  * evidence of a late delivery. Several of these have very likely arrived; we
  * simply never heard.
  *
  * Splitting them out fixed that and left a smaller version of the same fault:
  * this section held only the ones ALSO past their promise, while the tile above
  * counted every order with no parcel. Two numbers over overlapping sets, and no
- * route at all to the rows the tile counted but this did not — which is what a
+ * route at all to the rows the tile counted but this did not - which is what a
  * client hit: "there is no way for me to press the no tracking to actually see
  * which orders are missing tracking". It now holds exactly what the tile
  * counts, so the two cannot disagree.
@@ -659,7 +659,7 @@ function CountryTable({ rows, waiting }: { rows: CountryStat[]; waiting: string 
  * depending on who is looking at it. A written-out month cannot be misread.
  *
  * placedOn is already a plain calendar date, so it is parsed and printed in
- * UTC — that round-trips the exact day rather than shifting it by a timezone
+ * UTC - that round-trips the exact day rather than shifting it by a timezone
  * it was never expressed in.
  */
 const orderedOn = (local: string) =>
@@ -685,7 +685,7 @@ export function NoTracking({
   onToggle: () => void
 }) {
   /**
-   * Null until asked, so the rows keep the order the route sent them in —
+   * Null until asked, so the rows keep the order the route sent them in -
    * longest waiting first, which is the order to work through them in.
    *
    * Only the order date sorts. `Waiting` is computed FROM it, so the two are
@@ -811,7 +811,7 @@ export function NoTracking({
                   {/* Muted, not text-loss. The red on the Late table means "this
                       is going wrong"; here the number is only how long we have
                       been in the dark, which is not the same accusation.
-                      The overdue ones are marked in WORDS beside it — colour
+                      The overdue ones are marked in WORDS beside it - colour
                       alone would say nothing to a colour-blind reader, and this
                       table is read to decide who to chase first. */}
                   <td className="px-4 py-2.5 text-right text-muted">
@@ -838,11 +838,11 @@ export function NoTracking({
  *
  * Every row here HAS a parcel, and not one of them has reached the customer.
  * Orders past their promise with nothing to show for them live in NoTracking
- * above — see the reasoning there. Orders whose parcel has since arrived are
+ * above - see the reasoning there. Orders whose parcel has since arrived are
  * on the page too, but not here: they are what the on-time rate is made of and
  * "Where everything is now" counts them under Ready for collection and
- * Delivered. The client asked for exactly that — "when order is delivered or
- * ready for collection, it can go away from the Late section" — and the reason
+ * Delivered. The client asked for exactly that - "when order is delivered or
+ * ready for collection, it can go away from the Late section" - and the reason
  * it is right is that this list is worked through, and finished work in a
  * to-do list teaches people to stop reading it.
  *
@@ -865,7 +865,7 @@ export function LateList({
   // whose job is to say how much is actually wrong.
   const capped = total > rows.length
   return (
-    // Named so the section can be linked to and found — the No-tracking
+    // Named so the section can be linked to and found - the No-tracking
     // section below has carried an id for the same reason since the tile above
     // it learned to open it.
     <section id="late" className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
@@ -886,7 +886,7 @@ export function LateList({
         // "Nothing is late" and "nothing was looked at" are opposite pieces of
         // news that a single zero reports identically. Say which one it is.
         <p className="px-5 pb-5 text-[13px] text-muted">
-          {/* "No tracked parcel is late", not "nothing is late" — orders with no
+          {/* "No tracked parcel is late", not "nothing is late" - orders with no
               warehouse file yet sit in their own section below, and a bare
               "nothing is late" here would quietly speak for them too. */}
           {judged === 0
@@ -974,7 +974,7 @@ export function LateList({
 }
 
 /**
- * Collapsed by default — most days this is empty and nobody needs to see it —
+ * Collapsed by default - most days this is empty and nobody needs to see it -
  * but the count in the heading is always real, so "0" here is a checked fact,
  * not silence.
  */
@@ -1010,7 +1010,7 @@ function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: num
       {open &&
         (items.length === 0 ? (
           <p className="border-t border-line px-5 py-4 text-[13px] text-muted">
-            None right now — every parcel the carriers have told us about is linked to an
+            None right now - every parcel the carriers have told us about is linked to an
             order.
           </p>
         ) : (
@@ -1021,7 +1021,7 @@ function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: num
                   <th className="px-5 py-2 text-left">Tracking number</th>
                   {/* Its own column here, unlike the late table above: this one
                       has two columns and the room, and an unlinked parcel is
-                      chased BY carrier — you go and ask that carrier's file
+                      chased BY carrier - you go and ask that carrier's file
                       where the order reference went. */}
                   <th className="px-5 py-2 text-left">Carrier</th>
                   <th className="px-5 py-2 text-left">Last status</th>
@@ -1105,8 +1105,8 @@ function refusalsOf(raw: string | null): Refusal[] {
  *
  * The counts alone are not enough now that a refusal is a deliberate outcome
  * rather than a failure: "27 parsed, 25 linked, 2 unmatched" tells an operator
- * that something is wrong and nothing about what. Every refusal names itself —
- * "no order for this email", "matched 2 orders" — and those reasons were being
+ * that something is wrong and nothing about what. Every refusal names itself -
+ * "no order for this email", "matched 2 orders" - and those reasons were being
  * stored and never shown. They are the row underneath.
  */
 function ImportsList({ items }: { items: ImportRow[] }) {
@@ -1168,7 +1168,7 @@ function ImportsList({ items }: { items: ImportRow[] }) {
                                     >
                                       {r.trackingNumber}
                                     </a>
-                                    {' — '}
+                                    {' - '}
                                   </>
                                 )}
                                 {r.reason}
@@ -1217,7 +1217,7 @@ export function DeliveryClient({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   // Bumped by `reload()` below to force the same effect to refetch outside of
-  // a filter change or the live tick — the only other two things that do.
+  // a filter change or the live tick - the only other two things that do.
   const [reloadKey, setReloadKey] = useState(0)
   /**
    * Owned here rather than inside the section, because the NO TRACKING tile

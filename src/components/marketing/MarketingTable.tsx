@@ -45,7 +45,7 @@ const COLUMNS: Column[] = [
 ]
 
 /**
- * The everyday view — the client's own Google list (budget, spend, purchases,
+ * The everyday view - the client's own Google list (budget, spend, purchases,
  * value, ROAS, Avg. CPC, clicks) plus the store context; everything else is
  * one tick away in Select metrics.
  */
@@ -67,7 +67,7 @@ const STORAGE_KEY = 'marketing-columns'
 // roas and cpa divide WHOLE-STORE gross revenue and orders by ad spend
 // (marketing.ts's `ratios()`), so a platform filter nulls them out rather
 // than inflating them. The static column hint doesn't say that, so under a
-// filter the dash reads as missing data instead of a deliberate refusal —
+// filter the dash reads as missing data instead of a deliberate refusal -
 // this is the explanation swapped in for both the header and the cell.
 const FILTERED_RATIO_KEYS = new Set<Column['key']>(['roas', 'cpa'])
 const FILTERED_RATIO_HINT =
@@ -105,7 +105,7 @@ function useVisibleColumns() {
 }
 
 function cellText(column: Column, value: number | null, currency: string): string {
-  if (value === null) return '—'
+  if (value === null) return '-'
   switch (column.kind) {
     case 'money':
       return formatMoney(value, currency)
@@ -132,7 +132,7 @@ export function MarketingTable({
   total: MarketingShopRow
   currency: string
   /** From the caller's SETTLED platform (MarketingClient passes
-   *  `data.platform`, echoed by the route), not a pending filter selection —
+   *  `data.platform`, echoed by the route), not a pending filter selection -
    *  the same principle MarketingChart's own `platformFiltered` follows. */
   platformFiltered?: boolean
 }) {

@@ -36,7 +36,7 @@ export async function GET() {
 
     // One entry per SKU, carrying every shop that sells it. The same physical
     // product is a separate Product row in every shop that ever sold it, so the
-    // picker must offer it once — but the caller needs the shops to narrow the
+    // picker must offer it once - but the caller needs the shops to narrow the
     // list to the store being chosen.
     //
     // shopIds here rather than a shop-scoped endpoint, because the ledger still
@@ -46,7 +46,7 @@ export async function GET() {
     const bySku = new Map<string, { name: string; shopIds: Set<string> }>()
     for (const p of products) {
       const entry = bySku.get(p.sku)
-      // First name wins, which is the name-ascending one — the same tiebreak
+      // First name wins, which is the name-ascending one - the same tiebreak
       // this endpoint has always used.
       if (entry) entry.shopIds.add(p.shopId)
       else bySku.set(p.sku, { name: p.name, shopIds: new Set([p.shopId]) })

@@ -50,15 +50,15 @@ marketing is now deducted. That is the point of the change, not a regression.
 ### ROAS
 
 That row's gross revenue divided by that row's marketing spend, printed
-`7.76×` — two decimals and a multiplication sign, matching `MarketingTable`'s
+`7.76×` - two decimals and a multiplication sign, matching `MarketingTable`'s
 `roas` cell so the two screens read the same. The Total row is therefore the
 blended ROAS with no separate calculation: total gross revenue over total
 spend, which is exactly what the footer already sums to.
 
-A row with no ad spend prints `—`, never `0.00×`. This follows the rule
+A row with no ad spend prints `-`, never `0.00×`. This follows the rule
 `ratios()` in `src/lib/ads/marketing.ts` already sets: a ratio with a zero
 denominator is not a number, and printing one would lie. Zero gross revenue
-against real spend is a different case — `0.00×` is the true answer there, and
+against real spend is a different case - `0.00×` is the true answer there, and
 it prints.
 
 ### The metric picker
@@ -109,7 +109,7 @@ keeps its current numbers: no rows means marketing is 0 means net profit is
 what it was.
 
 `computeMetrics` sums a shop's rows that fall inside `[from, to]`, converting
-each at **its own day's rate** through the existing `convert()` — the same rule
+each at **its own day's rate** through the existing `convert()` - the same rule
 orders already follow, so a rate move never rewrites last month.
 
 Net profit becomes:
@@ -145,10 +145,10 @@ const withRoas = (f) => ({ ...f, roas: f.marketing > 0 ? f.grossRevenue / f.mark
 
 `Column.key` widens from `keyof ShopFigures` to `keyof Row`, `Column` gains a
 `roas?: boolean` flag beside its existing `money` and `percent` ones, `Cell`
-renders `null` as `—`, and sorting nulls last uses
+renders `null` as `-`, and sorting nulls last uses
 `a[sortBy] ?? Number.NEGATIVE_INFINITY`, the same guard `MarketingTable`
 already uses. Putting `roas: number | null` into `Figures` instead would force
-every consumer of that type to handle a null, to no benefit — and rounding it
+every consumer of that type to handle a null, to no benefit - and rounding it
 to `0` to keep it a `number` would print the lie the dash exists to prevent.
 
 ### The loader
@@ -167,7 +167,7 @@ would convert on whatever stale rate happened to be lying around.
 Once the loader guarantees rates for ad currencies, the `extra` / `ensureRates`
 / `buildRateTable` block in `src/app/api/marketing/route.ts` is dead: it can
 use `input.rates`. That is ten lines removed, and more importantly it removes
-the second code path — the Marketing page and the Dashboard must never be able
+the second code path - the Marketing page and the Dashboard must never be able
 to quote different spend for the same period.
 
 The marketing route keeps its own `adSpend` query. `buildMarketing` needs the
@@ -179,14 +179,14 @@ column would be the wrong trade.
 
 1. **Double counting.** Any Meta or Google spend currently entered under
    Settings → Expenses will be counted twice from the moment this ships. The
-   seeded expenses are 3PL, accounting, employees, tools and office — none of
-   them ads — but the live `OperationalExpense` labels must be read before
+   seeded expenses are 3PL, accounting, employees, tools and office - none of
+   them ads - but the live `OperationalExpense` labels must be read before
    deploy. Anything that looks like ad spend is reported to the client, and
    removed only on their say-so: it is their bookkeeping, not ours.
 2. **Ad spend has no timezone.** The platforms report a plain UTC day; orders
    bucket in their shop's zone. At a range boundary a day of spend can land one
    side of the line and a day of orders the other. `/api/marketing` has always
-   worked this way, so this introduces no new discrepancy — but it does put it
+   worked this way, so this introduces no new discrepancy - but it does put it
    next to a profit figure for the first time.
 3. **The client will see profit drop.** Worth saying out loud when it ships,
    with the marketing total that explains the difference, so it reads as a
@@ -213,7 +213,7 @@ column would be the wrong trade.
   updated, not added to.)
 - Marketing renders as money in both a shop row and the Total.
 - ROAS renders `7.76×` from gross revenue over marketing.
-- ROAS renders `—` when marketing is 0.
+- ROAS renders `-` when marketing is 0.
 - ROAS renders `0.00×` when there is spend but no revenue.
 - Sorting by ROAS puts the dashes last.
 

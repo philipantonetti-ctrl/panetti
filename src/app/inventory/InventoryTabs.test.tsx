@@ -28,7 +28,7 @@ describe('InventoryTabs', () => {
 
   it('lights the child route you are on, and leaves Forecast alone', () => {
     // The reason the index uses an exact match rather than a prefix. Swap the
-    // ternary for a blanket startsWith and this is the only test that fails —
+    // ternary for a blanket startsWith and this is the only test that fails -
     // every other assertion in this file passes either way.
     route.current = '/inventory/purchase-orders'
     render(<InventoryTabs />)

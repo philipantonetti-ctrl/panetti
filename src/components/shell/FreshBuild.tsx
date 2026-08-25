@@ -10,7 +10,7 @@ const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID ?? 'dev'
  * Deploys must reach tabs that are already open. Once a minute (and on focus)
  * this asks the server which build it is running; the moment the answer
  * differs from the build this tab was loaded from, the tab reloads itself.
- * Without it, a parked tab keeps running week-old code forever — fresh data
+ * Without it, a parked tab keeps running week-old code forever - fresh data
  * wearing an outdated page.
  */
 export function FreshBuild({
@@ -33,7 +33,7 @@ export function FreshBuild({
         if (onNewBuild) onNewBuild()
         else window.location.reload()
       })
-      .catch(() => {}) // offline or flaky — next tick will ask again
+      .catch(() => {}) // offline or flaky - next tick will ask again
     return () => {
       stale = true
     }

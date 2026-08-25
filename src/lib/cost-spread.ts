@@ -3,7 +3,7 @@
  *
  * `ProductCost` hangs off a `Product`, and `Product` is per shop
  * (`@@unique([shopId, externalId])`), so the same physical item carries a
- * separate cost row in each of the nine stores — each "minor units, shop
+ * separate cost row in each of the nine stores - each "minor units, shop
  * currency". That is why the costs page asks for the same figure nine times, and
  * the client's complaint about seeing one product per webshop is most literally
  * true there.
@@ -12,8 +12,8 @@
  * supplier invoice. So it is entered once against the source shop and converted
  * outward from here.
  *
- * The FX lookup is injected rather than imported, so the arithmetic and — much
- * more importantly — the refusal can be tested without a rate table or a
+ * The FX lookup is injected rather than imported, so the arithmetic and - much
+ * more importantly - the refusal can be tested without a rate table or a
  * database.
  */
 
@@ -40,7 +40,7 @@ export type Spread = {
 }
 
 export function spreadCost(input: {
-  /** Currency the figures were entered in — the source shop's. */
+  /** Currency the figures were entered in - the source shop's. */
   from: string
   /** Minor units, in `from`. */
   costPerItem: number
@@ -67,7 +67,7 @@ export function spreadCost(input: {
 
     writes.push({
       productId: s.id,
-      // mulRate returns whole minor units — a third of an øre cannot be stored,
+      // mulRate returns whole minor units - a third of an øre cannot be stored,
       // and rounding here is the same rounding every other converted figure in
       // the system gets.
       costPerItem: rate === 1 ? input.costPerItem : mulRate(input.costPerItem, rate),

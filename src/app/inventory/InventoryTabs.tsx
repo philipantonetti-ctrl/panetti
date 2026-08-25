@@ -26,7 +26,7 @@ export function InventoryTabs() {
   return (
     <div role="tablist" className="flex flex-wrap gap-1">
       {VIEWS.map((v) => {
-        // Exact match for the index, prefix for the rest — otherwise /inventory
+        // Exact match for the index, prefix for the rest - otherwise /inventory
         // would light up on every child route at once.
         const active = v.href === '/inventory' ? pathname === v.href : pathname.startsWith(v.href)
         return (

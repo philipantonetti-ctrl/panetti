@@ -1,8 +1,8 @@
-# ecom-analytics — Phase 1 Design
+# ecom-analytics - Phase 1 Design
 
 **Date:** 2026-07-14
 **Status:** Approved for implementation
-**Scope:** Phase 1 — sales tracking, profit engine, and ambassador tracking
+**Scope:** Phase 1 - sales tracking, profit engine, and ambassador tracking
 
 ---
 
@@ -38,28 +38,28 @@ own UX was more complicated than it needed to be, we simplified it (see §6.2).
 
 ## 3. Definitions (the money rules)
 
-These definitions are the heart of the system. **Every revenue figure excludes VAT** — VAT is
+These definitions are the heart of the system. **Every revenue figure excludes VAT** - VAT is
 collected on behalf of the state and was never the business's money.
 
 ```
   Gross sales        Σ line-item value before discount        (excl. VAT)
-– Discounts          Σ discounts applied                      (excl. VAT)
+- Discounts          Σ discounts applied                      (excl. VAT)
 ─────────────────
 = NET SALES          ← the reference figure; commission base  (excl. VAT)
 + Shipping charged   what the customer paid for shipping      (excl. VAT)
 ─────────────────
 = NET REVENUE        ← top line used for profit
-– COGS               Σ qty × cost-per-item   (cost in effect on the order's date)
-– Handling           Σ qty × handling-cost   (cost in effect on the order's date)
-– Operational expenses   each expense's daily share × days in the selected range
-– Ambassador commission  10% × net sales of each attributed order
+- COGS               Σ qty × cost-per-item   (cost in effect on the order's date)
+- Handling           Σ qty × handling-cost   (cost in effect on the order's date)
+- Operational expenses   each expense's daily share × days in the selected range
+- Ambassador commission  10% × net sales of each attributed order
 ─────────────────
 = NET PROFIT         Net margin = net profit ÷ net revenue
 ```
 
 **Decisions locked in:**
 
-- **Commission base:** 10% of **net sales** — product value *after* the ambassador's discount is
+- **Commission base:** 10% of **net sales** - product value *after* the ambassador's discount is
   applied, excluding shipping and excluding VAT.
 - **Refunded / cancelled orders:** excluded from everything. No revenue, no commission.
 - **Commission rate:** 10%, stored per ambassador so it can vary later without a schema change.
@@ -84,14 +84,14 @@ and the settings screens.
 
 Each unit has one clear purpose and can be tested on its own:
 
-- **`lib/metrics/`** — the metrics engine. Pure functions: given orders, costs, expenses, and FX
+- **`lib/metrics/`** - the metrics engine. Pure functions: given orders, costs, expenses, and FX
   rates, produce the figures in §3. No database or HTTP knowledge. **This is where the logic lives
   and where the tests bite hardest.**
-- **`lib/woo/`** — the WooCommerce client and sync. Talks to shops, upserts orders. Knows nothing
+- **`lib/woo/`** - the WooCommerce client and sync. Talks to shops, upserts orders. Knows nothing
   about profit.
-- **`lib/fx/`** — fetches and caches daily exchange rates. Converts an amount on a given date.
-- **`lib/auth/`** — sessions, roles, and the rule that an ambassador may only read their own data.
-- **`app/`** — pages and API routes. Thin; they call the modules above.
+- **`lib/fx/`** - fetches and caches daily exchange rates. Converts an amount on a given date.
+- **`lib/auth/`** - sessions, roles, and the rule that an ambassador may only read their own data.
+- **`app/`** - pages and API routes. Thin; they call the modules above.
 
 ---
 
@@ -105,20 +105,20 @@ Ten tables.
 | **Order** | `id`, `shopId`, `externalId`, `number`, `placedAt`, `status`, `currency`, `grossSales`, `discountTotal`, `netSales`, `shippingCharged`, `taxTotal`, `total`, `couponCode`, `ambassadorId?` |
 | **OrderItem** | `id`, `orderId`, `productId`, `sku`, `name`, `quantity`, `unitPrice`, `lineNetTotal` |
 | **Product** | `id`, `shopId`, `externalId`, `sku`, `name`, `lastSellingPrice` |
-| **ProductCost** | `id`, `productId`, `costPerItem`, `handlingCost`, `effectiveFrom` — **many rows per product = full history** |
+| **ProductCost** | `id`, `productId`, `costPerItem`, `handlingCost`, `effectiveFrom` - **many rows per product = full history** |
 | **OperationalExpense** | `id`, `shopId`, `label`, `category`, `amount`, `currency`, `recurrence`, `startDate`, `endDate?`, `status` |
 | **Ambassador** | `id`, `name`, `email`, `commissionRate` (default `0.10`), `active` |
 | **AmbassadorCode** | `id`, `ambassadorId`, `shopId?` (null = all shops), `code` (e.g. `EMMA10`) |
 | **User** | `id`, `email`, `passwordHash`, `role` (`ADMIN`\|`AMBASSADOR`), `ambassadorId?` |
-| **FxRate** | `date`, `base`, `quote`, `rate` — one row per currency pair per day |
+| **FxRate** | `date`, `base`, `quote`, `rate` - one row per currency pair per day |
 
 **Notes**
 
 - All money is stored **in the shop's own currency**, exactly as WooCommerce reported it. Conversion
-  happens at read time, never at write time — so a rate change can never rewrite history.
+  happens at read time, never at write time - so a rate change can never rewrite history.
 - `Order.netSales` is stored (not recomputed on the fly) because it is the commission base and must
   be stable and auditable.
-- `Product` rows are **discovered from orders** — any product ever sold appears automatically,
+- `Product` rows are **discovered from orders** - any product ever sold appears automatically,
   matching the BeProfit behaviour the owner described.
 
 ---
@@ -134,19 +134,19 @@ To cost an order line, take the `ProductCost` row for that product with the **la
 `effectiveFrom` that is on or before the order's date**. An order from March is therefore costed
 with March's cost, even if the cost changed in June.
 
-If no cost has been entered yet, cost is `0` and the product is flagged in the UI as missing —
+If no cost has been entered yet, cost is `0` and the product is flagged in the UI as missing -
 never silently guessed.
 
 ### 6.2 Simplification of BeProfit's "apply from" modal
 
 BeProfit asks, on every cost change: *apply to future orders / to the last 60 days / to a date
-range?* — three overlapping options that are easy to get wrong.
+range?* - three overlapping options that are easy to get wrong.
 
 **We replace all three with one field: "apply from this date."** It produces the same outcome
 (each order uses the cost that was true when it was placed) with one rule instead of three.
 Approved by the owner during design.
 
-### 6.3 Operational expenses — "spread daily"
+### 6.3 Operational expenses - "spread daily"
 
 An expense has a recurrence: `ONE_TIME`, `DAILY`, `WEEKLY`, `MONTHLY`, or `YEARLY`.
 
@@ -154,7 +154,7 @@ To charge an expense to a date range, convert it to a **daily amount** and multi
 of days in the range that the expense was active:
 
 - `MONTHLY` 14 000 kr in a 31-day month → ~451.61 kr/day. A 7-day view is charged ~3 161 kr.
-- `ONE_TIME` lands entirely on its `startDate` — it is only charged if that date falls in the range.
+- `ONE_TIME` lands entirely on its `startDate` - it is only charged if that date falls in the range.
 - An expense is only charged for days between its `startDate` and `endDate` (if set) while `status`
   is active.
 
@@ -176,7 +176,7 @@ codes cannot silently rewrite past commissions.
 
 Conversion uses the FX rate **on the order's own date** (or the expense day's date), so historical
 figures never shift when today's rates move. Rates come from a free daily source (ECB via
-Frankfurter — no API key) and are cached in `FxRate`. If a day's rate is missing, the most recent
+Frankfurter - no API key) and are cached in `FxRate`. If a day's rate is missing, the most recent
 earlier rate is used and the figure is marked as approximate.
 
 ### 6.6 WooCommerce sync
@@ -198,7 +198,7 @@ Triggered by the **Refresh** button, and on a schedule once live. Credentials li
 - **Ambassador** sees only their own sales, orders, commission, and rank. They never see other
   ambassadors, company costs, or profit.
 
-This is enforced **on the server**, in the data layer — not by hiding elements in the UI.
+This is enforced **on the server**, in the data layer - not by hiding elements in the UI.
 
 ---
 
@@ -206,14 +206,14 @@ This is enforced **on the server**, in the data layer — not by hiding elements
 
 | Screen | Who | Contents |
 |--------|-----|----------|
-| **Dashboard** | Admin | Shop selector (one / several / all) + date-range picker with presets (Today, Yesterday, This week/month/year, Last 7/30/90 days, custom). KPI cards: Net revenue, Orders, Avg order value, Net profit, Net margin, Ambassador sales. **Compare-shops table**: one row per shop — Orders, Net revenue, COGS, Op. Ex., Commission, Net profit, Margin — plus a Total row. **Top-ambassadors leaderboard.** |
+| **Dashboard** | Admin | Shop selector (one / several / all) + date-range picker with presets (Today, Yesterday, This week/month/year, Last 7/30/90 days, custom). KPI cards: Net revenue, Orders, Avg order value, Net profit, Net margin, Ambassador sales. **Compare-shops table**: one row per shop - Orders, Net revenue, COGS, Op. Ex., Commission, Net profit, Margin - plus a Total row. **Top-ambassadors leaderboard.** |
 | **Ambassadors** | Admin | Full list with sales, commission, rank. Create ambassadors, assign codes, set rate. |
 | **Settings → Product Costs** | Admin | Per shop. Every product ever sold, cost + handling per item, missing (0) rows highlighted. Saving asks "apply from" date. Cost history viewable. |
 | **Settings → Operational Expenses** | Admin | Per shop. Add/edit expenses: label, category, amount + currency, recurrence, first payment, status. |
 | **Settings → Shops** | Admin | Add a shop: name, currency, WooCommerce credentials. Test connection. Sync. |
 | **Ambassador portal** | Ambassador | Their sales, orders, commission, rank, sales-over-time chart, recent attributed orders. Nothing else. |
 
-Visual direction: clean, BeProfit-like — purple/white, dense readable tables, KPI cards on top.
+Visual direction: clean, BeProfit-like - purple/white, dense readable tables, KPI cards on top.
 Mockups approved during design.
 
 **Two display clarifications:**
@@ -232,7 +232,7 @@ Mockups approved during design.
 The app ships with a seed of realistic sample data so it is usable before any live credentials
 exist: the real shop names and currencies (Panetti NO/SE/DK/FI/DE, Mazzetti .no/.se/Denmark/Finland,
 Massasjepistoler.no, Bellino.no), ~24 ambassadors with codes, a catalogue of products with costs,
-operational expenses, and several months of orders — some attributed to ambassadors, some not, a few
+operational expenses, and several months of orders - some attributed to ambassadors, some not, a few
 refunded.
 
 Live WooCommerce shops are connected one at a time as credentials become available. Both paths use
@@ -244,18 +244,18 @@ the same code.
 
 Test-driven: a failing test first, then the code to pass it.
 
-**Unit — the metrics engine (the priority).** This is where the money is, so this is where the tests
+**Unit - the metrics engine (the priority).** This is where the money is, so this is where the tests
 are hardest:
 - COGS/handling pick the cost in effect **on the order's date**, not the newest cost.
 - Expense spreading: monthly, weekly, yearly, daily, one-time; partial ranges; start/end boundaries;
   inactive expenses excluded.
 - Commission = 10% of net sales, after discount, excluding VAT and shipping.
-- Refunded/cancelled orders contribute nothing — not to revenue, not to commission.
+- Refunded/cancelled orders contribute nothing - not to revenue, not to commission.
 - VAT is excluded from every revenue figure.
 - FX conversion uses the order-date rate; a missing rate falls back to the latest earlier one.
 - Profit and margin arithmetic, including a zero-revenue range (no division-by-zero).
 
-**Integration — API and access control:**
+**Integration - API and access control:**
 - An ambassador requesting another ambassador's data is **denied** (this is a security test, not a
   UI test).
 - Date-range and shop filters return the right slice.
@@ -265,7 +265,7 @@ are hardest:
 - Admin logs in → dashboard loads → changes date range and shop selection → numbers update.
 - Ambassador logs in → sees their own figures → cannot reach an admin page.
 
-**Definition of done: the entire suite passes — all green — and the app has been driven in a real
+**Definition of done: the entire suite passes - all green - and the app has been driven in a real
 browser to confirm the dashboard renders the seeded numbers correctly.**
 
 ---
@@ -276,7 +276,7 @@ To keep this shippable: no ad platforms, no ROAS/CTR, no bounce rate or web anal
 provider, no customer-service metrics, no payment-processing fees, no returns forecasting, no
 Google-Sheets sync, no CSV import, no multi-user teams beyond admin/ambassador.
 
-Every one of these has a clean place to attach later — ad spend and shipping costs become new cost
+Every one of these has a clean place to attach later - ad spend and shipping costs become new cost
 sources feeding the same metrics engine; the compare table gains columns.
 
 ---

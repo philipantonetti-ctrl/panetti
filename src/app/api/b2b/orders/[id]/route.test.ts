@@ -104,8 +104,8 @@ describe('PATCH /api/b2b/orders/[id]', () => {
   })
 
   /**
-   * The write half of the same rule POST follows. An edit — or a void, which
-   * goes through this route too — must not turn "nobody costed this" into
+   * The write half of the same rule POST follows. An edit - or a void, which
+   * goes through this route too - must not turn "nobody costed this" into
    * "shipping was free", because a stored zero wins outright in the engine and
    * puts the order permanently beyond the per-SKU shipping rates.
    */
@@ -143,7 +143,7 @@ describe('PATCH /api/b2b/orders/[id]', () => {
       lines: [{ productId, quantity: 1, unitPrice: 89 }],
     })).status).toBe(400)
 
-    // A validation failure must write nothing — the original 10-line order,
+    // A validation failure must write nothing - the original 10-line order,
     // not a half-applied rewrite with the rejected status ignored.
     const after = await db.order.findUniqueOrThrow({ where: { id }, include: { items: true } })
     expect(after.status).toBe(before.status)
@@ -165,7 +165,7 @@ describe('PATCH /api/b2b/orders/[id]', () => {
       customerId, placedAt: '2026-07-01', lines: [{ productId, quantity: 1, unitPrice: 89 }],
     })).status).toBe(404)
 
-    // Still exactly the webshop order it was — no B2B fields leaked onto it.
+    // Still exactly the webshop order it was - no B2B fields leaked onto it.
     const after = await db.order.findUniqueOrThrow({ where: { id: woo.id } })
     expect(after.b2bCustomerId).toBeNull()
     expect(after.grossSales).toBe(1000)
@@ -174,7 +174,7 @@ describe('PATCH /api/b2b/orders/[id]', () => {
 
   it('refuses to move an order to a customer on a different shop', async () => {
     // The update never writes shopId, so silently accepting this would strand
-    // the order on its old shop while its customer belongs to another —
+    // the order on its old shop while its customer belongs to another -
     // per-shop revenue is the whole point of this product.
     await asAdmin()
     const id = await createOrder()
@@ -206,7 +206,7 @@ describe('DELETE /api/b2b/orders/[id]', () => {
 
   it('refuses to delete a webshop order through this route', async () => {
     // This endpoint exists to fix a typo in something typed by hand. A synced
-    // order deleted here would come back on the next sync — or worse, not.
+    // order deleted here would come back on the next sync - or worse, not.
     await asAdmin()
     const woo = await db.order.create({
       data: {
@@ -327,7 +327,7 @@ describe('GET /api/b2b/orders/[id]', () => {
  * It is not ours to rewrite: Visma is its source, and the next fifteen-minute
  * run rewrites its money and its lines from the invoice. An edit made here
  * would silently revert, and a delete would come straight back on the next
- * upsert — taking any fulfillmentCost typed onto it in the meantime.
+ * upsert - taking any fulfillmentCost typed onto it in the meantime.
  */
 describe('an order imported from Visma', () => {
   const imported = () =>

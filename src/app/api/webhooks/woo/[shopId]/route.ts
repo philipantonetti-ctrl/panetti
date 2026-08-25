@@ -7,9 +7,9 @@ import type { WooOrder } from '@/lib/woo/map'
 
 /**
  * Where the stores call in. The moment an order is placed, edited, refunded,
- * cancelled, trashed or restored, WooCommerce delivers it here — queued in the
+ * cancelled, trashed or restored, WooCommerce delivers it here - queued in the
  * store's background worker AFTER the shopper's request finished, so the
- * webshop never waits on us — and the dashboards are current seconds later.
+ * webshop never waits on us - and the dashboards are current seconds later.
  *
  * Every delivery must carry a valid HMAC signature made with this shop's own
  * secret (registered by `ensureWebhooks`, stored encrypted). The one unsigned
@@ -65,7 +65,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopId:
       return NextResponse.json({ ok: true })
     }
 
-    // created / updated / restored carry the full order — the same shape the
+    // created / updated / restored carry the full order - the same shape the
     // sync pulls, stored down the same path, so both arrivals look identical.
     if (!Array.isArray(body.line_items)) {
       return NextResponse.json({ error: 'Unreadable payload' }, { status: 400 })

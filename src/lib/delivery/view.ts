@@ -78,8 +78,8 @@ export type OrderDelivery = {
   /**
    * The order's parcels, each with the link that actually reaches its own
    * carrier. Carries the built URL rather than the carrier name so that the
-   * three screens showing these — the delivery page, the Slack alert and the
-   * Orders column — cannot each get the mapping slightly different.
+   * three screens showing these - the delivery page, the Slack alert and the
+   * Orders column - cannot each get the mapping slightly different.
    */
   parcels: Parcel[]
 }
@@ -88,7 +88,7 @@ export type OrderDelivery = {
  * Both `carrier` and `url` are ready to render: the name is already written
  * the way a person reads it and the link already points at the right site. The
  * page shows both carriers in one list, so it needs the name to tell them
- * apart — but it should not have to know the carrier rules to get either.
+ * apart - but it should not have to know the carrier rules to get either.
  */
 export type Parcel = { number: string; carrier: string; url: string }
 
@@ -117,7 +117,7 @@ const EMPTY = {
  * Orders column and the Slack alert all read this, so they cannot drift apart
  * and tell three different stories about the same order.
  *
- * Pure. No database, no clock of its own — `now` is passed in so a test can
+ * Pure. No database, no clock of its own - `now` is passed in so a test can
  * stand anywhere in time.
  */
 export function deliveryFor(
@@ -141,7 +141,7 @@ export function deliveryFor(
    * The cutoff hides only what it cannot speak for.
    *
    * It answers "could we possibly know what happened to this order", and for
-   * one holding a parcel the answer is yes — we are looking straight at it.
+   * one holding a parcel the answer is yes - we are looking straight at it.
    * Hiding it anyway threw away real evidence for no gain.
    *
    * That gain matters because of what the cutoff is FOR. The warehouse does
@@ -149,7 +149,7 @@ export function deliveryFor(
    * NO_TRACKING forever and no amount of importing will move it; walking the
    * cutoff forward is the only cure. But while the cutoff silenced older
    * orders regardless of evidence, that cure also erased the median, the
-   * on-time rate and the distribution chart over the same period — measured on
+   * on-time rate and the distribution chart over the same period - measured on
    * a seeded run: delivered 1 -> 0, medianDays 2 -> null, onTimeRate 1 -> null.
    * Nobody would accept that trade, so the feature went unused and the
    * unanswerable orders stayed on the page.
@@ -178,8 +178,8 @@ export function deliveryFor(
   // The returned/cancelled guard is not belt-and-braces. `availableAt` and
   // `outcome` are separate denormalised columns, and a pickup-point parcel
   // genuinely sets availableAt (READY_FOR_PICKUP) BEFORE it is returned
-  // uncollected. Without this guard such an order would report totalDays — so it
-  // would count as delivered in the median — and `late` would be false, so it
+  // uncollected. Without this guard such an order would report totalDays - so it
+  // would count as delivered in the median - and `late` would be false, so it
   // would never alert. The customer never received it. Same rule milestonesFrom
   // applies in map.ts; the two must not drift.
   const allAvailable =
@@ -191,7 +191,7 @@ export function deliveryFor(
 
   // The same guard `allAvailable` carries, on the other milestone. A parcel
   // going back was not collected, and milestonesFrom already writes both as
-  // null for one — but this function reads denormalised columns rather than
+  // null for one - but this function reads denormalised columns rather than
   // events, and a row holding a stale collectedAt beside a RETURNED outcome
   // would otherwise satisfy `hasArrived` and take the return off the chase
   // queue. A return is the one settled ending the customer never received.
@@ -207,8 +207,8 @@ export function deliveryFor(
   /**
    * Every parcel has arrived, and not one of them carries a date.
    *
-   * The warehouse file says THAT a parcel was delivered — DHL's export carries
-   * its own status word, which linkDhlShipments stores as `outcome` — and it
+   * The warehouse file says THAT a parcel was delivered - DHL's export carries
+   * its own status word, which linkDhlShipments stores as `outcome` - and it
    * never says WHEN. `availableAt` is written by the poller and by nothing
    * else, so until the poller reaches a parcel the two facts arrive from
    * different places and only the first of them exists.
@@ -222,7 +222,7 @@ export function deliveryFor(
    * `availableAt === null` keeps this branch exclusive to the undated case. A
    * parcel the poller HAS dated also carries outcome DELIVERED, and letting
    * that fall in here would excuse an order that genuinely arrived late from
-   * the on-time rate — the opposite mistake, and a worse one.
+   * the on-time rate - the opposite mistake, and a worse one.
    */
   const arrivedUndated =
     !returned &&
@@ -233,7 +233,7 @@ export function deliveryFor(
 
   // collectedAt before availableAt: a collected parcel is also an available
   // one, so the more specific fact has to be asked about first or it can never
-  // be reported. Everything below this line is unchanged — in particular the
+  // be reported. Everything below this line is unchanged - in particular the
   // clock still stops at availableAt, so a customer who takes a week to walk
   // to the pickup point still does not make the delivery late.
   const state: DeliveryState = returned
@@ -259,17 +259,17 @@ export function deliveryFor(
                 : 'BOOKED'
 
   // Late = past the promise, judged at the moment the order actually became
-  // available — or right now, if it never has. Gating on `!availableAt` alone
+  // available - or right now, if it never has. Gating on `!availableAt` alone
   // is not enough: a shipment that DID arrive can still have taken longer than
   // the promise allowed ("judges the total against the promise, not the
   // transit half"), and that must still read as late. One rule covers three
   // shapes: a parcel that arrived but took too long, one still crawling
   // through Bring past its deadline, and an order the warehouse never booked
-  // at all — there being no shipment for a shipment-driven rule to see.
+  // at all - there being no shipment for a shipment-driven rule to see.
   //
   // `arrivedUndated` is the one case that falls back to neither. The parcel
   // has arrived, so measuring it against `now` is not a late delivery being
-  // reported — it is the app counting the days since it last managed to ask.
+  // reported - it is the app counting the days since it last managed to ask.
   // Those are different things, and only the first belongs on a page a person
   // reads as a to-do list.
   const referenceAt = availableAt ?? now
@@ -303,7 +303,7 @@ export function deliveryFor(
  * two different words (milestones.ts): READY_FOR_PICKUP and DELIVERED stop the
  * clock and write `availableAt`, while COLLECTED only proves the hand-over and
  * writes `collectedAt`. A parcel whose feed carried the collection and neither
- * of the other two therefore has a `collectedAt` and no `availableAt` at all —
+ * of the other two therefore has a `collectedAt` and no `availableAt` at all -
  * and reading one field calls that parcel outstanding while the customer is
  * holding the box.
  */
@@ -314,9 +314,9 @@ export const hasArrived = (v: OrderDelivery): boolean =>
  * Late, still not with the customer, and holding a parcel somebody can go and
  * ask about. THE definition of the chase queue.
  *
- * One function because three screens ask this question — the "LATE RIGHT NOW"
+ * One function because three screens ask this question - the "LATE RIGHT NOW"
  * tile (stats.ts), the Late list under it (api/delivery/route.ts) and the
- * Slack alert (alerts.ts) — and each used to spell out its own answer. The
+ * Slack alert (alerts.ts) - and each used to spell out its own answer. The
  * list's left out the middle clause, so on 2026-08-24 it ran to sixteen rows
  * under a tile reading 13, six of them badged Delivered or Ready for
  * collection. A parcel in the customer's hands is not a thing anyone can
@@ -326,9 +326,9 @@ export const hasArrived = (v: OrderDelivery): boolean =>
  * past its promise, which is what the on-time rate is made of (stats.ts's
  * `rate`). This says only that the queue is done with it.
  *
- * The parcel clause is the one the Slack alert deliberately drops — it pages
+ * The parcel clause is the one the Slack alert deliberately drops - it pages
  * about an order the warehouse never booked, which is the single most
- * important thing it catches — so alerts.ts composes `late` and `hasArrived`
+ * important thing it catches - so alerts.ts composes `late` and `hasArrived`
  * itself rather than calling this.
  */
 export const stillLate = (v: OrderDelivery): boolean =>

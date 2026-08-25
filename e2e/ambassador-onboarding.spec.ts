@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 /**
  * The whole journey, end to end: an admin creates an ambassador, hands them a link,
- * and they turn it into a login of their own — without ever seeing company figures.
+ * and they turn it into a login of their own - without ever seeing company figures.
  */
 
 async function signIn(page: import('@playwright/test').Page, email: string) {
@@ -10,7 +10,7 @@ async function signIn(page: import('@playwright/test').Page, email: string) {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill('password123')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  // The click only dispatches the DOM event — it does not wait for the async
+  // The click only dispatches the DOM event - it does not wait for the async
   // login request (bcrypt compare + cookie set) that follows. Without this,
   // an immediate page.goto() elsewhere in a test can race ahead of the
   // cookie actually being set. Wait for the real signal: we've left /login.
@@ -38,7 +38,7 @@ test('an admin creates an ambassador, who claims a login and sees only their own
   // A code belongs to a store: choose one, which unlocks the code field.
   await form.getByLabel('Store').selectOption({ index: 1 })
   await form.getByPlaceholder('Discount code').fill(CODE)
-  // A product is required now, and the list is that store's own products — which
+  // A product is required now, and the list is that store's own products - which
   // only exist here once /api/ambassador-products has answered. Until then the same
   // box reads "no products found for this store yet", so the wait is for that fetch,
   // not for a render: the default 5s loses to a cold dev route compile.
@@ -49,7 +49,7 @@ test('an admin creates an ambassador, who claims a login and sees only their own
 
   const row = page.getByTestId('ambassador-row').filter({ hasText: EMAIL })
   await expect(row).toBeVisible()
-  // They have no login yet — so the invite is offered and the status says so.
+  // They have no login yet - so the invite is offered and the status says so.
   await expect(row).toContainText('Not set up yet')
 
   // --- Admin copies the invite link ---
@@ -102,7 +102,7 @@ test('an admin creates an ambassador, who claims a login and sees only their own
 })
 
 test.afterAll(async () => {
-  // This test writes to the real database — clean up after itself. The login and the
+  // This test writes to the real database - clean up after itself. The login and the
   // discount code go with it: both cascade from the ambassador.
   const { PrismaClient } = await import('@prisma/client')
   const db = new PrismaClient()

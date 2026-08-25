@@ -3,7 +3,7 @@
  *
  * A fact is a COMPUTED COMPARISON, not an observation: every one of these came
  * out of the same engine the Dashboard uses, over two windows. The model is
- * given these and asked only to rank and explain them — it never derives a
+ * given these and asked only to rank and explain them - it never derives a
  * figure of its own, because a confident wrong number is the one thing this
  * product must never ship.
  */
@@ -39,7 +39,7 @@ export type Fact = {
   /** Now and before. Minor units when `unit` is 'money'. */
   current: number | null
   previous: number | null
-  /** Fractional change. Null when the previous value was zero — growing from
+  /** Fractional change. Null when the previous value was zero - growing from
    *  nothing is not a percentage, the same call `deltaPct` already makes. */
   deltaPct: number | null
   unit: FactUnit

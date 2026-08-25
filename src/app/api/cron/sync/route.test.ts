@@ -8,7 +8,7 @@ vi.mock('@/lib/woo/sync', () => ({ syncAllShops: (...args: unknown[]) => syncAll
 // sync, and a unit test must not depend on a third-party service being up.
 vi.mock('@/lib/fx/rates', () => ({ ensureRates: vi.fn() }))
 
-// Nor is Visma. This one is not merely slow, it is the CLIENT'S LIVE ERP — and
+// Nor is Visma. This one is not merely slow, it is the CLIENT'S LIVE ERP - and
 // without this mock the test really does reach it, because the route sees the
 // VISMA_* credentials from .env even though a plain unit test does not. Left
 // unmocked it read 719 real order lines and wrote 62 rows into the local
@@ -34,13 +34,13 @@ vi.mock('@/lib/visma/import', () => ({
 // Nor Bring's invoice archive. Left unmocked, this reaches Bring's real API
 // and writes real rows into the shared local database the moment any
 // developer's local DeliveryConfig singleton happens to hold Bring
-// credentials — it only looks harmless today because that row is usually
+// credentials - it only looks harmless today because that row is usually
 // empty. Same shape as the Visma mock above, and for the same reason.
 const syncBringInvoices = vi.fn(async (opts?: { deadline?: number }) => ({
   configured: false, found: 0, queued: 0, noSpec: 0,
   // Honours the deadline the way the real one does, so a route that forgot to
   // pass a usable one cannot look identical to a route that passed a good
-  // one — same technique as importVismaB2bSales's mock above.
+  // one - same technique as importVismaB2bSales's mock above.
   partial: opts?.deadline !== undefined && Date.now() > opts.deadline,
   requested: false, stored: 0, unmatched: 0, error: null,
 }))
@@ -127,7 +127,7 @@ describe('the scheduled sync endpoint', () => {
    * The B2B sales import runs on this schedule too, and its counts have to be
    * visible: `linked` is the difference between "nobody has linked a customer
    * yet" and "the import is broken", and the skip reasons are what would show a
-   * webshop house account starting to be treated as a sale — the one failure
+   * webshop house account starting to be treated as a sale - the one failure
    * here that silently doubles revenue.
    */
   it('imports B2B sales and reports what it did, per reason', async () => {
@@ -148,7 +148,7 @@ describe('the scheduled sync endpoint', () => {
    * ORDER IS A DECISION HERE, NOT AN ACCIDENT. One run makes roughly nine Visma
    * calls back to back, and the spec's own measurement is that about ten quick
    * calls earn a 429 which then holds for minutes. Whichever import goes last
-   * meets the empty end of that window — and because the call order is fixed
+   * meets the empty end of that window - and because the call order is fixed
    * and the preceding calls are identical every run, it loses the SAME
    * customers every time, importing nothing while every gate stays green.
    *
@@ -187,7 +187,7 @@ describe('the scheduled sync endpoint', () => {
 
   /**
    * I3: this is the only thing keeping the Bring invoice stage inside the
-   * platform ceiling ahead of the parcel poll and the delivery alert — see
+   * platform ceiling ahead of the parcel poll and the delivery alert - see
    * BRING_INVOICES_DEADLINE_MS's own comment in route.ts. Pinned to the exact
    * window between it (270_000) and SHIPMENTS_DEADLINE_MS (275_000) that
    * follows it, so a refactor that drops the deadline, or widens it into the

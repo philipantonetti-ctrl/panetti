@@ -12,7 +12,7 @@ import { loadRates, ensureRates } from '@/lib/fx/rates'
 import { EXCLUDED_STATUSES } from '@/lib/metrics/types'
 
 /**
- * An ambassador's own figures — and ONLY their own.
+ * An ambassador's own figures - and ONLY their own.
  *
  * The ambassador id is taken from the SESSION, never from the query string.
  * There is therefore no id for a caller to tamper with.
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 
     // Which ambassador's figures? An ambassador sees their own, taken from the
     // session and never the request. An admin sees the ambassador that shares
-    // their email — their own. Either way it is a single ambassador they are
+    // their email - their own. Either way it is a single ambassador they are
     // entitled to: an admin viewing this sees their OWN portal, nothing wider.
     let ambassadorId: string | null = null
     if (user.role === 'AMBASSADOR') {
@@ -188,7 +188,7 @@ export async function GET(req: Request) {
     })
 
     // Note: ranking compares raw netSales across currencies. Good enough for a rank,
-    // and it never exposes another ambassador's figures — only a position.
+    // and it never exposes another ambassador's figures - only a position.
     const better = everyone.filter((row) => (row._sum.netSales ?? 0) > (everyone.find((r) => r.ambassadorId === me.id)?._sum.netSales ?? 0)).length
     // rank and total must come from the SAME population, or you get "#9 of 8".
     // The population is everyone with an attributed order in range; `active` plays no

@@ -11,7 +11,7 @@ afterEach(() => vi.unstubAllGlobals())
  *
  * The signature is supplied as a type argument rather than as parameters the
  * body ignores. `vi.fn(async () => ...)` alone infers a ZERO-ARG mock, which
- * makes `fn.mock.calls[0][0]` a type error — indexing an empty tuple — even
+ * makes `fn.mock.calls[0][0]` a type error - indexing an empty tuple - even
  * though it works at runtime. That matters here: tsconfig includes `**\/*.ts`,
  * so test files are typechecked and `next build` fails on this, while every
  * test still passes.

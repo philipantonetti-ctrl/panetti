@@ -20,11 +20,11 @@ type CampaignsPayload = {
  * spacing and button classes rather than inventing a second look. It also
  * splits its errors the way PickerModal does: the load failure stays as
  * inline `error` state (the modal has nothing worth showing until it loads),
- * while the save result goes through `toast`, like AccountModal — an admin
+ * while the save result goes through `toast`, like AccountModal - an admin
  * re-attributing a campaign's spend history needs the same confirmation its
  * sibling modals give on Save.
  *
- * '' is the select's "unassigned" value, not a shop id — the account's own
+ * '' is the select's "unassigned" value, not a shop id - the account's own
  * shop is the fallback, and the API spells that fallback as `shopId: null`.
  * Mapping happens at the edges: null -> '' on load, '' -> null on save.
  */

@@ -16,11 +16,11 @@ const SHOP_NAME = 'plan-rank-test-shop [rank-test]'
 const ids: string[] = []
 let shopId = ''
 
-// The seed's 24 ambassadors all live at @ambassador.test (see prisma/seed.ts) — a
+// The seed's 24 ambassadors all live at @ambassador.test (see prisma/seed.ts) - a
 // stable, known set, distinct from every other test file's own @example.local
 // fixtures. Scoping to it means our cleanup can never reactivate (or our setup
 // never deactivates) an ambassador that a DIFFERENT, concurrently running test
-// file created and is relying on — this suite runs against one shared live DB.
+// file created and is relying on - this suite runs against one shared live DB.
 const SEEDED = { email: { endsWith: '@ambassador.test' } }
 
 async function wipe() {
@@ -32,7 +32,7 @@ async function wipe() {
 }
 
 let orderSeq = 0
-/** A minimal, valid order for `ambassadorId`, dated today — always inside "this_month". */
+/** A minimal, valid order for `ambassadorId`, dated today - always inside "this_month". */
 async function mkOrder(ambassadorId: string, netSales: number) {
   orderSeq += 1
   await db.order.create({
@@ -80,7 +80,7 @@ const portal = () => GET(new Request('http://localhost/api/portal?preset=this_mo
 describe('portal rank invariant', () => {
   // Whatever the population, you can never be 9th of 8.
   it('never reports a rank greater than the total', async () => {
-    await mkOrder(ids[0], 1) // a real sale — puts me in the ranked population
+    await mkOrder(ids[0], 1) // a real sale - puts me in the ranked population
     const res = await portal()
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -106,10 +106,10 @@ describe('portal rank invariant', () => {
   })
 
   it('holds when EVERY other ambassador is deactivated', async () => {
-    // A tiny sale of my own — every seeded ambassador with genuine sales this
+    // A tiny sale of my own - every seeded ambassador with genuine sales this
     // month will still outrank it, so `better` stays large even as the old
     // active-only total collapses. Deactivate the seeded population plus my one
-    // fellow test ambassador — i.e. everyone but me — never anyone else's fixture.
+    // fellow test ambassador - i.e. everyone but me - never anyone else's fixture.
     await mkOrder(ids[0], 1)
     await db.ambassador.updateMany({ where: { OR: [SEEDED, { id: ids[1] }] }, data: { active: false } })
     const body = await (await portal()).json()
@@ -120,7 +120,7 @@ describe('portal rank invariant', () => {
   // I have no orders in range, so I am absent from the groupBy population.
   it('holds when I have no sales at all in the range', async () => {
     const body = await (await portal()).json()
-    // Nothing to rank me on — never a bogus number, but the invariant (if a
+    // Nothing to rank me on - never a bogus number, but the invariant (if a
     // rank IS reported, it cannot exceed the total) still must not be violated.
     if (body.rank !== null) expect(body.rank).toBeLessThanOrEqual(body.totalAmbassadors)
     expect(body.totalAmbassadors).toBeGreaterThanOrEqual(1) // I am always counted in my own population

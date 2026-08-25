@@ -52,7 +52,7 @@ type ShippingRate = {
 /**
  * The combined view: one row per product, taken from the stock-source shops.
  *
- * A sentinel rather than a shop id, because it is not a shop — it is every source
+ * A sentinel rather than a shop id, because it is not a shop - it is every source
  * shop's catalogue with the duplicates folded together, which is what the client
  * asked to see. Cannot collide with a cuid.
  */
@@ -85,7 +85,7 @@ export function CostsClient({
 
   function load() {
     if (!shopId) {
-      // No shop to load for. Say so rather than spinning forever — products
+      // No shop to load for. Say so rather than spinning forever - products
       // belong to a shop, so there is genuinely nothing to fetch.
       setLoading(false)
       return
@@ -116,7 +116,7 @@ export function CostsClient({
         // The last sentence is the client's own request, answered where it
         // matters: he was typing the same cost once per webshop, because a cost
         // is stored against a per-shop product row. It now spreads to that SKU
-        // everywhere, converted into each shop's currency — and a reader has to
+        // everywhere, converted into each shop's currency - and a reader has to
         // know that BEFORE typing, or entering a cost on one shop's row looks
         // like a partial job.
         subtitle="Every product ever sold appears here, with its store price incl. VAT. Enter a cost and it is used for profit from the date you choose, for this product in every webshop that sells it."
@@ -129,7 +129,7 @@ export function CostsClient({
         >
           {/* First and default, because it is the answer: one row per product
               rather than the same product once per country. The individual shops
-              stay below it — they are the only way to reach a product the source
+              stay below it - they are the only way to reach a product the source
               shops do not sell, and six of those sold last quarter. */}
           {sourceCurrency && (
             <option value={SOURCE}>All stock-source shops ({sourceCurrency})</option>
@@ -154,7 +154,7 @@ export function CostsClient({
 
       <PageBody>
         {/* Never a short list passing as a complete one. These are products the
-            source shops do not sell — Swedish and Danish listings — and they
+            source shops do not sell - Swedish and Danish listings - and they
             still need costs, so the sentence says where they are rather than
             leaving them to be discovered. */}
         {shopId === SOURCE && onlyElsewhere > 0 && (
@@ -202,7 +202,7 @@ export function CostsClient({
                 <tr>
                   <td colSpan={5} className="px-5 py-12 text-center text-[13px] text-muted">
                     <span className="font-semibold text-ink">No shops connected yet.</span>{' '}
-                    Product costs belong to a shop —{' '}
+                    Product costs belong to a shop -{' '}
                     <Link href="/settings/shops" className="text-accent hover:underline">
                       connect one first
                     </Link>
@@ -282,7 +282,7 @@ const SHIP_INPUT =
   'rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint'
 
 /**
- * What one unit of a SKU costs us to ship — the client's own request: "add an
+ * What one unit of a SKU costs us to ship - the client's own request: "add an
  * average unit cost we pay per shipping depending on the supplier ... so it
  * calculate the shipping cost we had to pay based on the SKU and quantity the
  * customer bought".
@@ -323,7 +323,7 @@ function ShippingRates({
   }, [reload])
 
   // Exactly the currencies the shops trade in, because a rate is only in force
-  // for an order whose costs are held in the SAME currency — see
+  // for an order whose costs are held in the SAME currency - see
   // lib/inventory/shipping.ts. Offering a currency no shop uses would let
   // someone type a rate that could never apply to anything.
   const shopCurrencies = [...new Set(shops.map((s) => s.currency))]
@@ -352,7 +352,7 @@ function ShippingRates({
     } catch {
       toast.error('Could not reach the server')
     } finally {
-      setBusy(false) // always — the button must never stick on "Saving…"
+      setBusy(false) // always - the button must never stick on "Saving…"
     }
   }
 
@@ -386,7 +386,7 @@ function ShippingRates({
         {/* The half-rated order is the sentence that has to be right, because it
             is the state this page is in for as long as it takes to fill the
             rates in. The flat per-order rate is dropped the moment ONE line is
-            rated, and the unrated lines then count as nothing — so an order gets
+            rated, and the unrated lines then count as nothing - so an order gets
             CHEAPER to ship and its profit RISES half way through the job. An
             earlier draft here said the opposite ("an order with no rate for its
             SKU keeps your flat per-order rate"), which is true only when no line
@@ -401,12 +401,12 @@ function ShippingRates({
           than an order of one. An order keeps your flat per-order fulfillment rate until{' '}
           <strong className="font-semibold text-ink">one</strong> of its products has a rate
           here. From then on that order is charged only for the products that have one, and any
-          product without a rate counts as nothing — so give every product on an order a rate,
+          product without a rate counts as nothing - so give every product on an order a rate,
           or none of them. A rate applies to the webshops that trade in its currency, from the
-          date you choose — history before that date keeps the rate that applied then.
+          date you choose - history before that date keeps the rate that applied then.
         </p>
         {/* The advice above is impossible to follow for six live products,
-            which all carry the SKU "0" — they span a pizza oven and a massage
+            which all carry the SKU "0" - they span a pizza oven and a massage
             chair, so a rate typed against that key would charge one product's
             shipping to a completely different one, and the route refuses it.
             Saying so here is the difference between "I cannot rate this yet and
@@ -415,7 +415,7 @@ function ShippingRates({
             can do. */}
         <p className="mt-1.5 text-[12px] text-muted">
           A product needs its own SKU before it can have a rate. Several products sharing one
-          SKU — or a product with none — cannot be told apart here, and rating them together
+          SKU - or a product with none - cannot be told apart here, and rating them together
           would charge one product&rsquo;s shipping to another. Those orders keep the flat
           per-order rate until the products are given real SKUs.
         </p>
@@ -524,7 +524,7 @@ type ApplyChoice = { apply: 'FUTURE' | 'LAST_60_DAYS' | 'DATE_RANGE'; from?: str
 const TODAY = () => new Date().toISOString().slice(0, 10)
 
 /**
- * "Which orders should this cost apply to?" — asked once for COGS (step 1 of 2), then
+ * "Which orders should this cost apply to?" - asked once for COGS (step 1 of 2), then
  * again for the handling cost (step 2 of 2), exactly as in BeProfit.
  */
 function ApplyStep({
@@ -659,7 +659,7 @@ function CostModal({
     } catch {
       toast.error('Could not reach the server')
     } finally {
-      setBusy(false) // always — the button must never stick on "Saving…"
+      setBusy(false) // always - the button must never stick on "Saving…"
     }
   }
 

@@ -68,7 +68,7 @@ describe('a B2B order through the real portal route', () => {
   }
 
   // Scoped to this describe so the six pure guard-function tests above never
-  // touch the database — they need none of this.
+  // touch the database - they need none of this.
   beforeEach(async () => {
     await cleanup()
     const shop = await db.shop.create({ data: { name: `Security shop ${TAG}`, currency: 'EUR' } })

@@ -109,7 +109,7 @@ const callback = (provider: string, qs: string) =>
 
 // Two save-time tests lived here, both driving ensureMetaApp: a wrong App
 // ID refused with Facebook's words, and the App Domains warning. Saving no
-// longer calls Meta at all — Connect with Facebook does that now, the same
+// longer calls Meta at all - Connect with Facebook does that now, the same
 // as Connect with Google always has. The pasted-token path still proves
 // itself the old way, in src/lib/ads/token.test.ts, but only as a fallback.
 
@@ -121,7 +121,7 @@ const callback = (provider: string, qs: string) =>
 
 // Four Meta start tests lived here: the domain write, the second click it
 // asked for, the refused write, and the unreachable-Meta fallthrough. The
-// second-click one WAS the loop — ensureMetaApp could report "healed"
+// second-click one WAS the loop - ensureMetaApp could report "healed"
 // forever.
 
 describe('oauth start', () => {

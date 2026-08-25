@@ -4,7 +4,7 @@ import { formatMoney } from '@/lib/money'
 import type { MarketingShopRow } from '@/lib/ads/marketing'
 
 /**
- * The headline ad figures — the four the client reads first in Ads Manager.
+ * The headline ad figures - the four the client reads first in Ads Manager.
  * One surface split by hairlines, like the dashboard's strip. A dash is honest
  * where a ratio has no denominator.
  */
@@ -31,14 +31,14 @@ export function MarketingStats({ total, currency }: { total: MarketingShopRow; c
       <div className="border-b border-line lg:border-b-0 lg:border-r">
         <Stat
           label="PURCHASE ROAS"
-          value={total.platformRoas === null ? '—' : `${total.platformRoas.toFixed(2)}×`}
+          value={total.platformRoas === null ? '-' : `${total.platformRoas.toFixed(2)}×`}
           hint="Attributed conversion value divided by spend, as the platforms report it"
         />
       </div>
       <div className="lg:border-r lg:border-line">
         <Stat
           label="COST PER PURCHASE"
-          value={total.costPerPurchase === null ? '—' : formatMoney(total.costPerPurchase, currency)}
+          value={total.costPerPurchase === null ? '-' : formatMoney(total.costPerPurchase, currency)}
           hint="Spend per attributed purchase (cost per result)"
         />
       </div>

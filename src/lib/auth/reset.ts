@@ -3,7 +3,7 @@ import { SignJWT, jwtVerify } from 'jose'
 
 /**
  * Sessions, invites and reset links are all signed with AUTH_SECRET. The
- * audience claim is what stops one being accepted as another — and it matters
+ * audience claim is what stops one being accepted as another - and it matters
  * more here than anywhere else, because an invite and a reset link are mailed
  * to the same person and look alike in a mailbox.
  */
@@ -27,8 +27,8 @@ function secret(): Uint8Array {
  * A short, one-way summary of the password hash the token was issued against.
  *
  * This is what makes a reset link single-use WITHOUT a table of spent tokens.
- * bcrypt salts every hash, so setting a password — even to the identical string
- * — produces a different hash and so a different fingerprint. The route
+ * bcrypt salts every hash, so setting a password - even to the identical string
+ * - produces a different hash and so a different fingerprint. The route
  * compares this against the row's current hash and refuses anything stale, so a
  * link dies the moment it is spent, and every older link dies with it.
  *

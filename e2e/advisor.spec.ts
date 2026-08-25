@@ -37,7 +37,7 @@ test.describe('Advisor', () => {
     await page.goto('/advisor')
     const empty = page.getByText(/No briefing yet/i)
     // The page header's subtitle is set from briefing.from/to, and only when a
-    // Briefing row exists (AdvisorClient.tsx: `briefing ? ... : undefined`) — so
+    // Briefing row exists (AdvisorClient.tsx: `briefing ? ... : undefined`) - so
     // unlike the always-rendered Refresh button, this actually distinguishes the
     // two branches. Matched by shape, not a literal date: which week it is
     // depends on when this environment's cron last ran.

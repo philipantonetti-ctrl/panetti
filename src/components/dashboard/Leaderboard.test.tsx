@@ -34,7 +34,7 @@ describe('Leaderboard', () => {
     expect(screen.getByText('(Panetti Norway, Panetti Sweden)')).toBeTruthy()
   })
 
-  it('leaves a codeless ambassador bare — no empty parentheses', () => {
+  it('leaves a codeless ambassador bare - no empty parentheses', () => {
     render(<Leaderboard rows={[row({ shops: [] })]} currency="USD" />)
     expect(screen.getByText('Philip')).toBeTruthy()
     expect(screen.queryByText(/\(\s*\)/)).toBeNull()

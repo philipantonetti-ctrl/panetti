@@ -75,7 +75,7 @@ describe('deliveryFor', () => {
 
   /**
    * One order can hold parcels from both carriers, so the link cannot be a
-   * property of the page — it has to be a property of the parcel. Before this,
+   * property of the page - it has to be a property of the parcel. Before this,
    * every number on every screen went to Bring's tracking site, so a DHL
    * number led to a page that has never heard of it.
    */
@@ -145,7 +145,7 @@ describe('deliveryFor', () => {
 
   /**
    * The cutoff answers "could we possibly know what happened to this order",
-   * and for an order holding a delivered parcel the answer is yes — we are
+   * and for an order holding a delivered parcel the answer is yes - we are
    * looking straight at it.
    *
    * This matters because of what the cutoff is FOR. The warehouse will not
@@ -211,7 +211,7 @@ describe('deliveryFor', () => {
     // columns: a pickup-point parcel sets availableAt on READY_FOR_PICKUP, then
     // is returned when nobody collects it. Trusting availableAt alone would
     // count this as delivered in the median AND make `late` false, so it would
-    // never alert — for an order the customer never received.
+    // never alert - for an order the customer never received.
     const v = deliveryFor(order({
       shipments: [parcel({
         handedInAt: new Date('2026-08-04T16:00:00Z'),
@@ -270,7 +270,7 @@ describe('deliveryFor', () => {
  * "Available" meant two things at once: a parcel waiting at a Nordic pickup
  * point, and one already in the customer's hands. AVAILABLE is
  * ['READY_FOR_PICKUP', 'DELIVERED'] in milestones.ts, and DHL maps only ever
- * to DELIVERED — so every DHL row on the Delivery page badged "Available"
+ * to DELIVERED - so every DHL row on the Delivery page badged "Available"
  * while DHL's own tracking page said "Delivered". A client read that as the
  * system contradicting the carrier.
  *
@@ -292,7 +292,7 @@ describe('collected versus waiting at a pickup point', () => {
     expect(v.state).toBe('AVAILABLE')
   })
 
-  // A customer holding one of two boxes has not received their order — the
+  // A customer holding one of two boxes has not received their order - the
   // same rule the availableAt roll-up already applies.
   it('waits for the last parcel before calling an order delivered', () => {
     const v = deliveryFor(
@@ -325,7 +325,7 @@ describe('collected versus waiting at a pickup point', () => {
 /**
  * NO_TRACKING counted an order from the second it was placed, so every order
  * of the last day and a half sat under a heading reading "no warehouse file
- * has mentioned these orders yet" — true of them, and true of nothing being
+ * has mentioned these orders yet" - true of them, and true of nothing being
  * wrong. The warehouse exports once daily at 18:00 and promises same-day
  * dispatch only before 12:00, so until that file exists there is nothing to
  * have been missing from.
@@ -390,7 +390,7 @@ describe('orders too new for a warehouse file to exist', () => {
  *
  * Live on 2026-08-21: orders 15749, 15745 and 15752 sat in the Late list
  * reading "In transit, 7 days over" while DHL's own API reported all three
- * delivered on 2026-08-13 — 15749 a full day INSIDE its promise. `availableAt`
+ * delivered on 2026-08-13 - 15749 a full day INSIDE its promise. `availableAt`
  * is written by the poller and by nothing else, so a parcel the poller has not
  * reached carries no date, and `late` falls back to `now` when there is none.
  * The overdue count therefore grew by a day every day, forever, and took the
@@ -398,7 +398,7 @@ describe('orders too new for a warehouse file to exist', () => {
  *
  * The arrival was in the database the whole time. DHL's export carries its own
  * status word (dhl/parse.ts) and linkDhlShipments stores it as `outcome`
- * (dhl/link.ts) — which nothing read except the RETURNED and CANCELLED
+ * (dhl/link.ts) - which nothing read except the RETURNED and CANCELLED
  * branches below it.
  *
  * So the file is believed about the fact and never about the moment: the state
@@ -440,7 +440,7 @@ describe('a parcel the file says arrived, with no date yet', () => {
   })
 
   // An undated arrival is still an arrival, so the returned/cancelled guard
-  // has to reach it too — otherwise a parcel going back would read as arrived.
+  // has to reach it too - otherwise a parcel going back would read as arrived.
   it('never outranks a return', () => {
     expect(undated({ outcome: 'RETURNED' }).state).toBe('RETURNED')
   })
@@ -474,8 +474,8 @@ describe('a parcel the file says arrived, with no date yet', () => {
  * The chase queue: what is late, still not with the customer, and holds a
  * parcel somebody can go and ask about.
  *
- * Three screens ask that question — the LATE RIGHT NOW tile, the Late list
- * under it and the Slack alert — and each used to spell its own answer out.
+ * Three screens ask that question - the LATE RIGHT NOW tile, the Late list
+ * under it and the Slack alert - and each used to spell its own answer out.
  * The list's answer left out the "still not with the customer" half, so on
  * 2026-08-24 it ran to sixteen rows under a tile reading 13, six of them
  * badged Delivered or Ready for collection. The client's words: "when order is
@@ -513,7 +513,7 @@ describe('stillLate', () => {
   /**
    * COLLECTED stops the clock in milestones.ts, but only READY_FOR_PICKUP and
    * DELIVERED write `availableAt`. A parcel whose feed carried the collection
-   * and neither of those has a `collectedAt` and no `availableAt` at all —
+   * and neither of those has a `collectedAt` and no `availableAt` at all -
    * so a rule reading `availableAt` alone calls it outstanding while the
    * customer is holding the box.
    */
@@ -536,7 +536,7 @@ describe('stillLate', () => {
   /**
    * The same returned/cancelled guard `availableAt` already carries, on the
    * other milestone. milestonesFrom nulls both for a parcel going back, so a
-   * row holding one is already contradicting itself — but `deliveryFor` reads
+   * row holding one is already contradicting itself - but `deliveryFor` reads
    * denormalised columns, not events, and until this guard existed such a row
    * made `hasArrived` true and quietly took a RETURN off the chase queue. A
    * return is the one settled ending the customer never received; it is the
@@ -553,7 +553,7 @@ describe('stillLate', () => {
 
   /**
    * Late, and nothing to ask anyone about. These have their own section and
-   * their own tile — see the split in api/delivery/route.ts — because a
+   * their own tile - see the split in api/delivery/route.ts - because a
    * missing warehouse file is chased with the warehouse, not the carrier.
    */
   it('leaves out an order the warehouse never booked', () => {

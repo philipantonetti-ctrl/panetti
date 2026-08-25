@@ -7,7 +7,7 @@ import { daysOverdue, overdueOn, totalsByCurrency, type OpenItem } from './overd
 /** Enough to act on, few enough to read on a phone. Same cap the delivery alert uses. */
 const MAX_LINES = 15
 
-/** The live site, never the host that asked — same fixed default as the reset link. */
+/** The live site, never the host that asked - same fixed default as the reset link. */
 const appUrl = () => process.env.APP_URL ?? 'https://panetti.vercel.app'
 
 /**
@@ -27,13 +27,13 @@ export function overdueMessage(items: OpenItem[], now: Date, appUrl: string): st
 
   const head =
     late.length === 1
-      ? `1 invoice is overdue — ${totals}`
-      : `${late.length} invoices are overdue — ${totals}`
+      ? `1 invoice is overdue - ${totals}`
+      : `${late.length} invoices are overdue - ${totals}`
 
   const lines = late.slice(0, MAX_LINES).map((i) => {
     const days = daysOverdue(i, now)
     return (
-      `• <${appUrl}/finance|${i.referenceNumber}> ${i.customerName} — ` +
+      `• <${appUrl}/finance|${i.referenceNumber}> ${i.customerName} - ` +
       `${days} days over, ${money(i.balance, i.currency)}`
     )
   })

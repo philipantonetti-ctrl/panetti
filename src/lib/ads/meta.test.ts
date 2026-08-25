@@ -389,7 +389,7 @@ describe('fetchMetaCampaignDaily', () => {
     expect(url).toContain('campaign_id')
     // fetchMetaDaily already asks for this field (see its own test above);
     // fetchMetaCampaignDaily did not, so a split account's thruplays read as
-    // zero forever regardless of what Meta actually delivered — holdRate
+    // zero forever regardless of what Meta actually delivered - holdRate
     // (marketing.ts) then prints a false 0% instead of a dash. parseMetaInsights
     // already proves the value maps correctly once the field IS present (see
     // "reads purchases, their value..." above); the gap here was only ever in

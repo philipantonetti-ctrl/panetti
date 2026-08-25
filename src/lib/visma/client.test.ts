@@ -142,7 +142,7 @@ describe('vismaGet', () => {
  * request is clamped to it. The sync route gives the B2B sales import until
  * 265s of a 300s platform ceiling: a request starting at 264.9s and running its
  * full minute finishes around 325s, overruns the invocation, and takes the
- * parcel poll and the delivery alert down with it — the exact outcome the
+ * parcel poll and the delivery alert down with it - the exact outcome the
  * deadline exists to prevent. `bring/client.ts` has clamped for this reason
  * since it was written; this is the same rule.
  */
@@ -172,7 +172,7 @@ describe('vismaRequestBudgetMs', () => {
    * EVERY request, not just the GET. A cold token cache pays a mint first, so a
    * clamp that covered only the GET would leave the claim "a request started
    * near the budget's end cannot overrun" true of one call and false of the one
-   * that always comes before it — which is precisely the kind of comment
+   * that always comes before it - which is precisely the kind of comment
    * outrunning its code that this clamp was added to stop.
    */
   it('clamps the token mint as well, which a cold cache always pays first', async () => {

@@ -11,7 +11,7 @@ const gift = (ambassadorId: string, sku: string, name: string, quantity = 1) => 
 describe('summariseProducts', () => {
   it('counts a person once per product, however many they were sent', () => {
     // Emma got two of the same chair on two dates. That is one ambassador
-    // holding it, not two — the whole reason this is a function and not a
+    // holding it, not two - the whole reason this is a function and not a
     // groupBy in a route.
     const rows = [gift('emma', 'MACBL661', 'Advanced Comfort', 1), gift('emma', 'MACBL661', 'Advanced Comfort', 2)]
 
@@ -59,7 +59,7 @@ describe('summariseProducts', () => {
   })
 
   it('falls back to sku when everything else ties, so the order is truly total', () => {
-    // Same product name under two SKUs, same reach, same units — without the
+    // Same product name under two SKUs, same reach, same units - without the
     // sku tiebreaker this pair would come back in whatever order the caller
     // happened to supply.
     const rows = [gift('emma', 'Z-SKU', 'Same Name', 1), gift('johan', 'A-SKU', 'Same Name', 1)]

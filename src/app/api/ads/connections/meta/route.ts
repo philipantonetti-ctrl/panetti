@@ -16,13 +16,13 @@ import { AdApiError } from '@/lib/ads/types'
  * posted here is gone, and "Connect with Facebook" now runs the real login
  * dialog, the same as Google's. It stays reachable by hand for one release
  * anyway, because it is the only path to the account picker that needs no
- * Valid OAuth Redirect URI registered on the Facebook app — useful insurance
+ * Valid OAuth Redirect URI registered on the Facebook app - useful insurance
  * until that registration is confirmed working everywhere it matters. It is
  * also the only Meta credential this app can hold that never expires: a
  * login hands back a user token, and Facebook will not extend a user token
  * past roughly 60 days no matter how often it is renewed, while a system
  * user token can be generated with no expiry at all. Delete this route once
- * the live login is confirmed working — and re-argue that deletion on the
+ * the live login is confirmed working - and re-argue that deletion on the
  * never-expiring point, not simply because the button is gone.
  */
 

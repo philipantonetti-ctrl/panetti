@@ -84,7 +84,7 @@ describe('PATCH /api/ambassadors/[id]', () => {
     expect(after.commissionRate).toBeCloseTo(0.125)
   })
 
-  it('leaves absent fields untouched — it is not a full replace', async () => {
+  it('leaves absent fields untouched - it is not a full replace', async () => {
     await asAdmin()
     await patch({ name: 'After' })
     const after = await db.ambassador.findUniqueOrThrow({ where: { id } })
@@ -128,7 +128,7 @@ describe('PATCH /api/ambassadors/[id]', () => {
   })
 
   // The column name must not be usable as a request field.
-  it('ignores a commissionRate field — the API speaks percent only', async () => {
+  it('ignores a commissionRate field - the API speaks percent only', async () => {
     await asAdmin()
     await patch({ commissionRate: 0.99 })
     const after = await db.ambassador.findUniqueOrThrow({ where: { id } })

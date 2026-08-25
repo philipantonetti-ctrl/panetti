@@ -26,7 +26,7 @@ function landing(role: Role): string {
 /**
  * Spend a reset link: set a new password and sign them in.
  *
- * Public and unauthenticated, like the invite route — the link IS the
+ * Public and unauthenticated, like the invite route - the link IS the
  * credential. Three guards, and the third is the interesting one.
  */
 export async function POST(req: Request) {
@@ -57,8 +57,8 @@ export async function POST(req: Request) {
 
     // 3. Single use, with no table of spent links. The token carries a
     // fingerprint of the password hash it was issued against; setting any
-    // password rewrites that hash — bcrypt salts every one, so even the same
-    // string produces a different hash — and every link issued beforehand stops
+    // password rewrites that hash - bcrypt salts every one, so even the same
+    // string produces a different hash - and every link issued beforehand stops
     // matching. This covers both spending the link twice and a password changed
     // some other way in between.
     if (fingerprint(user.passwordHash) !== claim.fingerprint) {

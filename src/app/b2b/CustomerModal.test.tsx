@@ -26,7 +26,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('CustomerModal', () => {
   it('keeps Save disabled while editing until their agreed prices have actually loaded, so a failed fetch cannot wipe the price list', async () => {
     // PATCH replaces the whole price list. `rows` starts as [], and the detail
-    // fetch that fills it in only toasts on failure — it never blocks Save.
+    // fetch that fills it in only toasts on failure - it never blocks Save.
     // Pressing Save while that fetch is still failed/pending would ship
     // `prices: []` and permanently delete every agreed price this customer has.
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
@@ -36,7 +36,7 @@ describe('CustomerModal', () => {
 
     renderWithToast(<CustomerModal shops={shops} customer={customer} onClose={() => {}} onSaved={() => {}} />)
 
-    // Wait out the failed detail fetch — the toast is the only externally
+    // Wait out the failed detail fetch - the toast is the only externally
     // observable sign it has settled.
     await screen.findByText(/could not load their agreed prices/i)
 
@@ -52,7 +52,7 @@ describe('CustomerModal', () => {
     fireEvent.change(screen.getByLabelText('Customer name'), { target: { value: 'New Co' } })
 
     // Nothing about creation should ever gate Save on a "prices loaded" fetch
-    // — there is no existing price list to lose.
+    // - there is no existing price list to lose.
     expect(screen.getByRole('button', { name: /add customer/i })).not.toBeDisabled()
   })
 

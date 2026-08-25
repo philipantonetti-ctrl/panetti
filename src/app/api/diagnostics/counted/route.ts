@@ -22,8 +22,8 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
  * meant round-tripping a human through filter combinations, one screenshot per
  * hypothesis, and that is how a wrong guess survives for days.
  *
- * This lists the orders that were counted, and — the part that actually settles
- * an argument — every order the range loaded that was NOT counted, each with
+ * This lists the orders that were counted, and - the part that actually settles
+ * an argument - every order the range loaded that was NOT counted, each with
  * the rule that dropped it.
  *
  * It calls `entriesIn`, the engine's own function, rather than reimplementing
@@ -60,8 +60,8 @@ export async function GET(req: Request) {
     /**
      * The days on either side, which the range itself never loads.
      *
-     * Without them the commonest question of all — "the store shows this order
-     * on Tuesday, why isn't it in Tuesday's count?" — has no answer here: an
+     * Without them the commonest question of all - "the store shows this order
+     * on Tuesday, why isn't it in Tuesday's count?" - has no answer here: an
      * order that landed on Monday by the shop's clock is simply not in the
      * result, and absence looks identical to deletion. These rows make a
      * boundary visible as a boundary.
@@ -85,7 +85,7 @@ export async function GET(req: Request) {
       const s = status.toLowerCase()
       if (UNPAID_STATUSES.includes(s as never)) return `not paid yet (${status})`
       if (VOIDED_STATUSES.includes(s as never))
-        return `${status} — a voided order is not a sale on any day, including the one it was placed on`
+        return `${status} - a voided order is not a sale on any day, including the one it was placed on`
       return `placed on ${day}, outside ${utcDay(from).toISOString().slice(0, 10)}..${utcDay(to).toISOString().slice(0, 10)} on this shop's clock`
     }
 

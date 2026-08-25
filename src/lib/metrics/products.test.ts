@@ -97,7 +97,7 @@ describe('productFigures', () => {
     expect(row.orders).toBe(2)
 
     // Assert the actual expected per-store figures, not just that the
-    // children sum to the parent — the merge arithmetic guarantees that
+    // children sum to the parent - the merge arithmetic guarantees that
     // structurally, so it would pass even if every per-store figure were
     // individually wrong.
     const de = row.stores.find((s) => s.shopId === 'de')!
@@ -207,7 +207,7 @@ describe('productFigures', () => {
     expect(res.rows).toHaveLength(2)
     expect(res.rows.every((r) => r.orders === 1)).toBe(true)
     // The order itself is still ONE order, no matter how many product rows
-    // it touches — summing the per-row counts would report 2.
+    // it touches - summing the per-row counts would report 2.
     expect(res.total.orders).toBe(1)
   })
 
@@ -263,8 +263,8 @@ describe('productFigures', () => {
   })
 
   it('converts COGS from a shop cost currency that differs from the display currency', () => {
-    // Today's loader never produces this — every shop in a store group
-    // shares the group's display currency — but productFigures is pure and
+    // Today's loader never produces this - every shop in a store group
+    // shares the group's display currency - but productFigures is pure and
     // must never read one currency as another if that assumption changes.
     // 2 x (3000 + 200) = 6400 minor NOK; at 0.1/1.1 -> 581.818... -> 582 EUR.
     const nokCosted = order({ currency: 'EUR', costCurrency: 'NOK' })
@@ -313,7 +313,7 @@ describe('productFigures', () => {
 
     // p-de: netSales 20000, cogs 6400, margin 0.68. p2 has no cost entry in
     // this cost book: netSales 500, cogs 0, margin 1.00. Averaging the two
-    // row margins gives (0.68 + 1.00) / 2 = 0.84 — the wrong answer.
+    // row margins gives (0.68 + 1.00) / 2 = 0.84 - the wrong answer.
     // Recomputing from the summed totals gives
     // (20000 + 500 - 6400 - 0) / (20000 + 500) = 14100 / 20500 = 0.6878.
     expect(res.total.netSales).toBe(20500)
@@ -331,7 +331,7 @@ describe('productFigures', () => {
       netSales: 10000,
     })
     // p-fi has no cost entry in this cost book, so its own margin is 1.00
-    // while p-de's is 0.68 — averaging the two stores would give 0.84.
+    // while p-de's is 0.68 - averaging the two stores would give 0.84.
     const deOnlyCosts: CostBook = new Map([['p-de', costs.get('p-de')!]])
     const res = run([order(), fi], { costs: deOnlyCosts })
     const row = res.rows[0]

@@ -6,7 +6,7 @@ import { matchMarketsToShops } from './match'
 
 /**
  * The Addrevenue sync: refetch the WHOLE history and make our table an exact
- * mirror — upsert what they return, delete what they no longer do. The entire
+ * mirror - upsert what they return, delete what they no longer do. The entire
  * history is ~2,200 rows in one page per brand, and old rows change status in
  * place months later, so a windowed fetch would buy nothing and cost the
  * restatement guarantee. No watermarks, no restate window.
@@ -41,7 +41,7 @@ export async function syncAffiliateAccount(
     const token = decryptSecret(account.token)
 
     // The market map is rebuilt every run, so connecting a shop later heals
-    // every historical row on the next sync — the mirror rewrite below writes
+    // every historical row on the next sync - the mirror rewrite below writes
     // shopId afresh for all of them.
     const advertiser = await fetchAdvertiser(token)
     const shops = await db.shop.findMany({
@@ -54,7 +54,7 @@ export async function syncAffiliateAccount(
     const rows = await fetchTransactions(token, { fromDate: FIRST_DATA_DATE, toDate })
 
     // Zero transactions for an account that HAS some is an outage answer, not
-    // a truth — mirroring it would silently zero the affiliate cost on every
+    // a truth - mirroring it would silently zero the affiliate cost on every
     // dashboard until the platform recovers (importVismaStock refuses the
     // same wipe, for the same reason). A genuinely new account has nothing
     // stored, so it still syncs clean.
@@ -62,7 +62,7 @@ export async function syncAffiliateAccount(
       const kept = await db.affiliateTransaction.count({ where: { accountId: account.id } })
       if (kept > 0) {
         throw new AffiliateApiError(
-          `Addrevenue answered with zero transactions for an account holding ${kept} — keeping the mirror as it was.`,
+          `Addrevenue answered with zero transactions for an account holding ${kept} - keeping the mirror as it was.`,
         )
       }
     }
@@ -105,7 +105,7 @@ export async function syncAffiliateAccount(
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Sync failed'
     // Shown on the settings page. Stored, never thrown: one broken token must
-    // not stop the other brand — or the cron.
+    // not stop the other brand - or the cron.
     await db.affiliateAccount
       .update({ where: { id: account.id }, data: { lastError: error } })
       .catch(() => {})

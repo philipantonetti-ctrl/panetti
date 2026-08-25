@@ -4,7 +4,7 @@
 
 **Goal:** Let one ad account serve several stores by assigning each campaign to the store it advertises for.
 
-**Architecture:** The account keeps its `shopId` as a default; campaigns optionally override it. Campaign-level daily spend is stored in a new `AdCampaignSpend` table, and the campaign→shop mapping is joined at **read time**, never written onto a spend row — which is what makes reassigning a campaign re-attribute a year of history in a single update. Splitting is opt-in per account, so the eight accounts connected today are untouched.
+**Architecture:** The account keeps its `shopId` as a default; campaigns optionally override it. Campaign-level daily spend is stored in a new `AdCampaignSpend` table, and the campaign→shop mapping is joined at **read time**, never written onto a spend row - which is what makes reassigning a campaign re-attribute a year of history in a single update. Splitting is opt-in per account, so the eight accounts connected today are untouched.
 
 **Tech Stack:** Next.js 16 App Router, Prisma 6 / PostgreSQL, Vitest 4, TypeScript.
 
@@ -18,9 +18,9 @@
 - **Sync refreshes `AdCampaign.name` but never touches `AdCampaign.shopId`.** Renaming a campaign in Google must not unassign it.
 - Repo default Vitest environment is `node`. DOM tests need `// @vitest-environment jsdom` as the first line.
 - Tests run against the portable Postgres at `%LOCALAPPDATA%\panetti-pg`. **Never** against the live Neon DB. Start it with `pg_ctl -D "$LOCALAPPDATA/panetti-pg/data" start` if `PrismaClientInitializationError` appears.
-- Never `git add -A` — it sweeps `next-env.d.ts`, which the build rewrites.
+- Never `git add -A` - it sweeps `next-env.d.ts`, which the build rewrites.
 - Never run `git stash`, `git checkout`, `git reset`, `git restore`, or `git clean`.
-- Edit files with the Edit/Write tools only. **Never** `Get-Content`/`Set-Content` — PowerShell 5.1 mojibakes UTF-8.
+- Edit files with the Edit/Write tools only. **Never** `Get-Content`/`Set-Content` - PowerShell 5.1 mojibakes UTF-8.
 
 ---
 
@@ -29,7 +29,7 @@
 | File | Responsibility |
 | --- | --- |
 | `prisma/schema.prisma` | `AdCampaign`, `AdCampaignSpend`, `AdAccount.splitByCampaign` |
-| `src/lib/ads/windows.ts` (new) | `chunkRange` — split a date range into fetch-sized windows |
+| `src/lib/ads/windows.ts` (new) | `chunkRange` - split a date range into fetch-sized windows |
 | `src/lib/ads/types.ts` | `CampaignDailyRow` |
 | `src/lib/ads/google.ts` | `fetchGoogleCampaignDaily` |
 | `src/lib/ads/meta.ts` | `fetchMetaCampaignDaily` + page-cap guard |
@@ -124,7 +124,7 @@ describe('AdCampaign', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/ads/campaign-schema.test.ts`
-Expected: FAIL — `db.adCampaign` is undefined.
+Expected: FAIL - `db.adCampaign` is undefined.
 
 - [ ] **Step 3: Add the models**
 
@@ -146,7 +146,7 @@ Then add both models after `AdSpend`:
 
 ```prisma
 // Which store a campaign advertises for. The account's own shopId is the
-// default; this overrides it. Never written by the sync — only by a person.
+// default; this overrides it. Never written by the sync - only by a person.
 model AdCampaign {
   id         String   @id @default(cuid())
   accountId  String
@@ -166,7 +166,7 @@ model AdCampaign {
 }
 
 // One day of one campaign's delivery. Same units as AdSpend: minor units of
-// the ACCOUNT's currency, converted at read time. Only day-additive numbers —
+// the ACCOUNT's currency, converted at read time. Only day-additive numbers -
 // reach does not sum across days, so it is deliberately absent.
 model AdCampaignSpend {
   id              String   @id @default(cuid())
@@ -266,7 +266,7 @@ describe('chunkRange', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/ads/windows.test.ts`
-Expected: FAIL — cannot resolve `./windows`.
+Expected: FAIL - cannot resolve `./windows`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -437,7 +437,7 @@ Add `fetchGoogleCampaignDaily` and `toCampaignDailyRows` to the import list at t
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/ads/google.test.ts -t "fetchGoogleCampaignDaily"`
-Expected: FAIL — `fetchGoogleCampaignDaily is not a function`.
+Expected: FAIL - `fetchGoogleCampaignDaily is not a function`.
 
 - [ ] **Step 4: Write the implementation**
 
@@ -455,7 +455,7 @@ Then append:
 /**
  * One row per campaign per day, for a split account.
  *
- * `fetchGoogleBreakdown` keeps segments.date out of its SELECT on purpose — in
+ * `fetchGoogleBreakdown` keeps segments.date out of its SELECT on purpose - in
  * the SELECT it segments by day, "which is a different table and a far larger
  * one". Here that segmentation is exactly what is wanted, so it goes in both,
  * and the range is fetched in windows to keep any one answer small.
@@ -498,7 +498,7 @@ export function toCampaignDailyRows(results: GoogleResult[]): CampaignDailyRow[]
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/ads/google.test.ts`
-Expected: PASS — the four new tests plus every pre-existing one.
+Expected: PASS - the four new tests plus every pre-existing one.
 
 - [ ] **Step 6: Commit**
 
@@ -603,7 +603,7 @@ Add `fetchMetaCampaignDaily` to the file's import list.
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/ads/meta.test.ts -t "fetchMetaCampaignDaily"`
-Expected: FAIL — `fetchMetaCampaignDaily is not a function`.
+Expected: FAIL - `fetchMetaCampaignDaily is not a function`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -677,7 +677,7 @@ export async function fetchMetaCampaignDaily(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/ads/meta.test.ts`
-Expected: PASS — the four new tests plus every pre-existing one.
+Expected: PASS - the four new tests plus every pre-existing one.
 
 - [ ] **Step 5: Commit**
 
@@ -720,7 +720,7 @@ const ROW = (campaignId: string, campaignName: string, spend: number) => ({
   reach: 0,
 })
 
-// vi.mock is HOISTED to the top of the module — it must never sit inside
+// vi.mock is HOISTED to the top of the module - it must never sit inside
 // beforeEach or a describe block. Partial-mock so the rest of ./google is real.
 vi.mock('./google', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./google')>()),
@@ -820,7 +820,7 @@ describe('syncAdAccount for a split account', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/ads/sync-split.test.ts`
-Expected: FAIL — no `AdCampaign` rows written; `splitByCampaign` is not read.
+Expected: FAIL - no `AdCampaign` rows written; `splitByCampaign` is not read.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -864,7 +864,7 @@ function fetchCampaignDaily(
 
 /**
  * Campaign rows for a split account. The AdCampaign row is upserted for its
- * NAME only — shopId is a person's decision and the sync must never touch it,
+ * NAME only - shopId is a person's decision and the sync must never touch it,
  * or renaming a campaign in the platform would silently unassign its store.
  */
 async function storeCampaignDaily(accountId: string, rows: CampaignDailyRow[]): Promise<number> {
@@ -917,7 +917,7 @@ Finally, `syncAllAdAccounts` already uses `findMany` with no `select`, so `split
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/ads/sync-split.test.ts src/lib/ads/sync.test.ts`
-Expected: PASS — new tests plus every pre-existing sync test.
+Expected: PASS - new tests plus every pre-existing sync test.
 
 - [ ] **Step 5: Commit**
 
@@ -1049,7 +1049,7 @@ describe('attributedSpend', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/lib/ads/attribution.test.ts`
-Expected: FAIL — cannot resolve `./attribution`.
+Expected: FAIL - cannot resolve `./attribution`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1062,8 +1062,8 @@ import { utcDay } from '../dates'
 /**
  * Stored ad spend, resolved to the shop that actually paid for it.
  *
- * `currency` is the AD ACCOUNT's, not the shop's — a Norwegian store can run a
- * EUR ad account — so the caller converts at read time like everything else.
+ * `currency` is the AD ACCOUNT's, not the shop's - a Norwegian store can run a
+ * EUR ad account - so the caller converts at read time like everything else.
  */
 export type AttributedSpend = {
   shopId: string
@@ -1169,7 +1169,7 @@ Replace the whole block from `const adAccounts = await db.adAccount.findMany({` 
 - [ ] **Step 6: Run the full suite**
 
 Run: `npx vitest run`
-Expected: PASS — every pre-existing test included. If `engine.test.ts` or the marketing route tests fail, the resolver's output shape does not match what they expect; fix the resolver, not the tests.
+Expected: PASS - every pre-existing test included. If `engine.test.ts` or the marketing route tests fail, the resolver's output shape does not match what they expect; fix the resolver, not the tests.
 
 - [ ] **Step 7: Commit**
 
@@ -1194,7 +1194,7 @@ git commit -m "feat: attribute ad spend to the store its campaign advertises for
 - Consumes: `attributedSpend` and the campaign schema
 - Produces: `accountSpendRows(accountIds: string[], from: Date, to: Date): Promise<SpendRow[]>` where `SpendRow` gains `shopId?: string`
 
-**Why this task exists.** `buildMarketing` takes rows keyed by `accountId` carrying ten metric columns, and resolves each row's shop *through its account* (`marketing.ts:114`, `accountById`). Task 5 makes a split account write no `AdSpend` rows at all. So without this task the Marketing page shows **zero spend for exactly the accounts this feature is for**, while the Dashboard shows the real figure — the two screens disagreeing about the same money, which is the specific failure the shared-resolver rule exists to prevent.
+**Why this task exists.** `buildMarketing` takes rows keyed by `accountId` carrying ten metric columns, and resolves each row's shop *through its account* (`marketing.ts:114`, `accountById`). Task 5 makes a split account write no `AdSpend` rows at all. So without this task the Marketing page shows **zero spend for exactly the accounts this feature is for**, while the Dashboard shows the real figure - the two screens disagreeing about the same money, which is the specific failure the shared-resolver rule exists to prevent.
 
 - [ ] **Step 1: Add the two missing metric columns**
 
@@ -1300,7 +1300,7 @@ it('honours a spend row shopId override instead of the account shop', () => {
 - [ ] **Step 4: Run tests to verify they fail**
 
 Run: `npx vitest run src/lib/ads/attribution.test.ts src/lib/ads/marketing.test.ts`
-Expected: FAIL — `accountSpendRows` is not a function; the override test puts spend on the wrong shop.
+Expected: FAIL - `accountSpendRows` is not a function; the override test puts spend on the wrong shop.
 
 - [ ] **Step 5: Implement**
 
@@ -1317,7 +1317,7 @@ export type SpendRow = {
 }
 ```
 
-and inside `buildMarketing`, wherever a row's shop is currently taken as `account.shopId`, take `row.shopId ?? account.shopId` instead. Change nothing else — budgets still come from the accounts, not the rows.
+and inside `buildMarketing`, wherever a row's shop is currently taken as `account.shopId`, take `row.shopId ?? account.shopId` instead. Change nothing else - budgets still come from the accounts, not the rows.
 
 In `src/lib/ads/attribution.ts`, add:
 
@@ -1362,7 +1362,7 @@ export async function accountSpendRows(
       })
     : []
 
-  // Rolled up per account, day and resolved shop — the Marketing page groups by
+  // Rolled up per account, day and resolved shop - the Marketing page groups by
   // account, so one row per campaign would multiply its row count for nothing.
   const rolled = new Map<string, SpendRow>()
   for (const r of campaignRows) {
@@ -1553,7 +1553,7 @@ describe('campaigns API', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/api/ad-accounts/campaigns.test.ts`
-Expected: FAIL — the route module does not exist.
+Expected: FAIL - the route module does not exist.
 
 - [ ] **Step 3: Write the route**
 
@@ -1770,11 +1770,11 @@ describe('CampaignsModal', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/app/settings/ad-accounts/CampaignsModal.test.tsx`
-Expected: FAIL — cannot resolve `./CampaignsModal`.
+Expected: FAIL - cannot resolve `./CampaignsModal`.
 
 - [ ] **Step 3: Write the component**
 
-Create `src/app/settings/ad-accounts/CampaignsModal.tsx`. Follow `PickerModal` in `AdAccountsClient.tsx` for the shell, spacing and button classes — the "list things from a platform and assign each to a shop" pattern already exists and must not be invented twice.
+Create `src/app/settings/ad-accounts/CampaignsModal.tsx`. Follow `PickerModal` in `AdAccountsClient.tsx` for the shell, spacing and button classes - the "list things from a platform and assign each to a shop" pattern already exists and must not be invented twice.
 
 Requirements the tests pin down:
 - Fetches `GET /api/ad-accounts/{accountId}/campaigns` on mount, aborting on unmount.
@@ -1803,7 +1803,7 @@ npx tsc --noEmit
 npm run lint
 ```
 
-Expected: all tests pass, `tsc` clean. Lint has 8 pre-existing errors on this repo — confirm the count has not risen and that none are in files this plan touched.
+Expected: all tests pass, `tsc` clean. Lint has 8 pre-existing errors on this repo - confirm the count has not risen and that none are in files this plan touched.
 
 - [ ] **Step 6: Commit**
 

@@ -63,7 +63,7 @@ function cover(r: StockRow, now: Date) {
  * What each shop says is on the shelf, and what that means.
  *
  * Sorted by what is about to hurt: gone first, then soonest to run out. A
- * disagreement is badged rather than sorted to the top — a mirror that has
+ * disagreement is badged rather than sorted to the top - a mirror that has
  * drifted by thirteen units matters, but not more than being out of stock
  * today. Products with no run-out date sort last in both cases, because a null
  * is not a zero and must never head a list about what to worry about.
@@ -163,7 +163,7 @@ export function StockClient({ rows, now }: { rows: StockRow[]; now?: string }) {
                         <li key={s.shopName} className={odd ? 'text-warn' : 'text-muted'}>
                           <span>{s.shopName}</span>{' '}
                           <span className={`tabular-nums ${odd ? 'font-semibold' : 'text-ink'}`}>
-                            {s.quantity ?? '—'}
+                            {s.quantity ?? '-'}
                           </span>
                         </li>
                       )

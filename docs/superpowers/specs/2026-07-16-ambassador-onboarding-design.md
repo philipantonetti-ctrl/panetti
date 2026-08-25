@@ -1,4 +1,4 @@
-# ecom-analytics — Ambassador Onboarding Design
+# ecom-analytics - Ambassador Onboarding Design
 
 **Date:** 2026-07-16
 **Status:** Approved for implementation
@@ -8,8 +8,8 @@
 
 ## 1. Purpose
 
-The owner asked for "two different interfaces — admin sees the whole company, ambassadors see only
-their own sales — and some kind of onboarding where they create a user, and then we link the
+The owner asked for "two different interfaces - admin sees the whole company, ambassadors see only
+their own sales - and some kind of onboarding where they create a user, and then we link the
 discount code to their user."
 
 Three of those four things already ship. This spec covers the fourth, which does not exist at all.
@@ -22,10 +22,10 @@ Verified against the code on 2026-07-16:
 
 | Requirement | Status |
 |---|---|
-| Two interfaces — admin vs ambassador | **Built.** `/admin` is the staff door, `/login` the ambassador door. `login/route.ts` routes on role: `ADMIN → /dashboard`, otherwise `→ /portal`. |
+| Two interfaces - admin vs ambassador | **Built.** `/admin` is the staff door, `/login` the ambassador door. `login/route.ts` routes on role: `ADMIN → /dashboard`, otherwise `→ /portal`. |
 | Ambassadors see only their own data | **Built and audited.** `portal/route.ts` scopes every query to `user.ambassadorId` taken from the signed session, never from the request. No `ambassadorId` query parameter is parsed anywhere in the repo. |
 | Discount code links to the ambassador | **Built.** `AmbassadorCode.code` maps to an ambassador; `sync.ts` resolves it **at sync time** and freezes `Order.ambassadorId`, so re-issuing a code never rewrites past commissions. |
-| **Onboarding — creating the user** | **Missing entirely.** There is no `/api/ambassadors` route, no admin screen, and no signup. Every ambassador in local dev came from `prisma/seed.ts`. Production has zero. |
+| **Onboarding - creating the user** | **Missing entirely.** There is no `/api/ambassadors` route, no admin screen, and no signup. Every ambassador in local dev came from `prisma/seed.ts`. Production has zero. |
 
 **The gap is bigger than "no self-signup":** there is no way to create an ambassador *at all*, not
 even as an admin.
@@ -47,13 +47,13 @@ No schema change. The design rests on one property the schema already has:
 ```prisma
 model Ambassador {
   // ...
-  user User?   // OPTIONAL — an ambassador can exist with no login
+  user User?   // OPTIONAL - an ambassador can exist with no login
 }
 ```
 
 Because `user` is optional, an ambassador and their discount code can exist and **earn commission
 from the very next sync**, long before they have ever logged in. Onboarding is therefore a separate,
-later step — not a prerequisite. This is what makes an invite flow natural rather than bolted on.
+later step - not a prerequisite. This is what makes an invite flow natural rather than bolted on.
 
 ### New modules
 
@@ -63,9 +63,9 @@ later step — not a prerequisite. This is what makes an invite flow natural rat
 | `src/app/api/ambassadors/route.ts` | `GET` list · `POST` create | guard, db |
 | `src/app/api/ambassadors/[id]/route.ts` | `PATCH` name, rate, active | guard, db |
 | `src/app/api/ambassadors/[id]/codes/route.ts` | `POST` add · `DELETE` remove | guard, db |
-| `src/app/api/invite/route.ts` | `POST` redeem — the only public route | invite, db, session |
-| `src/app/settings/ambassadors/` | Admin screen | — |
-| `src/app/invite/[token]/` | Set-password page | — |
+| `src/app/api/invite/route.ts` | `POST` redeem - the only public route | invite, db, session |
+| `src/app/settings/ambassadors/` | Admin screen | - |
+| `src/app/invite/[token]/` | Set-password page | - |
 
 `src/lib/auth/invite.ts` mirrors `session.ts` deliberately: same library, same secret, same shape.
 Anyone who understands one understands the other.
@@ -102,7 +102,7 @@ Attribution begins at the next sync. No login required.
 ### 6.2 The invite link
 
 `GET /api/ambassadors` returns each ambassador with an `invitePath` (e.g. `/invite/<token>`) **only
-when they have no login yet** — `null` otherwise. "Copy invite link" therefore copies data already on
+when they have no login yet** - `null` otherwise. "Copy invite link" therefore copies data already on
 the page: no extra endpoint, no extra round-trip, and no link is ever minted for someone already
 onboarded.
 
@@ -119,14 +119,14 @@ The admin sends the link over whatever channel they already use. No email servic
 |---|---|---|
 | 1 | `verifyInvite(token)` returns an id | Tampered, expired, or forged links |
 | 2 | The ambassador exists | Deleted ambassadors |
-| 3 | `ambassador.active` is true | **Revocation** — deactivating kills the link instantly |
-| 4 | The ambassador has no `user` | **Single use** — a redeemed link is dead |
+| 3 | `ambassador.active` is true | **Revocation** - deactivating kills the link instantly |
+| 4 | The ambassador has no `user` | **Single use** - a redeemed link is dead |
 
 Guards 3 and 4 are the load-bearing ones, and neither needs stored state: they read `active` and
 `user`, which already describe reality.
 
 On success: create `User` with `role: 'AMBASSADOR'` and `ambassadorId` set, hash the password with
-`hashPassword` (bcrypt, cost 10 — the existing helper), sign a session with `signSession`, set the
+`hashPassword` (bcrypt, cost 10 - the existing helper), sign a session with `signSession`, set the
 `ecom_session` cookie exactly as `login/route.ts` does, and return `{ redirectTo: '/portal' }`.
 
 Password minimum: 8 characters. Enforced with `zod`, matching how every other route validates.
@@ -146,27 +146,27 @@ UI input "10"  ->  POST { commissionPercent: 10 }  ->  column commissionRate = 0
 
 **The API field is named `commissionPercent`, never `commissionRate`.** The column is
 `commissionRate` and holds a fraction; giving the request field the same name while it carries a
-percent would put two meanings on one word, one boundary apart — which is exactly how this bug gets
+percent would put two meanings on one word, one boundary apart - which is exactly how this bug gets
 written. The name change is the guardrail. Responses convert back the same way, returning
 `commissionPercent: 10`.
 
 `zod` validates `0 <= commissionPercent <= 100` and the route divides by 100. Storing a percent by
-mistake would make commission **1000% of net sales** — the same class of defect as the minor-units
+mistake would make commission **1000% of net sales** - the same class of defect as the minor-units
 convention, and it must be pinned by a test asserting that posting `10` yields a stored `0.1`.
 
 ### 6.5 Management
 
-- **Commission rate** — `PATCH`. `Order.commissionRate` is hydrated from the ambassador at read time
+- **Commission rate** - `PATCH`. `Order.commissionRate` is hydrated from the ambassador at read time
   (`load.ts`), so a rate change applies to future reports while attribution stays frozen. This is
   existing, tested behaviour; this spec only exposes it to the UI.
-- **Deactivate** — `PATCH { active: false }`. This kills any outstanding invite via guard 3.
+- **Deactivate** - `PATCH { active: false }`. This kills any outstanding invite via guard 3.
   It deliberately does **not** remove them from the admin leaderboard: `ambassadors.ts` never reads
-  `active`, and that is correct — sales they made in a past period genuinely happened, and a
+  `active`, and that is correct - sales they made in a past period genuinely happened, and a
   historical report must not rewrite itself when someone leaves.
-- **Partial updates.** `PATCH` accepts any subset of `{ name, commissionPercent, active }` — the
+- **Partial updates.** `PATCH` accepts any subset of `{ name, commissionPercent, active }` - the
   percent-named field from 6.4, never `commissionRate`. Absent fields are left untouched; it is
   never a full replace. Sending `commissionRate` is stripped by `zod` and has no effect.
-- **Codes** — `POST { code }` adds one; `DELETE { codeId }` (id in the JSON body, matching how the
+- **Codes** - `POST { code }` adds one; `DELETE { codeId }` (id in the JSON body, matching how the
   other routes take their payload) removes one. Removing a code never alters past orders, because
   `Order.ambassadorId` was frozen at sync. An ambassador must keep **at least one** code: the API
   refuses to delete the last one, since an ambassador with no code can never earn again.
@@ -177,10 +177,10 @@ convention, and it must be pinned by a test asserting that posting `10` yields a
 
 `/settings/ambassadors`, matching the existing `/settings/shops` layout and design system.
 
-- **List:** name, email, commission rate, codes, and status — **Active**, or **Not set up yet** when
+- **List:** name, email, commission rate, codes, and status - **Active**, or **Not set up yet** when
   they have no login.
 - **Add ambassador:** name, email, commission rate **entered as a percent** with a `%` suffix on the
-  field (defaults to `10`), first discount code. See 6.4 — the field is a percent, the column is a
+  field (defaults to `10`), first discount code. See 6.4 - the field is a percent, the column is a
   fraction.
 - **Row actions:** Copy invite link (only when not set up), edit rate, add/remove code, deactivate.
 
@@ -205,7 +205,7 @@ information:
 |---|---|
 | Expired or invalid token | "This invite link has expired. Ask for a new one." |
 | Already redeemed (guard 4) | "You already have a login. Sign in instead." |
-| Deactivated (guard 3) | "This invite is no longer valid." — deliberately generic |
+| Deactivated (guard 3) | "This invite is no longer valid." - deliberately generic |
 | Duplicate email or code on create | 409 naming the conflicting field |
 
 ---
@@ -238,19 +238,19 @@ Nothing can deactivate anyone today, so the two populations always agree and the
 ambassador's portal reads **"#9 of 8"**.
 
 This ships with the deactivate button or not at all. The fix: compute both sides over the **same**
-population — ambassadors with at least one attributed, non-excluded order in the range — so the rank
+population - ambassadors with at least one attributed, non-excluded order in the range - so the rank
 reads "#3 of 8 who sold this period" and stops depending on `active` entirely. A test must assert
 that deactivating an ambassador with sales never makes `rank > totalAmbassadors`.
 
 ### Targeted fix to existing tests
 
 `src/app/api/portal/security.test.ts` states it guards "the single most important rule in the
-system", but the functions it exercises — `canViewAmbassador` and `assertAmbassadorAccess` in
-`guard.ts` — have **zero production callers**. The real check lives at `portal/route.ts:37`. A
+system", but the functions it exercises - `canViewAmbassador` and `assertAmbassadorAccess` in
+`guard.ts` - have **zero production callers**. The real check lives at `portal/route.ts:37`. A
 regression there would pass every test in that file green.
 
 Since this work adds ambassador authentication, the new security tests will exercise the **real
-routes**, not helpers. `guard.ts`'s unused helpers are left alone — deleting them is out of scope.
+routes**, not helpers. `guard.ts`'s unused helpers are left alone - deleting them is out of scope.
 
 ---
 
@@ -265,7 +265,7 @@ currency. Ambassadors cannot edit their own commission rate or codes.
 ## 11. Risks
 
 - **Invite links are bearer tokens.** Anyone holding the link for 7 days can claim that login. The
-  blast radius is one ambassador's own sales figures — they cannot see company data or another
+  blast radius is one ambassador's own sales figures - they cannot see company data or another
   ambassador's numbers. Mitigated by the 7-day expiry and by guard 3 (deactivate to revoke).
 - **`AUTH_SECRET` rotation invalidates outstanding invites.** Acceptable: rotation already logs
   everyone out, and re-copying a link is trivial.

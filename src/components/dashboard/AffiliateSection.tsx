@@ -104,7 +104,7 @@ export function AffiliateSection({
 }) {
   const [data, setData] = useState<Payload | null>(null)
   // A failed refresh must not silently pass off the previous range's figures as
-  // this one's — the numbers stay (they were true once) and say so.
+  // this one's - the numbers stay (they were true once) and say so.
   const [stale, setStale] = useState(false)
 
   useEffect(() => {
@@ -129,14 +129,14 @@ export function AffiliateSection({
       })
       .catch((e: Error) => {
         // The first load failing leaves `data` null, and the section simply
-        // does not appear — it has nothing it could honestly claim yet.
+        // does not appear - it has nothing it could honestly claim yet.
         if (e.name !== 'AbortError') setStale(true)
       })
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
   }, [preset, from, to, shops, tick])
 
   // Nothing connected and nothing recorded: the section does not exist. But
-  // unmatched sales ARE recorded money — a workspace whose rows all failed to
+  // unmatched sales ARE recorded money - a workspace whose rows all failed to
   // match a shop, with its account then paused, has zero tracked sales and
   // still needs the warning below, which is the only thing explaining where
   // that money went.
@@ -154,7 +154,7 @@ export function AffiliateSection({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-[15px] font-semibold text-ink">Affiliate</h2>
         <p className="text-[12px] text-muted">
-          Addrevenue commissions + platform fee — counted into net profit as their own cost line.
+          Addrevenue commissions + platform fee - counted into net profit as their own cost line.
         </p>
       </div>
 
@@ -183,7 +183,7 @@ export function AffiliateSection({
               absent from the headline total and the channel table too. */}
           {formatMoney(data.unmatchedCost, currency)} of affiliate cost ({data.unmatched}{' '}
           {data.unmatched === 1 ? 'sale' : 'sales'}) belongs to an Addrevenue market that matches
-          none of the shops, so it is missing from every figure here — including the total above.
+          none of the shops, so it is missing from every figure here - including the total above.
           Check the shops’ URLs on the{' '}
           <Link href="/settings/affiliate" className="font-semibold text-accent hover:underline">
             Affiliate settings page

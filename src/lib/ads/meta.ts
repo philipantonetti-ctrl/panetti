@@ -16,10 +16,10 @@ import { CHUNK_DAYS, chunkRange } from './windows'
  *
  * One row per calendar day at account level for the daily sync, or one row
  * per campaign, ad set or ad totalled over a range for the breakdown table
- * below — same endpoint, a different `level` and no `time_increment`. Spend
+ * below - same endpoint, a different `level` and no `time_increment`. Spend
  * arrives as a decimal string in the ad account's own currency. Auth is a
  * system-user access token with ads_read, which Meta lets us send as a Bearer
- * header — so the token never appears in a URL, and the paging.next links
+ * header - so the token never appears in a URL, and the paging.next links
  * Meta hands back stay clean too.
  */
 
@@ -150,7 +150,7 @@ const BREAKDOWN_FIELDS: Record<BreakdownLevel, { id: string; name: string }> = {
  *
  * Meta serves insights off any object id, so a drill-down needs no filter
  * syntax: ad sets are asked of the campaign, ads of the ad set. Deliberately no
- * `time_increment` — this table shows a total for the chosen period, and asking
+ * `time_increment` - this table shows a total for the chosen period, and asking
  * per day would return entities × days and page for a very long time.
  */
 export async function fetchMetaBreakdown(
@@ -199,7 +199,7 @@ type CampaignRow = { daily_budget?: string; effective_status?: string }
 /**
  * The current daily budget across ACTIVE campaigns, in the account currency's
  * minor units (which is how Meta returns budget amounts). A setting, not a
- * time series — refreshed at every sync.
+ * time series - refreshed at every sync.
  */
 export async function fetchMetaDailyBudget(
   creds: MetaCredentials,

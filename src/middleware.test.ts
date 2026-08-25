@@ -51,7 +51,7 @@ describe('one live host', () => {
  * The outage this describes: Vercel Cron calls the deployment's own generated
  * URL, never the production domain. The host check above answered it with a
  * 308, cron does not follow redirects, and a redirected cron is not even
- * logged as an invocation — so the scheduled sync silently never ran.
+ * logged as an invocation - so the scheduled sync silently never ran.
  */
 describe('machines are not walked anywhere', () => {
   const deployment = 'https://panetti-ec53dmxro-panetti-intelligence.vercel.app'

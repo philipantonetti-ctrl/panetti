@@ -5,7 +5,7 @@ import { activateWebhook, createWebhook, fetchWebhooks, type WooCredentials } fr
 
 /**
  * Live sync: the store calls US the moment an order changes, instead of us
- * asking every 15 minutes. These four topics cover the whole life of an order —
+ * asking every 15 minutes. These four topics cover the whole life of an order -
  * a refund or cancellation is an UPDATE (the status changes), a trashed order
  * is a delete, an untrashed one is a restore.
  */
@@ -19,7 +19,7 @@ export const WEBHOOK_TOPICS = [
 /**
  * Where this deployment can be reached from the internet. Explicit APP_URL
  * first; on Vercel the production URL env var is there anyway. Local dev has
- * neither — and a webhook pointing at localhost would be worse than none.
+ * neither - and a webhook pointing at localhost would be worse than none.
  */
 export function appBaseUrl(): string | null {
   const explicit = process.env.APP_URL
@@ -35,7 +35,7 @@ export function webhookDeliveryUrl(base: string, shopId: string): string {
 
 /**
  * Woo signs every delivery: base64(HMAC-SHA256(raw body, secret)). Compared
- * timing-safely — a signature check that leaks how far it matched is no check.
+ * timing-safely - a signature check that leaks how far it matched is no check.
  */
 export function verifyWooSignature(rawBody: string, signature: string | null, secret: string): boolean {
   if (!signature) return false
@@ -52,7 +52,7 @@ export function verifyWooSignature(rawBody: string, signature: string | null, se
 /**
  * Make sure the store streams its order changes to us: every topic registered,
  * pointing at this deployment, signing with this shop's secret. Idempotent and
- * self-healing — run after every completed sync, it re-creates what someone
+ * self-healing - run after every completed sync, it re-creates what someone
  * deleted and re-activates what Woo paused after delivery failures.
  *
  * Talks to the WP REST API server-to-server; nothing here (or in the
@@ -64,7 +64,7 @@ export async function ensureWebhooks(
   creds: WooCredentials,
 ): Promise<{ registered: number; activated: number } | null> {
   const base = appBaseUrl()
-  if (!base) return null // nowhere reachable to deliver to — nothing to set up
+  if (!base) return null // nowhere reachable to deliver to - nothing to set up
 
   // The signing secret: one per shop, made by us, stored like the API keys.
   // Unreadable (AUTH_SECRET rotated) counts as absent: a new one is minted and

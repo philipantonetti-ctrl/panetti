@@ -6,7 +6,7 @@ import { hashPassword } from '@/lib/auth/password'
 import { db } from '@/lib/db'
 
 /**
- * Staff logins — Admin and Marketing. Ambassador logins never appear here:
+ * Staff logins - Admin and Marketing. Ambassador logins never appear here:
  * they are minted by invites and die with their ambassador.
  */
 

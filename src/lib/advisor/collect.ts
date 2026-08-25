@@ -27,7 +27,7 @@ import { isQuality, type Fact } from './types'
  *
  * Every figure here comes back out of the same loaders and the same engine the
  * pages use, run over two windows. Nothing in this file adds, divides or
- * converts money — it gathers, compares through the fact builders, and ranks.
+ * converts money - it gathers, compares through the fact builders, and ranks.
  */
 
 /** The window the briefing describes. A week reads through weekday effects. */
@@ -49,7 +49,7 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
 
   // Through YESTERDAY, not today: a briefing read at 07:00 that includes three
   // hours of today would compare a part-day against seven whole ones. "Today"
-  // is HIS calendar day, the same todayInZone write.ts upserts against —
+  // is HIS calendar day, the same todayInZone write.ts upserts against -
   // using UTC's day here instead let Refresh, pressed late evening UTC,
   // silently replace the morning's briefing with a window computed for the
   // wrong day.
@@ -225,7 +225,7 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
         timezone,
       }),
       baseline,
-      // Sales in both leaderboards are already converted to this — the same
+      // Sales in both leaderboards are already converted to this - the same
       // value money.ts uses for every other money fact this file produces.
       currency: engine.displayCurrency,
     }),
@@ -286,7 +286,7 @@ export async function collectFacts(now: Date = new Date()): Promise<CollectedFac
     }),
   )
 
-  // Rank, then cap — but never cap away a trust warning. A briefing that
+  // Rank, then cap - but never cap away a trust warning. A briefing that
   // silently drops "this shop's sync is broken" because forty things moved is
   // the exact failure this whole feature exists to avoid.
   const quality = facts.filter(isQuality)

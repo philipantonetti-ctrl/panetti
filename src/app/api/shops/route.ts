@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 
 export async function GET() {
   try {
-    // Names and currencies only — the directory marketing needs for codes.
+    // Names and currencies only - the directory marketing needs for codes.
     assertStaff(await currentUser())
     const shops = await db.shop.findMany({
       where: { active: true },

@@ -77,7 +77,7 @@ describe('SpendCheck', () => {
 
   // FIX 4: "all stores" (an empty ShopFilter selection) still only ever means
   // all ACTIVE stores. A split account with a campaign mapped to a
-  // deactivated shop is partial even though nothing was filtered — the route
+  // deactivated shop is partial even though nothing was filtered - the route
   // detects this from the data and the panel must show the same caution.
   it('shows the partial-scope caution when the data itself is partial, even though every store is selected', () => {
     render(<SpendCheck data={data()} currency="USD" allStores={true} partialAccounts={true} />)
@@ -91,8 +91,8 @@ describe('SpendCheck', () => {
     expect(screen.queryByTestId('spend-check-caution')).not.toBeInTheDocument()
   })
 
-  // FIX 5: the design's own spec — "reports the count, and the first and
-  // last day carrying data" — a "3 / 10" alone can't tell 1-3 Aug then
+  // FIX 5: the design's own spec - "reports the count, and the first and
+  // last day carrying data" - a "3 / 10" alone can't tell 1-3 Aug then
   // silence apart from delivering on the 8th, 9th and 10th.
   it('shows the first and last day carrying data', () => {
     render(<SpendCheck data={data()} currency="USD" allStores={true} />)
@@ -114,7 +114,7 @@ describe('SpendCheck', () => {
     fireEvent.click(screen.getByRole('button', { name: /spend check/i }))
     const cell = screen.getByTestId('days-acc-1')
     expect(cell).toHaveTextContent('0 / 30')
-    // No dash, no "null–null" — just the count, nothing extra to show.
+    // No dash, no "null-null" - just the count, nothing extra to show.
     expect(cell.textContent).not.toMatch(/null|undefined|NaN/)
   })
 })

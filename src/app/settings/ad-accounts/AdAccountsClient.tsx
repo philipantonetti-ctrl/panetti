@@ -30,7 +30,7 @@ export type PlatformSetup = { meta: boolean; google: boolean }
  * The login behind each platform, if there is one.
  *
  * Read from the connections themselves rather than inferred from the accounts,
- * so a login someone made but never ticked an account on still says it exists —
+ * so a login someone made but never ticked an account on still says it exists -
  * which is exactly the state that looks most broken.
  */
 export type ConnectionSummary = {
@@ -38,8 +38,8 @@ export type ConnectionSummary = {
   expiresAt: string | null
   /**
    * Decided on the server, where the clock lives. Reading `Date.now()` while
-   * rendering is impure — the answer would change under a re-render nobody
-   * asked for — and the server is already the thing that knows what time this
+   * rendering is impure - the answer would change under a re-render nobody
+   * asked for - and the server is already the thing that knows what time this
    * page was built.
    */
   expired: boolean
@@ -340,7 +340,7 @@ function SignedInAs({
     // printing, and it goes first: the button beside it is disabled, and a
     // disabled control with no stated reason is its own dead end. Said here
     // rather than in a toast because a toast has to be provoked and then
-    // leaves — which is how the client came to press the dead button eight
+    // leaves - which is how the client came to press the dead button eight
     // times. It also says whose problem it is, so the answer to "what do I do"
     // is "nothing", not "press it again".
     if (!platform[provider]) {
@@ -383,7 +383,7 @@ function ConnectButton({ provider, ready }: { provider: 'meta' | 'google'; ready
   if (!ready) {
     // Disabled, not merely inert. This used to be an ordinary enabled button
     // wearing the same class as "Sync now" beside it, which answered every
-    // press with a toast and nothing else — so it read as a working control
+    // press with a toast and nothing else - so it read as a working control
     // that kept refusing, and the client pressed it eight times in a row.
     // The credentials are server config: a missing one is ours to fix, and
     // SignedInAs above says so in words that stay on the page.
@@ -641,7 +641,7 @@ function AccountModal({
     } catch {
       toast.error('Could not reach the server')
     } finally {
-      setBusy(false) // always — the button must never stick on "Saving…"
+      setBusy(false) // always - the button must never stick on "Saving…"
     }
   }
 

@@ -31,7 +31,7 @@ function order(over: Partial<EngineOrder> = {}): EngineOrder {
     discountTotal: 10000, //  100.00 kr discount
     netSales: 90000, //  900.00 kr  <- commission base
     shippingCharged: 5000, //   50.00 kr
-    taxTotal: 22500, //  225.00 kr VAT — never revenue
+    taxTotal: 22500, //  225.00 kr VAT - never revenue
     total: 117500, // what the customer was charged, incl VAT
     ambassadorId: null,
     commissionRate: 0,
@@ -103,7 +103,7 @@ describe('computeMetrics', () => {
   })
 
   it('counts a sale wearing a status the system has never seen', () => {
-    // Stores add their own statuses — a fulfilment plugin moves an order to
+    // Stores add their own statuses - a fulfilment plugin moves an order to
     // "shipping" between processing and completed. The rules here are a DENY
     // list on purpose: only refunded/cancelled/failed/trash and the two unpaid
     // states are held back, so an unrecognised status is a live, paid sale.
@@ -120,7 +120,7 @@ describe('computeMetrics', () => {
     expect(res.byShop[0].orders).toBe(1)
   })
 
-  it('excludes unpaid orders — pending and on-hold — until Woo marks them paid', () => {
+  it('excludes unpaid orders - pending and on-hold - until Woo marks them paid', () => {
     const res = computeMetrics({
       shops: [shops[0]],
       orders: [
@@ -175,7 +175,7 @@ describe('computeMetrics', () => {
     // NOK 0.10 USD, DKK 0.15 USD -> the true DKK->NOK cross rate is 1.5
     // (0.15 / 0.10). A regression back to plain `convert` would instead
     // multiply the DKK shop by its bare DKK->USD rate (0.15) and label the
-    // result NOK — a tenfold undercount, not a rounding error, so a wrong
+    // result NOK - a tenfold undercount, not a rounding error, so a wrong
     // answer here cannot be mistaken for the right one.
     const dkShops: EngineShop[] = [
       { id: 'no', name: 'Mazzetti.no', currency: 'NOK' },
@@ -200,7 +200,7 @@ describe('computeMetrics', () => {
     const dk = res.byShop.find((s) => s.shopId === 'dk')!
 
     expect(no.netSales).toBe(90000) // NOK shop, no conversion needed: from === display
-    expect(dk.netSales).toBe(135000) // 90000 x (0.15 / 0.10) — the true DKK->NOK cross rate
+    expect(dk.netSales).toBe(135000) // 90000 x (0.15 / 0.10) - the true DKK->NOK cross rate
     expect(res.total.netSales).toBe(225000)
     expect(res.displayCurrency).toBe('NOK')
   })
@@ -259,7 +259,7 @@ describe('computeMetrics', () => {
       displayCurrency: 'NOK', from: new Date('2026-07-01'), to: new Date('2026-07-01'),
     })
     expect(res.total.taxes).toBe(22500) // the one live order's VAT
-    expect(res.total.netProfit).toBe(73000) // unchanged — VAT is not a cost
+    expect(res.total.netProfit).toBe(73000) // unchanged - VAT is not a cost
     expect(res.byShop[0].taxes).toBe(22500)
   })
 
@@ -319,7 +319,7 @@ describe('computeMetrics', () => {
 
   // A business customer invoiced in EUR, buying from a NOK shop. Product costs
   // live in the SHOP's currency, so reading them as the order's would multiply
-  // COGS by the EUR/NOK rate — about tenfold — and show a large false loss.
+  // COGS by the EUR/NOK rate - about tenfold - and show a large false loss.
   it('reads product costs in the SHOP currency, not the order currency', () => {
     const res = computeMetrics({
       shops: [shops[0]],
@@ -335,7 +335,7 @@ describe('computeMetrics', () => {
       to: new Date('2026-07-01'),
     })
 
-    // 2 x (100.00 + 10.00) kr = 220.00 kr, displayed in kr — unchanged.
+    // 2 x (100.00 + 10.00) kr = 220.00 kr, displayed in kr - unchanged.
     // Converted from EUR it would have been 2 420.00 kr.
     expect(res.total.cogs).toBe(22000)
   })
@@ -379,14 +379,14 @@ describe('computeMetrics', () => {
     expect(
       computeMetrics({ ...input, orders: [order({ fulfillmentCost: 45000 })] }).total.fulfillment,
     ).toBe(45000)
-    // Zero is a real answer — "we did not ship it" — not "fall back to the rate".
+    // Zero is a real answer - "we did not ship it" - not "fall back to the rate".
     expect(
       computeMetrics({ ...input, orders: [order({ fulfillmentCost: 0 })] }).total.fulfillment,
     ).toBe(0)
   })
 
   describe('per-SKU shipping', () => {
-    // 300 kr per order, flat, from January — what this shop has always charged.
+    // 300 kr per order, flat, from January - what this shop has always charged.
     const flat = {
       shops: [shops[0]],
       expenses: [],
@@ -410,7 +410,7 @@ describe('computeMetrics', () => {
      * Pinned to LITERALS worked out from the fixtures, never to another
      * computeMetrics call. There is no "before this feature existed" to compare
      * against inside this file, so a comparison between two runs of the same
-     * code would go green whenever both halves broke the same way — which is
+     * code would go green whenever both halves broke the same way - which is
      * exactly how the null-vs-0 bug would break them. These numbers are the only
      * witness to what the engine used to answer:
      *
@@ -420,7 +420,7 @@ describe('computeMetrics', () => {
      *   netProfit   95000 - 22000 - 30000, no fee, no ads  = 43000
      *
      * Not just fulfillment, because a wrong shipping figure moves net profit and
-     * margin too — and those are what the client reads.
+     * margin too - and those are what the client reads.
      */
     it('leaves an installation with no SKU rates exactly as it was', () => {
       const t = computeMetrics(flat).total
@@ -434,7 +434,7 @@ describe('computeMetrics', () => {
 
     /**
      * Three spellings of "nobody has typed a rate": no field at all, an empty
-     * map, and an explicit undefined. Worth pinning that they are one path —
+     * map, and an explicit undefined. Worth pinning that they are one path -
      * `loadMetricsInput` always passes a map, tests pass none, and a caller
      * somewhere will one day pass undefined.
      *
@@ -509,7 +509,7 @@ describe('computeMetrics', () => {
     order({ status: 'refunded', voidedAt: new Date('2026-07-08') })
 
   it('counts a refunded order nowhere at all, its own day included', () => {
-    // Not "sale here, reversal there" — gone. A refunded order is not a sale,
+    // Not "sale here, reversal there" - gone. A refunded order is not a sale,
     // so the day it was placed must stop claiming it too. That does restate a
     // past day, which is the deliberate trade: see the Entry docs.
     for (const [from, to] of [
@@ -533,7 +533,7 @@ describe('computeMetrics', () => {
    * Panetti Sweden, 5 August 2026, live: three orders came in that day, and
    * the Dashboard said 2. Nothing on the 5th explained it. The cause was an
    * order from the 4th, cancelled on the morning of the 5th, whose reversal
-   * was booked against the 5th — a day it was never part of.
+   * was booked against the 5th - a day it was never part of.
    *
    * A day's order count must depend only on that day's orders.
    */
@@ -574,7 +574,7 @@ describe('computeMetrics', () => {
 
   /**
    * The client's report, from the live Dashboard: Mazzetti Norway showed
-   * "2 orders, $0.00" — two orders placed and cancelled within minutes on the
+   * "2 orders, $0.00" - two orders placed and cancelled within minutes on the
    * same day. Every money column reversed; the tally did not, because it
    * counted the sale entries and ignored the reversals.
    */
@@ -612,7 +612,7 @@ describe('computeMetrics', () => {
 
   it('leaves an order refunded before we recorded dates out entirely', () => {
     // voidedAt null: we do not know when. It counts nowhere, which is exactly
-    // what the engine did before this change — no existing figure moves.
+    // what the engine did before this change - no existing figure moves.
     const old = order({ status: 'refunded' })
     for (const [from, to] of [['2026-07-01', '2026-07-01'], ['2026-07-08', '2026-07-08'], ['2026-07-01', '2026-07-31']]) {
       const res = computeMetrics({
@@ -624,7 +624,7 @@ describe('computeMetrics', () => {
     }
   })
 
-  it('does not reverse an unpaid order — pending is not a refund', () => {
+  it('does not reverse an unpaid order - pending is not a refund', () => {
     const pending = order({ status: 'pending', voidedAt: new Date('2026-07-08') })
     const res = computeMetrics({
       shops: [shops[0]], orders: [pending], expenses: [], costs, rates,
@@ -786,7 +786,7 @@ describe('affiliate cost', () => {
     expect(res.total.affiliate).toBe(1000 + 5000)
   })
 
-  it('is zero when absent — every existing caller’s profit must not move', () => {
+  it('is zero when absent - every existing caller’s profit must not move', () => {
     const res = run(undefined)
     expect(res.total.affiliate).toBe(0)
     expect(res.total.netProfit).toBe(0)

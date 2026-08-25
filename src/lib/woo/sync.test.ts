@@ -102,7 +102,7 @@ describe('syncShop', () => {
     expect(result.ok).toBe(true)
     expect(result.ordersSynced).toBe(0)
 
-    // The decrypted key — not the enc:v1: blob — must reach WooCommerce.
+    // The decrypted key - not the enc:v1: blob - must reach WooCommerce.
     const auth = (fetchMock.mock.calls[0][1] as RequestInit).headers as Record<string, string>
     expect(auth.Authorization).toBe(`Basic ${Buffer.from('ck_real:cs_real').toString('base64')}`)
 
@@ -205,7 +205,7 @@ describe('syncShop', () => {
     const saved = await db.product.findUniqueOrThrow({ where: { id: prod.id } })
     expect(saved.catalogPrice).toBe(379000) // the store's incl-VAT price landed
 
-    // Now the catalog endpoint dies — the sync itself still succeeds.
+    // Now the catalog endpoint dies - the sync itself still succeeds.
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown) =>
       String(url).includes('/products') ? new Response('boom', { status: 500 }) : emptyPage(),
     ))
@@ -325,7 +325,7 @@ describe('syncShop', () => {
     const saved = await db.order.findUniqueOrThrow({ where: { id: legacy.id } })
     expect(saved.customerName).toBe('Tino Skaarup')
     expect(saved.customerEmail).toBe('tino@x.dk')
-    // ONLY the customer landed — the money and the attribution are history.
+    // ONLY the customer landed - the money and the attribution are history.
     expect(saved.ambassadorId).toBe(amb.id)
     expect(saved.netSales).toBe(10000)
   })
@@ -430,7 +430,7 @@ describe('run bookkeeping', () => {
  *
  * The bounding is not incidental. A mock returning full pages forever runs the
  * pull to its 50-page ceiling and `storeOrder` then writes 5,000 orders one at a
- * time — minutes per test. A partial pull is a partial pull whether it stopped
+ * time - minutes per test. A partial pull is a partial pull whether it stopped
  * at page 2 or page 50, so one page proves the same thing.
  *
  * Bounded by `maxPages` rather than by a deadline on purpose: a deadline is set
@@ -507,7 +507,7 @@ describe('draining a backlog', () => {
     const watermark = new Date('2026-06-01T00:00:00Z')
     await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: watermark } })
 
-    // Full page, modified stamps descending — the opposite of what we asked.
+    // Full page, modified stamps descending - the opposite of what we asked.
     // The guard only matters on a PARTIAL pull: a completed one moves its
     // watermark to the fetch time and needs no resume point, so this must stop
     // early to be testing anything at all.
@@ -543,7 +543,7 @@ describe('draining a backlog', () => {
   // A burst of orders sharing one moment can leave the resume point BEHIND
   // where we started: more changed in one instant than one run can carry.
   // Writing that watermark would pin (or rewind) the window, refetching the
-  // same page forever — a standstill, not a skip, but it must not be reported
+  // same page forever - a standstill, not a skip, but it must not be reported
   // as success.
   it('refuses to advance when the resume point cannot clear the overlap', async () => {
     const shop = await connectedShop('[sync-test] stalled')
@@ -570,8 +570,8 @@ describe('draining a backlog', () => {
     const watermark = new Date('2026-06-01T00:00:00Z')
     await db.shop.update({ where: { id: shop.id }, data: { lastSyncAt: watermark } })
 
-    // A full page, genuinely sorted ascending, but the LAST stamp — the one
-    // that would become the resume point — is garbage a plugin might send.
+    // A full page, genuinely sorted ascending, but the LAST stamp - the one
+    // that would become the resume point - is garbage a plugin might send.
     const orders = fullModifiedPage(100, 0)
     orders[orders.length - 1].date_modified_gmt = 'not-a-real-date'
     vi.stubGlobal('fetch', onePage(orders))
@@ -646,7 +646,7 @@ describe('voidedAt', () => {
     expect((await db.order.findFirstOrThrow({ where: { externalId: '7004' } })).voidedAt).toBeNull()
   })
 
-  it('does not stamp an unpaid order — pending is not a refund', async () => {
+  it('does not stamp an unpaid order - pending is not a refund', async () => {
     await storeOrder(shopId, wooOrder({ id: 7005, status: 'completed' }), new Map())
     await storeOrder(shopId, wooOrder({ id: 7005, status: 'on-hold' }), new Map())
     expect((await db.order.findFirstOrThrow({ where: { externalId: '7005' } })).voidedAt).toBeNull()
@@ -735,7 +735,7 @@ describe('a hole in the middle of a day', () => {
 
   /**
    * A store that answers honestly. Nothing has been edited since the watermark,
-   * so an incremental pull correctly returns NOTHING — which is exactly why a
+   * so an incremental pull correctly returns NOTHING - which is exactly why a
    * missed order can never come back on its own. A plain created-after window
    * still returns the whole day.
    */
@@ -797,7 +797,7 @@ describe('reconciling the recent past', () => {
     const at = recent()
 
     // We hold it as still awaiting payment, so every money screen leaves it
-    // out. The store has since been paid — we simply never got told.
+    // out. The store has since been paid - we simply never got told.
     await storeOrder(shop.id, { ...wooOrder(5001, at), status: 'pending' }, new Map())
     vi.stubGlobal('fetch', storeReturning([{ ...wooOrder(5001, at), status: 'completed' }]))
 
@@ -947,7 +947,7 @@ describe('a store with its own order statuses', () => {
    * The real shape of the Panetti Sweden hole. The store runs orders through a
    * "shipping" step its fulfilment plugin invented. WooCommerce's default
    * `status=any` becomes WP's `post_status => 'any'`, which omits statuses
-   * registered with exclude_from_search — so a pull that does not NAME the
+   * registered with exclude_from_search - so a pull that does not NAME the
    * status hands back a window with those orders silently absent.
    *
    * Such an order can then only ever arrive by webhook. Lose that one delivery
@@ -1019,7 +1019,7 @@ describe('a store with its own order statuses', () => {
     }))
 
     const result = await syncShop(shop.id)
-    // The sync itself did succeed — but the books were never checked, and a
+    // The sync itself did succeed - but the books were never checked, and a
     // silent 0 would have read as "nothing needed fixing".
     expect(result.ok).toBe(true)
     expect(result.repairError).toMatch(/500/)

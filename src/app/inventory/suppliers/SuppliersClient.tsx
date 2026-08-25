@@ -14,7 +14,7 @@ export type Item = {
   unitsPerContainer: number | null
   coverDays: number | null
   /**
-   * False for something we stock but never reorder — spare parts and the like.
+   * False for something we stock but never reorder - spare parts and the like.
    *
    * Hiding, never deleting. A deleted row is back on the next page load, because
    * ensureSupplyItems recreates one per product SKU, and the Woo sync upserts the
@@ -51,7 +51,7 @@ export function SuppliersClient({
    * Kept out of the working list because the client's complaint was that one
    * product appeared several times over, once per country's webshop. Kept on the
    * page because a product the source shops do not list is still a product we
-   * may buy — PC-AF-BOWL sold this quarter — and its lead times, supplier and
+   * may buy - PC-AF-BOWL sold this quarter - and its lead times, supplier and
    * open orders are all real.
    *
    * Defaults to empty, which is exactly how this page behaved before any shop
@@ -161,7 +161,7 @@ export function SuppliersClient({
       }
       const value = Number(raw)
       // Number('1 000') and Number('1,5') are NaN, and JSON.stringify turns NaN
-      // into null — which this API reads as "clear this field". Without this
+      // into null - which this API reads as "clear this field". Without this
       // guard, typing a thousand the way a Norwegian writes it would silently
       // delete a saved lead time down the same path as an intentional clear.
       if (!Number.isInteger(value) || value < 0) {
@@ -199,7 +199,7 @@ export function SuppliersClient({
    *
    * A function rather than duplicated JSX, because the drawer of products only
    * the other webshops sell renders exactly this. Two copies would drift, and
-   * the copy that fell behind would be the one nobody looks at — the drawer.
+   * the copy that fell behind would be the one nobody looks at - the drawer.
    */
   const row = (item: Item) => {
     const ready = item.productionDays !== null && item.deliveryDays !== null
@@ -226,7 +226,7 @@ export function SuppliersClient({
               }
               className="rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
             >
-              <option value="">—</option>
+              <option value="">-</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -322,7 +322,7 @@ export function SuppliersClient({
       {/*
         The products the source shops do not sell.
 
-        Collapsed, and absent entirely when there are none — which is the state
+        Collapsed, and absent entirely when there are none - which is the state
         of every workspace until somebody names a source shop. Fully editable
         inside, not merely listed: PC-AF-BOWL sold this quarter without either
         .no shop carrying it, and a product we buy has to be a product we can
@@ -351,7 +351,7 @@ export function SuppliersClient({
       {/*
         Collapsed by default, and absent entirely when nothing is hidden. The
         list above is the working list; this is the drawer you open on the rare
-        day you want something back. Only the name and the SKU are shown —
+        day you want something back. Only the name and the SKU are shown -
         nobody fills in lead times for a product they have told us to forget.
       */}
       {hidden.length > 0 && (

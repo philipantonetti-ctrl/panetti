@@ -1,4 +1,4 @@
-# Advisor Ask: docked composer, daily conversation — design
+# Advisor Ask: docked composer, daily conversation - design
 
 **Date:** 2026-08-13
 **Status:** approved, ready for an implementation plan
@@ -58,7 +58,7 @@ shell.
 
 Storage moves to `localStorage`, stamped with the briefing's day. It survives
 closing the tab; each morning's new briefing opens a fresh conversation. This
-matches the product — a daily briefing deserves a daily chat — and bounds growth by
+matches the product - a daily briefing deserves a daily chat - and bounds growth by
 construction.
 
 Rejected: **a server table.** A schema, a history screen and a retention policy for
@@ -79,13 +79,13 @@ one person on one laptop. The reasoning at `Chat.tsx:8-11` still holds.
 
 **Sticky, not fixed.** Three reasons, each verified:
 
-1. No ancestor of `main` sets `overflow` — the only occurrence is inside the
-   sidebar's own nav (`AppShell.tsx:294`) — so sticky is not silently disabled.
+1. No ancestor of `main` sets `overflow` - the only occurrence is inside the
+   sidebar's own nav (`AppShell.tsx:294`) - so sticky is not silently disabled.
 2. A sticky element inherits the content column's width, so it cannot overlap the
    232px sidebar (`AppShell.tsx:283`). A fixed bar spans the viewport and would
    have to have that width reconstructed by hand.
-3. It occupies its space in the flow, so no spacer is needed and `PageBody` — which
-   accepts only `children` (`AppShell.tsx:386`) — does not have to change.
+3. It occupies its space in the flow, so no spacer is needed and `PageBody` - which
+   accepts only `children` (`AppShell.tsx:386`) - does not have to change.
 
 Detail that makes it work: the composer keeps `border border-line bg-surface` so
 briefing content cannot ghost through it while scrolling underneath, and gains
@@ -120,7 +120,7 @@ The old `sessionStorage` entry is a different store, so there is no collision an
 migration; any stale copy dies with the tab as it always did.
 
 **Reset rule:** on mount, start empty only when a stored day and a current day both
-exist *and differ*. A null `day` never wipes anything — a briefing that failed to
+exist *and differ*. A null `day` never wipes anything - a briefing that failed to
 load must not destroy the conversation.
 
 **Write rule:** every save stamps the entry with the current `day` prop, null
@@ -142,7 +142,7 @@ question resends it. It must be capped, but it cannot be truncated naively. From
 ```
 
 `slice(-n)` will eventually cut between a `tool_use` and its `tool_result`, and the
-next request fails with a 400 — unpredictably, only in long conversations, only for
+next request fails with a 400 - unpredictably, only in long conversations, only for
 the one user who has them. The trim must cut at **exchange boundaries**, and the
 predicate is the trap: tool results are user-role too, so role alone is not enough.
 
@@ -161,7 +161,7 @@ and before the tool loop:
 
 The route already returns `messages: turns` (`chat/route.ts:86`) and the client
 already stores what it is given (`Chat.tsx:88`), so trimming server-side bounds the
-client's storage too — one implementation, one place. The visible bubbles keep the
+client's storage too - one implementation, one place. The visible bubbles keep the
 whole day; they are text-only and cheap, and the code already separates them from
 the transcript for exactly this reason (`Chat.tsx:32-34`).
 

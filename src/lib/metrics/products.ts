@@ -12,7 +12,7 @@ import type { CostBook, EngineOrder, EngineOrderItem, EngineShop, RateTable } fr
  * fulfillment and ambassador commission sit on the ORDER, not the product;
  * splitting them by share of line value would turn every figure on the page
  * into an estimate. Ad spend is per campaign and is excluded for the same
- * reason, more strongly — no data we hold ties a campaign to a product.
+ * reason, more strongly - no data we hold ties a campaign to a product.
  *
  * Refund handling is not reimplemented here. `entriesIn` is the engine's own,
  * so a refund comes off this page on exactly the day it comes off the
@@ -99,7 +99,7 @@ type Bucket = {
   /**
    * order id -> that order's NET sign for this product. A placed order
    * contributes +1, a reversal -1, and an order placed and refunded within
-   * the same period nets to 0 — the same "sum of signs" convention the
+   * the same period nets to 0 - the same "sum of signs" convention the
    * Dashboard uses, so a period containing only a refund reads as negative
    * rather than silently floored at zero or left showing a stale +1.
    */
@@ -138,7 +138,7 @@ export function productFigures(input: ProductInput): ProductResult {
   // Same "sum of signs" convention as the Dashboard: a period containing
   // only a refund reads as -1, and a placed-then-refunded order nets to 0,
   // never a stale +1. A per-product bucket still counts an order once per
-  // product it appears in (correct there — that is literally "orders of
+  // product it appears in (correct there - that is literally "orders of
   // this product"), but summing those bucket counts would report an order
   // that bought both an oven and a brush as two orders on the total.
   const allOrderSigns = new Map<string, number>()
@@ -150,7 +150,7 @@ export function productFigures(input: ProductInput): ProductResult {
     // order can be invoiced in EUR while its shop's costs stay in NOK, and
     // reading one as the other is a tenfold error. `crossConvert`, not
     // `convert`, because this page's display currency is a store group's own
-    // currency and is never USD — the only case plain `convert` handles
+    // currency and is never USD - the only case plain `convert` handles
     // correctly (it multiplies by the from->USD rate and calls the result
     // "display currency" regardless of what display currency actually is).
     const conv = (amount: number) => crossConvert(amount, order.currency, displayCurrency, order.placedAt, rates)
@@ -203,7 +203,7 @@ export function productFigures(input: ProductInput): ProductResult {
       const history = costs.get(item.productId) ?? []
 
       // A cost is "entered" when some point was already in force on the
-      // order's day — NOT when the resulting number happens to be zero. A
+      // order's day - NOT when the resulting number happens to be zero. A
       // product costed at {costPerItem: 0, handlingCost: 500} has a real,
       // if odd, cost on file: flagging it as uncosted would tell the client
       // to enter a cost they already entered.
@@ -238,7 +238,7 @@ export function productFigures(input: ProductInput): ProductResult {
   const rows: ProductRow[] = [...merged.entries()].map(([key, group]) => {
     // Sort once, by netSales desc, with shopId as a deterministic tiebreaker.
     // Without it, two stores tied on netSales make "which store names and
-    // photographs this row" depend on Map iteration order — itself dependent
+    // photographs this row" depend on Map iteration order - itself dependent
     // on the order the caller happened to list its orders in, so the same
     // merged row could read differently between two loads of the same data.
     const scored = group
@@ -264,7 +264,7 @@ export function productFigures(input: ProductInput): ProductResult {
     // The biggest seller names the row, so a merged product reads in one
     // language instead of whichever store happened to be loaded first. A
     // photo has no language, so falling back to another store's photo is
-    // fine — but the fallback walks this same sorted order, so which photo
+    // fine - but the fallback walks this same sorted order, so which photo
     // wins is deterministic too.
     const name = scored[0].bucket.meta.name
     const imageUrl = scored.find((s) => s.bucket.meta.imageUrl)?.bucket.meta.imageUrl ?? null
@@ -300,7 +300,7 @@ export function productFigures(input: ProductInput): ProductResult {
     rows,
     total: {
       // Same net-signed convention as every bucket, summed across distinct
-      // orders — never the per-row order counts, which would double an
+      // orders - never the per-row order counts, which would double an
       // order that bought both an oven and a brush.
       orders: sum([...allOrderSigns.values()]),
       quantity: add((r) => r.quantity),

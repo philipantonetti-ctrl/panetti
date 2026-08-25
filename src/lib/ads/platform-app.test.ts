@@ -240,7 +240,7 @@ describe('configuredProviders', () => {
   it('answers from presence alone, so an undecryptable row cannot break the page', async () => {
     // configuredProviders must never decrypt: it only asks whether a value
     // is present. platformApp, which callers use for real credentials, keeps
-    // throwing on the very same row — proven alongside it so the contrast
+    // throwing on the very same row - proven alongside it so the contrast
     // between the two is explicit, not just asserted by omission.
     vi.mocked(db.adPlatformApp.findUnique).mockResolvedValue({
       id: 'mock-id',

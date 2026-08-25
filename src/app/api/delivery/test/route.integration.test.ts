@@ -15,7 +15,7 @@ const post = (body: unknown) =>
 
 // Signature supplied as a type argument, not inferred: `vi.fn(async () => ...)`
 // alone infers a ZERO-ARG mock, which makes `fn.mock.calls[0][0]`/`[1]` a
-// compile error — indexing an empty tuple — even though it works at runtime.
+// compile error - indexing an empty tuple - even though it works at runtime.
 type FetchFn = (url: string | URL | Request, init?: RequestInit) => Promise<Response>
 
 const okFetch = (body: unknown = { consignmentSet: [] }) =>
@@ -27,7 +27,7 @@ const failingFetch = (message: string) =>
   })
 
 /**
- * DeliveryConfig is a fixed-id singleton (see the Global Constraints) —
+ * DeliveryConfig is a fixed-id singleton (see the Global Constraints) -
  * upsert and blank the fields, never deleteMany() then create(), so a
  * racing file can never find the row missing. bringApiKey/slackWebhookUrl
  * are passed in PLAIN and encrypted here, mirroring exactly what the
@@ -56,7 +56,7 @@ async function seedConfig(fields: {
 const blank = () => seedConfig({})
 
 /**
- * DHL answers 404 to a number it does not know — verified against the live API
+ * DHL answers 404 to a number it does not know - verified against the live API
  * 2026-08-18 with the real key. fetchTracking turns that into null, so a 404 is
  * exactly the "your key was accepted, this parcel just isn't real" answer the
  * probe wants.
@@ -69,7 +69,7 @@ beforeEach(async () => {
   vi.mocked(currentUser).mockResolvedValue({ id: 'u1', email: 'a@b.c', role: 'ADMIN' } as never)
   // The real key lives in .env, which the test runner can load. Blanking it
   // makes "not connected" the deliberate default rather than an accident of
-  // whose machine the suite runs on — the same guard sync.integration.test.ts
+  // whose machine the suite runs on - the same guard sync.integration.test.ts
   // opens with, and for the same reason.
   vi.stubEnv('DHL_API_KEY', '')
 })
@@ -86,7 +86,7 @@ describe('POST /api/delivery/test', () => {
     expect((await post({ target: 'bring' })).status).toBe(403)
   })
 
-  it('never lets a proxy or CDN cache the result — private, no-store on every outcome', async () => {
+  it('never lets a proxy or CDN cache the result - private, no-store on every outcome', async () => {
     // 403: non-admin
     vi.mocked(currentUser).mockResolvedValueOnce({ id: 'u2', email: 'x@y.z', role: 'AMBASSADOR' } as never)
     expect((await post({ target: 'bring' })).headers.get('Cache-Control')).toBe('private, no-store')
@@ -100,12 +100,12 @@ describe('POST /api/delivery/test', () => {
     const malformed = await POST(new Request(url, { method: 'POST', body: '{not json' }))
     expect(malformed.headers.get('Cache-Control')).toBe('private, no-store')
 
-    // 200 ok:false — nothing stored
+    // 200 ok:false - nothing stored
     expect((await post({ target: 'bring' })).headers.get('Cache-Control')).toBe('private, no-store')
     expect((await post({ target: 'slack' })).headers.get('Cache-Control')).toBe('private, no-store')
     expect((await post({ target: 'dhl' })).headers.get('Cache-Control')).toBe('private, no-store')
 
-    // 200 ok:true — stored, upstream accepts
+    // 200 ok:true - stored, upstream accepts
     await seedConfig({
       bringApiUid: 'ops@example.com',
       bringApiKey: 'key',
@@ -116,7 +116,7 @@ describe('POST /api/delivery/test', () => {
     expect((await post({ target: 'bring' })).headers.get('Cache-Control')).toBe('private, no-store')
     expect((await post({ target: 'slack' })).headers.get('Cache-Control')).toBe('private, no-store')
 
-    // 200 ok:false — stored, upstream rejects
+    // 200 ok:false - stored, upstream rejects
     vi.stubGlobal('fetch', failingFetch('boom'))
     expect((await post({ target: 'bring' })).headers.get('Cache-Control')).toBe('private, no-store')
     expect((await post({ target: 'slack' })).headers.get('Cache-Control')).toBe('private, no-store')
@@ -138,7 +138,7 @@ describe('POST /api/delivery/test', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const init = fetchMock.mock.calls[0][1] as RequestInit
     const headers = init.headers as Record<string, string>
-    // The stored value is 'enc:v1:...' — this proves getDeliveryConfig()'s
+    // The stored value is 'enc:v1:...' - this proves getDeliveryConfig()'s
     // decrypt actually ran, not just that some string was forwarded.
     expect(headers['X-Mybring-API-Uid']).toBe('ops@example.com')
     expect(headers['X-Mybring-API-Key']).toBe('the-real-key')
@@ -229,7 +229,7 @@ describe('POST /api/delivery/test', () => {
 
   /**
    * DHL's key is a deployment secret in Vercel, not a stored setting like
-   * Bring's — so there is nothing on the settings page to look at, and until
+   * Bring's - so there is nothing on the settings page to look at, and until
    * this button existed nobody could tell a working key from a missing one.
    */
   it('dhl: accepts the key, sending it in the DHL-API-Key header', async () => {
@@ -242,7 +242,7 @@ describe('POST /api/delivery/test', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const init = fetchMock.mock.calls[0][1] as RequestInit
-    // Not Authorization, not x-api-key — DHL answers 401 to anything else.
+    // Not Authorization, not x-api-key - DHL answers 401 to anything else.
     expect((init.headers as Record<string, string>)['DHL-API-Key']).toBe('the-real-dhl-key')
   })
 
@@ -255,7 +255,7 @@ describe('POST /api/delivery/test', () => {
       ok: false,
       message: 'DHL is not connected. Add DHL_API_KEY in Vercel, then redeploy.',
     })
-    // Nothing to ask, so nothing is asked — and no daily call is spent proving
+    // Nothing to ask, so nothing is asked - and no daily call is spent proving
     // what we already know.
     expect(fetchMock).not.toHaveBeenCalled()
   })

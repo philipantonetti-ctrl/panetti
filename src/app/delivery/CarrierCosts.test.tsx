@@ -91,7 +91,7 @@ describe('CarrierCosts', () => {
     const { container } = render(<CarrierCosts {...props()} />)
     const intro = [...container.querySelectorAll('section > p')].map((p) => p.textContent ?? '')
     expect(intro.length).toBeGreaterThan(0)
-    for (const line of intro) expect(line).not.toMatch(/—/)
+    for (const line of intro) expect(line).not.toMatch(/-/)
   })
 
   it('shows the parcels it counted, so the division can be checked', () => {

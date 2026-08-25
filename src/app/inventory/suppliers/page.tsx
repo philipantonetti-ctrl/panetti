@@ -22,7 +22,7 @@ export default async function SuppliersPage() {
     // default.
     db.supplyItem.findMany({ orderBy: { name: 'asc' } }),
     db.supplier.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
-    // What the stock-source shops carry, and what they call it — the same query
+    // What the stock-source shops carry, and what they call it - the same query
     // loadInventory makes for the Forecast tab, narrowed to the two fields this
     // page needs. Until now this list showed every SKU from all nine webshops,
     // which is why one product appeared under a Finnish name and a Swedish one.
@@ -31,7 +31,7 @@ export default async function SuppliersPage() {
       select: { sku: true, name: true },
     }),
     // The scoping decision is "has anyone been named a source", exactly as in
-    // loadInventory — NOT "did those shops return any products". A source shop
+    // loadInventory - NOT "did those shops return any products". A source shop
     // flagged before its first sync carries nothing, and the Forecast tab goes
     // empty in that state; this page must agree with it rather than quietly
     // deciding it knows better.
@@ -46,8 +46,8 @@ export default async function SuppliersPage() {
       {/* The second sentence is the half of the client's question the list
           itself cannot show: he asked whether the sales, lead time and delivery
           days behind a product cover every webshop or only the one it is listed
-          under. They cover every one — a SupplyItem is keyed by SKU, not by shop
-          — and that is true whether or not any shop has been named a source, so
+          under. They cover every one - a SupplyItem is keyed by SKU, not by shop
+          - and that is true whether or not any shop has been named a source, so
           it is said unconditionally. */}
       <PageHeader
         title="Inventory and forecasting"

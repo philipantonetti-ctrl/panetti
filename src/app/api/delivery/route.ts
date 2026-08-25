@@ -26,8 +26,8 @@ const LATE_LIMIT = 200
  * what we could not account for.
  *
  * The last part matters as much as the first. An unlinked parcel and a failed
- * import are both invisible by nature — the page simply shows fewer orders and
- * looks like a quiet week — so both are counted out loud.
+ * import are both invisible by nature - the page simply shows fewer orders and
+ * looks like a quiet week - so both are counted out loud.
  */
 export async function GET(req: Request) {
   try {
@@ -70,7 +70,7 @@ export async function GET(req: Request) {
      *
      * Measured live 2026-08-18: ~120 late rows, SIX of them with a parcel. Run
      * together, the six rows anyone could act on were invisible, and the other
-     * ~114 asserted a lateness the data cannot support — a missing file is not
+     * ~114 asserted a lateness the data cannot support - a missing file is not
      * evidence of a missed promise.
      *
      * Split on the parcel rather than on state === 'NO_TRACKING': the parcel IS
@@ -82,7 +82,7 @@ export async function GET(req: Request) {
 
     /**
      * How long we have been in the dark about an order, in the SHOP's timezone
-     * — the same clock deliveryFor judges its promise against, so a row can
+     * - the same clock deliveryFor judges its promise against, so a row can
      * never report a day more or less than the state beside it.
      */
     const waitingDays = (r: LoadedDelivery) =>
@@ -100,7 +100,7 @@ export async function GET(req: Request) {
       // placed at 23:30 in Oslo would otherwise print one date while counting
       // its waiting days from the next. The time is carried because the
       // warehouse cutoff is noon local, so it is what decides which file the
-      // order belongs in — see lib/delivery/due.ts.
+      // order belongs in - see lib/delivery/due.ts.
       placedAtLocal: wallClock(r.order.placedAt, r.order.shopTimezone ?? timezone),
       // Null stays null rather than becoming ''. The page decides how to print
       // an order we hold no name for, and it cannot if the two are flattened.
@@ -116,7 +116,7 @@ export async function GET(req: Request) {
     /**
      * The chase queue, from the SAME function the tile above is counted with
      * (lib/delivery/view.ts). Not a rule of its own: this list has now twice
-     * drifted from the tile it sits under — 155 against 8 when the tile forgot
+     * drifted from the tile it sits under - 155 against 8 when the tile forgot
      * the parcel clause, then 13 against 16 when this list kept every order
      * that had SINCE ARRIVED and advertised the fact in its own heading.
      *
@@ -124,8 +124,8 @@ export async function GET(req: Request) {
      * for collection, it can go away from the Late section." A parcel in the
      * customer's hands is not something anybody can chase, and a to-do list
      * carrying finished work stops being read. Those orders are still on the
-     * page — they are what the on-time rate is made of, and "Where everything
-     * is now" counts them under Ready for collection and Delivered — they are
+     * page - they are what the on-time rate is made of, and "Where everything
+     * is now" counts them under Ready for collection and Delivered - they are
      * simply no longer queued.
      */
     const chasable = rows.filter((r) => stillLate(r.view))
@@ -144,7 +144,7 @@ export async function GET(req: Request) {
 
     // The true totals, not the capped array lengths. Both lists are capped for
     // the payload's sake, and a heading that reports the cap is a wrong number
-    // exactly when the situation is worst — 300 unlinked parcels would read as
+    // exactly when the situation is worst - 300 unlinked parcels would read as
     // "50", on the one section whose whole job is to make a linking outage
     // visible.
     const lateTotal = chasable.length
@@ -170,7 +170,7 @@ export async function GET(req: Request) {
           id: true, filename: true, receivedAt: true,
           rowsParsed: true, rowsLinked: true, rowsUnmatched: true, error: true,
           // Both were written and neither was ever read. `unmatched` is the JSON
-          // list of refusals with their stated reasons — without it the page
+          // list of refusals with their stated reasons - without it the page
           // says "27 parsed, 25 linked, 2 unmatched" and gives an operator no
           // way at all to learn why those two were refused. `source` says
           // whether the file arrived by email or by hand, which is the first

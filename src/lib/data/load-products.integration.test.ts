@@ -60,14 +60,14 @@ describe('loadProductsInput', () => {
 
   it('treats an explicitly empty shopIds array as "no shops", not "every shop"', async () => {
     // The trap: `args.shopIds?.length ? ... : {}` used to treat `[]` the same
-    // as `undefined` and silently load every active shop — which, on this
+    // as `undefined` and silently load every active shop - which, on this
     // loader, throws a baffling MixedCurrencyError for what reads as "nothing
     // selected". This is what ShopFilter's NO_SHOPS sentinel resolves to.
     const input = await loadProductsInput({ shopIds: [], ...RANGE })
 
     expect(input.shops).toEqual([])
     // No shop means no currency to honestly label the (empty) totals with;
-    // 'USD' is a placeholder, not a claim — see the comment at load-products.ts.
+    // 'USD' is a placeholder, not a claim - see the comment at load-products.ts.
     expect(input.displayCurrency).toBe('USD')
 
     const res = productFigures(input)
@@ -77,7 +77,7 @@ describe('loadProductsInput', () => {
 
 // This file otherwise only reads the seeded database; these cases create
 // their own fixtures and clean up after themselves like
-// load.integration.test.ts does (see e.g. its :266-335 and :142-189) — the
+// load.integration.test.ts does (see e.g. its :266-335 and :142-189) - the
 // '[load-products-test]' tag on every shop name marks what to wipe, and
 // nothing outside that tag is ever touched.
 describe('loadProductsInput and its own fixtures', () => {
@@ -93,8 +93,8 @@ describe('loadProductsInput and its own fixtures', () => {
 
   it('allows several shops that share one currency', async () => {
     // Fixture-only, deliberately NOT reading the seed: the old version did
-    // `db.shop.findMany({ currency: 'NOK' }).take(2)` and returned early —
-    // asserting nothing — if the seed ever had fewer than two NOK shops.
+    // `db.shop.findMany({ currency: 'NOK' }).take(2)` and returned early -
+    // asserting nothing - if the seed ever had fewer than two NOK shops.
     // A test that can pass by doing nothing is worse than no test at all,
     // so this creates its own two same-currency shops instead, tagged for
     // the afterEach above to clean up, with a real order/product line on one

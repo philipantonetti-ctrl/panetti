@@ -238,7 +238,7 @@ describe('AdvisorClient', () => {
 
   it('prints the right magnitude for a money fact with no currency', () => {
     // ambassadorFacts once produced exactly this shape: unit 'money' with no
-    // currency key at all. previous/100 = 1,000 and current/100 = 1,500 — the
+    // currency key at all. previous/100 = 1,000 and current/100 = 1,500 - the
     // bug rendered these as the raw minor units, 100,000 and 150,000.
     const noCurrency: Fact = {
       id: 'ambassador:amb_1',
@@ -289,8 +289,8 @@ describe('AdvisorClient', () => {
       />,
     )
     // By KIND is what this test is about: two figures for one shop must not
-    // read alike. The shop itself is no longer repeated on each line — both
-    // facts are Panetti Sweden's and the headline says so — which is covered by
+    // read alike. The shop itself is no longer repeated on each line - both
+    // facts are Panetti Sweden's and the headline says so - which is covered by
     // "keeps the shop name when the card compares several shops" above.
     expect(screen.getByText('Revenue')).toBeInTheDocument()
     expect(screen.getByText('ROAS')).toBeInTheDocument()
@@ -366,8 +366,8 @@ describe('AdvisorClient', () => {
    *
    *   Sync failing · Mazzetti Norway · WooCommerce responded 500: <!DOCTYPE html>
    *
-   * Two failures met on that line. The trust band — the only thing that states
-   * these in words and links to the page that fixes them — lived inside
+   * Two failures met on that line. The trust band - the only thing that states
+   * these in words and links to the page that fixes them - lived inside
    * Report, which renders ONLY when the model wrote no items, so on any normal
    * day it was absent. And a quality fact the model happened to cite fell
    * through to FactLine, which prints fact.subject verbatim beside two empty

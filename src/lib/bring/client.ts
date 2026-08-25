@@ -42,7 +42,7 @@ async function bringError(res: Response): Promise<Error> {
 
 /**
  * Track several parcels in one request. Returns the raw consignment entries,
- * unparsed — mapping is map.ts's job, and keeping them apart is what lets the
+ * unparsed - mapping is map.ts's job, and keeping them apart is what lets the
  * mapper be tested against a recorded fixture with no network at all.
  *
  * A number Bring does not know simply does not come back. The caller decides

@@ -14,7 +14,7 @@ vi.mock('next/link', () => ({
 vi.mock('@/lib/use-live-tick', () => ({ useLiveTick: () => 0 }))
 
 // Every shop shares one currency: the default selection ([]) needs no
-// auto-narrowing, so these are for the tests about a plain, honest load —
+// auto-narrowing, so these are for the tests about a plain, honest load -
 // fetching, the uncosted notice, the server-error message.
 const SAME_CURRENCY_SHOPS = [
   { id: 'a', name: 'Panetti Oslo', currency: 'NOK' },
@@ -22,7 +22,7 @@ const SAME_CURRENCY_SHOPS = [
   { id: 'c', name: 'Panetti Trondheim', currency: 'NOK' },
 ]
 
-// Spans two currencies, EUR the bigger group (2 shops) over NOK (1) — for the
+// Spans two currencies, EUR the bigger group (2 shops) over NOK (1) - for the
 // mixed-currency guard tests, and for the auto-select-the-biggest tests.
 const MIXED_SHOPS = [
   { id: 'no', name: 'Panetti Norway', currency: 'NOK' },
@@ -83,7 +83,7 @@ describe('ProductsClient', () => {
       // Norway alone is not mixed either, so this intermediate state
       // legitimately re-fetches too (confirmed: without this clear, the mock
       // shows exactly one prior call for shops=no). Clear here, after that
-      // real fetch, so the assertion below is about the NEXT change only —
+      // real fetch, so the assertion below is about the NEXT change only -
       // adding Germany, which must fetch nothing at all.
       ;(fetch as ReturnType<typeof vi.fn>).mockClear()
       fireEvent.click(screen.getByLabelText('Panetti Germany'))
@@ -155,7 +155,7 @@ describe('ProductsClient', () => {
 
     // A comparison-based "is this still the auto-selected array?" check would
     // wrongly keep the line up here, because the user's own choice below
-    // lands back on exactly ['de', 'fi'] — the same set, same order, as the
+    // lands back on exactly ['de', 'fi'] - the same set, same order, as the
     // auto-selection. An explicit flag cleared on any onChange does not care
     // what the new array contains, only that the user chose it.
     it('clears the flag on any change, even one that ends up reselecting the same shops', async () => {

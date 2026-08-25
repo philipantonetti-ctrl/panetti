@@ -6,7 +6,7 @@ import { MarketingChart, ChartTooltip } from './MarketingChart'
 
 // No container-size mocking needed: the heading, legend and toggle live
 // OUTSIDE the ResponsiveContainer, so they render under jsdom at zero size.
-// Verified by probe. Do not add assertions on SVG paths — those really do
+// Verified by probe. Do not add assertions on SVG paths - those really do
 // need a measured container and would fail.
 
 const series = [
@@ -73,7 +73,7 @@ describe('MarketingChart', () => {
   })
 
   // series-buckets.ts's SeriesBucket.endDate is "for the tooltip" per its own
-  // docstring, but nothing read it — a week bucket labelled only "29 Jun" is
+  // docstring, but nothing read it - a week bucket labelled only "29 Jun" is
   // genuinely ambiguous about what it covers. Recharts passes the whole
   // bucket back as payload[0].payload, so it's available here with no change
   // to series-buckets.ts itself.

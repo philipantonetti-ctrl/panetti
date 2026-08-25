@@ -9,7 +9,7 @@ export const maxDuration = 60
 /**
  * The "Sync now" button. The cron already asks every few hours; this asks right
  * now, six-hour throttle ignored. A broken token fails inside its own account
- * and is reported in the results, never thrown — one brand must not take the
+ * and is reported in the results, never thrown - one brand must not take the
  * other down with it.
  */
 export async function POST() {

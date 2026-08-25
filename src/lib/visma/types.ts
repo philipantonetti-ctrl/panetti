@@ -18,7 +18,7 @@ export type VismaOrderLine = {
   /**
    * Visma's own "this line is finished" flag. True on every Closed and
    * Cancelled line and false on every Open and Hold one, across all 719 lines in
-   * the live company — which is why completion is read from here rather than
+   * the live company - which is why completion is read from here rather than
    * inferred by comparing quantities.
    */
   completed?: Wrapped<boolean>
@@ -97,7 +97,7 @@ export type VismaCustomerDocument = {
 }
 
 /**
- * One line of a customer invoice, as `customerinvoice` really sends it —
+ * One line of a customer invoice, as `customerinvoice` really sends it -
  * captured live 2026-08-18. Every field of the real payload is named here even
  * where nothing reads it yet, so the next person can see what is on offer
  * without going back to the ERP for it.

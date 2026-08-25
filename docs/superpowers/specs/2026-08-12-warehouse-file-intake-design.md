@@ -1,4 +1,4 @@
-# Warehouse file intake — design
+# Warehouse file intake - design
 
 **Date:** 2026-08-12
 **Status:** approved, ready for an implementation plan
@@ -21,7 +21,7 @@ and, after a first answer:
 Two things, then: does the warehouse's standard daily report work, and can it arrive
 by email rather than by hand.
 
-The sample is `LTAS_Eod_Report_20260811.xlsx` — 34 parcel rows over 27 orders, one
+The sample is `LTAS_Eod_Report_20260811.xlsx` - 34 parcel rows over 27 orders, one
 day, Norway only. Columns: `Datum`, `Antal`, `Order`, `Namn`, `KolliID`,
 `Sändningsref`, `Levsätt`, `Vikt`, `COD`, `COD ID`.
 
@@ -51,7 +51,7 @@ number", and `parse.ts` was built on it: find the order numbers we already hold,
 the nearest tracking-shaped token.
 
 **The `Order` column is not our order number.** It is the warehouse's own counter,
-and it is also what they book with at Bring — the tracking payload carries it as
+and it is also what they book with at Bring - the tracking payload carries it as
 `senderReference`. It happens to occupy the same numeric range as Panetti Norway's
 order numbers, which makes it the worst kind of wrong: every value matches a real
 order, just not the right one.
@@ -113,12 +113,12 @@ warehouse's file is long numbers.** Not columns, not headings, not their order n
 6. `src/lib/bring/sync.ts` polls them from there. Nothing downstream changes.
 
 Step 3 is deliberately dumb. Column order, headings, extra stores, a switch back to
-PDF — none of it matters. Both `KolliID` and `Sändningsref` are valid Bring lookup
+PDF - none of it matters. Both `KolliID` and `Sändningsref` are valid Bring lookup
 keys, so we do not need to know which column we grabbed.
 
 The rule is precise: strip non-digits from each cell or whitespace-separated token,
 keep what is 15 digits or longer. `KolliID` is 18 and `Sändningsref` is 17, so both
-clear it. The threshold exists to sit above the two near misses in this file —
+clear it. The threshold exists to sit above the two near misses in this file -
 `COD`/`COD ID` are 6 digits, and `Datum` collapses to 14 (`20260811081924`) if a
 reader hands us the whole cell as one string. `looksLikeTracking` in `parse.ts` is
 deliberately not reused here: at 8-plus digits it would swallow that timestamp.
@@ -134,8 +134,8 @@ A consignment carries all of its packages, so a lookup by either number returns
 everything needed. Numbers already accounted for by an earlier response are skipped.
 
 Measured by running the committed parser over the sample file, that is **61 distinct
-long numbers** — the 27 seventeen-digit `Sändningsref` values plus the 34 eighteen-digit
-`KolliID` values — reducing to **27 Bring lookups** and **34 `Shipment` rows**, one per
+long numbers** - the 27 seventeen-digit `Sändningsref` values plus the 34 eighteen-digit
+`KolliID` values - reducing to **27 Bring lookups** and **34 `Shipment` rows**, one per
 package. The 61 is the figure to reason about when judging how long an import takes,
 because it is what the parser hands to `resolveConsignments`; the 27 is what actually
 leaves the building.
@@ -155,7 +155,7 @@ design exists to remove. The report arrives the evening of dispatch, so receipt 
 few hours later than dispatch and strictly safer: the bound exists to stop a parcel
 attaching to an order the same customer placed *after* it shipped, and a later bound
 only widens the candidate set, which the exact-email match and the refusal rule below
-already handle. On the sample this changes nothing — all 27 stay unique.
+already handle. On the sample this changes nothing - all 27 stay unique.
 
 Exactly one match links. Zero or more than one is refused and recorded with its reason
 in `TrackingImport.unmatched`, which the `/delivery` page already renders.
@@ -226,5 +226,5 @@ into the repository.
 
 Does the warehouse ship the Swedish, Danish, German and Finnish orders too? Panetti
 Sweden did 200 and Panetti Denmark 126 in the last 30 days, and none appear in this
-file. It does not block the build — the email join is shop-agnostic and would pick
-them up the day their rows appear — but it decides which shops get switched on.
+file. It does not block the build - the email join is shop-agnostic and would pick
+them up the day their rows appear - but it decides which shops get switched on.
