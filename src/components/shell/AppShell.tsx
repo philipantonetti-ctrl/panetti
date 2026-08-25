@@ -70,6 +70,16 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       {
+        href: '/inbox',
+        label: 'Inbox',
+        icon: icon(
+          <>
+            <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+            <path d="M5.5 5h13l3.5 7v7H2v-7Z" />
+          </>,
+        ),
+      },
+      {
         href: '/orders',
         label: 'Orders',
         icon: icon(
