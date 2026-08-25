@@ -201,6 +201,7 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
     couponCode: o.couponCode,
     customerName: o.customerName,
     customerEmail: o.customerEmail,
+    customerPhone: o.customerPhone,
     shippingCountry: o.shippingCountry,
     ambassadorId,
   }
@@ -332,16 +333,19 @@ export async function reconcileRecent(
  * Fill in the customer on orders synced before customers were stored. Targets
  * exactly the orders where customerName is still null (newest first - the ones
  * being looked at), asks Woo for those ids only, and touches NOTHING but the
- * two customer fields. An order Woo no longer has, or one with no billing
+ * three customer fields. An order Woo no longer has, or one with no billing
  * details, is marked '' - checked, nothing there - so the queue only ever
  * shrinks and this costs zero once history is filled.
  */
 export async function backfillCustomers(shopId: string, creds: WooCredentials): Promise<number> {
   const missing = await db.order.findMany({
-    where: { shopId, customerName: null },
+    // Widened when the phone column arrived: every order synced before it has
+    // customerName set and customerPhone null. Same queue, same drain, same
+    // '' when the store has none — it costs zero again once history is filled.
+    where: { shopId, OR: [{ customerName: null }, { customerPhone: null }] },
     orderBy: { placedAt: 'desc' },
     take: CUSTOMER_BACKFILL_BATCH,
-    select: { id: true, externalId: true },
+    select: { id: true, externalId: true, customerName: true, customerEmail: true, customerPhone: true },
   })
   if (missing.length === 0) return 0
 
@@ -355,7 +359,15 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
     const o = raw ? mapOrder(raw) : null
     await db.order.update({
       where: { id: m.id },
-      data: { customerName: o?.customerName ?? '', customerEmail: o?.customerEmail ?? '' },
+      data: {
+        // What Woo says wins; what we already hold survives a store that no
+        // longer has the order (a Visma or B2B row queued only for its null
+        // phone must not have its real name wiped to ''); only then comes
+        // '' — checked, nothing there.
+        customerName: o?.customerName ?? m.customerName ?? '',
+        customerEmail: o?.customerEmail ?? m.customerEmail ?? '',
+        customerPhone: o?.customerPhone ?? m.customerPhone ?? '',
+      },
     })
   }
   return missing.length

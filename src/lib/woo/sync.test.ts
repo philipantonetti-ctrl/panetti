@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { reconcileRecent, reconcileWindow, storeOrder, syncAllShops, syncShop } from './sync'
+import { backfillCustomers, reconcileRecent, reconcileWindow, storeOrder, syncAllShops, syncShop } from './sync'
 import { encryptSecret } from '../secrets'
 import { db } from '../db'
 
@@ -1060,5 +1060,35 @@ describe('telling a recovered order from a corrected one', () => {
     // the cancellation pulls the other way.
     expect(result.added).toBe(1)
     expect(result.updated).toBe(1)
+  })
+})
+
+describe('backfilling the phone', () => {
+  const creds = { url: 'https://shop.example', key: 'k', secret: 's' }
+
+  it('fills missing fields from Woo, preserves what Woo cannot answer, leaves complete orders alone', async () => {
+    const shop = await connectedShop('[sync-test] phones')
+    const base = {
+      shopId: shop.id, placedAt: new Date('2026-06-01'), status: 'completed', currency: 'NOK',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+    }
+    const a = await db.order.create({ data: { ...base, externalId: '7001', number: '#7001', customerName: null, customerEmail: null, customerPhone: null } })
+    const b = await db.order.create({ data: { ...base, externalId: '7002', number: '#7002', customerName: 'Bob', customerEmail: 'b@x.no', customerPhone: '+47 00000000' } })
+    const c = await db.order.create({ data: { ...base, externalId: 'visma-99', number: 'V-99', customerName: 'Visma Kunde', customerEmail: 'v@x.no', customerPhone: null } })
+
+    vi.stubGlobal('fetch', vi.fn(async () => jsonPage([
+      { ...wooOrder(7001, '2026-06-01T00:00:00'), billing: { first_name: 'Kari', last_name: 'Olsen', email: 'kari@x.no', phone: '+47 912 34 567' } },
+    ])))
+
+    const n = await backfillCustomers(shop.id, creds)
+    expect(n).toBe(2) // a and c were queued; b was already complete
+
+    const ra = await db.order.findUniqueOrThrow({ where: { id: a.id } })
+    const rb = await db.order.findUniqueOrThrow({ where: { id: b.id } })
+    const rc = await db.order.findUniqueOrThrow({ where: { id: c.id } })
+    expect(ra).toMatchObject({ customerName: 'Kari Olsen', customerEmail: 'kari@x.no', customerPhone: '+47 912 34 567' })
+    expect(rb).toMatchObject({ customerName: 'Bob', customerPhone: '+47 00000000' })
+    // Queued only for its phone; Woo has never heard of it. The name survives.
+    expect(rc).toMatchObject({ customerName: 'Visma Kunde', customerEmail: 'v@x.no', customerPhone: '' })
   })
 })
