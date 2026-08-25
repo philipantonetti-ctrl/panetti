@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/auth/session'
 
 /** Pages that need a session at all. Everything else passes straight through. */
-const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors']
+const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox']
 
 /** Pages an ambassador is allowed to open. Everything else is the company's. */
 const AMBASSADOR_PAGES = ['/portal', '/account']
@@ -32,7 +32,7 @@ const MARKETING_PAGES = ['/ambassadors', '/account']
  * builds its redirect_uri from the host it was called on, which is the very
  * reason the host check exists. It must keep being walked.
  */
-const MACHINE_PATHS = ['/api/cron/', '/api/webhooks/', '/api/delivery/inbound']
+const MACHINE_PATHS = ['/api/cron/', '/api/webhooks/', '/api/delivery/inbound', '/api/inbox/inbound']
 
 /**
  * Two duties, in order.
