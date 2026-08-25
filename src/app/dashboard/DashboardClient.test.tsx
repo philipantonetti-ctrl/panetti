@@ -12,6 +12,14 @@ vi.mock('next/navigation', () => ({
 vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
 }))
+// AffiliateSection fetches its own figures and decides for itself whether it
+// has anything to show; standing in for itself here leaves these tests proving
+// only what DashboardClient controls — that it is mounted, on the page's filters.
+vi.mock('@/components/dashboard/AffiliateSection', () => ({
+  AffiliateSection: (props: { preset: string; shops: string[]; tick: number }) => (
+    <div data-testid="affiliate-section">{JSON.stringify(props)}</div>
+  ),
+}))
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -117,18 +125,21 @@ describe('DashboardClient comparisons', () => {
     // Production's own figures for 1-21 Aug 2026, the 21 days before, and
     // 1-21 Aug 2025 (read 2026-08-22). Every figure non-zero on every side, so
     // all five lines carry a percentage and its label rather than "no data".
-    const figures = (orders: number, netRevenue: number, netProfit: number, avgOrderValue: number, ambassadorSales: number) =>
-      ({ ...ZERO_FIGURES, orders, netRevenue, netProfit, avgOrderValue, ambassadorSales })
+    // Affiliate is non-zero on every side, as production has it: a zero pair
+    // would render 'No prior data' on that cell and undercount the labels.
+    const figures = (orders: number, netRevenue: number, netProfit: number, avgOrderValue: number, ambassadorSales: number, affiliate: number) =>
+      ({ ...ZERO_FIGURES, orders, netRevenue, netProfit, avgOrderValue, ambassadorSales, affiliate })
     const live = {
       ...payload,
-      metrics: { ...payload.metrics, total: figures(828, 385113348, 101852287, 465113, 22679631) },
-      previous: figures(825, 364608641, 106179678, 441950, 21264435),
-      lastYear: figures(622, 279836067, 42968191, 449897, 5134879),
+      metrics: { ...payload.metrics, total: figures(828, 385113348, 101852287, 465113, 22679631, 1988019) },
+      previous: figures(825, 364608641, 106179678, 441950, 21264435, 2100000),
+      lastYear: figures(622, 279836067, 42968191, 449897, 5134879, 350000),
     }
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(live), { status: 200 }))))
     render(<DashboardClient email="admin@test.local" shops={[]} />)
-    expect(await screen.findAllByText('vs 21 days before')).toHaveLength(5)
-    expect(screen.getAllByText('vs last year')).toHaveLength(5)
+    // Six headline figures since AFFILIATE COST joined the strip.
+    expect(await screen.findAllByText('vs 21 days before')).toHaveLength(6)
+    expect(screen.getAllByText('vs last year')).toHaveLength(6)
     // And the dates behind each, on hover: the API's own ranges.
     expect(screen.getAllByTitle('vs last year: 2025-08-01 → 2025-08-21').length).toBeGreaterThan(0)
     expect(screen.getAllByTitle('vs 21 days before: 2026-07-11 → 2026-07-31').length).toBeGreaterThan(0)
@@ -142,6 +153,16 @@ describe('DashboardClient comparisons', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(oneDay), { status: 200 }))))
     render(<DashboardClient email="admin@test.local" shops={[]} />)
     // Zero figures both sides, so the label lives in the tooltip of the "no data" line.
-    expect(await screen.findAllByTitle('vs the day before: 2026-08-20 → 2026-08-20')).toHaveLength(5)
+    expect(await screen.findAllByTitle('vs the day before: 2026-08-20 → 2026-08-20')).toHaveLength(6)
+  })
+
+  // The affiliate detail (channels and shops) moved here from the Marketing
+  // page at the client's request. It must read the Dashboard's own filters.
+  it("mounts the affiliate detail on the page's own filters", async () => {
+    renderPage()
+    await act(async () => {})
+
+    const props = JSON.parse(screen.getByTestId('affiliate-section').textContent!)
+    expect(props).toMatchObject({ preset: 'this_month', shops: [] })
   })
 })

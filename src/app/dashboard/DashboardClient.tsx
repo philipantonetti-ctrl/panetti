@@ -8,6 +8,7 @@ import { DateFilter } from '@/components/filters/DateFilter'
 import { StatStrip, type Comparison } from '@/components/dashboard/StatStrip'
 import { TrendChart } from '@/components/dashboard/TrendChart'
 import { CompareTable } from '@/components/dashboard/CompareTable'
+import { AffiliateSection } from '@/components/dashboard/AffiliateSection'
 import { daysInRange, type Preset } from '@/lib/dates'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { EngineResult, Figures } from '@/lib/metrics/types'
@@ -190,6 +191,12 @@ export function DashboardClient({
             <TrendChart series={data.series} currency={currency} />
 
             <CompareTable result={data.metrics} />
+
+            {/* The affiliate detail behind the AFFILIATE COST card above: every
+                channel and every shop. The client asked for it on the Dashboard
+                itself rather than on the Marketing page. It reads the same
+                filters, and renders nothing when there is no affiliate program. */}
+            <AffiliateSection preset={preset} from={from} to={to} shops={selected} tick={tick} />
           </div>
         ) : null}
       </PageBody>

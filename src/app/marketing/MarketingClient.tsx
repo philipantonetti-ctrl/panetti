@@ -14,7 +14,6 @@ import { PlatformCard } from '@/components/marketing/PlatformCard'
 import { PlatformTable } from '@/components/marketing/PlatformTable'
 import { SpendCheck } from '@/components/marketing/SpendCheck'
 import { BreakdownTable } from './BreakdownTable'
-import { AffiliateSection } from './AffiliateSection'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { Preset } from '@/lib/dates'
 import type { MarketingPlatformRow, MarketingSeriesPoint, MarketingShopRow } from '@/lib/ads/marketing'
@@ -150,19 +149,12 @@ export function MarketingClient({
   shops,
   initialPreset,
   hasAccounts,
-  hasAffiliate = false,
   platforms = [],
 }: {
   email: string
   shops: Shop[]
   initialPreset?: Preset
   hasAccounts: boolean
-  // Whether any active affiliate account exists (src/app/marketing/page.tsx).
-  // The AffiliateSection below answers to the page's date and shop filters, so
-  // those filters must exist for a workspace with affiliate data but no
-  // Meta/Google account — otherwise its one section is frozen at the default
-  // preset and every shop.
-  hasAffiliate?: boolean
   // Workspace-level list of connected platforms, from the server component
   // (src/app/marketing/page.tsx) — never from a /api/marketing response,
   // whose byPlatform narrows to whatever platform filter is active and would
@@ -266,17 +258,8 @@ export function MarketingClient({
             : undefined
         }
       >
-        {/* The filter header exists for either channel: the AffiliateSection
-            reads these same date/shop states, so affiliate data alone earns
-            the controls. Note the setLoading(true) in these handlers is never
-            cleared when hasAccounts is false (the fetch effect returns early)
-            — harmless today because `loading` is only read inside the
-            hasAccounts branch below. */}
-        {(hasAccounts || hasAffiliate) && (
+        {hasAccounts && (
           <>
-            {/* Self-hides for an affiliate-only workspace: page.tsx derives
-                `platforms` from ad accounts, so it is empty here and
-                PlatformFilter renders nothing below two options. */}
             <PlatformFilter
               options={platforms}
               selected={platform}
@@ -397,14 +380,6 @@ export function MarketingClient({
             ) : null}
           </>
         )}
-
-        {/* Outside the ternary on purpose: the affiliate program is its own
-            channel, not a subset of paid ads, so it must still be here for a
-            workspace that has never connected a Meta or Google account. It
-            renders nothing at all when there is no affiliate program either. */}
-        <div className="mt-4">
-          <AffiliateSection preset={preset} from={from} to={to} shops={selected} tick={tick} />
-        </div>
       </PageBody>
     </AppShell>
   )

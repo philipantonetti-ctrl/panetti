@@ -6,12 +6,13 @@ import { formatMoney } from '@/lib/money'
 import type { Preset } from '@/lib/dates'
 
 /**
- * Affiliate commissions on the Marketing page. Fetches its own figures with the
- * page's own filter state, so it works even when no AD account exists — the
- * affiliate program is its own channel, not a subset of paid ads.
+ * Affiliate commissions on the Dashboard, under the compare table: the three
+ * figures, then every channel and every shop. It fetches its own numbers with
+ * the page's own filter state. It lived on the Marketing page first; the client
+ * asked for it here, beside the AFFILIATE COST card it explains.
  *
  * Cost comes from /api/affiliate/summary, which follows the engine's own
- * conventions, so what is here and what the Dashboard charges to net profit are
+ * conventions, so what is here and what the headline charges to net profit are
  * the same money.
  */
 

@@ -103,18 +103,14 @@ test('the Dashboard compare table carries an Affiliate cost column', async ({ pa
   })
 })
 
-test('the Marketing page shows the affiliate section with its channels', async ({ page }) => {
+test('the Dashboard shows the affiliate detail with its channels', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
-  await page.goto('/marketing')
 
-  // The tagged account is active, so the filter header renders even though
-  // this database holds no Meta/Google ad account at all.
   await page.getByRole('button', { name: 'Date range' }).click()
   await page.getByRole('button', { name: 'Last 30 days', exact: true }).click()
 
+  // The detail section under the compare table, with both tagged channels.
   await expect(page.getByRole('heading', { name: 'Affiliate' })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText('AFFILIATE COST', { exact: true })).toBeVisible()
-  // Both tagged channels, in the channel table.
   await expect(page.getByText(`${MARKER} Blog`)).toBeVisible()
   await expect(page.getByText(`${MARKER} Avisen`)).toBeVisible()
 })

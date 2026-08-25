@@ -33,21 +33,6 @@ vi.mock('./BreakdownTable', () => ({
     <div data-testid="breakdown-table">{JSON.stringify(props)}</div>
   ),
 }))
-// Same reasoning as BreakdownTable above: AffiliateSection fetches its own
-// figures from its own endpoint and decides for itself whether it has anything
-// to show. Standing in for itself here leaves these tests proving only what
-// MarketingClient controls — that the section is mounted at all, and with the
-// page's own filter state.
-vi.mock('./AffiliateSection', () => ({
-  AffiliateSection: (props: {
-    preset: string
-    from: string
-    to: string
-    shops: string[]
-    tick: number
-  }) => <div data-testid="affiliate-section">{JSON.stringify(props)}</div>,
-}))
-
 afterEach(() => {
   vi.unstubAllGlobals()
   localStorage.clear()
@@ -318,59 +303,10 @@ describe('MarketingClient', () => {
     expect(marketingCalls).toHaveLength(0)
   })
 
-  // The affiliate program is its own channel, not a subset of paid ads: a
-  // workspace that never connected Meta or Google can still be paying
-  // affiliate commission, and that cost is already charged to net profit on
-  // the dashboard. Mounted OUTSIDE the doorway ternary for exactly that
-  // reason — the section decides for itself whether it has anything to show.
-  it('mounts the affiliate section even with no ad account connected', async () => {
-    vi.stubGlobal('fetch', vi.fn())
-
-    renderPage(<MarketingClient email="admin@test.local" shops={[]} hasAccounts={false} />)
-    await act(async () => {})
-
-    expect(screen.getByTestId('affiliate-section')).toBeTruthy()
-  })
-
-  // FIX (affiliate-only workspace): the filter header used to gate on ad
-  // accounts alone, so a workspace with affiliate data but no Meta/Google
-  // account saw its affiliate section frozen at the default preset and every
-  // shop, with no control to change either. The date and shop filters must
-  // appear for affiliate data too — while the ad doorway stays, the ad-sync
-  // refresh button stays ad-only, and /api/marketing is still never fetched.
-  it('offers the date and shop filters to an affiliate-only workspace', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-
-    renderPage(
-      <MarketingClient
-        email="admin@test.local"
-        shops={threeShops}
-        hasAccounts={false}
-        hasAffiliate={true}
-      />,
-    )
-    await act(async () => {})
-
-    // The controls the affiliate section answers to.
-    expect(screen.getByRole('button', { name: 'Date range' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Shops' })).toBeTruthy()
-    // The ad-specific parts keep gating on ad accounts alone.
-    expect(screen.getByText('No ad accounts connected yet')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull()
-    const marketingCalls = fetchMock.mock.calls
-      .map((c: unknown[]) => String(c[0]))
-      .filter((u) => u.includes('/api/marketing'))
-    expect(marketingCalls).toHaveLength(0)
-
-    // And the filters actually reach the affiliate section.
-    selectOnly('Panetti Norway')
-    await act(async () => {})
-    const props = JSON.parse(screen.getByTestId('affiliate-section').textContent!)
-    expect(props.shops).toEqual(['a'])
-  })
-
-  it('shows no filter header at all with neither ads nor affiliate', async () => {
+  // The affiliate detail now lives on the Dashboard (src/app/dashboard), so a
+  // workspace with no ad account has nothing here to filter: the header stays
+  // a doorway and the controls stay away.
+  it('shows no filter header without an ad account', async () => {
     vi.stubGlobal('fetch', vi.fn())
 
     renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={false} />)
@@ -378,20 +314,6 @@ describe('MarketingClient', () => {
 
     expect(screen.queryByRole('button', { name: 'Date range' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Shops' })).toBeNull()
-  })
-
-  it("hands the affiliate section the page's own date and shop filters", async () => {
-    vi.stubGlobal('fetch', fetchPayload())
-
-    renderPage(<MarketingClient email="admin@test.local" shops={threeShops} hasAccounts={true} />)
-    await act(async () => {})
-
-    const props = () => JSON.parse(screen.getByTestId('affiliate-section').textContent!)
-    expect(props()).toMatchObject({ preset: 'this_month', shops: [] })
-
-    selectOnly('Panetti Norway')
-    await act(async () => {})
-    expect(props().shops).toEqual(['a'])
   })
 
   // Three shops, not one: "all shops" (the default, an empty selection) and
