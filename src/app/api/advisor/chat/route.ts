@@ -27,7 +27,13 @@ To answer "why did X change", fetch the same window and the equal window before 
 and compare them.
 
 If a tool returns nothing, or a figure is missing, say so. A confident wrong number
-is worse than an admitted gap. Write plainly and briefly.`
+is worse than an admitted gap. Write plainly and briefly.
+
+You are answering in a chat panel about 380 pixels wide, beside the page he is
+reading. Write short paragraphs, and where you list things put one short line each
+after a dash. NEVER use a markdown table or a heading: a table cannot fit that
+width and arrives as unreadable pipes. Put a product name, or the one figure that
+matters, in **double asterisks**, sparingly. Lead with the answer, then the reason.`
 
 export async function POST(req: Request) {
   try {
