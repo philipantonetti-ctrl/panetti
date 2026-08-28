@@ -79,6 +79,26 @@ The webhook receiver needs the deployment's public URL (`APP_URL`, or on
 Vercel the production URL is picked up automatically) and verifies every
 delivery against a per-shop HMAC secret the app generates itself.
 
+## Gorgias
+
+Gorgias stays the inbox the agents work in; this software is the layer behind
+it. The first piece is the sidebar: when an agent opens a ticket, Gorgias asks
+us about that customer and shows what we know without the agent leaving
+Gorgias.
+
+Switching it on:
+
+1. Set `GORGIAS_WIDGET_SECRET` to any long random string.
+2. In Gorgias, Settings -> Integrations -> HTTP integration. URL:
+   `https://panetti.vercel.app/api/gorgias/customer?email={{ticket.customer.email}}`,
+   method GET, and one header `X-Panetti-Secret` holding the same string.
+3. Add a widget on that integration and drag it into the ticket sidebar once.
+   It then appears on every ticket.
+
+The endpoint is read-only and reaches nothing in Gorgias. It answers 200 with
+`found: false` for an address we have never sold to, because Gorgias hides an
+empty widget and an error would read as a broken integration instead.
+
 ## The support inbox
 
 Every brand's support address in one queue, under Inbox. Each email becomes a
