@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { PageBody, PageHeader } from '@/components/shell/AppShell'
 import { isQuality, type Fact, type FactKind } from '@/lib/advisor/types'
 import type { BriefItem } from '@/lib/advisor/brief'
-import { Chat } from './Chat'
 
 export type Briefing = {
   day: string
@@ -597,7 +596,6 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
           </div>
         )}
 
-        <Chat day={briefing?.day ?? null} />
       </PageBody>
     </>
   )
