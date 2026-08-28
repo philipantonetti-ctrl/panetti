@@ -32,6 +32,14 @@ const row = (over: Partial<InventoryRow> = {}): InventoryRow => ({
     note: null,
   },
   byCountry: [{ country: 'NO', units: 90 }],
+  supply: {
+    productionDays: 45,
+    deliveryDays: 30,
+    moq: 100,
+    unitsPerContainer: 200,
+    coverDays: null,
+    arrivals: [{ quantity: 40, eta: day('2026-09-15') }],
+  },
   ...over,
 })
 
@@ -103,6 +111,31 @@ describe('shapeInventory', () => {
     expect(p.emptyBetween).toEqual({ from: '2026-09-01', until: '2026-09-20' })
     expect(p.overdueOnOrder).toEqual({ quantity: 41, since: '2026-06-01' })
     expect(p.onOrderWithoutEta).toBe(12)
+  })
+
+  /**
+   * "Based on what data?" is the second half of the client's own question, and
+   * the order-by date is arithmetic on the lead times: without them the answer
+   * can say WHEN to order but never WHY that day. Same for the container size
+   * behind "rounded up to a container".
+   */
+  it('carries the settings the dates and the quantity were worked out from', () => {
+    const p = shapeInventory(view([row()]), day('2026-08-25')).products[0]
+
+    expect(p.settings).toEqual({
+      productionDays: 45,
+      deliveryDays: 30,
+      leadTimeDays: 75,
+      minimumOrder: 100,
+      unitsPerContainer: 200,
+      coverDays: null,
+      coverDaysUsed: 90,
+    })
+  })
+
+  it('lists the purchase orders already on the way, with their dates', () => {
+    const p = shapeInventory(view([row()]), day('2026-08-25')).products[0]
+    expect(p.incoming).toEqual([{ quantity: 40, arrivesOn: '2026-09-15' }])
   })
 
   it('states the method in words, so the answer explains rather than asserts', () => {

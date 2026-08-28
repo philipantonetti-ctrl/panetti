@@ -1,5 +1,6 @@
 import type { InventoryView } from '@/lib/inventory/load'
 import { reorderTips } from '@/lib/inventory/reorder'
+import { DEFAULT_COVER_DAYS } from '@/lib/inventory/forecast'
 
 /**
  * The inventory page's own numbers, shaped for an answer.
@@ -73,6 +74,29 @@ export function shapeInventory(view: InventoryView, today: Date) {
       /** Why a figure above is missing. Null when everything computed. */
       whyBlank: r.forecast.note,
       salesByCountry: r.byCountry,
+      // What the dates and the quantity were worked out FROM. The order-by date
+      // is the run-out date minus the lead time, and the quantity is raised by
+      // the minimum and the container; without these the answer can state both
+      // and explain neither.
+      settings: {
+        productionDays: r.supply.productionDays,
+        deliveryDays: r.supply.deliveryDays,
+        leadTimeDays:
+          r.supply.productionDays === null && r.supply.deliveryDays === null
+            ? null
+            : (r.supply.productionDays ?? 0) + (r.supply.deliveryDays ?? 0),
+        minimumOrder: r.supply.moq,
+        unitsPerContainer: r.supply.unitsPerContainer,
+        coverDays: r.supply.coverDays,
+        /** What the forecast actually used, once the default filled the blank. */
+        coverDaysUsed: r.supply.coverDays ?? DEFAULT_COVER_DAYS,
+      },
+      incoming: r.supply.arrivals.map((a) => ({
+        quantity: a.quantity,
+        // Null is load-bearing: an arrival with no date moves nothing in the
+        // forecast, so an answer must not imply that it does.
+        arrivesOn: day(a.eta),
+      })),
     })),
     method:
       'Stock is walked forward day by day from the reading above, at the daily rate ' +

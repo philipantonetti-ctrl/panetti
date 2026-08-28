@@ -36,6 +36,23 @@ export type InventoryRow = {
   seasonal: boolean
   forecast: Forecast
   byCountry: { country: string; units: number }[]
+  /**
+   * What the forecast was GIVEN, kept beside what it concluded.
+   *
+   * The page shows the conclusion; the assistant has to be able to answer "and
+   * why that date?", which is arithmetic on the lead times, and "why that many?",
+   * which is the container size and the minimum. Those were inputs consumed
+   * inside forecast() and thrown away, so the working could not be shown.
+   */
+  supply: {
+    productionDays: number | null
+    deliveryDays: number | null
+    moq: number | null
+    unitsPerContainer: number | null
+    coverDays: number | null
+    /** Purchase orders still to land, as the forecast saw them. */
+    arrivals: { quantity: number; eta: Date | null }[]
+  }
 }
 
 export type InventoryView = {
@@ -230,6 +247,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
 
   const rows: InventoryRow[] = listed.map((item) => {
     const sku = normaliseSku(item.sku)
+    const arrivals = item.purchaseOrders.map((o) => ({ eta: o.eta, quantity: outstanding(o) }))
     const mine = sales.get(sku) ?? []
     const burn = dailyBurn(mine, today)
     const seasonal = hasSeasonalHistory(mine, today)
@@ -257,7 +275,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
           // the season twice and order for two Christmases.
           level: seasonalLevel(mine, today, index),
           index,
-          arrivals: item.purchaseOrders.map((o) => ({ eta: o.eta, quantity: outstanding(o) })),
+          arrivals,
           productionDays: item.productionDays,
           deliveryDays: item.deliveryDays,
           moq: item.moq,
@@ -269,6 +287,14 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
       byCountry: [...(countries.get(sku) ?? new Map())]
         .map(([country, units]) => ({ country, units }))
         .sort((a, b) => b.units - a.units),
+      supply: {
+        productionDays: item.productionDays,
+        deliveryDays: item.deliveryDays,
+        moq: item.moq,
+        unitsPerContainer: item.unitsPerContainer,
+        coverDays: item.coverDays,
+        arrivals,
+      },
     }
   })
 
