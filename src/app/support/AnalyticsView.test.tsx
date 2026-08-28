@@ -61,6 +61,7 @@ function show(over: Record<string, unknown> = {}) {
   const body = {
     days: 90,
     timezone: 'Europe/Oslo',
+    configured: true,
     from: '2026-08-01',
     to: '2026-08-03',
     previousFrom: '2026-05-03',
@@ -193,30 +194,58 @@ describe('AnalyticsView', () => {
     expect((week.querySelector('[title="Mon: 5"]') as HTMLElement).style.height).not.toBe('0%')
   })
 
-  /** A wall of dashes reads as broken software. */
-  it('explains itself instead of showing empty cards when nothing has been imported', async () => {
-    show({
+  /**
+   * An empty dashboard has four causes needing four different actions, and the
+   * first version of this said the same thing for all of them. The client spent
+   * a day asking why the page was empty after saving the keys.
+   */
+  describe('when there is nothing to show, it names which of the four it is', () => {
+    const nothing = {
       stats: emptyStats,
       previous: emptyStats,
       backlog: { open: 0, olderThanWeek: 0, oldestAgeDays: null, medianAgeHours: null },
-      sync: null,
+    }
+
+    it('says the keys are not reaching the app, and what that takes', async () => {
+      show({ ...nothing, configured: false, sync: null })
+
+      expect(await screen.findByText('Not connected to Gorgias yet')).toBeInTheDocument()
+      expect(screen.getByText(/GORGIAS_DOMAIN/)).toBeInTheDocument()
+      expect(screen.getByText(/redeploy is needed/)).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Go to support settings' })).toBeInTheDocument()
     })
 
-    expect(await screen.findByText('No conversations imported yet')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Go to support settings' })).toBeInTheDocument()
-    expect(screen.queryByText('Median time to close')).not.toBeInTheDocument()
-  })
+    /** The case that cost a day: keys in, nothing wrong, simply not run yet. */
+    it('says it is connected and waiting, not that it is unconfigured', async () => {
+      show({ ...nothing, configured: true, sync: null })
 
-  /** Connected and quiet is a different thing from never connected, and says so. */
-  it('distinguishes a quiet period from a missing connection', async () => {
-    show({
-      stats: emptyStats,
-      previous: emptyStats,
-      backlog: { open: 0, olderThanWeek: 0, oldestAgeDays: null, medianAgeHours: null },
+      expect(await screen.findByText('Connected, waiting for the first import')).toBeInTheDocument()
+      expect(screen.getByText(/every 15 minutes/)).toBeInTheDocument()
+      expect(screen.queryByText('Not connected to Gorgias yet')).not.toBeInTheDocument()
     })
 
-    expect(await screen.findByText('No tickets in this period')).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Go to support settings' })).not.toBeInTheDocument()
+    /**
+     * A failing import used to read as "no tickets in this period", swallowing
+     * the one line that explained the whole thing.
+     */
+    it('shows what Gorgias said back rather than calling a failure a quiet period', async () => {
+      show({
+        ...nothing,
+        configured: true,
+        sync: { ...sync, ranAt: '2026-08-28T11:00:00.000Z', lastError: 'Gorgias responded 401: unauthorized' },
+      })
+
+      expect(await screen.findByText('The last import did not work')).toBeInTheDocument()
+      expect(screen.getByText('Gorgias responded 401: unauthorized')).toBeInTheDocument()
+      expect(screen.queryByText('No tickets in this period')).not.toBeInTheDocument()
+    })
+
+    it('calls a genuinely quiet period quiet, once an import has actually run', async () => {
+      show({ ...nothing, configured: true, sync: { ...sync, ranAt: '2026-08-28T11:00:00.000Z' } })
+
+      expect(await screen.findByText('No tickets in this period')).toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: 'Go to support settings' })).not.toBeInTheDocument()
+    })
   })
 
   it('says it could not load rather than drawing an empty dashboard', async () => {
