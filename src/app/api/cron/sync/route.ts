@@ -4,6 +4,7 @@ import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affiliate/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
+import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
 import {
@@ -103,6 +104,17 @@ const B2B_SALES_DEADLINE_MS = 265_000
  * three. A tick that overran would take the poll and the delivery alert with it.
  */
 const BRING_INVOICES_DEADLINE_MS = 270_000
+
+/**
+ * The helpdesk import, bounded well short of the parcel poll.
+ *
+ * It paces itself at roughly one request a second against an account limit of
+ * 40 per twenty seconds, and it walks five years of history a few pages per
+ * run, so a generous slice buys more history per tick. It sits AFTER the money
+ * stages for the usual reason: support reporting is worth having, and worth
+ * nothing compared with the sales figures every other page is built on.
+ */
+const SUPPORT_DEADLINE_MS = 265_000
 
 /**
  * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
@@ -294,6 +306,19 @@ export async function GET(req: Request) {
     // refactor away from a failed sync.
   }
 
+  // The helpdesk's tickets, for the support reporting. Best-effort like every
+  // stage after the shops: Gorgias being unreachable, rate limiting us, or
+  // simply not connected must never cost the money figures.
+  let support: SupportSyncResult = {
+    configured: false, stored: 0, backfilling: false, oldestSeenAt: null, error: null,
+  }
+  try {
+    support = await syncSupport({ deadline: runStartedAt + SUPPORT_DEADLINE_MS })
+  } catch {
+    // syncSupport does not throw, but a caller that assumes so is one refactor
+    // away from a failed sync.
+  }
+
   // Parcel tracking, last of the data pulls. Best-effort like the rest: Bring
   // being down must never fail the shop sync, and every parcel keeps its own
   // lastError.
@@ -334,6 +359,11 @@ export async function GET(req: Request) {
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,
+    supportConfigured: support.configured,
+    supportStored: support.stored,
+    /** True while five years of helpdesk history is still walking backwards. */
+    supportBackfilling: support.backfilling,
+    supportError: support.error,
     alertsSent: alerts.sent,
     alertsSkipped: alerts.skipped,
     // Reported per reason, not as a bare total: a line dropped because its SKU
