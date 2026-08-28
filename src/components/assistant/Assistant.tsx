@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { parseReply, type Span } from '@/lib/advisor/format'
 
 /**
  * The assistant, reachable from every page.
@@ -32,6 +33,42 @@ const EXAMPLES = [
 ]
 
 type Bubble = { role: 'user' | 'assistant'; text: string }
+
+/**
+ * An answer as paragraphs and lists rather than as the markdown the model
+ * writes. Rendered as elements, never as HTML, so the reply cannot inject
+ * markup into the page it is answering about.
+ */
+function Answer({ text }: { text: string }) {
+  const spans = (parts: Span[], key: string) =>
+    parts.map((s, i) =>
+      s.bold ? (
+        <strong key={`${key}-${i}`} className="font-semibold text-ink">
+          {s.text}
+        </strong>
+      ) : (
+        <span key={`${key}-${i}`}>{s.text}</span>
+      ),
+    )
+
+  return (
+    <div className="flex flex-col gap-2 text-[13px] text-muted">
+      {parseReply(text).map((block, b) =>
+        block.kind === 'bullets' ? (
+          <ul key={b} className="flex list-disc flex-col gap-1 pl-4 marker:text-faint">
+            {block.items.map((item, i) => (
+              <li key={i}>{spans(item, `${b}-${i}`)}</li>
+            ))}
+          </ul>
+        ) : (
+          <p key={b} className="whitespace-pre-wrap">
+            {spans(block.spans, String(b))}
+          </p>
+        ),
+      )}
+    </div>
+  )
+}
 
 export function Assistant() {
   const pathname = usePathname()
@@ -187,18 +224,15 @@ export function Assistant() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {bubbles.map((bubble, i) => (
-              <p
-                key={i}
-                className={
-                  bubble.role === 'user'
-                    ? 'text-[13px] font-medium text-ink'
-                    : 'whitespace-pre-wrap text-[13px] text-muted'
-                }
-              >
-                {bubble.text}
-              </p>
-            ))}
+            {bubbles.map((bubble, i) =>
+              bubble.role === 'user' ? (
+                <p key={i} className="text-[13px] font-medium text-ink">
+                  {bubble.text}
+                </p>
+              ) : (
+                <Answer key={i} text={bubble.text} />
+              ),
+            )}
             {busy && <p className="text-[13px] text-faint">Looking it up…</p>}
             <div ref={endRef} />
           </div>
