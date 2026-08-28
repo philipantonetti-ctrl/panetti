@@ -44,7 +44,15 @@ export function Assistant() {
   const transcript = useRef<unknown[]>([])
   const endRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
+  /**
+   * Restored when the panel is opened, not on mount.
+   *
+   * Reading storage in an effect would set state during render for every page
+   * in the product, to fill a panel nobody has opened yet. Doing it on the
+   * click costs nothing until it is wanted, and there is nothing on screen
+   * before that which could disagree with the server's HTML.
+   */
+  function restore() {
     const saved = window.localStorage.getItem(STORAGE_KEY)
     if (!saved) return
     try {
@@ -57,7 +65,7 @@ export function Assistant() {
     } catch {
       // A corrupt entry is not worth a broken page.
     }
-  }, [])
+  }
 
   // matchMedia is absent in jsdom, so guard rather than assume a browser.
   useEffect(() => {
@@ -120,7 +128,10 @@ export function Assistant() {
   if (!open) {
     return (
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          restore()
+          setOpen(true)
+        }}
         aria-label="Ask the assistant"
         className="fixed bottom-5 right-5 z-[var(--z-sticky)] flex h-12 w-12 items-center justify-center rounded-full bg-ink text-white shadow-lg transition-transform duration-150 hover:scale-105 motion-reduce:transition-none"
       >
