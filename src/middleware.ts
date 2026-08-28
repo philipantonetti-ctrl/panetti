@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/auth/session'
 
 /** Pages that need a session at all. Everything else passes straight through. */
-const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox']
+const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox', '/support']
 
 /** Pages an ambassador is allowed to open. Everything else is the company's. */
 const AMBASSADOR_PAGES = ['/portal', '/account']

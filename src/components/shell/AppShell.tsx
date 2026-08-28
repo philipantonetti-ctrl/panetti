@@ -81,6 +81,15 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       {
+        href: '/support',
+        label: 'Support AI',
+        icon: icon(
+          <>
+            <path d="M12 3a7 7 0 0 0-7 7v4a3 3 0 0 0 3 3h1v-6H7v-1a5 5 0 0 1 10 0v1h-2v6h1a3 3 0 0 0 3-3v-4a7 7 0 0 0-7-7Z" />
+          </>,
+        ),
+      },
+      {
         href: '/orders',
         label: 'Orders',
         icon: icon(
