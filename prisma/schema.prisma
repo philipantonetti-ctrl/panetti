@@ -72,6 +72,7 @@ model Shop {
   adCampaigns           AdCampaign[]
   b2bCustomers          B2bCustomer[]
   deliveryPromises      DeliveryPromise[]
+  knowledgeItems        KnowledgeItem[]
   affiliateTransactions AffiliateTransaction[]
   mailboxes             Mailbox[]
 }
@@ -1268,4 +1269,116 @@ model SupportSyncState {
   ticketsStored Int       @default(0)
   ranAt         DateTime?
   lastError     String?
+}
+
+/// One thing the support AI is allowed to know.
+///
+/// The knowledge base, kept as rows a person edits rather than as a document
+/// nobody owns. Scope is what makes it usable across nine shops and six
+/// languages: a Norwegian return policy must not be quoted to a German
+/// customer, and a null scope means "everywhere" rather than "unknown".
+///
+/// Deliberately NOT embeddings to begin with. At this size - tens of policies,
+/// hundreds of answers - scoping plus keyword matching finds the right rows,
+/// and a vector index would be machinery earning nothing yet. The retrieval
+/// step is one function; when the catalogue outgrows it, only that changes.
+model KnowledgeItem {
+  id    String @id @default(cuid())
+  /// tone | instruction | faq | policy | product | troubleshooting |
+  /// never_say | always_escalate | example
+  kind  String
+  title String
+  body  String
+
+  /// Scope. Null in any of these means "applies everywhere".
+  shopId   String?
+  country  String? // ISO-2
+  language String? // nb | sv | da | fi | de | en
+  sku      String?
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shop Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@index([kind, active])
+  @@index([shopId])
+}
+
+/// What the AI may do on its own. One row, edited in the dashboard.
+///
+/// Conservative by default and deliberately so: `mode` starts at "draft",
+/// where the AI never sends anything to a customer and only leaves a suggested
+/// reply for a person. Authority is granted later, category by category, once
+/// the review screen shows the answers are good.
+model AiSupportRules {
+  id String @id @default("singleton")
+
+  /// off = do nothing. draft = suggest only, never send. auto = may send, but
+  /// only for the categories named below and only above the confidence floor.
+  mode String @default("draft")
+
+  /// The only categories it may ever answer by itself.
+  autoCategories String[] @default([])
+
+  /// Words that force a human whatever the AI thinks it knows. Compensation,
+  /// lawyers, safety. Checked against the customer's own words, not the
+  /// model's reading of them, so a confident misreading cannot get past it.
+  escalateKeywords String[] @default([])
+
+  /// Below this the AI escalates instead of answering. 0 to 1.
+  minConfidence Float @default(0.85)
+
+  /// Appended to every prompt. The house voice, in the client's own words.
+  extraInstructions String @default("")
+
+  updatedAt DateTime @updatedAt
+}
+
+/// What the AI did with one conversation, and what a person thought of it.
+///
+/// The review record. Every decision is stored whether it was sent, drafted or
+/// escalated, because the reason to keep them is to see whether the AI can be
+/// trusted with more - and a log that only kept the successes could never
+/// answer that.
+model AiConversation {
+  id String @id @default(cuid())
+
+  /// The helpdesk's own ticket id, so a row can be found from either side.
+  source           String @default("gorgias")
+  externalTicketId String
+
+  customerEmail String?
+  /// What the customer actually wrote.
+  question      String
+  /// What the AI proposed. Null when it refused to draft anything.
+  answer        String?
+
+  category   String?
+  language   String?
+  /// The model's own reported confidence, 0 to 1. Reported, never trusted on
+  /// its own: the rules decide, this only records what it claimed.
+  confidence Float?
+
+  /// sent | drafted | escalated
+  decision         String
+  /// Why a human was needed. Null when the AI answered.
+  escalationReason String?
+  /// A short summary left for whoever picks it up.
+  summary          String?
+
+  /// The order the conversation was about, if one was matched.
+  orderNumber String?
+
+  /// good | bad, from the review screen. Null until someone judges it.
+  rating     String?
+  /// What it should have said. Becomes an example for later answers.
+  correction String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([source, externalTicketId, createdAt])
+  @@index([createdAt])
+  @@index([decision])
 }
