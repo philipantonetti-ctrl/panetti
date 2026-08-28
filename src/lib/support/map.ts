@@ -79,9 +79,9 @@ const date = (v: string | null | undefined): Date | null => {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-export function mapTicket(t: GorgiasTicket): MappedTicket {
+export function mapTicket(t: GorgiasTicket, source: string = SOURCE): MappedTicket {
   return {
-    source: SOURCE,
+    source,
     externalId: String(t.id),
     status: t.status,
     priority: text(t.priority),
@@ -110,9 +110,9 @@ export function mapTicket(t: GorgiasTicket): MappedTicket {
   }
 }
 
-export function mapAgent(u: GorgiasUser) {
+export function mapAgent(u: GorgiasUser, source: string = SOURCE) {
   return {
-    source: SOURCE,
+    source,
     externalId: String(u.id),
     email: lower(u.email),
     name: text(u.name),

@@ -40,13 +40,13 @@ export type SupportSyncResult = {
 
 const sleep = (ms: number) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve())
 
-async function storeTickets(raw: GorgiasTicket[]): Promise<number> {
+async function storeTickets(raw: GorgiasTicket[], source: string): Promise<number> {
   let stored = 0
   for (const t of raw) {
     // A ticket with no creation stamp cannot be placed in time, so it is no use
     // to any report. Skipped rather than stored with a guessed date.
     if (!t.created_datetime) continue
-    const data = mapTicket(t)
+    const data = mapTicket(t, source)
     await db.supportTicket.upsert({
       where: { source_externalId: { source: data.source, externalId: data.externalId } },
       create: data,
@@ -60,10 +60,10 @@ async function storeTickets(raw: GorgiasTicket[]): Promise<number> {
 }
 
 /** The newest updatedAt we hold, which is where the incremental pass stops. */
-async function readState() {
+async function readState(source: string) {
   return db.supportSyncState.upsert({
-    where: { source: SOURCE },
-    create: { source: SOURCE },
+    where: { source },
+    create: { source },
     update: {},
   })
 }
@@ -80,6 +80,7 @@ async function incremental(
   watermark: Date | null,
   deadline: number,
   pause: number,
+  source: string,
 ): Promise<{ stored: number; newest: Date | null }> {
   let cursor: string | null = null
   let stored = 0
@@ -94,7 +95,7 @@ async function incremental(
     // Everything on this page that is newer than what we hold. The moment one
     // is older, the rest of history is older too and the pass is done.
     const fresh = watermark ? data.filter((t) => new Date(t.updated_datetime) > watermark) : data
-    stored += await storeTickets(fresh)
+    stored += await storeTickets(fresh, source)
 
     for (const t of fresh) {
       const at = new Date(t.updated_datetime)
@@ -115,6 +116,7 @@ async function backfill(
   cursor: string | null,
   deadline: number,
   pause: number,
+  source: string,
 ): Promise<{ stored: number; cursor: string | null; done: boolean; oldest: Date | null }> {
   let next = cursor
   let stored = 0
@@ -124,7 +126,7 @@ async function backfill(
     if (Date.now() > deadline) return { stored, cursor: next, done: false, oldest }
 
     const { data, nextCursor } = await fetchTickets(creds, { order: 'created_datetime:asc', cursor: next }, deadline)
-    stored += await storeTickets(data)
+    stored += await storeTickets(data, source)
 
     for (const t of data) {
       const at = new Date(t.created_datetime)
@@ -141,13 +143,13 @@ async function backfill(
 }
 
 /** Who answers tickets. A short list, refreshed whole. */
-async function syncAgents(creds: GorgiasCredentials, deadline: number, pause: number): Promise<void> {
+async function syncAgents(creds: GorgiasCredentials, deadline: number, pause: number, source: string): Promise<void> {
   let cursor: string | null = null
   for (let page = 0; page < 5; page++) {
     if (Date.now() > deadline) return
     const { data, nextCursor } = await fetchUsers(creds, cursor, deadline)
     for (const u of data) {
-      const agent = mapAgent(u)
+      const agent = mapAgent(u, source)
       await db.supportAgent.upsert({
         where: { source_externalId: { source: agent.source, externalId: agent.externalId } },
         create: agent,
@@ -166,7 +168,7 @@ async function syncAgents(creds: GorgiasCredentials, deadline: number, pause: nu
  * Only scored surveys are worth writing: an unanswered one is not a zero, and
  * storing it as one would drag every average down with silence.
  */
-async function syncSurveys(creds: GorgiasCredentials, deadline: number, pause: number): Promise<void> {
+async function syncSurveys(creds: GorgiasCredentials, deadline: number, pause: number, source: string): Promise<void> {
   let cursor: string | null = null
   for (let page = 0; page < 3; page++) {
     if (Date.now() > deadline) return
@@ -174,7 +176,7 @@ async function syncSurveys(creds: GorgiasCredentials, deadline: number, pause: n
     for (const s of data) {
       if (s.score === null || s.score === undefined) continue
       await db.supportTicket.updateMany({
-        where: { source: SOURCE, externalId: String(s.ticket_id) },
+        where: { source, externalId: String(s.ticket_id) },
         data: { satisfaction: s.score },
       })
     }
@@ -192,45 +194,52 @@ export async function syncSupport(opts: {
   deadline: number
   /** Between pages. Only a test sets it to zero; production pacing is the point. */
   pauseMs?: number
+  /**
+   * Which channel these tickets belong to. Only a test overrides it, and it
+   * MUST: cleaning up by source is how a test avoids deleting the real
+   * import, which is a mistake this code has already made once.
+   */
+  source?: string
 }): Promise<SupportSyncResult> {
   const pause = opts.pauseMs ?? PAGE_PAUSE_MS
+  const source = opts.source ?? SOURCE
   const creds = gorgiasCredentials()
   if (!creds) {
     return { configured: false, stored: 0, backfilling: false, oldestSeenAt: null, error: null }
   }
 
-  const state = await readState()
+  const state = await readState(source)
   let stored = 0
   let backfilling = state.backfilling
   let oldestSeenAt = state.oldestSeenAt
 
   try {
-    await syncAgents(creds, opts.deadline, pause)
+    await syncAgents(creds, opts.deadline, pause, source)
 
-    const fresh = await incremental(creds, state.watermark, opts.deadline, pause)
+    const fresh = await incremental(creds, state.watermark, opts.deadline, pause, source)
     stored += fresh.stored
     if (fresh.newest) {
       await db.supportSyncState.update({
-        where: { source: SOURCE },
+        where: { source },
         data: { watermark: fresh.newest },
       })
     }
 
     if (state.backfilling) {
-      const old = await backfill(creds, state.backfillCursor, opts.deadline, pause)
+      const old = await backfill(creds, state.backfillCursor, opts.deadline, pause, source)
       stored += old.stored
       backfilling = !old.done
       if (old.oldest && (!oldestSeenAt || old.oldest < oldestSeenAt)) oldestSeenAt = old.oldest
       await db.supportSyncState.update({
-        where: { source: SOURCE },
+        where: { source },
         data: { backfillCursor: old.cursor, backfilling, oldestSeenAt },
       })
     }
 
-    await syncSurveys(creds, opts.deadline, pause)
+    await syncSurveys(creds, opts.deadline, pause, source)
 
     await db.supportSyncState.update({
-      where: { source: SOURCE },
+      where: { source },
       data: { ranAt: new Date(), lastError: null, ticketsStored: { increment: stored } },
     })
     return { configured: true, stored, backfilling, oldestSeenAt, error: null }
@@ -239,7 +248,7 @@ export async function syncSupport(opts: {
     // Recorded rather than thrown. What it DID store stays stored, and the
     // watermark only ever moved for pages that completed.
     await db.supportSyncState
-      .update({ where: { source: SOURCE }, data: { ranAt: new Date(), lastError: error } })
+      .update({ where: { source }, data: { ranAt: new Date(), lastError: error } })
       .catch(() => {})
     return { configured: true, stored, backfilling, oldestSeenAt, error }
   }
