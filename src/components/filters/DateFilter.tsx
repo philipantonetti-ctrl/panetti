@@ -86,11 +86,18 @@ export function DateFilter({
   from,
   to,
   onChange,
+  align = 'right',
 }: {
   preset: Preset | 'custom'
   from: string
   to: string
   onChange: (next: RangeChoice) => void
+  /**
+   * Which edge of the button the panel hangs from. The panel is 640px wide, so
+   * a filter sitting at the left of a page needs it to open rightwards or it
+   * runs off the screen, and a filter at the right needs the opposite.
+   */
+  align?: 'left' | 'right'
 }) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<Draft>({})
@@ -136,7 +143,7 @@ export function DateFilter({
         <>
           <div className="fixed inset-0" style={{ zIndex: 'var(--z-dropdown)' }} onClick={() => setOpen(false)} />
           <div
-            className="absolute right-0 mt-1.5 flex w-[640px] max-w-[92vw] gap-3 overflow-auto rounded-[var(--radius-card)] bg-surface p-3 shadow-lg"
+            className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} mt-1.5 flex w-[640px] max-w-[92vw] gap-3 overflow-auto rounded-[var(--radius-card)] bg-surface p-3 shadow-lg`}
             style={{ zIndex: 'calc(var(--z-dropdown) + 1)' }}
           >
             <div className="w-[128px] shrink-0 border-r border-line pr-2">

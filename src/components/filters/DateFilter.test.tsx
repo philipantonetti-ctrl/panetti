@@ -90,3 +90,26 @@ describe('DateFilter calendar', () => {
     expect(screen.getByText('July 2027')).toBeTruthy()
   })
 })
+
+/**
+ * The panel is 640px wide, so which edge it hangs from decides whether it is
+ * on the screen at all. The dashboard's filter sits at the right of the header
+ * and the support page's sits at the left, and each needs the opposite.
+ */
+describe('which way the panel opens', () => {
+  const open = (align?: 'left' | 'right') => {
+    render(<DateFilter preset="this_month" from="" to="" onChange={vi.fn()} {...(align ? { align } : {})} />)
+    fireEvent.click(screen.getByLabelText('Date range'))
+    return screen.getByText('Apply').closest('div[class*="absolute"]')!
+  }
+
+  it('hangs from the right by default, which is where the dashboard needs it', () => {
+    expect(open().className).toContain('right-0')
+  })
+
+  it('hangs from the left when asked, so a filter at the page edge stays on screen', () => {
+    const panel = open('left')
+    expect(panel.className).toContain('left-0')
+    expect(panel.className).not.toContain('right-0')
+  })
+})
