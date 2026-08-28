@@ -8,6 +8,8 @@ import { productFigures } from '../metrics/products'
 import { deliveryStats } from '../delivery/stats'
 import { buildMarketing } from '../ads/marketing'
 import { accountIdsForShops, accountSpendRows } from '../ads/attribution'
+import { loadInventory } from '../inventory/load'
+import { shapeInventory } from './inventory-answer'
 
 /**
  * What the chat is allowed to ask.
@@ -122,6 +124,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
+    name: 'get_inventory',
+    description:
+      'What is in stock now, how fast it sells, when each product runs out, what to order and when, and the working behind every one of those figures. Call this for any question about stock, the forecast, purchase orders, containers, or why an order was suggested. Takes no date range: it is about now and what follows.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'get_orders',
     description:
       'Individual orders in a range: number, date, status, customer, country and value. Call this only when the question is about specific orders - use get_metrics for totals.',
@@ -190,6 +202,13 @@ export async function runTool(name: string, input: ToolInput): Promise<unknown> 
       if (e instanceof MixedCurrencyError) throw new RangeError(e.message)
       throw e
     }
+  }
+
+  if (name === 'get_inventory') {
+    // loadInventory() is the page's own loader, so the assistant reads exactly
+    // what the Inventory and forecasting tab shows. Its default `today` is the
+    // real clock, matching the page.
+    return shapeInventory(await loadInventory(), new Date())
   }
 
   if (name === 'get_orders') {

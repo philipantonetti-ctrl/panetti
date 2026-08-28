@@ -2,14 +2,26 @@ import { describe, expect, it } from 'vitest'
 import { parseWindow, TOOL_DEFINITIONS, runTool } from './tools'
 
 describe('TOOL_DEFINITIONS', () => {
-  it('offers exactly the five read-only tools, and nothing that writes', () => {
+  it('offers exactly the six read-only tools, and nothing that writes', () => {
     expect(TOOL_DEFINITIONS.map((t) => t.name).sort()).toEqual([
       'get_delivery',
+      'get_inventory',
       'get_marketing',
       'get_metrics',
       'get_orders',
       'get_products',
     ])
+  })
+
+  /**
+   * The forecast is about what is on the shelf right now and what happens
+   * next, so it takes no window - and a date range it silently ignored would
+   * teach the model that ranges do not matter here.
+   */
+  it('asks the inventory tool for no date range at all', () => {
+    const inventory = TOOL_DEFINITIONS.find((t) => t.name === 'get_inventory')!
+    expect(Object.keys(inventory.input_schema.properties)).toEqual([])
+    expect(inventory.input_schema.required).toEqual([])
   })
 
   it('describes every parameter, so the model does not have to guess', () => {
