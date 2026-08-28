@@ -53,6 +53,7 @@ type Backlog = {
 type Payload = {
   days: number
   timezone: string
+  configured: boolean
   from: string
   to: string
   previousFrom: string
@@ -407,22 +408,62 @@ function Bars({ title, rows, empty }: { title: string; rows: Breakdown[]; empty:
 /**
  * Said when there is nothing to show yet.
  *
- * A page of dashes and empty cards reads as broken. This says which of the two
- * things is true - not connected, or connected and quiet - so nobody goes
- * looking for a fault that is not there.
+ * A page of dashes and empty cards reads as broken, but so does a page that
+ * says the same thing for four different reasons. An empty dashboard has four
+ * causes and they need four different actions, so it names which one it is.
+ *
+ * The first version of this collapsed them into "connected or not", and the
+ * client spent a day asking why the page was empty after saving the keys:
+ * "keys saved, first import has not run" and "no keys at all" both showed the
+ * setup message. A failing import was worse still, reading as "no tickets in
+ * this period" while quietly holding the error that explained everything.
  */
-function NothingYet({ connected, days }: { connected: boolean; days: number }) {
+function NothingYet({
+  configured,
+  ranAt,
+  lastError,
+  days,
+}: {
+  configured: boolean
+  ranAt: string | null
+  lastError: string | null
+  days: number
+}) {
+  // Ordered by how early it fails: no keys, then a broken run, then a quiet one.
+  const state = !configured ? 'no-keys' : lastError ? 'failing' : !ranAt ? 'waiting' : 'quiet'
+
+  const TEXT = {
+    'no-keys': {
+      title: 'Not connected to Gorgias yet',
+      body: 'This app cannot see the Gorgias keys. All three of GORGIAS_DOMAIN, GORGIAS_EMAIL and GORGIAS_API_KEY have to be set on the Production environment, and Vercel only hands them to the app on a new deployment, so a redeploy is needed after adding them. GORGIAS_DOMAIN is the name on its own, not the full address.',
+    },
+    failing: {
+      title: 'The last import did not work',
+      body: 'The keys are here, so this is what Gorgias said back. A wrong domain, a key made from a different user, or a revoked key all land here.',
+    },
+    waiting: {
+      title: 'Connected, waiting for the first import',
+      body: 'The keys are here and the import has not run yet. It runs on its own every 15 minutes, and the history back to 2021 arrives over the runs after that.',
+    },
+    quiet: {
+      title: 'No tickets in this period',
+      body: `Nothing arrived in the last ${days} days. Try a longer period, or check back once the import has run again.`,
+    },
+  }[state]
+
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface px-5 py-8 text-center">
-      <h3 className="text-[14px] font-semibold text-ink">
-        {connected ? 'No tickets in this period' : 'No conversations imported yet'}
-      </h3>
-      <p className="mx-auto mt-1.5 max-w-[46ch] text-[13px] text-muted">
-        {connected
-          ? `Nothing arrived in the last ${days} days. Try a longer period, or check back once the import has run again.`
-          : 'Once the Gorgias keys are saved, conversations import on their own and every figure on this page fills in, including the history going back years.'}
-      </p>
-      {!connected && (
+      <h3 className="text-[14px] font-semibold text-ink">{TEXT.title}</h3>
+      <p className="mx-auto mt-1.5 max-w-[54ch] text-[13px] text-muted">{TEXT.body}</p>
+
+      {/* The error itself, never swallowed: it is the only thing that says WHY. */}
+      {lastError && (
+        <p className="mx-auto mt-3 max-w-[54ch] rounded-[var(--radius-control)] border border-line bg-panel px-3 py-2 text-left text-[12px] text-warn">
+          {lastError}
+        </p>
+      )}
+
+      {state === 'no-keys' && (
         <a
           href="/settings/ai-support"
           className="mt-4 inline-block rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-[12px] font-semibold text-white"
@@ -524,12 +565,18 @@ export function AnalyticsView() {
     </div>
   )
 
-  // Nothing has ever been imported: one honest explanation beats eleven empty cards.
+  // Nothing to show: one explanation that names the actual cause beats eleven
+  // empty cards, and beats one message that fits four different situations.
   if (s.tickets === 0 && data.backlog.open === 0) {
     return (
       <div className="space-y-4">
         {period}
-        <NothingYet connected={data.sync !== null} days={data.days} />
+        <NothingYet
+          configured={data.configured}
+          ranAt={data.sync?.ranAt ?? null}
+          lastError={data.sync?.lastError ?? null}
+          days={data.days}
+        />
       </div>
     )
   }

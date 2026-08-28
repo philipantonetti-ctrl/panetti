@@ -3,6 +3,7 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
+import { gorgiasCredentials } from '@/lib/support/client'
 import { backlogHealth, supportStats, type StatTicket } from '@/lib/support/stats'
 import { zonedDayStr } from '@/lib/tz'
 
@@ -110,6 +111,15 @@ export async function GET(req: Request) {
       {
         days,
         timezone,
+        /**
+         * Whether the helpdesk keys reach this running app at all.
+         *
+         * Without it an empty page has two very different causes that look
+         * identical: nothing configured, or configured and the first import
+         * has not run. Telling them apart took a round of messages with the
+         * client, which is exactly what the page should have answered itself.
+         */
+        configured: gorgiasCredentials() !== null,
         /**
          * The window's first and last calendar day on the workspace clock. The
          * chart needs these to draw quiet days: a day with no tickets never
