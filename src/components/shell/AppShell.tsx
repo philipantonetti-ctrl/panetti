@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ToastContext } from '@/components/toast/useToast'
 import { FreshBuild } from './FreshBuild'
+import { Assistant } from '@/components/assistant/Assistant'
 
 /**
  * The app shell.
@@ -386,6 +387,12 @@ export function AppShell({
 
         {children}
       </div>
+
+      {/* The assistant follows the admin around the product. Not for marketing
+          or the ambassador portal (which renders this shell with nav={false}):
+          it can read company money, and the route's own assertAdmin is the
+          real gate - this only declines to show the door. */}
+      {nav && role === 'ADMIN' && <Assistant />}
     </div>
   )
 }

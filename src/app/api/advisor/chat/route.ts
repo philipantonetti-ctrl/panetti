@@ -5,6 +5,8 @@ import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { ADVISOR_MODEL } from '@/lib/advisor/brief'
 import { runTool, TOOL_DEFINITIONS } from '@/lib/advisor/tools'
 import { trimTranscript, type Turn } from '@/lib/advisor/trim'
+import { METHODOLOGY } from '@/lib/advisor/methodology'
+import { pageContext } from '@/lib/advisor/page-context'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -39,7 +41,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const body = (await req.json()) as { messages?: Turn[] }
+    const body = (await req.json()) as { messages?: Turn[]; page?: string }
     const messages = Array.isArray(body.messages) ? body.messages : []
     if (messages.length === 0) {
       return NextResponse.json({ error: 'Ask a question first.' }, { status: 400, headers: NO_STORE })
@@ -55,6 +57,8 @@ export async function POST(req: Request) {
     // array the client stores, so trimming once on the way in caps the cost of
     // this request AND the size of what the browser keeps.
     const turns = trimTranscript(messages) as Anthropic.MessageParam[]
+    // Which page the question was asked from, when it is one we can name.
+    const where = pageContext(body.page)
 
     // A bounded loop, not a while(true): a model that keeps calling tools must
     // stop somewhere, and stopping visibly beats a request the platform kills.
@@ -63,8 +67,17 @@ export async function POST(req: Request) {
         model: ADVISOR_MODEL,
         max_tokens: 8000,
         system: [
-          // Stable prefix, cached - the chat re-sends it on every turn.
-          { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+          // Stable prefix, cached - the chat re-sends it on every turn, and the
+          // methodology is long. It must stay byte-identical between requests,
+          // which is why the page below is a second block rather than appended.
+          {
+            type: 'text',
+            text: `${SYSTEM_PROMPT}\n\n${METHODOLOGY}`,
+            cache_control: { type: 'ephemeral' },
+          },
+          // Where the question was asked from. Changes as the user walks around
+          // the product, so it is never cached.
+          ...(where ? [{ type: 'text' as const, text: where }] : []),
         ],
         tools: TOOL_DEFINITIONS,
         messages: turns,

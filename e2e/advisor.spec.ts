@@ -46,10 +46,17 @@ test.describe('Advisor', () => {
     await expect(empty.or(written).first()).toBeVisible()
   })
 
-  test('offers the chat box', async ({ page }) => {
+  /**
+   * The chat that used to sit at the bottom of this page is now the assistant
+   * in the corner of every page, so this checks the door opens here too.
+   * Deliberately never sends a message: that would spend money on the real
+   * model every time the suite runs.
+   */
+  test('offers the assistant', async ({ page }) => {
     await signIn(page, 'admin@ecom.test')
     await page.goto('/advisor')
-    await expect(page.getByPlaceholder(/Ask about any shop/i)).toBeVisible()
+    await page.getByRole('button', { name: /ask the assistant/i }).click()
+    await expect(page.getByLabel('Your question')).toBeVisible()
   })
 
   test('an ambassador can never reach it', async ({ page }) => {
