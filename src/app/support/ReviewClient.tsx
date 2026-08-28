@@ -99,7 +99,7 @@ export function ReviewClient({ email }: { email: string }) {
     <AppShell email={email}>
       <PageHeader
         title="Support"
-        subtitle="The customer service picture, and what the assistant did with it."
+        subtitle="How customer service is performing, and every conversation the assistant handled."
       />
 
       <PageTabs tabs={ADVISOR_TABS} />
