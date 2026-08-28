@@ -15,7 +15,13 @@ import { Assistant } from '@/components/assistant/Assistant'
  * not account chrome. They never sit next to "sign out" again.
  */
 
-type NavItem = { href: string; label: string; icon: React.ReactNode }
+type NavItem = {
+  href: string
+  label: string
+  icon: React.ReactNode
+  /** Other pages this entry owns, so a tab of its own does not unlight it. */
+  owns?: string[]
+}
 
 const icon = (path: React.ReactNode) => (
   <svg
@@ -61,8 +67,10 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       {
-        href: '/advisor',
-        label: 'Advisor',
+        href: '/support',
+        label: 'Support AI',
+        // It owns the Advisor briefing too: they are one place with two tabs.
+        owns: ['/advisor'],
         icon: icon(
           <>
             <path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
@@ -312,8 +320,11 @@ export function AppShell({
     }
   }
 
-  const isActive = (href: string) =>
-    href === '/settings' ? pathname === '/settings' : pathname.startsWith(href)
+  const isActive = (item: NavItem) => {
+    if (item.href === '/settings') return pathname === '/settings'
+    const paths = [item.href, ...(item.owns ?? [])]
+    return paths.some((p) => pathname.startsWith(p))
+  }
 
   const groups = role === 'MARKETING' ? MARKETING_NAV : NAV
   const home = role === 'MARKETING' ? '/ambassadors' : '/dashboard'
@@ -338,7 +349,7 @@ export function AppShell({
                 </p>
                 <div className="flex gap-1 lg:flex-col lg:gap-0.5">
                   {group.items.map((item) => (
-                    <NavLink key={item.href} item={item} active={isActive(item.href)} />
+                    <NavLink key={item.href} item={item} active={isActive(item)} />
                   ))}
                 </div>
               </div>

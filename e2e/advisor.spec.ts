@@ -27,7 +27,8 @@ async function signIn(page: import('@playwright/test').Page, email: string) {
 test.describe('Advisor', () => {
   test('is reachable from the sidebar', async ({ page }) => {
     await signIn(page, 'admin@ecom.test')
-    await page.getByRole('link', { name: 'Advisor' }).click()
+    await page.getByRole('link', { name: 'Support AI' }).first().click()
+    await page.getByRole('navigation', { name: 'Section' }).getByRole('link', { name: 'Advisor briefing' }).click()
     await expect(page).toHaveURL(/\/advisor/)
     await expect(page.getByRole('heading', { name: 'Advisor' })).toBeVisible()
   })
