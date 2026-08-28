@@ -6,7 +6,7 @@
  */
 export default async function globalSetup() {
   const base = `http://localhost:${process.env.E2E_PORT ?? 3000}`
-  for (const path of ['/login', '/dashboard', '/advisor', '/inbox', '/settings/inbox', '/orders', '/portal', '/account', '/settings/shops', '/settings/affiliate', '/marketing', '/b2b']) {
+  for (const path of ['/login', '/dashboard', '/advisor', '/inbox', '/settings/inbox', '/support', '/settings/ai-support', '/orders', '/portal', '/account', '/settings/shops', '/settings/affiliate', '/marketing', '/b2b']) {
     try {
       await fetch(`${base}${path}`, { redirect: 'manual' })
     } catch {
