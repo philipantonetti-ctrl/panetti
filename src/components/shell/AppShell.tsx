@@ -71,10 +71,14 @@ const NAV: { section: string; items: NavItem[] }[] = [
         label: 'Support AI',
         // It owns the Advisor briefing too: they are one place with two tabs.
         owns: ['/advisor'],
+        // A headset. The rayed circle it replaces read as a brightness control,
+        // which is not what this page is. Three shapes on whole coordinates, so
+        // it stays crisp at the sixteen pixels it is actually drawn at.
         icon: icon(
           <>
-            <path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
-            <circle cx="12" cy="12" r="3.5" />
+            <path d="M5 13v-1a7 7 0 0 1 14 0v1" />
+            <rect x="3" y="12" width="4" height="7" rx="1.5" />
+            <rect x="17" y="12" width="4" height="7" rx="1.5" />
           </>,
         ),
       },
