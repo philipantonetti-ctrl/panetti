@@ -63,13 +63,20 @@ test('an admin sets what the assistant may do, and teaches it something', async 
   await expect(page.getByRole('button', { name: 'shipping', exact: true })).toHaveAttribute('aria-pressed', 'true')
 })
 
-test('the review page is reachable and honest when there is nothing yet', async ({ page }) => {
+/** It shares the Advisor's sidebar entry now, as a tab, so the sidebar stays short. */
+test('the review page is reached from the Advisor tab, and is honest when empty', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
-  await page.getByRole('link', { name: 'Support AI' }).click()
+  await page.getByRole('link', { name: 'Advisor' }).click()
+  await expect(page.getByRole('navigation', { name: 'Section' })).toBeVisible()
+  await page.getByRole('navigation', { name: 'Section' }).getByRole('link', { name: 'Support AI' }).click()
 
   await expect(page).toHaveURL(/\/support/)
   await expect(page.getByRole('heading', { name: 'Assistant review' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'All' })).toBeVisible()
+
+  // And back again, so the two are genuinely one place with two views.
+  await page.getByRole('navigation', { name: 'Section' }).getByRole('link', { name: 'Briefing' }).click()
+  await expect(page).toHaveURL(/\/advisor/)
 })
 
 test('an ambassador can reach neither', async ({ page }) => {

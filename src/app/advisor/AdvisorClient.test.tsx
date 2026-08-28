@@ -357,7 +357,10 @@ describe('AdvisorClient', () => {
       // Rates arrive on their own from the provider. A link to somewhere that
       // cannot help is worse than no link.
       render(<AdvisorClient initial={briefing({ items: [], facts: [quality('MISSING_FX', 'SEK')] })} />)
-      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+      // Scoped past the section tabs, which are navigation rather than a
+      // remedy this warning is offering.
+      const links = screen.queryAllByRole('link').filter((a) => !a.closest('nav'))
+      expect(links).toEqual([])
     })
   })
 

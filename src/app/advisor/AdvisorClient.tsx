@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { PageBody, PageHeader } from '@/components/shell/AppShell'
+import { ADVISOR_TABS, PageTabs } from '@/components/shell/PageTabs'
 import { isQuality, type Fact, type FactKind } from '@/lib/advisor/types'
 import type { BriefItem } from '@/lib/advisor/brief'
 
@@ -530,6 +531,8 @@ export function AdvisorClient({ initial }: { initial: Briefing | null }) {
           {busy ? 'Working…' : 'Refresh'}
         </button>
       </PageHeader>
+
+      <PageTabs tabs={ADVISOR_TABS} />
 
       <PageBody>
         {refreshError && (
