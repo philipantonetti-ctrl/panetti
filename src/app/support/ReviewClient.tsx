@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ADVISOR_TABS, PageTabs } from '@/components/shell/PageTabs'
+import { AnalyticsView } from './AnalyticsView'
 import { useToast } from '@/components/toast/useToast'
 
 /**
@@ -41,8 +42,15 @@ const LABEL: Record<string, string> = {
   escalated: 'Handed to a person',
 }
 
+/** The two things this page is: the numbers, and what the assistant said. */
+const VIEWS = [
+  { key: 'analytics' as const, label: 'Analytics' },
+  { key: 'ai' as const, label: 'AI conversations' },
+]
+
 export function ReviewClient({ email }: { email: string }) {
   const toast = useToast()
+  const [view, setView] = useState<'analytics' | 'ai'>('analytics')
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('all')
   const [rows, setRows] = useState<Conversation[] | null>(null)
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -90,13 +98,33 @@ export function ReviewClient({ email }: { email: string }) {
   return (
     <AppShell email={email}>
       <PageHeader
-        title="Assistant review"
-        subtitle="Every conversation it touched, and whether it got it right."
+        title="Support"
+        subtitle="The customer service picture, and what the assistant did with it."
       />
 
       <PageTabs tabs={ADVISOR_TABS} />
       <PageBody>
-        <div className="max-w-[900px] space-y-4">
+        <div className="max-w-[1100px] space-y-4">
+          <div role="tablist" aria-label="View" className="flex gap-1 rounded-[var(--radius-control)] border border-line bg-panel p-1">
+            {VIEWS.map((v) => (
+              <button
+                key={v.key}
+                role="tab"
+                aria-selected={view === v.key}
+                onClick={() => setView(v.key)}
+                className={`rounded-[var(--radius-control)] px-3 py-1.5 text-[13px] transition-colors duration-150 ${
+                  view === v.key ? 'bg-surface font-semibold text-ink' : 'text-muted hover:text-ink'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {view === 'analytics' && <AnalyticsView />}
+
+          {view === 'ai' && (
+          <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: 'Conversations', value: total },
@@ -210,6 +238,8 @@ export function ReviewClient({ email }: { email: string }) {
                 </div>
               ))}
             </div>
+          )}
+          </>
           )}
         </div>
       </PageBody>

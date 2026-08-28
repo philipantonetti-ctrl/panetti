@@ -46,5 +46,5 @@ export function PageTabs({ tabs }: { tabs: Tab[] }) {
 /** The assistant's two screens: what it says about the business, and to customers. */
 export const ADVISOR_TABS: Tab[] = [
   { href: '/advisor', label: 'Briefing' },
-  { href: '/support', label: 'Support AI' },
+  { href: '/support', label: 'Support' },
 ]

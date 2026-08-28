@@ -7,7 +7,14 @@ import { syncSupport } from './sync'
  * where the bugs live. A real run against the live account is done by hand.
  */
 
-const SOURCE = 'gorgias'
+/**
+ * A source of this test's own, never the real one.
+ *
+ * Cleaning up by `source: 'gorgias'` deleted the REAL import - 1,600 live
+ * tickets, all 23 agents and the backfill cursor - every time the suite ran.
+ * Namespacing everything this file touches is what makes the cleanup safe.
+ */
+const SOURCE = 'gorgias-test'
 type Fetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
 const ticket = (id: number, created: string, updated = created) => ({
@@ -73,7 +80,7 @@ function stubGorgias(script: { tickets?: Response[]; users?: Response[]; surveys
 
 const soon = () => Date.now() + 30_000
 /** Zero pause: the real one-second pacing is production behaviour, not logic. */
-const run = () => syncSupport({ deadline: soon(), pauseMs: 0 })
+const run = () => syncSupport({ deadline: soon(), pauseMs: 0, source: SOURCE })
 
 describe('syncSupport', () => {
   it('says so plainly when the helpdesk is not connected, and asks it nothing', async () => {
