@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AnalyticsView } from './AnalyticsView'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -65,6 +65,7 @@ function show(over: Record<string, unknown> = {}) {
     from: '2026-08-01',
     to: '2026-08-03',
     previousFrom: '2026-05-03',
+    previousTo: '2026-07-31',
     stats: busyStats,
     previous: { ...busyStats, tickets: 50, closed: 20, medianResolutionHours: 18, csat: 4.0 },
     backlog: { open: 20, olderThanWeek: 0, oldestAgeDays: 3, medianAgeHours: 5 },
@@ -164,7 +165,7 @@ describe('AnalyticsView', () => {
   })
 
   it('counts by week over a long range, so a year is not 365 slivers', async () => {
-    show({ days: 365, from: '2025-08-28', to: '2026-08-28' })
+    show({ days: 366, from: '2025-08-28', to: '2026-08-28' })
     const chart = await screen.findByRole('img', { name: 'Tickets per week' })
     expect(chart.children.length).toBeLessThan(60)
     expect(screen.getByText('Tickets per week')).toBeInTheDocument()
@@ -246,6 +247,63 @@ describe('AnalyticsView', () => {
       expect(await screen.findByText('No tickets in this period')).toBeInTheDocument()
       expect(screen.queryByRole('link', { name: 'Go to support settings' })).not.toBeInTheDocument()
     })
+  })
+
+  /**
+   * "and 2 more" with no way to see them is worse than saying nothing: it tells
+   * the reader something is being withheld. The client asked what the 2 were.
+   */
+  it('opens the long tail of a breakdown instead of only counting it', async () => {
+    const many = Array.from({ length: 11 }, (_, i) => ({ key: `channel-${i}`, tickets: 11 - i }))
+    show({ stats: { ...busyStats, byChannel: many } })
+
+    expect(await screen.findByText('channel-0')).toBeInTheDocument()
+    expect(screen.queryByText('channel-9')).not.toBeInTheDocument()
+
+    const more = screen.getByRole('button', { name: 'Show all 11' })
+    fireEvent.click(more)
+    expect(screen.getByText('channel-9')).toBeInTheDocument()
+    expect(screen.getByText('channel-10')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show fewer' }))
+    expect(screen.queryByText('channel-9')).not.toBeInTheDocument()
+  })
+
+  /** A visible bar labelled 0% reads as a bug, not as a small number. */
+  it('never rounds a real share down to zero per cent', async () => {
+    show({
+      stats: {
+        ...busyStats,
+        byChannel: [
+          { key: 'email', tickets: 997 },
+          { key: 'instagram-comment', tickets: 3 },
+        ],
+      },
+    })
+
+    expect(await screen.findByText('instagram-comment')).toBeInTheDocument()
+    expect(screen.getByText('<1%')).toBeInTheDocument()
+    expect(screen.queryByText('0%')).not.toBeInTheDocument()
+  })
+
+  it('does not offer to expand a breakdown that is already showing everything', async () => {
+    show()
+    expect(await screen.findByText('When tickets arrive')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument()
+  })
+
+  /** Two pages saying "this month" must ask the server for the same days. */
+  it('asks for a range the way the dashboard does, by preset', async () => {
+    show()
+    await screen.findByText('Tickets arrived')
+    const url = String(vi.mocked(fetch).mock.calls[0][0])
+    expect(url).toContain('preset=last_90_days')
+    expect(url).not.toContain('days=')
+  })
+
+  it('shows the exact days counted, so a preset is never taken on trust', async () => {
+    show()
+    expect(await screen.findByText('2026-08-01 to 2026-08-03')).toBeInTheDocument()
   })
 
   it('says it could not load rather than drawing an empty dashboard', async () => {

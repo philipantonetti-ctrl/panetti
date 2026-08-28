@@ -1,6 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { DateFilter, type RangeChoice } from '@/components/filters/DateFilter'
+import { type Preset } from '@/lib/dates'
 import { deltaPct } from '@/lib/metrics/trend'
 
 /**
@@ -57,6 +59,7 @@ type Payload = {
   from: string
   to: string
   previousFrom: string
+  previousTo: string
   stats: Stats
   previous: Stats
   backlog: Backlog
@@ -64,12 +67,6 @@ type Payload = {
   ai: Record<string, number>
   sync: { ranAt: string | null; backfilling: boolean; oldestSeenAt: string | null; lastError: string | null } | null
 }
-
-const WINDOWS = [
-  { days: 30, label: '30 days' },
-  { days: 90, label: '90 days' },
-  { days: 365, label: '12 months' },
-]
 
 /** Past this many days the chart counts weeks: 365 daily bars is 365 slivers. */
 const WEEKLY_ABOVE = 120
@@ -366,20 +363,50 @@ function Arrivals({ stats, timezone }: { stats: Stats; timezone: string }) {
   )
 }
 
-/** A breakdown as bars, so the shape is readable without reading every number. */
+/** How many rows a breakdown shows before it has to be asked to show the rest. */
+const BARS_SHOWN = 8
+
+/**
+ * A share, never rounded down into a lie. Three tickets out of seven hundred is
+ * 0.4%, and printing "0%" next to a bar that is visibly there reads as a bug.
+ */
+function share(part: number, whole: number): string {
+  if (whole === 0 || part === 0) return '0%'
+  const pct = (part / whole) * 100
+  return pct < 1 ? '<1%' : `${Math.round(pct)}%`
+}
+
+/**
+ * A breakdown as bars, so the shape is readable without reading every number.
+ *
+ * The long tail is collapsed but never hidden. Saying "and 2 more" and giving
+ * no way to see them tells a reader there is something they are not being
+ * shown, which is worse than not mentioning it: the first thing anyone asks is
+ * "more what?". The count is a button, and it opens.
+ */
 function Bars({ title, rows, empty }: { title: string; rows: Breakdown[]; empty: string }) {
-  const top = rows.slice(0, 8)
-  const max = Math.max(1, ...top.map((r) => r.tickets))
+  const [expanded, setExpanded] = useState(false)
+  const hidden = Math.max(0, rows.length - BARS_SHOWN)
+  const shown = expanded ? rows : rows.slice(0, BARS_SHOWN)
+  const max = Math.max(1, ...rows.map((r) => r.tickets))
   const total = rows.reduce((n, r) => n + r.tickets, 0)
 
   return (
     <section className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
-      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{title}</h3>
-      {top.length === 0 ? (
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-faint">{title}</h3>
+        {rows.length > 0 && (
+          <span className="num text-[11px] text-faint">
+            {rows.length} {rows.length === 1 ? 'kind' : 'kinds'}
+          </span>
+        )}
+      </div>
+
+      {rows.length === 0 ? (
         <p className="text-[13px] text-muted">{empty}</p>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {top.map((r) => (
+          {shown.map((r) => (
             <div key={r.key} className="flex items-center gap-2 text-[13px]">
               <span className="w-40 shrink-0 truncate text-ink" title={r.key}>
                 {r.key}
@@ -392,12 +419,18 @@ function Bars({ title, rows, empty }: { title: string; rows: Breakdown[]; empty:
               </span>
               <span className="num w-16 shrink-0 text-right text-muted">
                 {r.tickets}
-                <span className="ml-1 text-faint">{Math.round((r.tickets / total) * 100)}%</span>
+                <span className="ml-1 text-faint">{share(r.tickets, total)}</span>
               </span>
             </div>
           ))}
-          {rows.length > top.length && (
-            <p className="pt-0.5 text-[11px] text-faint">and {rows.length - top.length} more</p>
+
+          {hidden > 0 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="self-start pt-0.5 text-[11px] font-medium text-accent-ink hover:underline"
+            >
+              {expanded ? 'Show fewer' : `Show all ${rows.length}`}
+            </button>
           )}
         </div>
       )}
@@ -476,27 +509,47 @@ function NothingYet({
 }
 
 export function AnalyticsView() {
-  const [days, setDays] = useState(90)
+  /**
+   * Ninety days to start with, which is what this page has always opened on and
+   * a sensible span for support: long enough for a median to mean something.
+   * Every other range comes from the same picker the dashboard uses.
+   */
+  const [preset, setPreset] = useState<Preset | 'custom'>('last_90_days')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [data, setData] = useState<Payload | null>(null)
   const [error, setError] = useState('')
 
-  // State set inside the promise callback, never after an await in an effect
-  // body, which React counts as a synchronous set during render.
-  const load = useCallback(
-    () =>
-      fetch(`/api/support/analytics?days=${days}`)
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Could not load the support figures'))))
-        .then((body: Payload) => {
-          setData(body)
-          setError('')
-        })
-        .catch((e: Error) => setError(e.message)),
-    [days],
-  )
-
+  // Built exactly as the dashboard builds it, so the same words on two pages
+  // ask the server for the same days.
   useEffect(() => {
-    void load()
-  }, [load])
+    const params = new URLSearchParams()
+    if (preset === 'custom' && from && to) {
+      params.set('from', from)
+      params.set('to', to)
+    } else if (preset !== 'custom') {
+      params.set('preset', preset)
+    }
+
+    // A superseded response must never overwrite a newer one.
+    const ctrl = new AbortController()
+    fetch(`/api/support/analytics?${params}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Could not load the support figures'))))
+      .then((body: Payload) => {
+        setData(body)
+        setError('')
+      })
+      .catch((e: Error) => {
+        if (e.name !== 'AbortError') setError(e.message)
+      })
+    return () => ctrl.abort()
+  }, [preset, from, to])
+
+  function pickRange(next: RangeChoice) {
+    setPreset(next.preset)
+    setFrom(next.from ?? '')
+    setTo(next.to ?? '')
+  }
 
   if (error) {
     return (
@@ -526,7 +579,7 @@ export function AnalyticsView() {
    */
   const comparable = data.sync !== null && !data.sync.backfilling
   const against = `vs previous ${data.days} days`
-  const range = `${data.previousFrom} to ${data.from}`
+  const range = `${data.previousFrom} to ${data.previousTo}`
   const delta = (current: number | null, previous: number | null, tone: Tone) =>
     comparable ? (
       <Delta current={current} previous={previous} label={against} title={`${against}: ${range}`} tone={tone} />
@@ -534,24 +587,12 @@ export function AnalyticsView() {
 
   const period = (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div
-        role="tablist"
-        aria-label="Period"
-        className="flex gap-1 rounded-[var(--radius-control)] border border-line bg-panel p-1"
-      >
-        {WINDOWS.map((w) => (
-          <button
-            key={w.days}
-            role="tab"
-            aria-selected={days === w.days}
-            onClick={() => setDays(w.days)}
-            className={`rounded-[var(--radius-control)] px-3 py-1.5 text-[13px] transition-colors duration-150 ${
-              days === w.days ? 'bg-surface font-semibold text-ink' : 'text-muted hover:text-ink'
-            }`}
-          >
-            {w.label}
-          </button>
-        ))}
+      <div className="flex items-center gap-2">
+        <DateFilter preset={preset} from={data.from} to={data.to} onChange={pickRange} align="left" />
+        {/* The days actually counted, so a preset is never taken on trust. */}
+        <span className="num text-[12px] text-faint">
+          {data.from} to {data.to}
+        </span>
       </div>
       {data.sync && (
         <span className="text-[12px] text-muted">

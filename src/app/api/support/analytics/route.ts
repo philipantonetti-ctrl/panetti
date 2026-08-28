@@ -5,13 +5,13 @@ import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
 import { gorgiasCredentials } from '@/lib/support/client'
 import { backlogHealth, supportStats, type StatTicket } from '@/lib/support/stats'
-import { zonedDayStr } from '@/lib/tz'
+import { rangeFromQuery } from '@/lib/api/range'
+import { daysInRange } from '@/lib/dates'
+import { previousRange } from '@/lib/metrics/trend'
+import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 export const dynamic = 'force-dynamic'
-
-/** A window nobody chose. Long enough to show a trend, short enough to stay quick. */
-const DEFAULT_DAYS = 90
 
 const FIELDS = {
   status: true, channel: true, language: true, tags: true, assigneeName: true,
@@ -38,20 +38,29 @@ export async function GET(req: Request) {
     assertAdmin(await currentUser())
 
     const params = new URL(req.url).searchParams
-    const days = Math.min(Math.max(Number(params.get('days')) || DEFAULT_DAYS, 1), 730)
     const now = new Date()
-    const span = days * 86_400_000
-    const from = new Date(now.getTime() - span)
-    // The window immediately before this one, of exactly the same length, so
-    // the comparison is like for like rather than against an arbitrary date.
-    const previousFrom = new Date(from.getTime() - span)
-
     const { timezone } = await getSetting()
 
+    // The same range logic the dashboard uses, from the same helper: a preset
+    // or an explicit from/to, resolved against today in the WORKSPACE zone. Two
+    // pages that both say "this month" must mean the same days.
+    const { from: fromDay, to: toDay } = rangeFromQuery(params, now, timezone)
+    const before = previousRange(fromDay, toDay)
+    const days = daysInRange(fromDay, toDay)
+
+    // A range names calendar DAYS as UTC midnights; a ticket has an instant. The
+    // day has to be opened out to the real start and end of that day on the
+    // workspace clock, or an Oslo evening falls into the wrong bucket.
+    const dayOf = (d: Date) => d.toISOString().slice(0, 10)
+    const start = zoneDayStartUtc(dayOf(fromDay), timezone)
+    const end = zoneDayEndUtc(dayOf(toDay), timezone)
+    const prevStart = zoneDayStartUtc(dayOf(before.from), timezone)
+    const prevEnd = zoneDayEndUtc(dayOf(before.to), timezone)
+
     const [tickets, earlier, stillOpen] = await Promise.all([
-      db.supportTicket.findMany({ where: { createdAt: { gte: from } }, select: FIELDS }),
+      db.supportTicket.findMany({ where: { createdAt: { gte: start, lte: end } }, select: FIELDS }),
       db.supportTicket.findMany({
-        where: { createdAt: { gte: previousFrom, lt: from } },
+        where: { createdAt: { gte: prevStart, lte: prevEnd } },
         select: FIELDS,
       }),
       // Every open ticket at any age. There is no index on closedAt, so this is
@@ -126,9 +135,10 @@ export async function GET(req: Request) {
          * appears in `perDay`, and without the axis the browser would close the
          * gap and make a silent week look busy.
          */
-        from: zonedDayStr(from, timezone),
-        to: zonedDayStr(now, timezone),
-        previousFrom: zonedDayStr(previousFrom, timezone),
+        from: dayOf(fromDay),
+        to: dayOf(toDay),
+        previousFrom: dayOf(before.from),
+        previousTo: dayOf(before.to),
         stats: supportStats(rows, timezone),
         /**
          * The period before, for the deltas. Computed without the shop join:
