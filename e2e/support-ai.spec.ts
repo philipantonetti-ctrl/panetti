@@ -51,8 +51,11 @@ test('an admin sets what the assistant may do, and teaches it something', async 
   await page.getByRole('button', { name: 'Add', exact: true }).click()
   await expect(page.getByText(TITLE)).toBeVisible()
 
-  // Grant it one category and save.
-  await page.getByRole('button', { name: 'shipping', exact: true }).click()
+  // Grant it one category and save. Clicking blind would be a coin flip: the
+  // permission is stored, so a second run of this test would toggle it back off
+  // and then fail on its own leftovers. Click only if it is not already on.
+  const shipping = page.getByRole('button', { name: 'shipping', exact: true })
+  if ((await shipping.getAttribute('aria-pressed')) !== 'true') await shipping.click()
   await page.getByLabel('Escalation words').fill('lawyer, erstatning')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText('Saved')).toBeVisible()
@@ -60,22 +63,28 @@ test('an admin sets what the assistant may do, and teaches it something', async 
   // The setting survives a reload, which is the whole point of a settings page.
   await page.reload()
   await expect(page.getByLabel('Escalation words')).toHaveValue(/lawyer/)
-  await expect(page.getByRole('button', { name: 'shipping', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(shipping).toHaveAttribute('aria-pressed', 'true')
 })
 
-/** It shares the Advisor's sidebar entry now, as a tab, so the sidebar stays short. */
-test('the review page is reached from the Advisor tab, and is honest when empty', async ({ page }) => {
+/** Support AI is the sidebar entry, and the Advisor briefing sits behind its tab. */
+test('Support AI is the sidebar entry, opening on the figures, with the briefing a tab away', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
-  await page.getByRole('link', { name: 'Advisor' }).click()
+  await page.getByRole('link', { name: 'Support AI' }).first().click()
   await expect(page.getByRole('navigation', { name: 'Section' })).toBeVisible()
-  await page.getByRole('navigation', { name: 'Section' }).getByRole('link', { name: 'Support AI' }).click()
 
   await expect(page).toHaveURL(/\/support/)
-  await expect(page.getByRole('heading', { name: 'Assistant review' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Support' })).toBeVisible()
+
+  // Analytics is what the page opens on: the figures are the daily question,
+  // the assistant's transcript is the occasional one.
+  await expect(page.getByRole('tab', { name: 'Analytics' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByText(/Tickets per day/i)).toBeVisible()
+
+  await page.getByRole('tab', { name: 'AI conversations' }).click()
   await expect(page.getByRole('tab', { name: 'All' })).toBeVisible()
 
   // And back again, so the two are genuinely one place with two views.
-  await page.getByRole('navigation', { name: 'Section' }).getByRole('link', { name: 'Briefing' }).click()
+  await page.getByRole('navigation', { name: 'Section' }).getByRole('link', { name: 'Advisor briefing' }).click()
   await expect(page).toHaveURL(/\/advisor/)
 })
 
