@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { ADVISOR_TABS, PageTabs } from '@/components/shell/PageTabs'
 import { useToast } from '@/components/toast/useToast'
 
 /**
@@ -92,6 +93,8 @@ export function ReviewClient({ email }: { email: string }) {
         title="Assistant review"
         subtitle="Every conversation it touched, and whether it got it right."
       />
+
+      <PageTabs tabs={ADVISOR_TABS} />
       <PageBody>
         <div className="max-w-[900px] space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
