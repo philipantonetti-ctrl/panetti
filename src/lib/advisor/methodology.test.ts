@@ -8,6 +8,18 @@ describe('METHODOLOGY', () => {
     expect(METHODOLOGY).toMatch(/VAT/)
   })
 
+  /**
+   * "Business days" invites the reader to assume public holidays are excluded.
+   * They are not modelled at all (src/lib/delivery/days.ts), and asked how
+   * lateness works the assistant said "weekends and holidays don't push an
+   * order into late" - a confident sentence about a rule that does not exist.
+   * The gap in the text was the cause, so the text closes it.
+   */
+  it('does not let business days imply that holidays are excluded', () => {
+    expect(METHODOLOGY).toMatch(/PUBLIC HOLIDAYS ARE NOT MODELLED/)
+    expect(METHODOLOGY).toMatch(/do not describe holidays as excluded/)
+  })
+
   it('explains how the forecast reaches an order quantity', () => {
     expect(METHODOLOGY).toMatch(/day by day/i)
     expect(METHODOLOGY).toMatch(/container/i)

@@ -56,8 +56,12 @@ Delivery:
   The clock starts when the order is placed and stops when the parcel is with
   the customer or waiting at their pickup point. Late means past the promise in
   force for that shop and destination country on the day of the order, counting
-  business days. A shop that is not tracked, or an order placed before tracking
-  began, is not judged at all rather than counted as on time.
+  business days: Saturdays and Sundays do not count against the promise, but
+  PUBLIC HOLIDAYS ARE NOT MODELLED at all. Christmas and Constitution Day are
+  counted as ordinary working days, which produces a handful of false lates
+  around them. Say so if asked; do not describe holidays as excluded.
+  A shop that is not tracked, or an order placed before tracking began, is not
+  judged at all rather than counted as on time.
 
 When a figure is missing, the tools say so and so must you. Say what is not
 known instead of filling the gap.`
