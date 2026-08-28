@@ -4,6 +4,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const syncAllShops = vi.fn()
 vi.mock('@/lib/woo/sync', () => ({ syncAllShops: (...args: unknown[]) => syncAllShops(...args) }))
 
+// Nor is the helpdesk. Same trap as Visma below: with GORGIAS_* set in .env
+// the route really does reach the CLIENT'S LIVE Gorgias account, and the
+// import paces itself a second per page, so an unmocked run here both spends
+// their rate limit and blows the test timeout.
+const syncSupport = vi.fn(async () => ({
+  configured: false, stored: 0, backfilling: false, oldestSeenAt: null, error: null,
+}))
+vi.mock('@/lib/support/sync', () => ({ syncSupport: () => syncSupport() }))
+
 // Nor is the real currency API: the route tops up FX rates best-effort after a
 // sync, and a unit test must not depend on a third-party service being up.
 vi.mock('@/lib/fx/rates', () => ({ ensureRates: vi.fn() }))

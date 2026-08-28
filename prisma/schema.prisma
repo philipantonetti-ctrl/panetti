@@ -1171,3 +1171,101 @@ model Macro {
 
   @@unique([name, language])
 }
+
+/// One customer service conversation, from whichever helpdesk it arrived in.
+///
+/// Named for the job, not the vendor: `source` says where it came from, and
+/// nothing downstream of the mapper knows the word Gorgias. That is the whole
+/// point - if the helpdesk is replaced, the history, the reports and the AI
+/// keep working and only a new mapper is written.
+///
+/// Messages are deliberately NOT stored yet. The reports Philip asked for are
+/// answered by the ticket alone, and one row per message would be a large
+/// table earning nothing until the AI needs to read a conversation.
+model SupportTicket {
+  id         String @id @default(cuid())
+  source     String // "gorgias"
+  externalId String
+
+  status   String // open | closed | ...
+  priority String?
+  /// email, chat, instagram-direct-message, ... whatever the helpdesk calls it.
+  channel  String?
+  via      String?
+  subject  String?
+  language String?
+  /// Kept rather than dropped, so every count can exclude it deliberately.
+  spam     Boolean @default(false)
+  /// True when we started the conversation, not the customer.
+  fromAgent Boolean @default(false)
+  messagesCount Int  @default(0)
+
+  /// Lowercased. THE join to Order.customerEmail, which is how a ticket is
+  /// tied to what the person actually bought.
+  customerEmail String?
+  customerName  String?
+  assigneeEmail String?
+  assigneeName  String?
+  tags          String[] @default([])
+
+  createdAt             DateTime
+  openedAt              DateTime?
+  closedAt              DateTime?
+  lastCustomerMessageAt DateTime?
+  lastMessageAt         DateTime?
+  /// The helpdesk's own updated stamp. The incremental sync walks back to the
+  /// newest one it has already seen and stops there.
+  updatedAt             DateTime
+
+  /// When an agent first answered. Computed from the events feed, and only
+  /// from the day we started reading it - a null on an old ticket means
+  /// "never measured", never "answered instantly".
+  firstResponseAt DateTime?
+  /// 1 to 5, once the customer scores the survey. Null while unanswered.
+  satisfaction    Int?
+
+  readAt DateTime @updatedAt
+
+  @@unique([source, externalId])
+  @@index([createdAt])
+  @@index([customerEmail])
+  @@index([updatedAt])
+}
+
+/// Someone who answers tickets, including the helpdesk's own bot - kept with
+/// its role so "tickets per agent" can tell a person from a machine.
+model SupportAgent {
+  id         String   @id @default(cuid())
+  source     String
+  externalId String
+  email      String?
+  name       String?
+  role       String?
+  active     Boolean  @default(true)
+  readAt     DateTime @updatedAt
+
+  @@unique([source, externalId])
+}
+
+/// Where the import has got to, so five years of history can arrive over many
+/// runs instead of in one request that cannot finish.
+///
+/// A singleton per source, like DeliveryConfig and B2bImportRun: only the
+/// newest state is worth showing, and a history of runs is a table nobody
+/// would open.
+model SupportSyncState {
+  source String @id
+
+  /// Newest `updatedAt` already stored. The incremental pass stops here.
+  watermark DateTime?
+  /// Where the oldest-first backfill stopped. Null once history is complete.
+  backfillCursor String?
+  /// True while there is still history to walk.
+  backfilling    Boolean @default(true)
+  /// The oldest ticket seen, so a person can see how far back we have got.
+  oldestSeenAt   DateTime?
+
+  ticketsStored Int       @default(0)
+  ranAt         DateTime?
+  lastError     String?
+}
