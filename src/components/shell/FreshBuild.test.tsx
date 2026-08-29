@@ -12,6 +12,13 @@ afterEach(() => {
 const version = (id: string) =>
   Promise.resolve(new Response(JSON.stringify({ id }), { status: 200 }))
 
+/**
+ * One tick of the shared live clock. Named rather than written as a number in
+ * six places, so changing the interval for the database's sake cannot silently
+ * turn these into tests that advance past nothing.
+ */
+const ONE_TICK = 300_000
+
 describe('FreshBuild', () => {
   it('does nothing at mount, and stays quiet while the server runs this same build', async () => {
     const fetchMock = vi.fn(() => version('dev')) // BUILD_ID is 'dev' outside a real build
@@ -22,7 +29,7 @@ describe('FreshBuild', () => {
     expect(fetchMock).not.toHaveBeenCalled() // the page just loaded - it IS current
 
     await act(async () => {
-      vi.advanceTimersByTime(60_000)
+      vi.advanceTimersByTime(ONE_TICK)
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(onNewBuild).not.toHaveBeenCalled()
@@ -34,12 +41,12 @@ describe('FreshBuild', () => {
     render(<FreshBuild onNewBuild={onNewBuild} />)
 
     await act(async () => {
-      vi.advanceTimersByTime(60_000)
+      vi.advanceTimersByTime(ONE_TICK)
     })
     expect(onNewBuild).toHaveBeenCalledTimes(1)
 
     await act(async () => {
-      vi.advanceTimersByTime(120_000)
+      vi.advanceTimersByTime(ONE_TICK * 2)
     })
     expect(onNewBuild).toHaveBeenCalledTimes(1) // the reload is already underway
   })
@@ -55,15 +62,15 @@ describe('FreshBuild', () => {
     render(<FreshBuild onNewBuild={onNewBuild} />)
 
     await act(async () => {
-      vi.advanceTimersByTime(60_000) // network down - swallowed
+      vi.advanceTimersByTime(ONE_TICK) // network down - swallowed
     })
     await act(async () => {
-      vi.advanceTimersByTime(60_000) // no id in the answer - ignored
+      vi.advanceTimersByTime(ONE_TICK) // no id in the answer - ignored
     })
     expect(onNewBuild).not.toHaveBeenCalled()
 
     await act(async () => {
-      vi.advanceTimersByTime(60_000) // a real new build - now it acts
+      vi.advanceTimersByTime(ONE_TICK) // a real new build - now it acts
     })
     expect(onNewBuild).toHaveBeenCalledTimes(1)
   })

@@ -11,8 +11,15 @@ import { useEffect, useState } from 'react'
  * A hidden tab never ticks - background tabs do no work. Focus and
  * visibilitychange often fire together, so bumps within a second collapse
  * into one: one tick, one refetch.
+ *
+ * Five minutes, not one. The interval is only a backstop: coming back to a tab
+ * fires focus and refetches immediately, so the gap is only ever felt by
+ * someone staring at an unattended screen. A minute cost far more than it was
+ * worth - one dashboard left open for a working day held the database awake
+ * 176 hours a month and refetched ten thousand times, which on its own was
+ * nearly half the compute budget the whole system gets.
  */
-export function useLiveTick(everyMs = 60_000): number {
+export function useLiveTick(everyMs = 300_000): number {
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
