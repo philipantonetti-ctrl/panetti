@@ -239,9 +239,15 @@ describe('the scheduled sync endpoint', () => {
 })
 
 describe('the schedule itself', () => {
-  // A route nothing ever calls is not an automatic sync. Every 15 minutes:
-  // webhooks carry the live changes, this is the promised safety net.
-  it('is registered as a 15-minute cron in vercel.json', async () => {
+  // A route nothing ever calls is not an automatic sync. Hourly, not every 15
+  // minutes, and the reason is the database rather than taste: Neon sleeps
+  // after about five minutes idle, so a quarter-hourly job never lets it sleep
+  // at all. Measured on 2026-08-28 that alone was around 84 of the 100 compute
+  // hours the plan allows in a month, and the database was suspended mid-month
+  // with every page down. Webhooks carry the live order changes; this is the
+  // safety net behind them, and a safety net does not need to run four times
+  // an hour.
+  it('is registered as an hourly cron in vercel.json', async () => {
     const { readFileSync } = await import('fs')
     const cfg = JSON.parse(readFileSync('vercel.json', 'utf8'))
     // The briefing runs on its OWN route on its own schedule, not as a stage
@@ -251,7 +257,7 @@ describe('the schedule itself', () => {
     // Pinned as the whole array, not toContainEqual, so this still notices a
     // third cron appearing or the briefing cron disappearing.
     expect(cfg.crons).toEqual([
-      { path: '/api/cron/sync', schedule: '*/15 * * * *' },
+      { path: '/api/cron/sync', schedule: '0 * * * *' },
       { path: '/api/cron/briefing', schedule: '0 5 * * *' },
     ])
   })

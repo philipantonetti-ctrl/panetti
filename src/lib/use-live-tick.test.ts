@@ -75,3 +75,24 @@ describe('useLiveTick', () => {
     expect(result.current).toBe(0)
   })
 })
+
+/**
+ * The default is a database budget decision, not a taste one. At one minute a
+ * single dashboard left open for a working day refetched ten thousand times a
+ * month and held the database awake 176 hours, which was most of the compute
+ * the whole system is allowed. Coming back to a tab still refreshes it at
+ * once, so the interval is only ever felt on an unattended screen.
+ */
+describe('the default interval', () => {
+  it('is five minutes, because a shorter one costs more than it is worth', () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() => useLiveTick())
+
+    act(() => vi.advanceTimersByTime(60_000))
+    expect(result.current).toBe(0)
+
+    act(() => vi.advanceTimersByTime(240_000))
+    expect(result.current).toBe(1)
+    vi.useRealTimers()
+  })
+})

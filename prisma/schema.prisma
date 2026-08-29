@@ -1231,6 +1231,10 @@ model SupportTicket {
   @@index([createdAt])
   @@index([customerEmail])
   @@index([updatedAt])
+  /// The support backlog asks for every open ticket at any age, on every load
+  /// of that page. Without this it is a full scan of the table, and compute is
+  /// the scarcest thing this database has.
+  @@index([closedAt])
 }
 
 /// Someone who answers tickets, including the helpdesk's own bot - kept with

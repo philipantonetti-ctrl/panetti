@@ -343,7 +343,7 @@ describe('live refresh', () => {
     }
   })
 
-  it('polls once a minute while the tab stays visible', async () => {
+  it('refreshes itself on the live clock while the tab stays visible', async () => {
     vi.useFakeTimers()
     try {
       const fetchMock = renderLive()
@@ -351,7 +351,7 @@ describe('live refresh', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1)
 
       await act(async () => {
-        vi.advanceTimersByTime(60_000)
+        vi.advanceTimersByTime(300_000)
       })
       const orderCalls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0])).filter((u) => u.includes('/api/orders'))
       expect(orderCalls.length).toBe(2)
