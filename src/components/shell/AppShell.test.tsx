@@ -79,6 +79,16 @@ it('groups the sidebar by subject, with every entry still present', () => {
   expect(screen.getByRole('link', { name: 'Support AI' })).toBeDefined()
   // The Agents page the client asked for, inside the Support group.
   expect(screen.getByRole('link', { name: 'Agents' }).getAttribute('href')).toBe('/support/agents')
+  // Advisor moved out of Support AI's tabs to its own entry, below Inbox.
+  const support = screen.getAllByRole('link').filter((a) =>
+    ['/support', '/support/agents', '/inbox', '/advisor'].includes(a.getAttribute('href')!),
+  )
+  expect(support.map((a) => a.getAttribute('href'))).toEqual([
+    '/support',
+    '/support/agents',
+    '/inbox',
+    '/advisor',
+  ])
   expect(screen.getByRole('link', { name: 'Ambassadors' })).toBeDefined()
   expect(screen.getByRole('link', { name: 'Inventory and forecasting' })).toBeDefined()
   expect(screen.getByRole('link', { name: 'Product costs' })).toBeDefined()
@@ -88,43 +98,58 @@ it('groups the sidebar by subject, with every entry still present', () => {
 })
 
 /**
- * The Gorgias sidebar collapses per subject, and the client asked for the
- * same: click a group name, its pages fold away, and the choice survives a
- * reload. Collapse is a DESKTOP behaviour - the mobile strip always shows
- * everything - so the assertions read the lg-only class and aria state
- * rather than jsdom visibility, which knows no breakpoints.
+ * The client's second ask on the folding sidebar: arrive at the site and
+ * every group starts CLOSED, except the one holding the page on screen. What
+ * a person opens by hand lasts for the visit (sessionStorage) and resets on
+ * the next one. Collapse is a DESKTOP behaviour - the mobile strip always
+ * shows everything - so the assertions read aria state and the lg-only
+ * class rather than jsdom visibility, which knows no breakpoints.
  */
 describe('collapsible groups', () => {
-  beforeEach(() => localStorage.clear())
-
-  it('folds a group when its header is clicked, and remembers it', async () => {
-    const { unmount } = setup()
-
-    const header = screen.getByRole('button', { name: /Operations/ })
-    expect(header).toHaveAttribute('aria-expanded', 'true')
-
-    fireEvent.click(header)
-    expect(header).toHaveAttribute('aria-expanded', 'false')
-    const items = document.getElementById(header.getAttribute('aria-controls')!)
-    expect(items).toHaveClass('lg:hidden')
-
-    unmount()
-    setup()
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Operations/ })).toHaveAttribute('aria-expanded', 'false'),
-    )
+  beforeEach(() => {
+    sessionStorage.clear()
+    localStorage.clear()
   })
 
-  it('never hides the group holding the page being read', async () => {
-    // Overview holds /dashboard, the mocked current page.
-    localStorage.setItem('sidebar-collapsed', JSON.stringify(['Overview', 'Support']))
+  it('starts every group closed, except the one holding the page being read', async () => {
     setup()
 
+    // Overview holds /dashboard, the mocked current page.
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Overview/ })).toHaveAttribute('aria-expanded', 'true'),
     )
-    // A group NOT holding the active page stays folded as stored.
-    expect(screen.getByRole('button', { name: /Support/ })).toHaveAttribute('aria-expanded', 'false')
+    for (const section of ['Support', 'Marketing', 'Operations', 'Costs', 'Setup']) {
+      expect(screen.getByRole('button', { name: new RegExp(section) })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    }
+    const closed = screen.getByRole('button', { name: /Operations/ })
+    expect(document.getElementById(closed.getAttribute('aria-controls')!)).toHaveClass('lg:hidden')
+  })
+
+  it('opens a group on click and keeps it open for the visit, not forever', async () => {
+    const { unmount } = setup()
+
+    const header = await screen.findByRole('button', { name: /Operations/ })
+    fireEvent.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+
+    // Same visit (sessionStorage intact): still open after a remount.
+    unmount()
+    const again = setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Operations/ })).toHaveAttribute('aria-expanded', 'true'),
+    )
+
+    // A NEW visit starts closed again.
+    again.unmount()
+    sessionStorage.clear()
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Overview/ })).toHaveAttribute('aria-expanded', 'true'),
+    )
+    expect(screen.getByRole('button', { name: /Operations/ })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('sets the group name a readable step above the old micro label', () => {

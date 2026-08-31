@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     const start = zoneDayStartUtc(dayOf(fromDay), timezone)
     const end = zoneDayEndUtc(dayOf(toDay), timezone)
 
-    const [tickets, stillOpen] = await Promise.all([
+    const [tickets, stillOpen, people] = await Promise.all([
       db.supportTicket.findMany({
         where: { createdAt: { gte: start, lte: end } },
         select: {
@@ -43,7 +43,15 @@ export async function GET(req: Request) {
         where: { closedAt: null, spam: false, assigneeName: { not: null } },
         select: { assigneeName: true },
       }),
+      // The helpdesk's own profile photos, joined by the name the tickets
+      // carry - the same face Gorgias shows for the same person.
+      db.supportAgent.findMany({ select: { name: true, avatarUrl: true } }),
     ])
+
+    const photoOf = new Map<string, string>()
+    for (const p of people) {
+      if (p.name && p.avatarUrl) photoOf.set(p.name, p.avatarUrl)
+    }
 
     const unassigned = tickets.filter((t) => !t.spam && !t.assigneeName).length
 
@@ -52,7 +60,10 @@ export async function GET(req: Request) {
         days: daysInRange(fromDay, toDay),
         from: dayOf(fromDay),
         to: dayOf(toDay),
-        agents: agentPerformance(tickets, stillOpen),
+        agents: agentPerformance(tickets, stillOpen).map((a) => ({
+          ...a,
+          avatarUrl: photoOf.get(a.agent) ?? null,
+        })),
         /**
          * Named, not silent: on this account most tickets carry no assignee,
          * and a page of four small rows would otherwise read as the whole
