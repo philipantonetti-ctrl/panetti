@@ -45,6 +45,7 @@ const page = (data: unknown[], nextCursor: string | null = null) =>
 async function cleanup() {
   await db.supportTicket.deleteMany({ where: { source: SOURCE } })
   await db.supportAgent.deleteMany({ where: { source: SOURCE } })
+  await db.supportMessage.deleteMany({ where: { source: SOURCE } })
   await db.supportSyncState.deleteMany({ where: { source: SOURCE } })
 }
 afterAll(cleanup)
@@ -61,22 +62,44 @@ beforeEach(async () => {
 })
 
 /** Answers each endpoint from a script, so a test says what Gorgias returned. */
-function stubGorgias(script: { tickets?: Response[]; users?: Response[]; surveys?: Response[] }) {
+function stubGorgias(script: {
+  tickets?: Response[]
+  users?: Response[]
+  surveys?: Response[]
+  messages?: Response[]
+}) {
   const queues = {
     tickets: [...(script.tickets ?? [])],
     users: [...(script.users ?? [page([])])],
     surveys: [...(script.surveys ?? [page([])])],
+    messages: [...(script.messages ?? [page([])])],
   }
   const calls: string[] = []
   const fn = vi.fn<Fetch>(async (input) => {
     const url = String(input)
     calls.push(url)
-    const which = url.includes('/users') ? 'users' : url.includes('/satisfaction-surveys') ? 'surveys' : 'tickets'
+    const which = url.includes('/users')
+      ? 'users'
+      : url.includes('/satisfaction-surveys')
+        ? 'surveys'
+        : url.includes('/messages')
+          ? 'messages'
+          : 'tickets'
     return queues[which].shift() ?? page([])
   })
   vi.stubGlobal('fetch', fn)
   return calls
 }
+
+const message = (id: number, ticketId: number, created: string, over: Record<string, unknown> = {}) => ({
+  id,
+  ticket_id: ticketId,
+  from_agent: true,
+  public: true,
+  sender: { id: 900, name: 'Selena Guillermo' },
+  created_datetime: created,
+  ...over,
+})
 
 const soon = () => Date.now() + 30_000
 /** Zero pause: the real one-second pacing is production behaviour, not logic. */
@@ -108,6 +131,37 @@ describe('syncSupport', () => {
     expect(state.backfilling).toBe(false)
     expect(state.oldestSeenAt?.toISOString()).toBe('2021-06-09T09:00:00.000Z')
     expect(state.watermark?.toISOString()).toBe('2026-08-20T10:00:00.000Z')
+  })
+
+  /**
+   * The message mirror behind the Agents page: thin rows, newest first, a
+   * year deep and no deeper. An old message is the STOP SIGN for the walk,
+   * not a row - storing five years of messages would be weeks of walking for
+   * figures nobody asks of 2022.
+   */
+  it('mirrors the messages a year back, and stops at the horizon', async () => {
+    const recent = new Date(Date.now() - 2 * 86_400_000).toISOString()
+    const ancient = '2021-01-01T00:00:00+00:00'
+    stubGorgias({
+      tickets: [page([]), page([])],
+      messages: [
+        // Incremental pass, empty watermark: one fresh page, no cursor on.
+        page([message(11, 1, recent)]),
+        // Backfill pass: a page whose tail is past the horizon ends the walk.
+        page([message(12, 1, recent), message(13, 2, ancient)], 'cur-2'),
+      ],
+    })
+
+    const r = await run()
+    expect(r.error).toBeNull()
+
+    const rows = await db.supportMessage.findMany({ where: { source: SOURCE } })
+    expect(rows.map((m) => m.externalId).sort()).toEqual(['11', '12'])
+    expect(rows[0]).toMatchObject({ fromAgent: true, public: true, senderName: 'Selena Guillermo' })
+
+    const state = await db.supportSyncState.findUniqueOrThrow({ where: { source: SOURCE } })
+    expect(state.messageBackfilling).toBe(false)
+    expect(state.messageWatermark?.toISOString()).toBe(new Date(recent).toISOString())
   })
 
   /**

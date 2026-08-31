@@ -24,6 +24,13 @@ const row = (agent: string, over: Record<string, unknown> = {}) => ({
   csat: 4.6,
   csatSample: 12,
   openNow: 3,
+  messagesSent: 151,
+  ticketsReplied: 84,
+  messagesReceived: 149,
+  medianResponseHours: 7.5,
+  responseSample: 120,
+  oneTouchShare: 0.3288,
+  oneTouchSample: 25,
   ...over,
 })
 
@@ -82,5 +89,11 @@ describe('AgentsClient', () => {
     expect(screen.getByText('17%')).toBeInTheDocument()
     expect(screen.getByText('Average')).toBeInTheDocument()
     expect(screen.getByText(/741/)).toBeInTheDocument()
+    // The message columns the Gorgias page carries, from our own mirror.
+    for (const col of ['Replied', 'Sent', 'Received', 'Response', 'One touch']) {
+      expect(screen.getByRole('columnheader', { name: col })).toBeInTheDocument()
+    }
+    expect(screen.getAllByText('151').length).toBeGreaterThan(0) // messages sent
+    expect(screen.getAllByText('33%').length).toBeGreaterThan(0) // one touch share
   })
 })

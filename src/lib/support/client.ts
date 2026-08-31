@@ -97,3 +97,26 @@ export type GorgiasSurvey = { ticket_id: number; score: number | null; scored_da
 export function fetchSurveys(creds: GorgiasCredentials, cursor?: string | null, deadline?: number) {
   return get<GorgiasSurvey>(creds, 'satisfaction-surveys', { limit: '100', ...(cursor ? { cursor } : {}) }, deadline)
 }
+
+/** The thin cut of a message the Agents page needs: who, when, which ticket. */
+export type GorgiasMessage = {
+  id: number
+  ticket_id: number | null
+  from_agent: boolean | null
+  public: boolean | null
+  sender: { id?: number | null; name?: string | null } | null
+  created_datetime: string | null
+}
+
+/**
+ * Account-wide, newest first - like the ticket list, this endpoint has no
+ * date filter, so "the last year" is expressed as "walk until you reach it".
+ */
+export function fetchMessages(creds: GorgiasCredentials, cursor?: string | null, deadline?: number) {
+  return get<GorgiasMessage>(
+    creds,
+    'messages',
+    { limit: '100', order_by: 'created_datetime:desc', ...(cursor ? { cursor } : {}) },
+    deadline,
+  )
+}

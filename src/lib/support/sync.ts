@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import {
+  fetchMessages,
   fetchSurveys,
   fetchTickets,
   fetchUsers,
@@ -8,7 +9,7 @@ import {
   PAGE_PAUSE_MS,
   type GorgiasCredentials,
 } from './client'
-import { mapAgent, mapTicket, SOURCE, type GorgiasTicket } from './map'
+import { mapAgent, mapMessage, mapTicket, SOURCE, type GorgiasTicket } from './map'
 
 /**
  * Bringing the helpdesk's tickets in.
@@ -28,6 +29,13 @@ import { mapAgent, mapTicket, SOURCE, type GorgiasTicket } from './map'
 
 /** Pages per run, per pass. Bounded so this can never starve the stages after it. */
 const PAGES_PER_RUN = 8
+
+/**
+ * How far back the message mirror reaches. A year covers every range the
+ * Agents page offers; five years of message history would be weeks of walking
+ * for figures nobody asks of 2022.
+ */
+const MESSAGE_HORIZON_MS = 365 * 24 * 60 * 60 * 1000
 
 export type SupportSyncResult = {
   configured: boolean
@@ -163,6 +171,82 @@ async function syncAgents(creds: GorgiasCredentials, deadline: number, pause: nu
 }
 
 /**
+ * The message mirror, for the Agents page: who wrote, when, on which ticket.
+ *
+ * Two passes like the tickets, both newest-first because the endpoint orders
+ * no other way that helps: INCREMENTAL stops at the newest message already
+ * held; BACKFILL continues from its own cursor until it walks past the
+ * horizon. Each is bounded per run so neither can starve the surveys after
+ * them or the parcel poll after that.
+ */
+async function syncMessages(
+  creds: GorgiasCredentials,
+  state: { messageWatermark: Date | null; messageBackfillCursor: string | null; messageBackfilling: boolean },
+  deadline: number,
+  pause: number,
+  source: string,
+): Promise<void> {
+  const horizon = new Date(Date.now() - MESSAGE_HORIZON_MS)
+
+  const store = async (raw: import('./client').GorgiasMessage[]): Promise<Date | null> => {
+    let newest: Date | null = null
+    for (const m of raw) {
+      const data = mapMessage(m, source)
+      if (!data || data.createdAt < horizon) continue
+      await db.supportMessage.upsert({
+        where: { source_externalId: { source, externalId: data.externalId } },
+        create: data,
+        update: data,
+      })
+      if (!newest || data.createdAt > newest) newest = data.createdAt
+    }
+    return newest
+  }
+
+  // Incremental: newest first, stop at what we already hold.
+  let cursor: string | null = null
+  let newest: Date | null = state.messageWatermark
+  for (let page = 0; page < PAGES_PER_RUN; page++) {
+    if (Date.now() > deadline) break
+    const { data, nextCursor } = await fetchMessages(creds, cursor, deadline)
+    if (data.length === 0) break
+    const fresh = state.messageWatermark
+      ? data.filter((m) => m.created_datetime && new Date(m.created_datetime) > state.messageWatermark!)
+      : data
+    const seen = await store(fresh)
+    if (seen && (!newest || seen > newest)) newest = seen
+    if (fresh.length < data.length || !nextCursor) break
+    cursor = nextCursor
+    await sleep(pause)
+  }
+  if (newest && newest !== state.messageWatermark) {
+    await db.supportSyncState.update({ where: { source }, data: { messageWatermark: newest } })
+  }
+
+  // Backfill: continue the walk from where it stopped, until the horizon.
+  if (!state.messageBackfilling) return
+  let backCursor = state.messageBackfillCursor
+  let backfilling = true
+  for (let page = 0; page < PAGES_PER_RUN; page++) {
+    if (Date.now() > deadline) break
+    const { data, nextCursor } = await fetchMessages(creds, backCursor, deadline)
+    await store(data)
+    const pastHorizon = data.some((m) => m.created_datetime && new Date(m.created_datetime) < horizon)
+    if (pastHorizon || !nextCursor || data.length === 0) {
+      backfilling = false
+      backCursor = null
+      break
+    }
+    backCursor = nextCursor
+    await sleep(pause)
+  }
+  await db.supportSyncState.update({
+    where: { source },
+    data: { messageBackfillCursor: backCursor, messageBackfilling: backfilling },
+  })
+}
+
+/**
  * The customer's score, onto the ticket it belongs to.
  *
  * Only scored surveys are worth writing: an unanswered one is not a zero, and
@@ -235,6 +319,8 @@ export async function syncSupport(opts: {
         data: { backfillCursor: old.cursor, backfilling, oldestSeenAt },
       })
     }
+
+    await syncMessages(creds, state, opts.deadline, pause, source)
 
     await syncSurveys(creds, opts.deadline, pause, source)
 
