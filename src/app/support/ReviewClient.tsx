@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
-import { ADVISOR_TABS, PageTabs } from '@/components/shell/PageTabs'
 import { AnalyticsView } from './AnalyticsView'
 import { useToast } from '@/components/toast/useToast'
 
@@ -102,7 +101,6 @@ export function ReviewClient({ email }: { email: string }) {
         subtitle="How customer service is performing, and every conversation the assistant handled."
       />
 
-      <PageTabs tabs={ADVISOR_TABS} />
       <PageBody>
         <div className="max-w-[1100px] space-y-4">
           <div role="tablist" aria-label="View" className="flex gap-1 rounded-[var(--radius-control)] border border-line bg-panel p-1">

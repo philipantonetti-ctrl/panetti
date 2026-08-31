@@ -13,11 +13,14 @@ import type { AgentRow } from '@/lib/support/agent-stats'
  * tickets can crown anyone - one lucky survey is not a title.
  */
 
+/** The route decorates each row with the helpdesk's profile photo, if set. */
+type AgentWithPhoto = AgentRow & { avatarUrl?: string | null }
+
 type Payload = {
   days: number
   from: string
   to: string
-  agents: AgentRow[]
+  agents: AgentWithPhoto[]
   unassigned: number
 }
 
@@ -31,8 +34,26 @@ function duration(hours: number | null): string {
 
 const share = (v: number | null) => (v === null ? '-' : `${Math.round(v * 100)}%`)
 
-/** Two letters a face can be recognised by, the way the helpdesk draws them. */
-function Avatar({ name }: { name: string }) {
+/**
+ * The person's real helpdesk photo when Gorgias holds one, initials when it
+ * does not or the file is gone. The fallback is a state, not a guess: a
+ * broken image renders letters, never a torn icon.
+ */
+function Avatar({ name, url }: { name: string; url?: string | null }) {
+  const [broken, setBroken] = useState(false)
+  if (url && !broken) {
+    return (
+      // Plain <img>, deliberately: the photo lives on Gorgias's CDN, whose
+      // host next/image would need pre-registered in next.config to serve.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt=""
+        onError={() => setBroken(true)}
+        className="h-7 w-7 shrink-0 rounded-full object-cover"
+      />
+    )
+  }
   const initials = name
     .split(/\s+/)
     .map((w) => w[0])
@@ -50,21 +71,21 @@ function Avatar({ name }: { name: string }) {
 /** A discipline needs at least this many measured tickets to crown anyone. */
 const CROWN_SAMPLE = 3
 
-type Crown = { label: string; agent: string; value: string }
+type Crown = { label: string; agent: string; value: string; url?: string | null }
 
-function crowns(agents: AgentRow[]): Crown[] {
+function crowns(agents: AgentWithPhoto[]): Crown[] {
   const out: Crown[] = []
 
   const closers = agents.filter((a) => a.closed > 0)
   if (closers.length) {
     const best = closers.reduce((a, b) => (b.closed > a.closed ? b : a))
-    out.push({ label: 'Most closed', agent: best.agent, value: String(best.closed) })
+    out.push({ label: 'Most closed', agent: best.agent, value: String(best.closed), url: best.avatarUrl })
   }
 
   const scored = agents.filter((a) => a.csat !== null && a.csatSample >= CROWN_SAMPLE)
   if (scored.length) {
     const best = scored.reduce((a, b) => (b.csat! > a.csat! ? b : a))
-    out.push({ label: 'Best satisfaction', agent: best.agent, value: `${best.csat!.toFixed(1)} / 5` })
+    out.push({ label: 'Best satisfaction', agent: best.agent, value: `${best.csat!.toFixed(1)} / 5`, url: best.avatarUrl })
   }
 
   const responders = agents.filter(
@@ -74,7 +95,7 @@ function crowns(agents: AgentRow[]): Crown[] {
     const best = responders.reduce((a, b) =>
       b.medianFirstResponseHours! < a.medianFirstResponseHours! ? b : a,
     )
-    out.push({ label: 'Fastest first reply', agent: best.agent, value: duration(best.medianFirstResponseHours) })
+    out.push({ label: 'Fastest first reply', agent: best.agent, value: duration(best.medianFirstResponseHours), url: best.avatarUrl })
   }
 
   const resolvers = agents.filter(
@@ -84,14 +105,14 @@ function crowns(agents: AgentRow[]): Crown[] {
     const best = resolvers.reduce((a, b) =>
       b.medianResolutionHours! < a.medianResolutionHours! ? b : a,
     )
-    out.push({ label: 'Fastest to close', agent: best.agent, value: duration(best.medianResolutionHours) })
+    out.push({ label: 'Fastest to close', agent: best.agent, value: duration(best.medianResolutionHours), url: best.avatarUrl })
   }
 
   return out
 }
 
 /** One surface divided by hairlines - the stat-strip rule, worn by people. */
-export function TopPerformers({ agents }: { agents: AgentRow[] }) {
+export function TopPerformers({ agents }: { agents: AgentWithPhoto[] }) {
   const titles = crowns(agents)
   if (titles.length === 0) return null
 
@@ -103,7 +124,7 @@ export function TopPerformers({ agents }: { agents: AgentRow[] }) {
       {titles.map((t) => (
         <div key={t.label} className="border-b border-line p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
           <div className="flex items-center gap-2.5">
-            <Avatar name={t.agent} />
+            <Avatar name={t.agent} url={t.url} />
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-ink">{t.agent}</p>
               <p className="text-[11px] text-muted">{t.label}</p>
@@ -239,7 +260,7 @@ export function AgentsClient({ email }: { email: string }) {
                           <tr key={a.agent} className="border-b border-line last:border-b-0 hover:bg-panel">
                             <td className="px-4 py-2.5">
                               <span className="flex items-center gap-2.5">
-                                <Avatar name={a.agent} />
+                                <Avatar name={a.agent} url={a.avatarUrl} />
                                 <span className="truncate font-medium">{a.agent}</span>
                               </span>
                             </td>

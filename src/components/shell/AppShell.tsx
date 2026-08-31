@@ -23,8 +23,13 @@ type NavItem = {
   owns?: string[]
 }
 
-/** Where the folded groups are remembered, per browser. */
-const COLLAPSE_KEY = 'sidebar-collapsed'
+/**
+ * Where the OPENED groups are remembered - per tab, per visit
+ * (sessionStorage). The client's rule: arrive at the site and every group
+ * starts closed except the one holding the page on screen; what you open by
+ * hand lasts for the visit and resets on the next one.
+ */
+const OPEN_KEY = 'sidebar-open'
 
 const icon = (path: React.ReactNode) => (
   <svg
@@ -107,8 +112,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
       {
         href: '/support',
         label: 'Support AI',
-        // It owns the Advisor briefing too: they are one place with two tabs.
-        owns: ['/advisor'],
         // A headset. The rayed circle it replaces read as a brightness control,
         // which is not what this page is. Three shapes on whole coordinates, so
         // it stays crisp at the sixteen pixels it is actually drawn at.
@@ -139,6 +142,18 @@ const NAV: { section: string; items: NavItem[] }[] = [
           <>
             <path d="M22 12h-6l-2 3h-4l-2-3H2" />
             <path d="M5.5 5h13l3.5 7v7H2v-7Z" />
+          </>,
+        ),
+      },
+      {
+        href: '/advisor',
+        label: 'Advisor briefing',
+        // Its own entry now, below Inbox - the client asked for it out of
+        // Support AI's tabs. A morning report: an open page with writing.
+        icon: icon(
+          <>
+            <path d="M4 4h16v16H4z" />
+            <path d="M8 9h8M8 13h8M8 17h5" />
           </>,
         ),
       },
@@ -366,7 +381,7 @@ export function AppShell({
     if (item.href === '/settings') return pathname === '/settings'
     // Same exactness for Support AI: /support/agents is its own entry now,
     // and startsWith('/support') would light both at once.
-    if (item.href === '/support') return pathname === '/support' || pathname.startsWith('/advisor')
+    if (item.href === '/support') return pathname === '/support'
     const paths = [item.href, ...(item.owns ?? [])]
     return paths.some((p) => pathname.startsWith(p))
   }
@@ -375,41 +390,41 @@ export function AppShell({
   const home = role === 'MARKETING' ? '/ambassadors' : '/dashboard'
 
   /**
-   * Which groups are folded shut. Starts empty (everything open) and loads
-   * the remembered choice after mount rather than in the initializer: the
-   * server has no localStorage, and reading it during render would make the
-   * first client paint disagree with the HTML it is hydrating.
+   * Which groups stand open. Starts empty (everything closed) and loads the
+   * visit's own opens after mount rather than in the initializer: the server
+   * has no sessionStorage, and reading it during render would make the first
+   * client paint disagree with the HTML it is hydrating.
    *
-   * The group holding the page being read is always dropped from the set: a
-   * sidebar that hides the lit entry for the page on screen reads as broken,
-   * so arriving at a page quietly unfolds its group.
+   * The group holding the page being read is always added: a sidebar hiding
+   * the lit entry for the page on screen reads as broken, so arriving at a
+   * page quietly unfolds its group.
    */
-  const [collapsed, setCollapsed] = useState<string[]>([])
+  const [opened, setOpened] = useState<string[]>([])
   useEffect(() => {
     let stored: string[] = []
     try {
-      const raw = JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '[]')
+      const raw = JSON.parse(sessionStorage.getItem(OPEN_KEY) ?? '[]')
       if (Array.isArray(raw)) stored = raw.filter((s): s is string => typeof s === 'string')
     } catch {
-      // A cleared or blocked store simply means everything opens.
+      // A cleared or blocked store simply means only the active group opens.
     }
     const activeSection = groups.find((g) => g.items.some(isActive))?.section
-    // One deliberate post-mount set. The fold memory lives in localStorage,
+    // One deliberate post-mount set. The open memory lives in sessionStorage,
     // which the server render cannot read, so the first client render catches
     // up exactly once - the React-documented pattern for client-only state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCollapsed(stored.filter((s) => s !== activeSection))
+    setOpened(activeSection && !stored.includes(activeSection) ? [...stored, activeSection] : stored)
     // isActive is stable per pathname; groups per role.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, role])
 
   function toggleGroup(section: string) {
-    setCollapsed((prev) => {
+    setOpened((prev) => {
       const next = prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
       try {
-        localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next))
+        sessionStorage.setItem(OPEN_KEY, JSON.stringify(next))
       } catch {
-        // Fold still works for this visit; it is only the memory that is lost.
+        // The fold still works for this page; only the visit's memory is lost.
       }
       return next
     })
@@ -431,7 +446,7 @@ export function AppShell({
         {nav && (
           <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-y-auto lg:overflow-x-visible lg:pb-0">
             {groups.map((group) => {
-              const open = !collapsed.includes(group.section)
+              const open = opened.includes(group.section)
               const itemsId = `nav-group-${group.section.toLowerCase()}`
               return (
                 <div key={group.section} className="lg:mb-3">

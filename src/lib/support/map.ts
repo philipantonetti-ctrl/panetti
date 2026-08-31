@@ -38,6 +38,8 @@ export type GorgiasUser = {
   name: string | null
   active: boolean | null
   role: { name?: string | null } | null
+  /** Gorgias keeps the profile photo here; the field is their flexible bag. */
+  meta?: { profile_picture_url?: string | null } | null
 }
 
 export type MappedTicket = {
@@ -119,6 +121,9 @@ export function mapAgent(u: GorgiasUser, source: string = SOURCE) {
     // Gorgias's own answering bot appears in this list. Kept with its role so
     // "tickets per agent" can tell a person from a machine.
     role: text(u.role?.name),
+    // The photo the helpdesk shows for them, so the Agents page can wear the
+    // same faces. Their absence is a real state: initials render instead.
+    avatarUrl: text(u.meta?.profile_picture_url),
     active: u.active !== false,
   }
 }

@@ -1246,6 +1246,8 @@ model SupportAgent {
   email      String?
   name       String?
   role       String?
+  /// The helpdesk profile photo, as Gorgias serves it. Null when none is set.
+  avatarUrl  String?
   active     Boolean  @default(true)
   readAt     DateTime @updatedAt
 

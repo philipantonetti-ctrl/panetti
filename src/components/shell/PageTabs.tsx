@@ -43,17 +43,6 @@ export function PageTabs({ tabs }: { tabs: Tab[] }) {
   )
 }
 
-/**
- * The assistant's two screens, customer service first.
- *
- * Support is the main page and the briefing its second tab: the sidebar entry
- * is named for the first of them, so the order here and the name there have to
- * agree or the entry lands somewhere it does not describe.
- */
-export const ADVISOR_TABS: Tab[] = [
-  { href: '/support', label: 'Support AI' },
-  { href: '/advisor', label: 'Advisor briefing' },
-]
 
 /**
  * Marketing's two screens: money spent on ads, and the email campaigns from

@@ -106,6 +106,7 @@ describe('mapAgent', () => {
         name: 'Ola Agent',
         active: true,
         role: { name: 'agent' },
+        meta: { profile_picture_url: 'https://gorgias.example/avatars/ola.png' },
       }),
     ).toEqual({
       source: 'gorgias',
@@ -113,8 +114,14 @@ describe('mapAgent', () => {
       email: 'agent@ledendeteknologi.no',
       name: 'Ola Agent',
       role: 'agent',
+      avatarUrl: 'https://gorgias.example/avatars/ola.png',
       active: true,
     })
+  })
+
+  it('leaves the photo null for a user who never set one', () => {
+    const plain = mapAgent({ id: 2, email: 'x@y.test', name: 'X', active: true, role: null })
+    expect(plain.avatarUrl).toBeNull()
   })
 
   /**
