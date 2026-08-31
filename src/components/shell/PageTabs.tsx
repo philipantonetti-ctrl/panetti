@@ -54,3 +54,12 @@ export const ADVISOR_TABS: Tab[] = [
   { href: '/support', label: 'Support AI' },
   { href: '/advisor', label: 'Advisor briefing' },
 ]
+
+/**
+ * Marketing's two screens: money spent on ads, and the email campaigns from
+ * Klaviyo. One sidebar entry, two tabs - the same trade the assistant made.
+ */
+export const MARKETING_TABS: Tab[] = [
+  { href: '/marketing', label: 'Advertising' },
+  { href: '/marketing/email', label: 'Email' },
+]
