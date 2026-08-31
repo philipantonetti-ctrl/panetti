@@ -23,9 +23,10 @@ async function cleanup() {
   })
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: PREFIX } } })
   // Real-shaped Bring numbers, cleaned by exact value: the too-early-parcel
-  // fix keys on the number's SHAPE (373 + 15 digits), so these cannot carry
-  // the test prefix. 3739999... is a range Bring will never issue.
+  // fix keys on the number's SHAPE (373/473 + 15 digits), so these cannot
+  // carry the test prefix. x739999... is a range Bring will never issue.
   await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: '373999999' } } })
+  await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: '473999999' } } })
   await db.orderItem.deleteMany({ where: { order: scoped } })
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
@@ -266,10 +267,12 @@ describe('a parcel Bring does not know yet', () => {
   beforeEach(async () => {
     resolveConsignments.mockReset()
     await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: '373999999' } } })
+    await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: '473999999' } } })
   })
 
   const EARLY = '373999999000000001'
   const EARLY2 = '373999999000000002'
+  const EARLY3 = '473999999000000003' // the warehouse's newer 473 series
   const FOREIGN = '28144019968359654386' // 20 digits: another carrier's number
 
   it('is stored anyway when its number is Bring-shaped, so it can be retried', async () => {
@@ -289,6 +292,32 @@ describe('a parcel Bring does not know yet', () => {
     expect(result.unmatched[0]?.reason).toMatch(/stored/i)
   })
 
+  /**
+   * The 2026-08-28 file, reported by the client: 64 parsed, 0 linked. Bring's
+   * API had a bad night - two fetch failures, a 403, a timeout - and the rest
+   * of the file ran out of budget. Every one of its package numbers was
+   * 473-shaped (measured in production 2026-08-31: 233 of 496 linked Bring
+   * parcels start 473, the rest 373), so the shape gate stored none of them
+   * and the whole day's parcels were never retried.
+   */
+  it('stores a 473-shaped number that failed its lookup, and says it will retry', async () => {
+    resolveConsignments.mockResolvedValueOnce({
+      consignments: [],
+      unresolved: [{ number: EARLY3, reason: 'fetch failed' }],
+    })
+
+    const result = await importWarehouseFile(book([EARLY3]), 'eod.xlsx', 'EMAIL')
+
+    const parcel = await db.shipment.findUnique({ where: { trackingNumber: EARLY3 } })
+    expect(parcel).not.toBeNull()
+    expect(parcel?.orderId).toBeNull()
+    expect(parcel?.nextPollAt).not.toBeNull()
+    // The real failure is kept - "Bring has not heard of this parcel" would be
+    // a lie here, because Bring was never successfully asked.
+    expect(result.unmatched[0]?.reason).toMatch(/fetch failed/)
+    expect(result.unmatched[0]?.reason).toMatch(/stored/i)
+  })
+
   it('does not store a number that is not Bring-shaped, because those are other carriers', async () => {
     resolveConsignments.mockResolvedValueOnce({
       consignments: [],
@@ -303,6 +332,9 @@ describe('a parcel Bring does not know yet', () => {
 
   it('gets linked to its order by the next file, once Bring knows it', async () => {
     await db.shipment.create({ data: { trackingNumber: EARLY2, nextPollAt: new Date() } })
+    // The newer 473 series must be retried too - the nightly retry used to
+    // fetch only 373-prefixed rows, which silently excluded half the fleet.
+    await db.shipment.create({ data: { trackingNumber: EARLY3, nextPollAt: new Date() } })
     const order = await db.order.create({
       data: {
         shopId, externalId: 'E-EARLY', number: `${PREFIX}9001`,
@@ -313,8 +345,8 @@ describe('a parcel Bring does not know yet', () => {
       },
     })
 
-    // First call is the retry batch (yesterday's stray), second is the file's
-    // own numbers. Bring knows the stray now and hands back its recipient.
+    // First call is the retry batch (yesterday's strays), second is the file's
+    // own numbers. Bring knows the strays now and hands back their recipient.
     resolveConsignments.mockImplementation(async (_creds: unknown, numbers: unknown) => {
       const list = numbers as string[]
       if (list.includes(EARLY2)) {
@@ -322,6 +354,11 @@ describe('a parcel Bring does not know yet', () => {
           consignments: [{
             consignmentId: '373999999000000999',
             packageNumbers: [EARLY2],
+            recipientEmail: 'early.bird@example.test',
+            recipientName: 'Early Bird',
+          }, {
+            consignmentId: '473999999000000999',
+            packageNumbers: [EARLY3],
             recipientEmail: 'early.bird@example.test',
             recipientName: 'Early Bird',
           }],
@@ -333,8 +370,15 @@ describe('a parcel Bring does not know yet', () => {
 
     const result = await importWarehouseFile(book(['999888777666555']), 'eod.xlsx', 'EMAIL')
 
+    // BOTH shapes were in the retry batch, not just the 373 one.
+    const retryCall = resolveConsignments.mock.calls[0]?.[1] as string[]
+    expect(retryCall).toContain(EARLY2)
+    expect(retryCall).toContain(EARLY3)
+
     const parcel = await db.shipment.findUnique({ where: { trackingNumber: EARLY2 } })
     expect(parcel?.orderId).toBe(order.id)
+    const parcel3 = await db.shipment.findUnique({ where: { trackingNumber: EARLY3 } })
+    expect(parcel3?.orderId).toBe(order.id)
     // The retry is housekeeping, not part of the file: tonight's file linked
     // nothing of its own and its record must say so.
     expect(result.linked).toBe(0)
