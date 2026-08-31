@@ -52,9 +52,17 @@ const AMBASSADORS_ITEM: NavItem = {
   ),
 }
 
+/**
+ * Grouped the way the Gorgias sidebar the client sent is: a handful of small
+ * labelled subjects, not one eleven-entry column under a single word. Same
+ * entries as before - he asked for a SHORTER sidebar once already, so a
+ * regrouping must never quietly add one - only arranged by what the pages
+ * are about: the money read first, the people answering customers, the money
+ * spent acquiring them, and the physical side of the business.
+ */
 const NAV: { section: string; items: NavItem[] }[] = [
   {
-    section: 'Analytics',
+    section: 'Overview',
     items: [
       {
         href: '/dashboard',
@@ -66,6 +74,33 @@ const NAV: { section: string; items: NavItem[] }[] = [
           </>,
         ),
       },
+      {
+        href: '/orders',
+        label: 'Orders',
+        icon: icon(
+          <>
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+            <path d="M3 6h18" />
+            <path d="M16 10a4 4 0 0 1-8 0" />
+          </>,
+        ),
+      },
+      {
+        href: '/finance',
+        label: 'Finance',
+        icon: icon(
+          <>
+            <rect x="2" y="5" width="20" height="14" rx="2" />
+            <path d="M2 10h20" />
+            <path d="M6 15h4" />
+          </>,
+        ),
+      },
+    ],
+  },
+  {
+    section: 'Support',
+    items: [
       {
         href: '/support',
         label: 'Support AI',
@@ -92,28 +127,27 @@ const NAV: { section: string; items: NavItem[] }[] = [
           </>,
         ),
       },
+    ],
+  },
+  {
+    section: 'Marketing',
+    items: [
       {
-        href: '/orders',
-        label: 'Orders',
+        href: '/marketing',
+        label: 'Marketing',
         icon: icon(
           <>
-            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
-            <path d="M3 6h18" />
-            <path d="M16 10a4 4 0 0 1-8 0" />
+            <path d="m3 11 18-5v12L3 14v-3Z" />
+            <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
           </>,
         ),
       },
-      {
-        href: '/finance',
-        label: 'Finance',
-        icon: icon(
-          <>
-            <rect x="2" y="5" width="20" height="14" rx="2" />
-            <path d="M2 10h20" />
-            <path d="M6 15h4" />
-          </>,
-        ),
-      },
+      AMBASSADORS_ITEM,
+    ],
+  },
+  {
+    section: 'Operations',
+    items: [
       {
         href: '/delivery',
         label: 'Delivery',
@@ -123,16 +157,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
             <path d="M14 10h4l3 3v4h-7z" />
             <circle cx="7" cy="18" r="1.5" />
             <circle cx="17" cy="18" r="1.5" />
-          </>,
-        ),
-      },
-      {
-        href: '/marketing',
-        label: 'Marketing',
-        icon: icon(
-          <>
-            <path d="m3 11 18-5v12L3 14v-3Z" />
-            <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
           </>,
         ),
       },
@@ -158,7 +182,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
           </>,
         ),
       },
-      AMBASSADORS_ITEM,
       {
         href: '/b2b',
         label: 'B2B',
@@ -344,10 +367,12 @@ export function AppShell({
           <Wordmark home={home} />
         </div>
 
+        {/* Six labelled groups are taller than three: the column scrolls on
+            short laptop screens rather than clipping Setup off the bottom. */}
         {nav && (
-          <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-visible lg:pb-0">
+          <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-y-auto lg:overflow-x-visible lg:pb-0">
             {groups.map((group) => (
-              <div key={group.section} className="lg:mb-5">
+              <div key={group.section} className="lg:mb-4">
                 <p className="hidden px-2.5 pb-1.5 text-[11px] font-semibold tracking-wide text-faint lg:block">
                   {group.section}
                 </p>
