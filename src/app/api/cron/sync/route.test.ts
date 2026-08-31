@@ -57,6 +57,11 @@ vi.mock('@/lib/bring/invoice-sync', () => ({
   syncBringInvoices: (...args: [{ deadline?: number }?]) => syncBringInvoices(...args),
 }))
 
+// Nor Klaviyo. Unmocked, a config row left behind by another test file in the
+// shared database would send this test to the real API with a fake key.
+const syncKlaviyo = vi.fn(async () => ({ configured: false, ok: true, campaigns: 0, error: null }))
+vi.mock('@/lib/klaviyo/sync', () => ({ syncKlaviyo: () => syncKlaviyo() }))
+
 const { GET } = await import('./route')
 
 const call = (auth?: string) =>
@@ -69,6 +74,7 @@ const call = (auth?: string) =>
 const REAL = process.env.CRON_SECRET
 
 beforeEach(() => {
+  syncKlaviyo.mockClear()
   importVismaB2bSales.mockClear()
   importVismaPurchaseOrders.mockClear()
   syncBringInvoices.mockClear()
@@ -108,6 +114,16 @@ describe('the scheduled sync endpoint', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ ok: true, shops: 2, ordersSynced: 5, failed: [] })
     expect(syncAllShops).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs the Klaviyo email sync as one more best-effort stage, and reports it', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(syncKlaviyo).toHaveBeenCalledTimes(1)
+    expect(body.klaviyoConfigured).toBe(false)
+    expect(body.klaviyoCampaigns).toBe(0)
+    expect(body.klaviyoError).toBeNull()
   })
 
   // A half-failed run that reports success would hide stale figures.

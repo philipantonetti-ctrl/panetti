@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { syncAllShops } from '@/lib/woo/sync'
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affiliate/sync'
+import { syncKlaviyo, type KlaviyoSyncResult } from '@/lib/klaviyo/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
@@ -264,6 +265,19 @@ export async function GET(req: Request) {
     // Each account keeps its own lastError; the settings page tells the story.
   }
 
+  // Email campaigns from Klaviyo, beside the other marketing pulls. It spaces
+  // itself six hours apart (its reporting endpoint allows 225 calls a DAY),
+  // so most runs cost no HTTP at all. Best-effort like the ads: a revoked key
+  // keeps its own lastError on the settings page and must never fail the shop
+  // sync.
+  let klaviyo: KlaviyoSyncResult = { configured: false, ok: true, campaigns: 0, error: null }
+  try {
+    klaviyo = await syncKlaviyo()
+  } catch {
+    // syncKlaviyo does not throw, but a caller that assumes so is one refactor
+    // away from a failed sync.
+  }
+
   // Top up exchange rates BEFORE parcel tracking, not after. Rates are one
   // cheap bounded call; parcel polling is greedy and runs to its deadline. With
   // the order reversed, a busy backlog of parcels could eat the whole
@@ -356,6 +370,9 @@ export async function GET(req: Request) {
     adFailed: ads.filter((r) => !r.ok).map((r) => r.name),
     affiliateAccounts: affiliate.length,
     affiliateFailed: affiliate.filter((r) => !r.ok).map((r) => r.name),
+    klaviyoConfigured: klaviyo.configured,
+    klaviyoCampaigns: klaviyo.campaigns,
+    klaviyoError: klaviyo.error,
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,

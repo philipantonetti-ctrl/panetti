@@ -1002,14 +1002,14 @@ model CarrierCost {
 /// is ever silently merged with its twin.
 model ShipmentCost {
   id             String   @id @default(cuid())
-  trackingNumber String   // WAYBILL_NUMBER, joins Shipment.trackingNumber
-  customerNumber String   // ACCOUNT_NUMBER, which Bring account was billed
+  trackingNumber String // WAYBILL_NUMBER, joins Shipment.trackingNumber
+  customerNumber String // ACCOUNT_NUMBER, which Bring account was billed
   invoiceNumber  String
-  amount         Int      // minor units of `currency`, from AMOUNT (ex tax)
-  currency       String   // INVOICE_CURRENCY_CODE, per line
+  amount         Int // minor units of `currency`, from AMOUNT (ex tax)
+  currency       String // INVOICE_CURRENCY_CODE, per line
   chargedAt      DateTime // TRX_DATE
-  itemNumber     String   // ITEM_NUMBER, e.g. 105633
-  description    String   // ITEM_DESCRIPTION, e.g. "3123 Toll road"
+  itemNumber     String // ITEM_NUMBER, e.g. 105633
+  description    String // ITEM_DESCRIPTION, e.g. "3123 Toll road"
   readAt         DateTime @updatedAt
 
   @@index([invoiceNumber])
@@ -1028,17 +1028,17 @@ model ShipmentCost {
 /// down, and recording that plainly is what stops it being retried forever and
 /// what lets the page say how much money it cannot attribute.
 model BringReportRun {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   customerNumber String
-  invoiceNumber  String   // the report's only parameter
+  invoiceNumber  String // the report's only parameter
   invoiceDate    DateTime
-  reportId       String?  // Bring's, parsed out of statusUrl
+  reportId       String? // Bring's, parsed out of statusUrl
   statusUrl      String?
-  state          String   // PENDING | REQUESTED | STORED | FAILED | NO_SPEC
+  state          String // PENDING | REQUESTED | STORED | FAILED | NO_SPEC
   requestedAt    DateTime?
   collectedAt    DateTime?
-  rowsStored     Int      @default(0)
-  rowsUnmatched  Int      @default(0)
+  rowsStored     Int       @default(0)
+  rowsUnmatched  Int       @default(0)
   error          String?
   nextTryAt      DateTime? // FAILED only: earliest a starved or broken row may be retried
 
@@ -1188,18 +1188,18 @@ model SupportTicket {
   source     String // "gorgias"
   externalId String
 
-  status   String // open | closed | ...
-  priority String?
+  status        String // open | closed | ...
+  priority      String?
   /// email, chat, instagram-direct-message, ... whatever the helpdesk calls it.
-  channel  String?
-  via      String?
-  subject  String?
-  language String?
+  channel       String?
+  via           String?
+  subject       String?
+  language      String?
   /// Kept rather than dropped, so every count can exclude it deliberately.
-  spam     Boolean @default(false)
+  spam          Boolean @default(false)
   /// True when we started the conversation, not the customer.
-  fromAgent Boolean @default(false)
-  messagesCount Int  @default(0)
+  fromAgent     Boolean @default(false)
+  messagesCount Int     @default(0)
 
   /// Lowercased. THE join to Order.customerEmail, which is how a ticket is
   /// tied to what the person actually bought.
@@ -1262,11 +1262,11 @@ model SupportSyncState {
   source String @id
 
   /// Newest `updatedAt` already stored. The incremental pass stops here.
-  watermark DateTime?
+  watermark      DateTime?
   /// Where the oldest-first backfill stopped. Null once history is complete.
   backfillCursor String?
   /// True while there is still history to walk.
-  backfilling    Boolean @default(true)
+  backfilling    Boolean   @default(true)
   /// The oldest ticket seen, so a person can see how far back we have got.
   oldestSeenAt   DateTime?
 
@@ -1385,4 +1385,48 @@ model AiConversation {
   @@unique([source, externalTicketId, createdAt])
   @@index([createdAt])
   @@index([decision])
+}
+
+/// The Klaviyo connection. One account for the whole business, so a singleton
+/// like DeliveryConfig: the key is pasted once, proven against Klaviyo before
+/// anything is stored, and kept encrypted.
+model KlaviyoConfig {
+  id     String @id @default("singleton")
+  apiKey String // encrypted, like every other stored secret
+
+  /// The account's reporting currency, read from Klaviyo at connect time.
+  currency           String  @default("USD")
+  /// The "Placed Order" metric campaign revenue is attributed against. Null
+  /// when the account has none - campaigns then carry opens and clicks but
+  /// no revenue, and the page says so rather than showing zeroes.
+  conversionMetricId String?
+
+  active     Boolean   @default(true)
+  lastSyncAt DateTime?
+  lastError  String?
+  createdAt  DateTime  @default(now())
+}
+
+/// One campaign's lifetime results, an exact mirror of what Klaviyo reports.
+/// The sync re-fetches the window and upserts by campaign id, so restatement
+/// arrives as changed rows - the same mirror discipline the affiliate import
+/// uses.
+model EmailCampaignStat {
+  id         String    @id @default(cuid())
+  campaignId String    @unique
+  name       String
+  /// email | sms - both channels ride the same Klaviyo account.
+  channel    String
+  sentAt     DateTime?
+
+  recipients      Int @default(0)
+  opens           Int @default(0)
+  clicks          Int @default(0)
+  conversions     Int @default(0)
+  /// Minor units of KlaviyoConfig.currency.
+  conversionValue Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@index([sentAt])
 }

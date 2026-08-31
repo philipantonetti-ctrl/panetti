@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { MARKETING_TABS, PageTabs } from '@/components/shell/PageTabs'
 import { useToast } from '@/components/toast/useToast'
 import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
@@ -302,6 +303,8 @@ export function MarketingClient({
           </>
         )}
       </PageHeader>
+
+      <PageTabs tabs={MARKETING_TABS} />
 
       <PageBody>
         {!hasAccounts ? (
