@@ -98,5 +98,7 @@ describe('AgentsClient', () => {
     // Opens on this month, like the money dashboard - the client's ask.
     const firstUrl = String((fetch as ReturnType<typeof vi.fn>).mock.calls[0][0])
     expect(firstUrl).toContain('preset=this_month')
+    // Each face is the upload control for that person's photo.
+    expect(screen.getByLabelText('Set photo for Selena Guillermo')).toBeInTheDocument()
   })
 })

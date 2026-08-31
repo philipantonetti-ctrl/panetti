@@ -168,12 +168,86 @@ function averages(agents: AgentRow[]) {
   }
 }
 
+/**
+ * The avatar as a control: click the face, pick the photo.
+ *
+ * Here because Gorgias will not hand its uploaded profile photos to anything
+ * outside its own app (bucket 403s the internet AND server-side API auth,
+ * both measured 2026-08-31) - so the faces this page cannot mirror, the
+ * admin sets once, into the same column the sync fills.
+ */
+function PhotoPicker({
+  agent,
+  onSaved,
+  onFailed,
+  children,
+}: {
+  agent: string
+  onSaved: () => void
+  onFailed: (message: string) => void
+  children: React.ReactNode
+}) {
+  async function pick(file: File | undefined) {
+    if (!file) return
+    if (file.size > 300_000) {
+      onFailed('That image is too large - pick one under about 300KB.')
+      return
+    }
+    const image = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(new Error('Could not read the file'))
+      reader.readAsDataURL(file)
+    }).catch(() => null)
+    if (!image) {
+      onFailed('Could not read that file.')
+      return
+    }
+    try {
+      const res = await fetch('/api/support/agents/photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent, image }),
+      })
+      if (!res.ok) {
+        onFailed((await res.json().catch(() => null))?.error ?? 'Could not save the photo')
+        return
+      }
+      onSaved()
+    } catch {
+      onFailed('Could not reach the server.')
+    }
+  }
+
+  return (
+    <label
+      className="cursor-pointer rounded-full transition-shadow duration-150 hover:ring-2 hover:ring-accent/50"
+      title={`Set a photo for ${agent}`}
+    >
+      <input
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        aria-label={`Set photo for ${agent}`}
+        className="sr-only"
+        onChange={(e) => {
+          void pick(e.target.files?.[0])
+          e.target.value = ''
+        }}
+      />
+      {children}
+    </label>
+  )
+}
+
 export function AgentsClient({ email }: { email: string }) {
   const [preset, setPreset] = useState<Preset | 'custom'>('this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [data, setData] = useState<Payload | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  /** Bumped after a photo save, so the table refetches and wears it. */
+  const [refreshNonce, setRefreshNonce] = useState(0)
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -194,7 +268,7 @@ export function AgentsClient({ email }: { email: string }) {
         if (e.name !== 'AbortError') setError(e.message)
       })
     return () => ctrl.abort()
-  }, [preset, from, to])
+  }, [preset, from, to, refreshNonce])
 
   function pickRange(next: RangeChoice) {
     setPreset(next.preset)
@@ -226,6 +300,11 @@ export function AgentsClient({ email }: { email: string }) {
               </span>
             </div>
 
+            {notice && (
+              <p className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-warn">
+                {notice}
+              </p>
+            )}
             {data.messagesBackfilling && data.agents.length > 0 && (
               <p className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-muted">
                 The message history is still importing, so Replied, Sent, Received, Response and One
@@ -285,7 +364,16 @@ export function AgentsClient({ email }: { email: string }) {
                           <tr key={a.agent} className="border-b border-line last:border-b-0 hover:bg-panel">
                             <td className="px-4 py-2.5">
                               <span className="flex items-center gap-2.5">
-                                <Avatar name={a.agent} url={a.avatarUrl} />
+                                <PhotoPicker
+                                  agent={a.agent}
+                                  onSaved={() => {
+                                    setNotice('')
+                                    setRefreshNonce((n) => n + 1)
+                                  }}
+                                  onFailed={setNotice}
+                                >
+                                  <Avatar name={a.agent} url={a.avatarUrl} />
+                                </PhotoPicker>
                                 <span className="truncate font-medium">{a.agent}</span>
                               </span>
                             </td>
