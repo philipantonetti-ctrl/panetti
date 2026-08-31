@@ -1063,10 +1063,43 @@ const SOURCE_LABEL: Record<string, string> = { UPLOAD: 'Upload', EMAIL: 'Email' 
  * this list answers is "which ones, and why", and a normal day's handful now
  * fits with room to spare. The cap stays because a genuinely broken file can
  * produce hundreds, and burying the rest of the page under them helps nobody.
+ * Counts DISTINCT REASONS now that identical reasons collapse into one line.
  */
 const REFUSALS_SHOWN = 12
 
+/**
+ * Numbers listed inside one grouped line. Eight is enough to spot-check a few
+ * against Bring; the rest are a count, because sixty links in a row is a wall,
+ * not information - the 2026-08-28 file proved it.
+ */
+const GROUP_NUMBERS_SHOWN = 8
+
 type Refusal = { trackingNumber: string | null; reason: string }
+
+type RefusalGroup = { reason: string; numbers: string[] }
+
+/**
+ * Identical reasons collapsed to one line each, first-seen order kept.
+ *
+ * A reason repeated sixty times is ONE fact about the night ("the run hit its
+ * time budget"), not sixty facts - rendered flat, the 2026-08-28 file put
+ * twelve identical lines and an "and 52 more" under its row, and the client
+ * asked what the wall of text meant. Personal reasons ("No order for
+ * x@example.test") are naturally unique, so a normal night's list renders
+ * exactly as it always did.
+ */
+function groupRefusals(refusals: Refusal[]): RefusalGroup[] {
+  const groups = new Map<string, RefusalGroup>()
+  for (const r of refusals) {
+    let g = groups.get(r.reason)
+    if (!g) {
+      g = { reason: r.reason, numbers: [] }
+      groups.set(r.reason, g)
+    }
+    if (r.trackingNumber) g.numbers.push(r.trackingNumber)
+  }
+  return [...groups.values()]
+}
 
 /**
  * The stated reasons an import refused to link something.
@@ -1109,7 +1142,7 @@ function refusalsOf(raw: string | null): Refusal[] {
  * "no order for this email", "matched 2 orders" - and those reasons were being
  * stored and never shown. They are the row underneath.
  */
-function ImportsList({ items }: { items: ImportRow[] }) {
+export function ImportsList({ items }: { items: ImportRow[] }) {
   return (
     <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <div className="px-5 py-3.5">
@@ -1133,12 +1166,12 @@ function ImportsList({ items }: { items: ImportRow[] }) {
             </thead>
             <tbody>
               {items.map((i) => {
-                const refusals = refusalsOf(i.unmatched)
-                const hidden = refusals.length - REFUSALS_SHOWN
+                const groups = groupRefusals(refusalsOf(i.unmatched))
+                const hidden = groups.length - REFUSALS_SHOWN
                 return (
                   <Fragment key={i.id}>
                     <tr
-                      className={`hover:bg-panel ${refusals.length > 0 ? '' : 'border-b border-line last:border-b-0'}`}
+                      className={`hover:bg-panel ${groups.length > 0 ? '' : 'border-b border-line last:border-b-0'}`}
                     >
                       <td className="px-5 py-2.5 text-ink">{i.filename}</td>
                       <td className="px-4 py-2.5 text-muted">{SOURCE_LABEL[i.source] ?? i.source}</td>
@@ -1152,31 +1185,64 @@ function ImportsList({ items }: { items: ImportRow[] }) {
                         {i.error ?? ''}
                       </td>
                     </tr>
-                    {refusals.length > 0 && (
+                    {groups.length > 0 && (
                       <tr className="border-b border-line last:border-b-0">
                         <td colSpan={7} className="px-5 pb-3 pt-0">
                           <ul className="space-y-0.5 text-[12px] text-warn">
-                            {refusals.slice(0, REFUSALS_SHOWN).map((r, n) => (
-                              <li key={`${r.trackingNumber ?? ''}-${n}`}>
-                                {r.trackingNumber && (
+                            {groups.slice(0, REFUSALS_SHOWN).map((g, n) => (
+                              <li key={`${g.reason}-${n}`}>
+                                {g.numbers.length > 1 ? (
+                                  // One line per REASON: "60 parcels - ran out
+                                  // of time: 4733…, 4733…, and 52 more". The
+                                  // wall of identical lines the 2026-08-28
+                                  // night produced is one fact, stated once.
                                   <>
-                                    <a
-                                      href={refusalUrl(r.trackingNumber)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="num text-accent hover:underline"
-                                    >
-                                      {r.trackingNumber}
-                                    </a>
-                                    {' - '}
+                                    <span className="num">{g.numbers.length.toLocaleString('en-US')}</span>
+                                    {' parcels - '}
+                                    {g.reason}
+                                    {': '}
+                                    {g.numbers.slice(0, GROUP_NUMBERS_SHOWN).map((num, k) => (
+                                      <Fragment key={num}>
+                                        {k > 0 && ', '}
+                                        <a
+                                          href={refusalUrl(num)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="num text-accent hover:underline"
+                                        >
+                                          {num}
+                                        </a>
+                                      </Fragment>
+                                    ))}
+                                    {g.numbers.length > GROUP_NUMBERS_SHOWN && (
+                                      <span className="num text-muted">
+                                        {' '}and {(g.numbers.length - GROUP_NUMBERS_SHOWN).toLocaleString('en-US')} more
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {g.numbers[0] && (
+                                      <>
+                                        <a
+                                          href={refusalUrl(g.numbers[0])}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="num text-accent hover:underline"
+                                        >
+                                          {g.numbers[0]}
+                                        </a>
+                                        {' - '}
+                                      </>
+                                    )}
+                                    {g.reason}
                                   </>
                                 )}
-                                {r.reason}
                               </li>
                             ))}
                             {hidden > 0 && (
                               <li className="num text-muted">
-                                and {hidden.toLocaleString('en-US')} more
+                                and {hidden.toLocaleString('en-US')} more reasons
                               </li>
                             )}
                           </ul>

@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { LateList, NoTracking, Pipeline, Split, Tiles, type LateOrder } from './DeliveryClient'
+import { ImportsList, LateList, NoTracking, Pipeline, Split, Tiles, type LateOrder } from './DeliveryClient'
 import type { DeliveryStats } from '@/lib/delivery/stats'
 
 const order = (over: Partial<LateOrder> = {}): LateOrder => ({
@@ -371,5 +371,61 @@ describe('Pipeline', () => {
       />,
     )
     expect(container.textContent).not.toMatch(/Delivered5/)
+  })
+})
+
+/**
+ * The 2026-08-28 file put 60 identical "Ran out of time before Bring could be
+ * asked" lines under one import row - twelve rendered, "and 52 more" hidden -
+ * and the client asked what the wall of text meant. A reason repeated N times
+ * is ONE fact about the night, not N facts, so identical reasons collapse to
+ * a single line carrying the count and a few of the numbers.
+ */
+describe('ImportsList refusals', () => {
+  const row = (unmatched: unknown) => ({
+    id: 'i1', filename: 'eod.xlsx', receivedAt: '2026-08-29T00:01:40.000Z',
+    rowsParsed: 64, rowsLinked: 0, rowsUnmatched: 64, error: null,
+    source: 'EMAIL',
+    unmatched: JSON.stringify(unmatched),
+  })
+  const entry = (n: number, reason: string) => ({
+    orderNumber: '(not identified)',
+    trackingNumber: '4733253800000' + String(n).padStart(5, '0'),
+    reason,
+  })
+
+  it('collapses a repeated reason into one line with a count', () => {
+    const sixty = Array.from({ length: 60 }, (_, n) =>
+      entry(n, 'Ran out of time before Bring could be asked about this number'))
+    const { container } = render(<ImportsList items={[row(sixty)]} />)
+
+    const text = container.textContent ?? ''
+    const mentions = text.split('Ran out of time before Bring could be asked').length - 1
+    expect(mentions).toBe(1)
+    expect(text).toContain('60 parcels')
+  })
+
+  it('shows only a few numbers per group, and counts the rest', () => {
+    const sixty = Array.from({ length: 60 }, (_, n) =>
+      entry(n, 'Ran out of time before Bring could be asked about this number'))
+    const { container } = render(<ImportsList items={[row(sixty)]} />)
+
+    expect(container.querySelectorAll('a').length).toBeLessThanOrEqual(8)
+    expect(container.textContent).toContain('and 52 more')
+  })
+
+  it('leaves one-off reasons exactly as they were: number, then reason', () => {
+    const { container } = render(
+      <ImportsList items={[row([
+        entry(1, 'No order for globe@trotter.test'),
+        entry(2, 'Bring has no parcel with this number'),
+      ])]} />,
+    )
+    const text = container.textContent ?? ''
+    expect(text).toContain('No order for globe@trotter.test')
+    expect(text).toContain('Bring has no parcel with this number')
+    expect(text).not.toContain('parcels')
+    // Both numbers still render, still as tracking links.
+    expect(container.querySelectorAll('a').length).toBe(2)
   })
 })

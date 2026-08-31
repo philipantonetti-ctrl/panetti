@@ -151,13 +151,16 @@ export async function importTrackingFile(
 }
 
 /**
- * A Bring package number as the warehouse file prints one: 373 and fifteen
- * more digits. Measured, not assumed - every parcel this system has ever
- * matched is this shape, all six of the production misses below were this
- * shape, and none of the other carriers' numbers seen in the files (19 to 24
- * digits, or DHL's ten) can collide with it.
+ * A Bring package number as the warehouse file prints one: 373 or 473, then
+ * fifteen more digits. Measured, not assumed - of the 496 linked Bring parcels
+ * in production on 2026-08-31, 263 start 373 and 233 start 473, and none of
+ * the other carriers' numbers seen in the files (19 to 24 digits, or DHL's
+ * ten) can collide with either. This said only 373 at first, and the
+ * 2026-08-28 file is what that cost: Bring's API had a bad night, all 64 of
+ * the file's numbers were 473-shaped, so none were stored for retry and the
+ * whole day's parcels went unlinked.
  */
-const BRING_SHAPED = /^373\d{15}$/
+const BRING_SHAPED = /^[34]73\d{15}$/
 
 /**
  * Read one warehouse file the format-independent way.
@@ -293,7 +296,13 @@ export async function importWarehouseFile(
         where: {
           orderId: null,
           carrier: 'BRING',
-          trackingNumber: { startsWith: '373' },
+          // Both package series - see BRING_SHAPED. The regex below is still
+          // the real gate; these prefixes only keep the query off rows that
+          // could never pass it.
+          OR: [
+            { trackingNumber: { startsWith: '373' } },
+            { trackingNumber: { startsWith: '473' } },
+          ],
           // A week is seven retries at one file a night. Older than that,
           // Bring genuinely never heard of it and the nightly lookup stops.
           createdAt: { gte: new Date(receivedAt.getTime() - 7 * 24 * 60 * 60 * 1000) },
@@ -381,7 +390,15 @@ export async function importWarehouseFile(
         unmatched.push({
           orderNumber: '(not identified)',
           trackingNumber: u.number,
-          reason: 'Bring has not heard of this parcel yet - stored, it will be linked once Bring knows it',
+          // Two different nights wear this branch. "No parcel" means Bring
+          // answered and did not know the number yet - the lost race. Anything
+          // else means Bring was never successfully asked (a fetch failure, a
+          // 403, this run's own deadline), and claiming Bring "has not heard
+          // of it" would be a lie about a question that was never put.
+          reason:
+            u.reason === 'Bring has no parcel with this number'
+              ? 'Bring has not heard of this parcel yet - stored, it will be linked once Bring knows it'
+              : `${u.reason} - stored, it will be retried with the next nightly file`,
         })
         continue
       }
