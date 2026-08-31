@@ -1,6 +1,6 @@
 'use client'
 
-import { useContext } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ToastContext } from '@/components/toast/useToast'
@@ -22,6 +22,9 @@ type NavItem = {
   /** Other pages this entry owns, so a tab of its own does not unlight it. */
   owns?: string[]
 }
+
+/** Where the folded groups are remembered, per browser. */
+const COLLAPSE_KEY = 'sidebar-collapsed'
 
 const icon = (path: React.ReactNode) => (
   <svg
@@ -356,6 +359,47 @@ export function AppShell({
   const groups = role === 'MARKETING' ? MARKETING_NAV : NAV
   const home = role === 'MARKETING' ? '/ambassadors' : '/dashboard'
 
+  /**
+   * Which groups are folded shut. Starts empty (everything open) and loads
+   * the remembered choice after mount rather than in the initializer: the
+   * server has no localStorage, and reading it during render would make the
+   * first client paint disagree with the HTML it is hydrating.
+   *
+   * The group holding the page being read is always dropped from the set: a
+   * sidebar that hides the lit entry for the page on screen reads as broken,
+   * so arriving at a page quietly unfolds its group.
+   */
+  const [collapsed, setCollapsed] = useState<string[]>([])
+  useEffect(() => {
+    let stored: string[] = []
+    try {
+      const raw = JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '[]')
+      if (Array.isArray(raw)) stored = raw.filter((s): s is string => typeof s === 'string')
+    } catch {
+      // A cleared or blocked store simply means everything opens.
+    }
+    const activeSection = groups.find((g) => g.items.some(isActive))?.section
+    // One deliberate post-mount set. The fold memory lives in localStorage,
+    // which the server render cannot read, so the first client render catches
+    // up exactly once - the React-documented pattern for client-only state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCollapsed(stored.filter((s) => s !== activeSection))
+    // isActive is stable per pathname; groups per role.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, role])
+
+  function toggleGroup(section: string) {
+    setCollapsed((prev) => {
+      const next = prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section]
+      try {
+        localStorage.setItem(COLLAPSE_KEY, JSON.stringify(next))
+      } catch {
+        // Fold still works for this visit; it is only the memory that is lost.
+      }
+      return next
+    })
+  }
+
   return (
     <div className="min-h-screen bg-canvas lg:grid lg:grid-cols-[232px_1fr]">
       {/* Every page heals itself when a newer deployment appears. */}
@@ -371,18 +415,50 @@ export function AppShell({
             short laptop screens rather than clipping Setup off the bottom. */}
         {nav && (
           <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:gap-0 lg:overflow-y-auto lg:overflow-x-visible lg:pb-0">
-            {groups.map((group) => (
-              <div key={group.section} className="lg:mb-4">
-                <p className="hidden px-2.5 pb-1.5 text-[11px] font-semibold tracking-wide text-faint lg:block">
-                  {group.section}
-                </p>
-                <div className="flex gap-1 lg:flex-col lg:gap-0.5">
-                  {group.items.map((item) => (
-                    <NavLink key={item.href} item={item} active={isActive(item)} />
-                  ))}
+            {groups.map((group) => {
+              const open = !collapsed.includes(group.section)
+              const itemsId = `nav-group-${group.section.toLowerCase()}`
+              return (
+                <div key={group.section} className="lg:mb-3">
+                  {/* The whole header row is the control, the way Gorgias
+                      folds its sections. Desktop only: the mobile strip has
+                      no headers and always shows every entry. No height
+                      animation - layout moves are banned - the chevron
+                      carries the state change. */}
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.section)}
+                    aria-expanded={open}
+                    aria-controls={itemsId}
+                    className="hidden w-full items-center justify-between rounded-[var(--radius-control)] px-2.5 py-1.5 text-left text-[12px] font-semibold tracking-wide text-muted transition-colors duration-150 hover:text-ink lg:flex"
+                  >
+                    {group.section}
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                      className={`text-faint transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+                    >
+                      <path d="m9 6 6 6-6 6" />
+                    </svg>
+                  </button>
+                  <div
+                    id={itemsId}
+                    className={`flex gap-1 lg:flex-col lg:gap-0.5 ${open ? '' : 'lg:hidden'}`}
+                  >
+                    {group.items.map((item) => (
+                      <NavLink key={item.href} item={item} active={isActive(item)} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </nav>
         )}
 
