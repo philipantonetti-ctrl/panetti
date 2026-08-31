@@ -117,8 +117,8 @@ const BRING_INVOICES_DEADLINE_MS = 270_000
 const SUPPORT_DEADLINE_MS = 265_000
 
 /**
- * The scheduled sync, called hourly by Vercel Cron so ambassadors and the
- * dashboard see new sales without anyone pressing a button.
+ * The scheduled sync, called every 15 minutes by Vercel Cron so ambassadors
+ * and the dashboard see new sales without anyone pressing a button.
  *
  * Guarded by CRON_SECRET, which Vercel sends as a bearer token on scheduled
  * calls. With no secret configured this REFUSES to run rather than standing
