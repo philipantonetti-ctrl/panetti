@@ -121,6 +121,18 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       {
+        href: '/support/agents',
+        label: 'Agents',
+        // One person in front: this page is people, where Support AI is the
+        // queue. The Gorgias page it mirrors sits under the same heading.
+        icon: icon(
+          <>
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21v-1a8 8 0 0 1 16 0v1" />
+          </>,
+        ),
+      },
+      {
         href: '/inbox',
         label: 'Inbox',
         icon: icon(
@@ -352,6 +364,9 @@ export function AppShell({
 
   const isActive = (item: NavItem) => {
     if (item.href === '/settings') return pathname === '/settings'
+    // Same exactness for Support AI: /support/agents is its own entry now,
+    // and startsWith('/support') would light both at once.
+    if (item.href === '/support') return pathname === '/support' || pathname.startsWith('/advisor')
     const paths = [item.href, ...(item.owns ?? [])]
     return paths.some((p) => pathname.startsWith(p))
   }
