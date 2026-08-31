@@ -77,6 +77,8 @@ it('groups the sidebar by subject, with every entry still present', () => {
   // One representative entry per group, so a regrouping cannot drop a page.
   expect(screen.getByRole('link', { name: 'Dashboard' })).toBeDefined()
   expect(screen.getByRole('link', { name: 'Support AI' })).toBeDefined()
+  // The Agents page the client asked for, inside the Support group.
+  expect(screen.getByRole('link', { name: 'Agents' }).getAttribute('href')).toBe('/support/agents')
   expect(screen.getByRole('link', { name: 'Ambassadors' })).toBeDefined()
   expect(screen.getByRole('link', { name: 'Inventory and forecasting' })).toBeDefined()
   expect(screen.getByRole('link', { name: 'Product costs' })).toBeDefined()
