@@ -60,6 +60,8 @@ type Payload = {
   to: string
   previousFrom: string
   previousTo: string
+  /** Everyone the period saw, for the agent dropdown. Unfiltered on purpose. */
+  agents?: string[]
   stats: Stats
   previous: Stats
   backlog: Backlog
@@ -517,6 +519,8 @@ export function AnalyticsView() {
   const [preset, setPreset] = useState<Preset | 'custom'>('last_90_days')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  /** '' is everyone; 'none' is the unassigned pile, as the inbox filter says it. */
+  const [agent, setAgent] = useState('')
   const [data, setData] = useState<Payload | null>(null)
   const [error, setError] = useState('')
 
@@ -530,6 +534,7 @@ export function AnalyticsView() {
     } else if (preset !== 'custom') {
       params.set('preset', preset)
     }
+    if (agent) params.set('agent', agent)
 
     // A superseded response must never overwrite a newer one.
     const ctrl = new AbortController()
@@ -543,7 +548,7 @@ export function AnalyticsView() {
         if (e.name !== 'AbortError') setError(e.message)
       })
     return () => ctrl.abort()
-  }, [preset, from, to])
+  }, [preset, from, to, agent])
 
   function pickRange(next: RangeChoice) {
     setPreset(next.preset)
@@ -585,10 +590,31 @@ export function AnalyticsView() {
       <Delta current={current} previous={previous} label={against} title={`${against}: ${range}`} tone={tone} />
     ) : null
 
+  /**
+   * The dropdown's options come from the SERVER's unfiltered list, so choosing
+   * an agent never shrinks the list to that one name. Kept across refetches:
+   * a payload while filtered still carries everyone.
+   */
+  const agents = data.agents ?? []
+
   const period = (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-2">
         <DateFilter preset={preset} from={data.from} to={data.to} onChange={pickRange} align="left" />
+        {/* One person's page, or everyone's - the Gorgias screenshot the
+            client sent, done with the rows we already hold. */}
+        <select
+          aria-label="Agent"
+          value={agent}
+          onChange={(e) => setAgent(e.target.value)}
+          className="rounded-[var(--radius-control)] border border-line bg-surface px-2 py-2 text-[13px] text-ink"
+        >
+          <option value="">All agents</option>
+          {agents.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+          <option value="none">Unassigned</option>
+        </select>
         {/* The days actually counted, so a preset is never taken on trust. */}
         <span className="num text-[12px] text-faint">
           {data.from} to {data.to}

@@ -29,6 +29,78 @@ async function cleanup() {
 }
 afterAll(cleanup)
 
+/** Unique to this test run, so a shared database cannot collide on the name. */
+const AGENT_A = `${MARK} Alice`
+const AGENT_B = `${MARK} Bob`
+
+function ticket(externalId: string, over: Record<string, unknown> = {}) {
+  return {
+    source: MARK,
+    externalId,
+    status: 'open',
+    subject: 'Question',
+    tags: [] as string[],
+    spam: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...over,
+  }
+}
+
+/**
+ * The Gorgias screenshots the client sent show the page he wants: pick an
+ * agent, see only their numbers. The filter has to narrow EVERYTHING - the
+ * tiles, the previous period, the backlog band - or the page shows one
+ * agent's volume over the whole team's queue and the two halves disagree.
+ */
+describe('the agent filter', () => {
+  it('lists the agents seen in the period, and narrows every figure to the one asked for', async () => {
+    await cleanup()
+
+    await db.supportTicket.create({
+      data: ticket(`${MARK}-a1`, { assigneeName: AGENT_A }),
+    })
+    await db.supportTicket.create({
+      data: ticket(`${MARK}-a2`, {
+        assigneeName: AGENT_A,
+        status: 'closed',
+        closedAt: new Date(),
+      }),
+    })
+    await db.supportTicket.create({
+      data: ticket(`${MARK}-b1`, { assigneeName: AGENT_B }),
+    })
+
+    const { GET } = await import('./route')
+
+    const all = await (await GET(new Request('http://localhost/api/support/analytics?days=30'))).json()
+    expect(all.agents).toContain(AGENT_A)
+    expect(all.agents).toContain(AGENT_B)
+
+    const res = await GET(
+      new Request(`http://localhost/api/support/analytics?days=30&agent=${encodeURIComponent(AGENT_A)}`),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    // Every ticket on the page is Alice's: the tiles, and the breakdown.
+    expect(body.stats.tickets).toBe(2)
+    expect(body.stats.byAgent).toEqual([{ key: AGENT_A, tickets: 2 }])
+    // The backlog band narrows too: only Alice's open ticket, at any age.
+    expect(body.backlog.open).toBe(1)
+    // The dropdown must not shrink to the filtered slice, or there is no way back.
+    expect(body.agents).toContain(AGENT_B)
+  })
+
+  it('treats "none" as the unassigned pile, the way the inbox filter already does', async () => {
+    const { GET } = await import('./route')
+    const res = await GET(new Request('http://localhost/api/support/analytics?days=30&agent=none'))
+    const body = await res.json()
+    // Unassigned tickets have no agent, so the agent breakdown is empty.
+    expect(body.stats.byAgent).toEqual([])
+  })
+})
+
 describe('the support analytics join', () => {
   it('ties a ticket to its shop even when the customer capitalised their own address', async () => {
     await cleanup()

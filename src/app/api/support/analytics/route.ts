@@ -57,21 +57,43 @@ export async function GET(req: Request) {
     const prevStart = zoneDayStartUtc(dayOf(before.from), timezone)
     const prevEnd = zoneDayEndUtc(dayOf(before.to), timezone)
 
+    /**
+     * One agent's slice of the page, or everyone's. 'none' is the unassigned
+     * pile, the same sentinel the inbox filter already uses; a name can never
+     * collide with it because Gorgias would have to employ someone called
+     * "none". The filter narrows EVERY figure - the tiles, the previous
+     * period, the backlog band - or the page would show one agent's volume
+     * over the whole team's queue and the halves would disagree.
+     */
+    const agent = params.get('agent')
+    const assignee = agent === null ? undefined : agent === 'none' ? null : agent
+
     const [tickets, earlier, stillOpen] = await Promise.all([
-      db.supportTicket.findMany({ where: { createdAt: { gte: start, lte: end } }, select: FIELDS }),
       db.supportTicket.findMany({
-        where: { createdAt: { gte: prevStart, lte: prevEnd } },
+        where: { createdAt: { gte: start, lte: end }, assigneeName: assignee },
         select: FIELDS,
       }),
-      // Every open ticket at any age. There is no index on closedAt, so this is
-      // a scan; only the arrival time is selected to keep it cheap, and at the
-      // tens of thousands of tickets this account will ever hold that costs
-      // milliseconds. An index is the lever if the table ever gets big.
       db.supportTicket.findMany({
-        where: { closedAt: null, spam: false },
+        where: { createdAt: { gte: prevStart, lte: prevEnd }, assigneeName: assignee },
+        select: FIELDS,
+      }),
+      // Every open ticket at any age, narrowed to the agent when one is chosen.
+      db.supportTicket.findMany({
+        where: { closedAt: null, spam: false, assigneeName: assignee },
         select: { createdAt: true },
       }),
+      // The dropdown's options: every agent the PERIOD saw, unfiltered on
+      // purpose - a dropdown built from the filtered slice would shrink to
+      // the one name chosen and leave no way back to the rest.
     ])
+    const seen = await db.supportTicket.findMany({
+      where: { createdAt: { gte: start, lte: end }, assigneeName: { not: null }, spam: false },
+      select: { assigneeName: true },
+      distinct: ['assigneeName'],
+    })
+    const agents = seen
+      .map((t) => t.assigneeName!)
+      .sort((a, b) => a.localeCompare(b))
 
     // Which shop each customer belongs to, from their own orders. One query for
     // every address on the page rather than one per ticket.
@@ -139,6 +161,8 @@ export async function GET(req: Request) {
         to: dayOf(toDay),
         previousFrom: dayOf(before.from),
         previousTo: dayOf(before.to),
+        /** Everyone the period saw, for the agent dropdown. */
+        agents,
         stats: supportStats(rows, timezone),
         /**
          * The period before, for the deltas. Computed without the shop join:

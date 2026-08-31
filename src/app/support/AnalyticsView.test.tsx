@@ -74,7 +74,12 @@ function show(over: Record<string, unknown> = {}) {
     sync,
     ...over,
   }
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 })))
+  // A fresh Response per call: a single shared one has its body consumed by
+  // the first fetch, and every refetch after that reads an empty corpse.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))),
+  )
   render(<AnalyticsView />)
 }
 
@@ -125,6 +130,42 @@ describe('AnalyticsView', () => {
     show()
     expect(await screen.findAllByText(/vs previous 90 days/)).not.toHaveLength(0)
     expect(screen.queryByText(/appears once the history import has finished/)).not.toBeInTheDocument()
+  })
+
+  /**
+   * The Gorgias page the client sent: pick an agent, see only their results.
+   * The dropdown carries every agent the period saw plus the unassigned pile,
+   * and choosing one asks the server for that slice.
+   */
+  it('offers the agents in a dropdown and refetches for the one chosen', async () => {
+    show({ agents: ['Develyn', 'Selena Guillermo'] })
+
+    const picker = (await screen.findByLabelText('Agent')) as HTMLSelectElement
+    expect(picker).toHaveTextContent('All agents')
+    expect(picker).toHaveTextContent('Develyn')
+    expect(picker).toHaveTextContent('Selena Guillermo')
+    expect(picker).toHaveTextContent('Unassigned')
+
+    fireEvent.change(picker, { target: { value: 'Selena Guillermo' } })
+
+    await waitFor(() => {
+      // Parsed, not substring-matched: URLSearchParams writes a space as '+'.
+      const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]))
+      const agentsAsked = calls.map((u) => new URLSearchParams(u.split('?')[1] ?? '').get('agent'))
+      expect(agentsAsked).toContain('Selena Guillermo')
+    })
+  })
+
+  it('asks for the unassigned pile with the same sentinel the inbox uses', async () => {
+    show({ agents: ['Develyn'] })
+    const picker = (await screen.findByLabelText('Agent')) as HTMLSelectElement
+
+    fireEvent.change(picker, { target: { value: 'none' } })
+
+    await waitFor(() => {
+      const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]))
+      expect(calls.some((u) => u.includes('agent=none'))).toBe(true)
+    })
   })
 
   /** Waiting less is good news, and a colour alone is never allowed to say so. */
