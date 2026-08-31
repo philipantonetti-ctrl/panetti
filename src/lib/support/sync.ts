@@ -150,18 +150,68 @@ async function backfill(
   return { stored, cursor: next, done: false, oldest }
 }
 
+/** Photo fetches per run: a face rarely changes, and the budget is shared. */
+const AVATAR_FETCHES_PER_RUN = 5
+
+/** A face is small; anything bigger than this is not a profile picture. */
+const AVATAR_MAX_BYTES = 300_000
+
+/**
+ * The photo itself, with the API credentials. Gorgias's picture bucket
+ * answers 403 to the open internet and to a browser <img>, so the bytes have
+ * to arrive server-side or not at all - and whether the bucket honours API
+ * auth is exactly what this fetch finds out. Null on any refusal: the page
+ * falls back to initials, the same face Gorgias itself shows then.
+ */
+async function fetchAvatar(creds: GorgiasCredentials, url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${creds.email}:${creds.apiKey}`).toString('base64')}`,
+      },
+      signal: AbortSignal.timeout(8_000),
+    })
+    if (!res.ok) return null
+    const type = res.headers.get('content-type') ?? ''
+    if (!type.startsWith('image/')) return null
+    const bytes = Buffer.from(await res.arrayBuffer())
+    if (bytes.length === 0 || bytes.length > AVATAR_MAX_BYTES) return null
+    return `data:${type};base64,${bytes.toString('base64')}`
+  } catch {
+    return null
+  }
+}
+
 /** Who answers tickets. A short list, refreshed whole. */
 async function syncAgents(creds: GorgiasCredentials, deadline: number, pause: number, source: string): Promise<void> {
   let cursor: string | null = null
+  let fetches = 0
   for (let page = 0; page < 5; page++) {
     if (Date.now() > deadline) return
     const { data, nextCursor } = await fetchUsers(creds, cursor, deadline)
     for (const u of data) {
       const agent = mapAgent(u, source)
+
+      // The picture bytes, only when the person has one and we do not hold it
+      // yet (or they changed it). Bounded per run: faces rarely change, and
+      // this budget is shared with everything after it.
+      let avatarData: string | undefined
+      if (agent.avatarUrl && fetches < AVATAR_FETCHES_PER_RUN && Date.now() < deadline) {
+        const existing = await db.supportAgent.findUnique({
+          where: { source_externalId: { source: agent.source, externalId: agent.externalId } },
+          select: { avatarUrl: true, avatarData: true },
+        })
+        if (!existing?.avatarData || existing.avatarUrl !== agent.avatarUrl) {
+          fetches++
+          avatarData = (await fetchAvatar(creds, agent.avatarUrl)) ?? undefined
+        }
+      }
+
       await db.supportAgent.upsert({
         where: { source_externalId: { source: agent.source, externalId: agent.externalId } },
-        create: agent,
-        update: agent,
+        create: { ...agent, ...(avatarData ? { avatarData } : {}) },
+        // The stored bytes survive a run that fetched nothing for them.
+        update: { ...agent, ...(avatarData ? { avatarData } : {}) },
       })
     }
     if (!nextCursor) return

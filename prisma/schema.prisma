@@ -1248,6 +1248,10 @@ model SupportAgent {
   role       String?
   /// The helpdesk profile photo, as Gorgias serves it. Null when none is set.
   avatarUrl  String?
+  /// The photo itself, as a data URI, fetched by the sync with the API
+  /// credentials. Gorgias's picture bucket answers 403 to the open internet
+  /// AND to a browser, so the bytes have to arrive server-side or not at all.
+  avatarData String?
   active     Boolean  @default(true)
   readAt     DateTime @updatedAt
 

@@ -512,11 +512,11 @@ function NothingYet({
 
 export function AnalyticsView() {
   /**
-   * Ninety days to start with, which is what this page has always opened on and
-   * a sensible span for support: long enough for a median to mean something.
-   * Every other range comes from the same picker the dashboard uses.
+   * This month to start with - the client's ask, and the same opening range
+   * as the money dashboard, so the two pages answer the same question when
+   * they load. Every other range comes from the same picker.
    */
-  const [preset, setPreset] = useState<Preset | 'custom'>('last_90_days')
+  const [preset, setPreset] = useState<Preset | 'custom'>('this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   /** '' is everyone; 'none' is the unassigned pile, as the inbox filter says it. */

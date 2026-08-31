@@ -44,9 +44,14 @@ export async function GET(req: Request) {
         where: { closedAt: null, spam: false, assigneeName: { not: null } },
         select: { assigneeName: true },
       }),
-      // The helpdesk's own profile photos, joined by the name the tickets
-      // carry - the same face Gorgias shows for the same person.
-      db.supportAgent.findMany({ select: { name: true, avatarUrl: true } }),
+      // The helpdesk's own profile photos - the BYTES, fetched by the sync
+      // with API credentials and stored as data URIs, because Gorgias's
+      // picture bucket refuses the open internet. Joined by the name the
+      // tickets carry: the same face Gorgias shows for the same person.
+      db.supportAgent.findMany({
+        where: { avatarData: { not: null } },
+        select: { name: true, avatarData: true },
+      }),
       db.supportSyncState.findFirst({ select: { messageBackfilling: true } }),
     ])
 
@@ -62,7 +67,7 @@ export async function GET(req: Request) {
 
     const photoOf = new Map<string, string>()
     for (const p of people) {
-      if (p.name && p.avatarUrl) photoOf.set(p.name, p.avatarUrl)
+      if (p.name && p.avatarData) photoOf.set(p.name, p.avatarData)
     }
 
     const unassigned = tickets.filter((t) => !t.spam && !t.assigneeName).length
