@@ -17,6 +17,7 @@ vi.mock('@/lib/auth/current-user', () => ({
 async function cleanup() {
   await db.supportTicket.deleteMany({ where: { source: MARK } })
   await db.supportMessage.deleteMany({ where: { source: MARK } })
+  await db.supportAgent.deleteMany({ where: { source: MARK } })
 }
 afterAll(cleanup)
 
@@ -91,5 +92,33 @@ describe('the agents route', () => {
     // Her replied ticket is closed with exactly one agent message: one touch.
     expect(frida.oneTouchShare).toBe(1)
     expect(typeof body.messagesBackfilling).toBe('boolean')
+  })
+
+  /**
+   * Found on the live page the hour it shipped: "Gorgias Bot" took the
+   * fastest-first-reply crown at 5 minutes, because a machine writes messages
+   * too. This page ranks PEOPLE; the helpdesk marks its machines with a bot
+   * role, and mapAgent kept that role for exactly this moment.
+   */
+  it('never lists the helpdesk bots among the people', async () => {
+    const BOT = `${MARK} Answer Bot`
+    await db.supportAgent.create({
+      data: { source: MARK, externalId: `${MARK}-bot`, name: BOT, role: 'bot' },
+    })
+    const t1 = await db.supportTicket.findFirstOrThrow({ where: { source: MARK, externalId: `${MARK}-1` } })
+    await db.supportMessage.create({
+      data: {
+        source: MARK, externalId: `${MARK}-bm`, ticketExternalId: t1.externalId,
+        fromAgent: true, public: true, senderName: BOT,
+        createdAt: new Date(t1.createdAt.getTime() + 60_000),
+      },
+    })
+
+    const { GET } = await import('./route')
+    const body = await (await GET(new Request('http://localhost/api/support/agents?days=30'))).json()
+
+    expect(body.agents.some((a: { agent: string }) => a.agent === BOT)).toBe(false)
+    // The human is still there.
+    expect(body.agents.some((a: { agent: string }) => a.agent === AGENT)).toBe(true)
   })
 })
