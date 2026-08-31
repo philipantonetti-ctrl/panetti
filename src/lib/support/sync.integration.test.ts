@@ -67,25 +67,31 @@ function stubGorgias(script: {
   users?: Response[]
   surveys?: Response[]
   messages?: Response[]
+  assets?: Response[]
 }) {
   const queues = {
     tickets: [...(script.tickets ?? [])],
     users: [...(script.users ?? [page([])])],
     surveys: [...(script.surveys ?? [page([])])],
     messages: [...(script.messages ?? [page([])])],
+    assets: [...(script.assets ?? [])],
   }
   const calls: string[] = []
   const fn = vi.fn<Fetch>(async (input) => {
     const url = String(input)
     calls.push(url)
+    // Picture fetches go to Gorgias's asset host, not the API - anything
+    // that is not an API path is one of those.
     const which = url.includes('/users')
       ? 'users'
       : url.includes('/satisfaction-surveys')
         ? 'surveys'
         : url.includes('/messages')
           ? 'messages'
-          : 'tickets'
-    return queues[which].shift() ?? page([])
+          : url.includes('/api/')
+            ? 'tickets'
+            : 'assets'
+    return queues[which].shift() ?? (which === 'assets' ? new Response('denied', { status: 403 }) : page([]))
   })
   vi.stubGlobal('fetch', fn)
   return calls
@@ -131,6 +137,52 @@ describe('syncSupport', () => {
     expect(state.backfilling).toBe(false)
     expect(state.oldestSeenAt?.toISOString()).toBe('2021-06-09T09:00:00.000Z')
     expect(state.watermark?.toISOString()).toBe('2026-08-20T10:00:00.000Z')
+  })
+
+  /**
+   * The faces on the Agents page. Gorgias's picture bucket refuses the open
+   * internet and the browser alike, so the sync fetches the bytes itself
+   * with the API credentials and stores a data URI; a refusal stores
+   * nothing and the page's initials stand.
+   */
+  it('fetches the profile photo server-side and stores it as bytes', async () => {
+    stubGorgias({
+      tickets: [page([]), page([])],
+      users: [
+        page([{
+          id: 900, email: 'selena@example.invalid', name: 'Selena Guillermo', active: true,
+          role: { name: 'agent' },
+          meta: { profile_picture_url: 'https://config.gorgias.example/profile/abc' },
+        }]),
+      ],
+      assets: [new Response(Buffer.from([137, 80, 78, 71]), { status: 200, headers: { 'content-type': 'image/png' } })],
+    })
+
+    const r = await run()
+    expect(r.error).toBeNull()
+
+    const agent = await db.supportAgent.findFirstOrThrow({ where: { source: SOURCE, externalId: '900' } })
+    expect(agent.avatarData).toMatch(/^data:image\/png;base64,/)
+  })
+
+  it('stores no photo when the bucket refuses, and does not fail the run', async () => {
+    stubGorgias({
+      tickets: [page([]), page([])],
+      users: [
+        page([{
+          id: 901, email: 'x@example.invalid', name: 'Locked Out', active: true,
+          role: { name: 'agent' },
+          meta: { profile_picture_url: 'https://config.gorgias.example/profile/locked' },
+        }]),
+      ],
+      assets: [new Response('denied', { status: 403 })],
+    })
+
+    const r = await run()
+    expect(r.error).toBeNull()
+    const agent = await db.supportAgent.findFirstOrThrow({ where: { source: SOURCE, externalId: '901' } })
+    expect(agent.avatarData).toBeNull()
+    expect(agent.avatarUrl).toContain('locked')
   })
 
   /**

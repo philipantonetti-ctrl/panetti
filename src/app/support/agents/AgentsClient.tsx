@@ -13,7 +13,9 @@ import type { AgentRow } from '@/lib/support/agent-stats'
  * tickets can crown anyone - one lucky survey is not a title.
  */
 
-/** The route decorates each row with the helpdesk's profile photo, if set. */
+/** The route decorates each row with the photo itself - a data URI the
+ * sync fetched with API credentials, since Gorgias's bucket refuses the
+ * open internet. Same-origin bytes: nothing here can 403. */
 type AgentWithPhoto = AgentRow & { avatarUrl?: string | null }
 
 type Payload = {
@@ -37,14 +39,6 @@ function duration(hours: number | null): string {
 const share = (v: number | null) => (v === null ? '-' : `${Math.round(v * 100)}%`)
 
 /**
- * Gorgias's picture bucket refuses the open internet (403, measured
- * 2026-08-31), so the browser never loads its URL directly: our own proxy
- * asks with the helpdesk credentials and streams the bytes through. The
- * payload's avatarUrl is only the SIGNAL that a photo exists.
- */
-const proxied = (agent: string) => `/api/support/agents/avatar?agent=${encodeURIComponent(agent)}`
-
-/**
  * The person's real helpdesk photo when Gorgias holds one, initials when it
  * does not or the file is gone. The fallback is a state, not a guess: a
  * broken image renders letters, never a torn icon.
@@ -53,8 +47,8 @@ function Avatar({ name, url }: { name: string; url?: string | null }) {
   const [broken, setBroken] = useState(false)
   if (url && !broken) {
     return (
-      // Plain <img>, deliberately: the photo lives on Gorgias's CDN, whose
-      // host next/image would need pre-registered in next.config to serve.
+      // Plain <img>, deliberately: the src is a data URI the sync stored,
+      // which next/image cannot optimise and has no host to register.
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={url}
@@ -134,7 +128,7 @@ export function TopPerformers({ agents }: { agents: AgentWithPhoto[] }) {
       {titles.map((t) => (
         <div key={t.label} className="border-b border-line p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
           <div className="flex items-center gap-2.5">
-            <Avatar name={t.agent} url={t.url ? proxied(t.agent) : null} />
+            <Avatar name={t.agent} url={t.url} />
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-ink">{t.agent}</p>
               <p className="text-[11px] text-muted">{t.label}</p>
@@ -175,7 +169,7 @@ function averages(agents: AgentRow[]) {
 }
 
 export function AgentsClient({ email }: { email: string }) {
-  const [preset, setPreset] = useState<Preset | 'custom'>('last_90_days')
+  const [preset, setPreset] = useState<Preset | 'custom'>('this_month')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [data, setData] = useState<Payload | null>(null)
@@ -291,7 +285,7 @@ export function AgentsClient({ email }: { email: string }) {
                           <tr key={a.agent} className="border-b border-line last:border-b-0 hover:bg-panel">
                             <td className="px-4 py-2.5">
                               <span className="flex items-center gap-2.5">
-                                <Avatar name={a.agent} url={a.avatarUrl ? proxied(a.agent) : null} />
+                                <Avatar name={a.agent} url={a.avatarUrl} />
                                 <span className="truncate font-medium">{a.agent}</span>
                               </span>
                             </td>

@@ -95,5 +95,8 @@ describe('AgentsClient', () => {
     }
     expect(screen.getAllByText('151').length).toBeGreaterThan(0) // messages sent
     expect(screen.getAllByText('33%').length).toBeGreaterThan(0) // one touch share
+    // Opens on this month, like the money dashboard - the client's ask.
+    const firstUrl = String((fetch as ReturnType<typeof vi.fn>).mock.calls[0][0])
+    expect(firstUrl).toContain('preset=this_month')
   })
 })

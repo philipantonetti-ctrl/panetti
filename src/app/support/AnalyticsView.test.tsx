@@ -333,12 +333,16 @@ describe('AnalyticsView', () => {
     expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument()
   })
 
-  /** Two pages saying "this month" must ask the server for the same days. */
-  it('asks for a range the way the dashboard does, by preset', async () => {
+  /**
+   * Two pages saying "this month" must ask the server for the same days -
+   * and this month IS the opening range now, the client's ask, matching the
+   * money dashboard.
+   */
+  it('opens on this month, asked for by preset the way the dashboard asks', async () => {
     show()
     await screen.findByText('Tickets arrived')
     const url = String(vi.mocked(fetch).mock.calls[0][0])
-    expect(url).toContain('preset=last_90_days')
+    expect(url).toContain('preset=this_month')
     expect(url).not.toContain('days=')
   })
 
