@@ -1260,6 +1260,27 @@ model SupportAgent {
 /// A singleton per source, like DeliveryConfig and B2bImportRun: only the
 /// newest state is worth showing, and a history of runs is a table nobody
 /// would open.
+/// One helpdesk message, mirrored THIN: who wrote, when, on which ticket.
+/// Deliberately no body - the Agents page needs counts and timings, and
+/// two hundred thousand bodies would be weight the database carries for
+/// nothing.
+model SupportMessage {
+  id               String   @id @default(cuid())
+  source           String
+  externalId       String
+  ticketExternalId String
+  fromAgent        Boolean
+  /// False = an internal note. Notes count toward no reply figure.
+  public           Boolean  @default(true)
+  senderExternalId String?
+  senderName       String?
+  createdAt        DateTime
+
+  @@unique([source, externalId])
+  @@index([source, ticketExternalId])
+  @@index([source, createdAt])
+}
+
 model SupportSyncState {
   source String @id
 
@@ -1271,6 +1292,13 @@ model SupportSyncState {
   backfilling    Boolean   @default(true)
   /// The oldest ticket seen, so a person can see how far back we have got.
   oldestSeenAt   DateTime?
+
+  /// The same walk, for the MESSAGE mirror the Agents page reads. Messages
+  /// list newest-first with no date filter, stop a year back, and carry
+  /// their own cursor so neither walk can starve the other.
+  messageWatermark      DateTime?
+  messageBackfillCursor String?
+  messageBackfilling    Boolean   @default(true)
 
   ticketsStored Int       @default(0)
   ranAt         DateTime?

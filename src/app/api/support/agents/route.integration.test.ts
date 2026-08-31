@@ -16,6 +16,7 @@ vi.mock('@/lib/auth/current-user', () => ({
 
 async function cleanup() {
   await db.supportTicket.deleteMany({ where: { source: MARK } })
+  await db.supportMessage.deleteMany({ where: { source: MARK } })
 }
 afterAll(cleanup)
 
@@ -59,5 +60,36 @@ describe('the agents route', () => {
     expect(frida.csat).toBe(5)
     expect(frida.openNow).toBe(1)
     expect(body.unassigned).toBeGreaterThan(0)
+  })
+
+  it('carries the message columns, computed from the mirror', async () => {
+    const t1 = await db.supportTicket.findFirstOrThrow({ where: { source: MARK, externalId: `${MARK}-1` } })
+    await db.supportMessage.createMany({
+      data: [
+        {
+          source: MARK, externalId: `${MARK}-m1`, ticketExternalId: t1.externalId,
+          fromAgent: false, public: true, senderName: null,
+          createdAt: t1.createdAt,
+        },
+        {
+          source: MARK, externalId: `${MARK}-m2`, ticketExternalId: t1.externalId,
+          fromAgent: true, public: true, senderName: AGENT,
+          createdAt: new Date(t1.createdAt.getTime() + 2 * 3_600_000),
+        },
+      ],
+    })
+
+    const { GET } = await import('./route')
+    const body = await (await GET(new Request('http://localhost/api/support/agents?days=30'))).json()
+    const frida = body.agents.find((a: { agent: string }) => a.agent === AGENT)
+
+    expect(frida.messagesSent).toBe(1)
+    expect(frida.ticketsReplied).toBe(1)
+    expect(frida.messagesReceived).toBe(1)
+    expect(frida.medianFirstResponseHours).toBe(2)
+    expect(frida.medianResponseHours).toBe(2)
+    // Her replied ticket is closed with exactly one agent message: one touch.
+    expect(frida.oneTouchShare).toBe(1)
+    expect(typeof body.messagesBackfilling).toBe('boolean')
   })
 })

@@ -112,6 +112,38 @@ export function mapTicket(t: GorgiasTicket, source: string = SOURCE): MappedTick
   }
 }
 
+/**
+ * A message reduced to what the Agents page measures. Null when it cannot be
+ * placed - no timestamp, or no ticket - the same refusal mapTicket makes.
+ */
+export function mapMessage(
+  m: import('./client').GorgiasMessage,
+  source: string = SOURCE,
+): {
+  source: string
+  externalId: string
+  ticketExternalId: string
+  fromAgent: boolean
+  public: boolean
+  senderExternalId: string | null
+  senderName: string | null
+  createdAt: Date
+} | null {
+  if (!m.created_datetime || m.ticket_id === null || m.ticket_id === undefined) return null
+  return {
+    source,
+    externalId: String(m.id),
+    ticketExternalId: String(m.ticket_id),
+    fromAgent: m.from_agent === true,
+    // Missing means visible: Gorgias omits the flag on ordinary messages far
+    // more often than it marks notes.
+    public: m.public !== false,
+    senderExternalId: m.sender?.id !== null && m.sender?.id !== undefined ? String(m.sender.id) : null,
+    senderName: text(m.sender?.name),
+    createdAt: date(m.created_datetime)!,
+  }
+}
+
 export function mapAgent(u: GorgiasUser, source: string = SOURCE) {
   return {
     source,

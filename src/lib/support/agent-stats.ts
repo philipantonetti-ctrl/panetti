@@ -27,6 +27,45 @@ export type AgentRow = {
   csatSample: number
   /** Their open tickets RIGHT NOW, at any age - the backlog rule, per person. */
   openNow: number
+
+  /**
+   * The message-mirror figures - the columns the Gorgias Agents page carries
+   * that tickets alone cannot. All scoped to the window's tickets, so the
+   * whole row tells one story. Zero until the message mirror has walked far
+   * enough back; the page says so rather than showing confident zeroes.
+   */
+  /** Public messages they wrote on the window's tickets. Notes excluded. */
+  messagesSent: number
+  /** Distinct window tickets they wrote at least one public message on. */
+  ticketsReplied: number
+  /** Incoming public messages on the window's tickets ASSIGNED to them. */
+  messagesReceived: number
+  /** Median customer-message-to-their-reply gap. */
+  medianResponseHours: number | null
+  responseSample: number
+  /**
+   * Of the closed tickets they replied to, the share solved with a single
+   * agent message in total - anyone's. Null until they have such a ticket.
+   */
+  oneTouchShare: number | null
+  oneTouchSample: number
+}
+
+/** One mirrored message, as the route reads it back. */
+export type MessageRow = {
+  ticketExternalId: string
+  fromAgent: boolean
+  public: boolean
+  senderName: string | null
+  createdAt: Date
+}
+
+/** The window tickets' identities, for joining messages back on. */
+export type TicketMeta = {
+  externalId: string
+  createdAt: Date
+  closedAt: Date | null
+  assigneeName: string | null
 }
 
 const HOUR = 3_600_000
@@ -47,6 +86,8 @@ function median(values: number[]): number | null {
 export function agentPerformance(
   windowRows: StatTicket[],
   openAtAnyAge: { assigneeName: string | null }[],
+  /** The window tickets' mirrored messages, and the tickets' identities. */
+  mirror: { messages: MessageRow[]; tickets: TicketMeta[] } = { messages: [], tickets: [] },
 ): AgentRow[] {
   const rows = windowRows.filter((t) => !t.spam)
   const allClosed = rows.filter((t) => t.closedAt !== null).length
@@ -70,17 +111,83 @@ export function agentPerformance(
     if (!byAgent.has(agent)) byAgent.set(agent, [])
   }
 
+  // The message side, worked out once and joined on per agent below.
+  const ticketOf = new Map(mirror.tickets.map((t) => [t.externalId, t]))
+  const publicMsgs = mirror.messages
+    .filter((m) => m.public && ticketOf.has(m.ticketExternalId))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+  /** Agent public messages per ticket, in time order. */
+  const agentMsgsByTicket = new Map<string, MessageRow[]>()
+  /** Incoming public messages per ticket, in time order. */
+  const inboundByTicket = new Map<string, MessageRow[]>()
+  for (const m of publicMsgs) {
+    const bucket = m.fromAgent ? agentMsgsByTicket : inboundByTicket
+    const list = bucket.get(m.ticketExternalId) ?? []
+    list.push(m)
+    bucket.set(m.ticketExternalId, list)
+  }
+  // A writer also earns a row: someone can answer tickets all week that are
+  // assigned to somebody else, and vanishing for it would misread the team.
+  for (const m of publicMsgs) {
+    if (m.fromAgent && m.senderName && !byAgent.has(m.senderName)) byAgent.set(m.senderName, [])
+  }
+
   const out: AgentRow[] = []
   for (const [agent, tickets] of byAgent) {
     const closed = tickets.filter((t) => t.closedAt !== null)
     const resolution = closed
       .map((t) => (t.closedAt!.getTime() - t.createdAt.getTime()) / HOUR)
       .filter((h) => h >= 0)
-    const responded = tickets.filter((t) => t.firstResponseAt !== null)
-    const response = responded
+    const scored = tickets.filter((t) => t.satisfaction !== null)
+
+    // Their writing, across the whole window population - not only the
+    // tickets assigned to them, because answering someone else's ticket is
+    // still work done.
+    const sent = publicMsgs.filter((m) => m.fromAgent && m.senderName === agent)
+    const repliedTickets = [...new Set(sent.map((m) => m.ticketExternalId))]
+
+    // First reply: over tickets where THIS agent wrote the first agent
+    // message, hours from the ticket's arrival. Falls back to the ticket's
+    // own firstResponseAt when the mirror holds nothing for them - old
+    // periods the message walk has not reached yet.
+    const firstReplies: number[] = []
+    for (const ticketId of repliedTickets) {
+      const first = agentMsgsByTicket.get(ticketId)?.[0]
+      if (!first || first.senderName !== agent) continue
+      const meta = ticketOf.get(ticketId)
+      if (!meta) continue
+      const h = (first.createdAt.getTime() - meta.createdAt.getTime()) / HOUR
+      if (h >= 0) firstReplies.push(h)
+    }
+    const ticketFallback = tickets
+      .filter((t) => t.firstResponseAt !== null)
       .map((t) => (t.firstResponseAt!.getTime() - t.createdAt.getTime()) / HOUR)
       .filter((h) => h >= 0)
-    const scored = tickets.filter((t) => t.satisfaction !== null)
+    const firstReply = firstReplies.length ? firstReplies : ticketFallback
+
+    // Response time: every gap from a customer's message to THIS agent's
+    // next reply on that ticket.
+    const gaps: number[] = []
+    for (const ticketId of repliedTickets) {
+      const inbound = inboundByTicket.get(ticketId) ?? []
+      for (const reply of (agentMsgsByTicket.get(ticketId) ?? []).filter((m) => m.senderName === agent)) {
+        const lastInbound = [...inbound].reverse().find((m) => m.createdAt < reply.createdAt)
+        if (!lastInbound) continue
+        const h = (reply.createdAt.getTime() - lastInbound.createdAt.getTime()) / HOUR
+        if (h >= 0) gaps.push(h)
+      }
+    }
+
+    // One touch: of the closed tickets they replied to, solved with a single
+    // agent message in total.
+    const repliedClosed = repliedTickets.filter((id) => ticketOf.get(id)?.closedAt)
+    const oneTouch = repliedClosed.filter((id) => (agentMsgsByTicket.get(id) ?? []).length === 1)
+
+    const received = tickets.length
+      ? publicMsgs.filter(
+          (m) => !m.fromAgent && ticketOf.get(m.ticketExternalId)?.assigneeName === agent,
+        ).length
+      : 0
 
     out.push({
       agent,
@@ -89,11 +196,18 @@ export function agentPerformance(
       closedShare: allClosed > 0 ? closed.length / allClosed : null,
       medianResolutionHours: median(resolution),
       resolutionSample: resolution.length,
-      medianFirstResponseHours: median(response),
-      firstResponseSample: response.length,
+      medianFirstResponseHours: median(firstReply),
+      firstResponseSample: firstReply.length,
       csat: scored.length ? scored.reduce((n, t) => n + t.satisfaction!, 0) / scored.length : null,
       csatSample: scored.length,
       openNow: openBy.get(agent) ?? 0,
+      messagesSent: sent.length,
+      ticketsReplied: repliedTickets.length,
+      messagesReceived: received,
+      medianResponseHours: median(gaps),
+      responseSample: gaps.length,
+      oneTouchShare: repliedClosed.length ? oneTouch.length / repliedClosed.length : null,
+      oneTouchSample: repliedClosed.length,
     })
   }
 

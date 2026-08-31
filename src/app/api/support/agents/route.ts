@@ -29,10 +29,11 @@ export async function GET(req: Request) {
     const start = zoneDayStartUtc(dayOf(fromDay), timezone)
     const end = zoneDayEndUtc(dayOf(toDay), timezone)
 
-    const [tickets, stillOpen, people] = await Promise.all([
+    const [tickets, stillOpen, people, syncState] = await Promise.all([
       db.supportTicket.findMany({
         where: { createdAt: { gte: start, lte: end } },
         select: {
+          externalId: true,
           status: true, channel: true, language: true, tags: true, assigneeName: true,
           spam: true, createdAt: true, closedAt: true, firstResponseAt: true, satisfaction: true,
         },
@@ -46,7 +47,18 @@ export async function GET(req: Request) {
       // The helpdesk's own profile photos, joined by the name the tickets
       // carry - the same face Gorgias shows for the same person.
       db.supportAgent.findMany({ select: { name: true, avatarUrl: true } }),
+      db.supportSyncState.findFirst({ select: { messageBackfilling: true } }),
     ])
+
+    // The window tickets' mirrored messages, for the columns tickets alone
+    // cannot carry. Scoped by ticket, not by date: a reply written after the
+    // window still belongs to the window's ticket.
+    const messages = await db.supportMessage.findMany({
+      where: { ticketExternalId: { in: tickets.map((t) => t.externalId) } },
+      select: {
+        ticketExternalId: true, fromAgent: true, public: true, senderName: true, createdAt: true,
+      },
+    })
 
     const photoOf = new Map<string, string>()
     for (const p of people) {
@@ -60,10 +72,22 @@ export async function GET(req: Request) {
         days: daysInRange(fromDay, toDay),
         from: dayOf(fromDay),
         to: dayOf(toDay),
-        agents: agentPerformance(tickets, stillOpen).map((a) => ({
+        agents: agentPerformance(tickets, stillOpen, {
+          messages,
+          tickets: tickets
+            .filter((t) => !t.spam)
+            .map((t) => ({
+              externalId: t.externalId,
+              createdAt: t.createdAt,
+              closedAt: t.closedAt,
+              assigneeName: t.assigneeName,
+            })),
+        }).map((a) => ({
           ...a,
           avatarUrl: photoOf.get(a.agent) ?? null,
         })),
+        /** True while the message mirror is still walking its year of history. */
+        messagesBackfilling: syncState?.messageBackfilling ?? true,
         /**
          * Named, not silent: on this account most tickets carry no assignee,
          * and a page of four small rows would otherwise read as the whole

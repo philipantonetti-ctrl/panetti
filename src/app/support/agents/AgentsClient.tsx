@@ -22,6 +22,8 @@ type Payload = {
   to: string
   agents: AgentWithPhoto[]
   unassigned: number
+  /** True while the message mirror is still walking its year of history. */
+  messagesBackfilling?: boolean
 }
 
 /** Hours as a person says them - the dashboard's own wording. */
@@ -33,6 +35,14 @@ function duration(hours: number | null): string {
 }
 
 const share = (v: number | null) => (v === null ? '-' : `${Math.round(v * 100)}%`)
+
+/**
+ * Gorgias's picture bucket refuses the open internet (403, measured
+ * 2026-08-31), so the browser never loads its URL directly: our own proxy
+ * asks with the helpdesk credentials and streams the bytes through. The
+ * payload's avatarUrl is only the SIGNAL that a photo exists.
+ */
+const proxied = (agent: string) => `/api/support/agents/avatar?agent=${encodeURIComponent(agent)}`
 
 /**
  * The person's real helpdesk photo when Gorgias holds one, initials when it
@@ -124,7 +134,7 @@ export function TopPerformers({ agents }: { agents: AgentWithPhoto[] }) {
       {titles.map((t) => (
         <div key={t.label} className="border-b border-line p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
           <div className="flex items-center gap-2.5">
-            <Avatar name={t.agent} url={t.url} />
+            <Avatar name={t.agent} url={t.url ? proxied(t.agent) : null} />
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-ink">{t.agent}</p>
               <p className="text-[11px] text-muted">{t.label}</p>
@@ -153,8 +163,13 @@ function averages(agents: AgentRow[]) {
     tickets: sum((a) => a.tickets),
     closed: sum((a) => a.closed),
     openNow: sum((a) => a.openNow),
+    ticketsReplied: sum((a) => a.ticketsReplied),
+    messagesSent: sum((a) => a.messagesSent),
+    messagesReceived: sum((a) => a.messagesReceived),
     medianFirstResponseHours: weighted((a) => a.medianFirstResponseHours, (a) => a.firstResponseSample),
+    medianResponseHours: weighted((a) => a.medianResponseHours, (a) => a.responseSample),
     medianResolutionHours: weighted((a) => a.medianResolutionHours, (a) => a.resolutionSample),
+    oneTouchShare: weighted((a) => a.oneTouchShare, (a) => a.oneTouchSample),
     csat: weighted((a) => a.csat, (a) => a.csatSample),
   }
 }
@@ -217,6 +232,12 @@ export function AgentsClient({ email }: { email: string }) {
               </span>
             </div>
 
+            {data.messagesBackfilling && data.agents.length > 0 && (
+              <p className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-muted">
+                The message history is still importing, so Replied, Sent, Received, Response and One
+                touch are filling in - they grow with each sync until the last year is in.
+              </p>
+            )}
             {data.agents.length === 0 ? (
               <p className="rounded-[var(--radius-card)] border border-line bg-surface px-5 py-8 text-center text-[13px] text-muted">
                 No ticket in this period carries an assignee, so there is nobody to measure yet.
@@ -235,8 +256,13 @@ export function AgentsClient({ email }: { email: string }) {
                           <th className="num px-3 py-2.5 text-right">Tickets</th>
                           <th className="num px-3 py-2.5 text-right">Closed</th>
                           <th className="num px-3 py-2.5 text-right">% of all closed</th>
-                          <th className="num px-3 py-2.5 text-right">First reply</th>
+                          <th className="num px-3 py-2.5 text-right" title="Tickets they wrote at least one reply on">Replied</th>
+                          <th className="num px-3 py-2.5 text-right" title="Messages they sent (internal notes excluded)">Sent</th>
+                          <th className="num px-3 py-2.5 text-right" title="Customer messages on tickets assigned to them">Received</th>
+                          <th className="num px-3 py-2.5 text-right" title="Ticket arrival to their first reply, median">First reply</th>
+                          <th className="num px-3 py-2.5 text-right" title="Customer message to their reply, median">Response</th>
                           <th className="num px-3 py-2.5 text-right">Time to close</th>
+                          <th className="num px-3 py-2.5 text-right" title="Closed tickets they replied to that took exactly one reply">One touch</th>
                           <th className="num px-3 py-2.5 text-right">Satisfaction</th>
                           <th className="num px-4 py-2.5 text-right">Open now</th>
                         </tr>
@@ -248,8 +274,13 @@ export function AgentsClient({ email }: { email: string }) {
                             <td className="num px-3 py-2.5 text-right">{avg.tickets}</td>
                             <td className="num px-3 py-2.5 text-right">{avg.closed}</td>
                             <td className="num px-3 py-2.5 text-right">-</td>
+                            <td className="num px-3 py-2.5 text-right">{avg.ticketsReplied}</td>
+                            <td className="num px-3 py-2.5 text-right">{avg.messagesSent}</td>
+                            <td className="num px-3 py-2.5 text-right">{avg.messagesReceived}</td>
                             <td className="num px-3 py-2.5 text-right">{duration(avg.medianFirstResponseHours)}</td>
+                            <td className="num px-3 py-2.5 text-right">{duration(avg.medianResponseHours)}</td>
                             <td className="num px-3 py-2.5 text-right">{duration(avg.medianResolutionHours)}</td>
+                            <td className="num px-3 py-2.5 text-right">{share(avg.oneTouchShare)}</td>
                             <td className="num px-3 py-2.5 text-right">
                               {avg.csat === null ? '-' : `${avg.csat.toFixed(2)} / 5`}
                             </td>
@@ -260,13 +291,16 @@ export function AgentsClient({ email }: { email: string }) {
                           <tr key={a.agent} className="border-b border-line last:border-b-0 hover:bg-panel">
                             <td className="px-4 py-2.5">
                               <span className="flex items-center gap-2.5">
-                                <Avatar name={a.agent} url={a.avatarUrl} />
+                                <Avatar name={a.agent} url={a.avatarUrl ? proxied(a.agent) : null} />
                                 <span className="truncate font-medium">{a.agent}</span>
                               </span>
                             </td>
                             <td className="num px-3 py-2.5 text-right">{a.tickets}</td>
                             <td className="num px-3 py-2.5 text-right">{a.closed}</td>
                             <td className="num px-3 py-2.5 text-right">{share(a.closedShare)}</td>
+                            <td className="num px-3 py-2.5 text-right">{a.ticketsReplied}</td>
+                            <td className="num px-3 py-2.5 text-right">{a.messagesSent}</td>
+                            <td className="num px-3 py-2.5 text-right">{a.messagesReceived}</td>
                             <td
                               className="num px-3 py-2.5 text-right"
                               title={a.firstResponseSample ? `over ${a.firstResponseSample} measured` : undefined}
@@ -275,9 +309,21 @@ export function AgentsClient({ email }: { email: string }) {
                             </td>
                             <td
                               className="num px-3 py-2.5 text-right"
+                              title={a.responseSample ? `over ${a.responseSample} replies` : undefined}
+                            >
+                              {duration(a.medianResponseHours)}
+                            </td>
+                            <td
+                              className="num px-3 py-2.5 text-right"
                               title={a.resolutionSample ? `over ${a.resolutionSample} closed` : undefined}
                             >
                               {duration(a.medianResolutionHours)}
+                            </td>
+                            <td
+                              className="num px-3 py-2.5 text-right"
+                              title={a.oneTouchSample ? `of ${a.oneTouchSample} replied and closed` : undefined}
+                            >
+                              {share(a.oneTouchShare)}
                             </td>
                             <td
                               className="num px-3 py-2.5 text-right"
