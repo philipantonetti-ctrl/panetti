@@ -44,13 +44,12 @@ export async function GET(req: Request) {
         where: { closedAt: null, spam: false, assigneeName: { not: null } },
         select: { assigneeName: true },
       }),
-      // The helpdesk's own profile photos - the BYTES, fetched by the sync
-      // with API credentials and stored as data URIs, because Gorgias's
-      // picture bucket refuses the open internet. Joined by the name the
-      // tickets carry: the same face Gorgias shows for the same person.
+      // The helpdesk's people, for two joins: the profile photo BYTES the
+      // sync fetched (data URIs - Gorgias's picture bucket refuses the open
+      // internet), and the ROLE, which is what tells a person from the
+      // helpdesk's own answering machines.
       db.supportAgent.findMany({
-        where: { avatarData: { not: null } },
-        select: { name: true, avatarData: true },
+        select: { name: true, avatarData: true, role: true },
       }),
       db.supportSyncState.findFirst({ select: { messageBackfilling: true } }),
     ])
@@ -70,6 +69,17 @@ export async function GET(req: Request) {
       if (p.name && p.avatarData) photoOf.set(p.name, p.avatarData)
     }
 
+    // Machines write messages too, and the hour this page shipped "Gorgias
+    // Bot" took the fastest-first-reply crown at five minutes. This page
+    // ranks PEOPLE: anything the helpdesk marks with a bot role stays off it.
+    // The name test is a second net for bot accounts the user list has not
+    // carried yet - a real person called Bot would be a remarkable hire.
+    const machines = new Set(
+      people
+        .filter((p) => p.name && (p.role?.includes('bot') || /\bbot\b/i.test(p.name)))
+        .map((p) => p.name!),
+    )
+
     const unassigned = tickets.filter((t) => !t.spam && !t.assigneeName).length
 
     return NextResponse.json(
@@ -87,10 +97,12 @@ export async function GET(req: Request) {
               closedAt: t.closedAt,
               assigneeName: t.assigneeName,
             })),
-        }).map((a) => ({
-          ...a,
-          avatarUrl: photoOf.get(a.agent) ?? null,
-        })),
+        })
+          .filter((a) => !machines.has(a.agent))
+          .map((a) => ({
+            ...a,
+            avatarUrl: photoOf.get(a.agent) ?? null,
+          })),
         /** True while the message mirror is still walking its year of history. */
         messagesBackfilling: syncState?.messageBackfilling ?? true,
         /**
