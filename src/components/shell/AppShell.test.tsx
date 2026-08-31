@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest'
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -82,6 +83,52 @@ it('groups the sidebar by subject, with every entry still present', () => {
   expect(screen.getByRole('link', { name: 'Ad accounts' })).toBeDefined()
   // The one-word catch-all header is gone.
   expect(screen.queryByText('Analytics')).toBeNull()
+})
+
+/**
+ * The Gorgias sidebar collapses per subject, and the client asked for the
+ * same: click a group name, its pages fold away, and the choice survives a
+ * reload. Collapse is a DESKTOP behaviour - the mobile strip always shows
+ * everything - so the assertions read the lg-only class and aria state
+ * rather than jsdom visibility, which knows no breakpoints.
+ */
+describe('collapsible groups', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('folds a group when its header is clicked, and remembers it', async () => {
+    const { unmount } = setup()
+
+    const header = screen.getByRole('button', { name: /Operations/ })
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    const items = document.getElementById(header.getAttribute('aria-controls')!)
+    expect(items).toHaveClass('lg:hidden')
+
+    unmount()
+    setup()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Operations/ })).toHaveAttribute('aria-expanded', 'false'),
+    )
+  })
+
+  it('never hides the group holding the page being read', async () => {
+    // Overview holds /dashboard, the mocked current page.
+    localStorage.setItem('sidebar-collapsed', JSON.stringify(['Overview', 'Support']))
+    setup()
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Overview/ })).toHaveAttribute('aria-expanded', 'true'),
+    )
+    // A group NOT holding the active page stays folded as stored.
+    expect(screen.getByRole('button', { name: /Support/ })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('sets the group name a readable step above the old micro label', () => {
+    setup()
+    expect(screen.getByRole('button', { name: /Overview/ })).toHaveClass('text-[12px]')
+  })
 })
 
 it('offers B2B to an admin and never to marketing', () => {
