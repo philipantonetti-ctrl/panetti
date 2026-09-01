@@ -60,12 +60,22 @@ describe('listSettlements', () => {
     amounts: [{ amount: 19400, capture: 30000, refund: -10000, fee: 600, currency: 'NOK' }],
   })
 
-  it('walks the pages and maps each settlement, minor units kept as integers', async () => {
+  it('walks the pages with the full cursor pair and maps each settlement', async () => {
     const page1 = Array.from({ length: 100 }, (_, i) => settlement(`s${i}`))
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(page1))
-      .mockResolvedValueOnce(jsonResponse([settlement('s100')]))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: page1,
+          last_evaluated_key: {
+            id: 's99',
+            account_id: 'P12345678',
+            settled_at: '2026-08-28T09:00:00Z',
+            created_at: '2026-08-20T09:00:00Z',
+          },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [settlement('s100')] }))
     vi.stubGlobal('fetch', fetchMock)
 
     const rows = await listSettlements(CREDS, 'tok')
@@ -86,8 +96,68 @@ describe('listSettlements', () => {
     expect(first.pathname).toBe('/v1/accounts/P12345678/settlements')
     expect(first.searchParams.get('limit')).toBe('100')
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok')
+    // Dintero rejects starting_after_id on its own with a 400 - the id must
+    // travel with the date from last_evaluated_key. The bug that broke
+    // Philip's connect on every shop with more than 100 payouts.
     const second = new URL(String(fetchMock.mock.calls[1][0]))
     expect(second.searchParams.get('starting_after_id')).toBe('s99')
+    expect(second.searchParams.get('starting_after_date')).toBe('2026-08-28T09:00:00Z')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('a settlement not yet paid cursors on created_at instead of settled_at', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: Array.from({ length: 100 }, (_, i) => settlement(`s${i}`)),
+          last_evaluated_key: { id: 's99', account_id: 'P12345678', created_at: '2026-08-20T09:00:00Z' },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listSettlements(CREDS, 'tok')
+    const second = new URL(String(fetchMock.mock.calls[1][0]))
+    expect(second.searchParams.get('starting_after_date')).toBe('2026-08-20T09:00:00Z')
+  })
+
+  it('a full page without a cursor ends the walk rather than guessing a page 2', async () => {
+    const page = Array.from({ length: 100 }, (_, i) => settlement(`s${i}`))
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(page))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rows = await listSettlements(CREDS, 'tok')
+    expect(rows).toHaveLength(100)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('a probe asks for a single settlement and never pages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        items: [settlement('s1')],
+        last_evaluated_key: { id: 's1', account_id: 'P12345678', settled_at: '2026-08-28T09:00:00Z' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rows = await listSettlements(CREDS, 'tok', { probe: true })
+    expect(rows).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const url = new URL(String(fetchMock.mock.calls[0][0]))
+    expect(url.searchParams.get('limit')).toBe('1')
+  })
+
+  it('carries Dintero own words when it refuses a request', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ error: { message: 'starting_after_date is required with starting_after_id' } }, 400),
+      ),
+    )
+    await expect(listSettlements(CREDS, 'tok')).rejects.toThrow(
+      /Dintero answered 400: starting_after_date is required/,
+    )
   })
 
   it('narrows to one payout destination when the config names one', async () => {

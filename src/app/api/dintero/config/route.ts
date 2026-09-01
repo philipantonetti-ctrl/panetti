@@ -86,11 +86,11 @@ export async function POST(req: Request) {
     if (!shop) return NextResponse.json({ error: 'That shop does not exist' }, { status: 404, headers: NO_STORE })
 
     // Prove the credentials against the live account BEFORE storing anything -
-    // the token proves the client, the settlement list proves the scope.
+    // the token proves the client, one probed settlement proves the scope.
     // Credentials that never worked must leave no row behind to explain later.
     const creds = { accountId, clientId, clientSecret }
     const token = await getToken(creds)
-    await listSettlements(creds, token, { payoutDestinationId })
+    await listSettlements(creds, token, { payoutDestinationId, probe: true })
 
     const stored = {
       accountId,

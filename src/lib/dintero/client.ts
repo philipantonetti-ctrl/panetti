@@ -98,7 +98,20 @@ async function request(path: string, init: RequestInit): Promise<unknown> {
     throw new DinteroApiError('Dintero is rate limiting us. It refreshes on the next scheduled sync.')
   }
   if (!res.ok) {
-    throw new DinteroApiError(`Dintero answered ${res.status}. Try again in a while.`)
+    // Dintero's error body names what it objected to. Without it, a 400 shown
+    // to a person is just "400" - undebuggable from a toast, as proven live.
+    let detail: string | null = null
+    try {
+      const body = (await res.json()) as { error?: { message?: unknown } }
+      detail = str(body.error?.message)
+    } catch {
+      // An unreadable body leaves the status to speak for itself.
+    }
+    throw new DinteroApiError(
+      detail
+        ? `Dintero answered ${res.status}: ${detail.slice(0, 160)}`
+        : `Dintero answered ${res.status}. Try again in a while.`,
+    )
   }
   try {
     return await res.json()
@@ -185,31 +198,35 @@ function mapSettlement(row: {
  * Every settlement on the account, newest first as Dintero lists them.
  * Weekly payouts mean the full history is a few hundred rows, so the sync
  * simply reads it all each due run and upserts - no watermark to lose.
+ *
+ * Paging follows the envelope's last_evaluated_key, and the cursor is a PAIR:
+ * starting_after_id must travel with starting_after_date (the key's
+ * settled_at, or created_at while unpaid) or Dintero answers 400. A probe
+ * fetches a single settlement - enough to prove the scope, no history walk.
  */
 export async function listSettlements(
   creds: DinteroCredentials,
   token: string,
-  opts: { payoutDestinationId?: string | null } = {},
+  opts: { payoutDestinationId?: string | null; probe?: boolean } = {},
 ): Promise<DinteroSettlement[]> {
   const rows: DinteroSettlement[] = []
-  let after: string | null = null
+  let after: { id: string; date: string } | null = null
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const params = new URLSearchParams({ limit: String(PAGE_SIZE) })
+    const params = new URLSearchParams({ limit: String(opts.probe ? 1 : PAGE_SIZE) })
     if (opts.payoutDestinationId) params.set('payout_destination_id', opts.payoutDestinationId)
-    if (after) params.set('starting_after_id', after)
+    if (after) {
+      params.set('starting_after_id', after.id)
+      params.set('starting_after_date', after.date)
+    }
 
     const body = await request(`/accounts/${creds.accountId}/settlements?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    // The docs specify the item, not the envelope - accept both a bare array
-    // and the obvious wrappers rather than break on a packaging choice.
-    const list = Array.isArray(body)
-      ? body
-      : ((body as Record<string, unknown>).settlements ??
-        (body as Record<string, unknown>).items ??
-        (body as Record<string, unknown>).data ??
-        [])
+    // Accept a bare array as well as the documented {items, last_evaluated_key}
+    // envelope - a bare array simply carries no cursor to follow.
+    const rec = Array.isArray(body) ? null : (body as Record<string, unknown>)
+    const list = rec === null ? (body as unknown[]) : (rec.items ?? rec.settlements ?? rec.data ?? [])
     if (!Array.isArray(list)) break
 
     const mapped = list
@@ -217,8 +234,12 @@ export async function listSettlements(
       .filter((s): s is DinteroSettlement => s !== null)
     rows.push(...mapped)
 
-    if (list.length < PAGE_SIZE || mapped.length === 0) break
-    after = mapped[mapped.length - 1].id
+    if (opts.probe || list.length === 0) break
+    const key = (rec?.last_evaluated_key ?? null) as Record<string, unknown> | null
+    const id = key ? str(key.id) : null
+    const date = key ? (str(key.settled_at) ?? str(key.created_at)) : null
+    if (!id || !date) break
+    after = { id, date }
   }
   return rows
 }
