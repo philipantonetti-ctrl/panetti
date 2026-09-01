@@ -214,7 +214,7 @@ export function DinteroClient({ email }: { email: string }) {
                             <span className="font-semibold">Last sync failed.</span> {shop.lastError}
                           </p>
                         ) : (
-                          <p className="mt-1 text-xs text-gain">OK</p>
+                          <p className="mt-1 text-xs text-gain">Connected</p>
                         )}
                       </>
                     ) : (
