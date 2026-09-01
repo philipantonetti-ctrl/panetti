@@ -73,6 +73,8 @@ export type DinteroReportLine = {
 export type DinteroReport = {
   /** The reference on the bank transfer. */
   reference: string | null
+  /** The signed link the file came from, when the endpoint answered one. */
+  fileUrl: string | null
   lines: DinteroReportLine[]
 }
 
@@ -352,5 +354,5 @@ export async function downloadReport(
     amount: l.amount !== 0 ? l.amount : l.capture + l.refund - l.fee,
   }))
 
-  return { reference: str(body.settlement_reference), lines }
+  return { reference: str(body.settlement_reference), fileUrl, lines }
 }

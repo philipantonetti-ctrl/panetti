@@ -130,6 +130,10 @@ export async function syncDinteroPayouts(
         payoutDestinationId: config.payoutDestinationId,
       })
 
+      // The last signed report link followed for this shop, kept on the
+      // connection as a debugging window into what Dintero actually serves.
+      let lastReportUrl: string | null = null
+
       for (const s of settlements) {
         const header = {
           provider: s.provider,
@@ -160,6 +164,7 @@ export async function syncDinteroPayouts(
 
         reportBudget--
         const report = await downloadReport(creds, token, s.id, attachmentId)
+        lastReportUrl = report.fileUrl ?? lastReportUrl
         // Wholesale replace, atomically: half a report's lines under a
         // "report stored" flag would be a payout quietly missing orders.
         await db.$transaction([
@@ -224,7 +229,11 @@ export async function syncDinteroPayouts(
 
       await db.dinteroConfig.update({
         where: { id: config.id },
-        data: { lastSyncAt: new Date(), lastError: null },
+        data: {
+          lastSyncAt: new Date(),
+          lastError: null,
+          ...(lastReportUrl ? { lastReportUrl } : {}),
+        },
       })
     } catch (e) {
       // Provider wording is safe to show; anything else gets a plain

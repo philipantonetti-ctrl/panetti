@@ -1482,6 +1482,11 @@ model DinteroConfig {
   /// settlement list to this shop's payout destination.
   payoutDestinationId String?
 
+  /// The last report link the sync followed - a window into what Dintero
+  /// actually serves, for debugging a report that will not parse. Never
+  /// exposed by the API: a signed link IS access to the report.
+  lastReportUrl String?
+
   active     Boolean   @default(true)
   lastSyncAt DateTime?
   lastError  String?
