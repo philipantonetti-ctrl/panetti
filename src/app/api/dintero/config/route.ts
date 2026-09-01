@@ -109,7 +109,12 @@ export async function POST(req: Request) {
     // Mirror the payout history right away, so the page fills the moment it
     // refreshes. Best-effort and scoped to this shop: the connection stands
     // even when the first import trips, and its error shows on the card.
-    const sync = await syncDinteroPayouts({ force: true, shopId }).catch(() => null)
+    // The deadline keeps the answer inside this route's 60s - reports the
+    // first import does not reach are a backlog the cron drains within the
+    // hour.
+    const sync = await syncDinteroPayouts({ force: true, shopId, deadline: Date.now() + 45_000 }).catch(
+      () => null,
+    )
 
     return NextResponse.json({ ...(await status()), sync }, { headers: NO_STORE })
   } catch (e) {

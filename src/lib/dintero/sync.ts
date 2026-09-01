@@ -21,6 +21,13 @@ const MIN_HOURS_BETWEEN = 6
  */
 const MAX_REPORTS_PER_RUN = 40
 
+/**
+ * A shop still owing report downloads goes again after half an hour instead
+ * of six - the backlog drains within the hour of a connect, without a shop
+ * whose reports never appear hammering Dintero every fifteen minutes.
+ */
+const BACKLOG_MINUTES_BETWEEN = 30
+
 export type DinteroSyncResult = {
   configured: boolean
   ok: boolean
@@ -63,11 +70,27 @@ export async function syncDinteroPayouts(
   }
 
   const now = new Date()
+  // Payouts whose report is still owed: never downloaded, or ingested as
+  // empty with no reference - the state a misread report leaves behind.
+  const owing = new Set(
+    (
+      await db.payout.groupBy({
+        by: ['shopId'],
+        where: {
+          shopId: { in: configs.map((c) => c.shopId) },
+          OR: [{ linesPending: true }, { reference: null, lines: { none: {} } }],
+        },
+      })
+    ).map((g) => g.shopId),
+  )
   const due = opts.force
     ? configs
-    : configs.filter(
-        (c) => !c.lastSyncAt || now.getTime() - c.lastSyncAt.getTime() >= MIN_HOURS_BETWEEN * 3_600_000,
-      )
+    : configs.filter((c) => {
+        if (!c.lastSyncAt) return true
+        const age = now.getTime() - c.lastSyncAt.getTime()
+        if (owing.has(c.shopId)) return age >= BACKLOG_MINUTES_BETWEEN * 60_000
+        return age >= MIN_HOURS_BETWEEN * 3_600_000
+      })
   if (due.length === 0) {
     return {
       configured: true, ok: true, payouts: 0, lines: 0, matched: 0, unmatched: 0,
@@ -96,6 +119,17 @@ export async function syncDinteroPayouts(
         payoutDestinationId: config.payoutDestinationId,
       })
 
+      // Which payouts already hold lines: those reports are ingested for
+      // good, whatever their reference says.
+      const withLines = new Set(
+        (
+          await db.payoutLine.groupBy({
+            by: ['payoutId'],
+            where: { payout: { shopId: config.shopId } },
+          })
+        ).map((g) => g.payoutId),
+      )
+
       for (const s of settlements) {
         const header = {
           provider: s.provider,
@@ -115,7 +149,12 @@ export async function syncDinteroPayouts(
         })
         result.payouts++
 
-        if (!payout.linesPending || reportBudget <= 0) continue
+        // Ingested means lines stored, or a reference proving the report was
+        // truly read and truly empty. No lines AND no reference is the trail
+        // of a misread report - downloaded again until it speaks.
+        const ingested =
+          !payout.linesPending && (payout.reference !== null || withLines.has(payout.id))
+        if (ingested || reportBudget <= 0) continue
         if (opts.deadline && Date.now() >= opts.deadline) break
         const attachmentId = pickJsonReport(s.attachments)
         if (!attachmentId) continue

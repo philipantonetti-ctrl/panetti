@@ -44,6 +44,11 @@ describe('ordersCell', () => {
     })
     expect(ordersCell(payout({ linesPending: true }) as never).text).toBe('report pending')
   })
+
+  it('no lines and no reference means the report is still owed, not an empty week', () => {
+    expect(ordersCell(payout({ orders: 0, matched: 0, reference: null }) as never).text).toBe('report pending')
+    expect(ordersCell(payout({ orders: 0, matched: 0 }) as never).text).toBe('no orders')
+  })
 })
 
 describe('PayoutsClient', () => {
@@ -58,7 +63,29 @@ describe('PayoutsClient', () => {
     expect(screen.getAllByText('Panetti Norway').length).toBeGreaterThan(1)
     expect(screen.getByText('12 of 12')).toBeInTheDocument()
     expect(screen.getByText('Paid out - NOK')).toBeInTheDocument()
+    // Fees are magnitudes in the payload; the minus is said at render time,
+    // in the row and in the totals card alike.
+    expect(screen.getAllByText(/-NOK\s?200\.00/).length).toBeGreaterThanOrEqual(2)
     expect(String(fetchMock.mock.calls[0][0])).toContain('preset=this_month')
+  })
+
+  it('an unfetched report reads as pending when opened, not as an empty payout', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('/api/payouts/p1')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ currency: 'NOK', linesPending: false, reference: null, lines: [] }), {
+            status: 200,
+          }),
+        )
+      }
+      return Promise.resolve(listResponse([payout({ orders: 0, matched: 0, reference: null })]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<PayoutsClient email="a@b.test" />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /Open payout/ }))
+
+    expect(await screen.findByText(/has not been fetched yet/)).toBeInTheDocument()
   })
 
   it('opens a payout into its orders and names the reference nobody wears', async () => {
