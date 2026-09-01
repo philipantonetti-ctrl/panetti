@@ -3,6 +3,7 @@ import { syncAllShops } from '@/lib/woo/sync'
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affiliate/sync'
 import { syncKlaviyo, type KlaviyoSyncResult } from '@/lib/klaviyo/sync'
+import { syncDinteroPayouts, type DinteroSyncResult } from '@/lib/dintero/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
@@ -105,6 +106,14 @@ const B2B_SALES_DEADLINE_MS = 265_000
  * three. A tick that overran would take the poll and the delivery alert with it.
  */
 const BRING_INVOICES_DEADLINE_MS = 270_000
+
+/**
+ * The payout mirror is finished by this point in the run. Weekly data behind
+ * six-hour spacing means most runs cost no HTTP at all; a due run is one
+ * token, one settlement list and a handful of report downloads per shop,
+ * each clamped to twenty seconds inside the client.
+ */
+const DINTERO_DEADLINE_MS = 265_000
 
 /**
  * The helpdesk import, bounded well short of the parcel poll.
@@ -278,6 +287,21 @@ export async function GET(req: Request) {
     // away from a failed sync.
   }
 
+  // The weekly Dintero payouts, beside the other money mirrors. Six-hour
+  // spacing inside syncDinteroPayouts means most runs cost nothing; a due run
+  // is a few bounded requests per connected shop. Best-effort like the ads: a
+  // revoked secret keeps its own lastError on the settings page and must
+  // never fail the shop sync.
+  let dintero: DinteroSyncResult = {
+    configured: false, ok: true, payouts: 0, lines: 0, matched: 0, unmatched: 0, errors: [],
+  }
+  try {
+    dintero = await syncDinteroPayouts({ deadline: runStartedAt + DINTERO_DEADLINE_MS })
+  } catch {
+    // syncDinteroPayouts does not throw, but a caller that assumes so is one
+    // refactor away from a failed sync.
+  }
+
   // Top up exchange rates BEFORE parcel tracking, not after. Rates are one
   // cheap bounded call; parcel polling is greedy and runs to its deadline. With
   // the order reversed, a busy backlog of parcels could eat the whole
@@ -373,6 +397,15 @@ export async function GET(req: Request) {
     klaviyoConfigured: klaviyo.configured,
     klaviyoCampaigns: klaviyo.campaigns,
     klaviyoError: klaviyo.error,
+    dinteroConfigured: dintero.configured,
+    dinteroPayouts: dintero.payouts,
+    dinteroLines: dintero.lines,
+    dinteroMatched: dintero.matched,
+    // The number that says whether the order-number join actually works. A
+    // line count that climbs while this climbs with it means Dintero is
+    // naming orders we do not hold.
+    dinteroUnmatched: dintero.unmatched,
+    dinteroErrors: dintero.errors,
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,

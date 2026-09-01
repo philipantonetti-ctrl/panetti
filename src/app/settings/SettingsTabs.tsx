@@ -14,6 +14,7 @@ const TABS: { name: string; items: Item[] }[] = [
       { href: '/settings/expenses', title: 'Operational Expenses', blurb: 'Add your operational expenses', icon: '💸' },
       { href: '/settings/fees', title: 'Fulfillment', blurb: 'Set your shipping & handling preferences', icon: '🚚' },
       { href: '/settings/processing-fees', title: 'Processing Fees', blurb: 'Add payment gateway charges', icon: '🪙' },
+      { href: '/settings/payouts', title: 'Payouts (Dintero)', blurb: 'Connect Dintero - each payout matched to its orders', icon: '🏦' },
     ],
   },
   {

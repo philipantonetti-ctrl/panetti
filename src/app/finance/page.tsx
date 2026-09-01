@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
+import { FINANCE_TABS, PageTabs } from '@/components/shell/PageTabs'
 import { currentUser } from '@/lib/auth/current-user'
 import { db } from '@/lib/db'
 import { FinanceClient } from './FinanceClient'
@@ -29,6 +30,7 @@ export default async function FinancePage() {
         title="Finance"
         subtitle="What customers still owe us, straight from Visma. Webshop orders paid at the checkout are not counted."
       />
+      <PageTabs tabs={FINANCE_TABS} />
       <PageBody>
         <FinanceClient
           rows={rows.map((r) => ({

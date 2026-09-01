@@ -62,6 +62,14 @@ vi.mock('@/lib/bring/invoice-sync', () => ({
 const syncKlaviyo = vi.fn(async () => ({ configured: false, ok: true, campaigns: 0, error: null }))
 vi.mock('@/lib/klaviyo/sync', () => ({ syncKlaviyo: () => syncKlaviyo() }))
 
+// Nor Dintero, for the same reason as Klaviyo: a connection row left behind
+// by another test file in the shared database would send this test to the
+// real payment API with fake credentials.
+const syncDinteroPayouts = vi.fn(async () => ({
+  configured: false, ok: true, payouts: 0, lines: 0, matched: 0, unmatched: 0, errors: [],
+}))
+vi.mock('@/lib/dintero/sync', () => ({ syncDinteroPayouts: () => syncDinteroPayouts() }))
+
 const { GET } = await import('./route')
 
 const call = (auth?: string) =>
@@ -75,6 +83,7 @@ const REAL = process.env.CRON_SECRET
 
 beforeEach(() => {
   syncKlaviyo.mockClear()
+  syncDinteroPayouts.mockClear()
   importVismaB2bSales.mockClear()
   importVismaPurchaseOrders.mockClear()
   syncBringInvoices.mockClear()
@@ -124,6 +133,17 @@ describe('the scheduled sync endpoint', () => {
     expect(body.klaviyoConfigured).toBe(false)
     expect(body.klaviyoCampaigns).toBe(0)
     expect(body.klaviyoError).toBeNull()
+  })
+
+  it('runs the Dintero payout mirror as one more best-effort stage, and reports it', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(syncDinteroPayouts).toHaveBeenCalledTimes(1)
+    expect(body.dinteroConfigured).toBe(false)
+    expect(body.dinteroPayouts).toBe(0)
+    expect(body.dinteroUnmatched).toBe(0)
+    expect(body.dinteroErrors).toEqual([])
   })
 
   // A half-failed run that reports success would hide stale figures.
