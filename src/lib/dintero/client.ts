@@ -188,7 +188,10 @@ function mapSettlement(row: {
     amount: int(a.amount),
     capture: int(a.capture),
     refund: int(a.refund),
-    fee: int(a.fee),
+    // The docs example writes the fee positive, the live API writes it
+    // negative. Same money left either way - stored as a magnitude, and the
+    // minus is a display decision.
+    fee: Math.abs(int(a.fee)),
     payoutDestinationId: str(row.payout_destination_id),
     attachments,
   }
@@ -252,11 +255,37 @@ export function pickJsonReport(attachments: DinteroAttachment[]): string | null 
   return hit?.id ?? null
 }
 
+/** The signed link carries its own authorization - our bearer stays home. */
+async function fetchReportFile(url: string): Promise<unknown> {
+  if (!url.startsWith('https://')) {
+    throw new DinteroApiError('Dintero answered with a report link that did not look right. Try again in a while.')
+  }
+  let res: Response
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) })
+  } catch {
+    throw new DinteroApiError('Could not reach Dintero. Check the connection and try again.')
+  }
+  if (!res.ok) {
+    throw new DinteroApiError(`Dintero's report file answered ${res.status}. It retries on the next sync.`)
+  }
+  try {
+    return await res.json()
+  } catch {
+    throw new DinteroApiError('Dintero answered with something that was not JSON. Try again in a while.')
+  }
+}
+
 /**
  * Downloads and reads the normalized settlement report: the bank reference
  * and one line per order. Lines without a transaction id are dropped - they
  * cannot be keyed, and a row that upserts onto a different row every run is
  * worse than an honest gap.
+ *
+ * The attachment endpoint answers a link envelope - {url} pointing at the
+ * file on storage - which is how Dintero's own Backoffice downloads it.
+ * Proven the hard way: parsing that envelope as the report stored 68 real
+ * payouts as "no orders". A direct file answer is accepted all the same.
  */
 export async function downloadReport(
   creds: DinteroCredentials,
@@ -264,10 +293,15 @@ export async function downloadReport(
   settlementId: string,
   attachmentId: string,
 ): Promise<DinteroReport> {
-  const body = (await request(
+  let body = (await request(
     `/accounts/${creds.accountId}/settlements/${settlementId}/attachments/${attachmentId}`,
     { headers: { Authorization: `Bearer ${token}` } },
-  )) as { settlement_reference?: unknown; transactions?: unknown }
+  )) as { settlement_reference?: unknown; transactions?: unknown; url?: unknown }
+
+  const fileUrl = str(body.url)
+  if (fileUrl && !Array.isArray(body.transactions)) {
+    body = (await fetchReportFile(fileUrl)) as { settlement_reference?: unknown; transactions?: unknown }
+  }
 
   const lines: DinteroReportLine[] = (Array.isArray(body.transactions) ? body.transactions : [])
     .map((raw) => {
@@ -280,7 +314,7 @@ export async function downloadReport(
         amount: int(t.amount),
         capture: int(t.capture),
         refund: int(t.refund),
-        fee: int(t.fee),
+        fee: Math.abs(int(t.fee)),
         transactionDate: when(t.transaction_date),
         paymentType: str(t.payment_product_type),
         cardBrand: str(t.card_brand),

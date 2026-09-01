@@ -172,6 +172,81 @@ describe('syncDinteroPayouts', () => {
     expect(shop.id).not.toBe(other.id)
   })
 
+  it('retries the report for a payout stored empty before the link envelope was understood', async () => {
+    const shop = await shopWithConfig()
+    // The broken state the first release left behind: report "processed",
+    // yet no lines and no reference - the envelope was mistaken for the file.
+    await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 's1', currency: 'NOK',
+        amount: 9800, capture: 10000, refund: 0, fee: 200,
+        linesPending: false, reference: null,
+      },
+    })
+    listSettlements.mockResolvedValue([settlement('s1')])
+    downloadReport.mockResolvedValue({
+      reference: 'DINTERO-42',
+      lines: [{ transactionId: 't1', reference: '3041', amount: 4900, capture: 5000, refund: 0, fee: 100, transactionDate: null, paymentType: null, cardBrand: null }],
+    })
+
+    const result = await syncDinteroPayouts({ force: true, shopId: shop.id })
+
+    expect(result.lines).toBe(1)
+    const payout = await db.payout.findUniqueOrThrow({
+      where: { shopId_externalId: { shopId: shop.id, externalId: 's1' } },
+    })
+    expect(payout.reference).toBe('DINTERO-42')
+    expect(payout.linesPending).toBe(false)
+  })
+
+  it('leaves a genuinely empty report alone once its reference is stored', async () => {
+    const shop = await shopWithConfig()
+    await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 's1', currency: 'NOK',
+        amount: 0, capture: 0, refund: 0, fee: 0,
+        linesPending: false, reference: 'REF-KEPT',
+      },
+    })
+    listSettlements.mockResolvedValue([settlement('s1')])
+
+    await syncDinteroPayouts({ force: true, shopId: shop.id })
+
+    expect(downloadReport).not.toHaveBeenCalled()
+  })
+
+  it('a backlog of unread reports makes even a fresh connection due', async () => {
+    const shop = await shopWithConfig({ lastSyncAt: new Date(Date.now() - 45 * 60_000) })
+    await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 's1', currency: 'NOK',
+        amount: 9800, capture: 10000, refund: 0, fee: 200, linesPending: true,
+      },
+    })
+    listSettlements.mockResolvedValue([settlement('s1')])
+    downloadReport.mockResolvedValue({ reference: 'DINTERO-42', lines: [] })
+
+    const result = await syncDinteroPayouts({ shopId: shop.id })
+
+    expect(result.skippedFresh).toBeUndefined()
+    expect(downloadReport).toHaveBeenCalledTimes(1)
+  })
+
+  it('a backlog inside the last half hour still waits its turn', async () => {
+    const shop = await shopWithConfig({ lastSyncAt: new Date(Date.now() - 60_000) })
+    await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 's1', currency: 'NOK',
+        amount: 9800, capture: 10000, refund: 0, fee: 200, linesPending: true,
+      },
+    })
+
+    const result = await syncDinteroPayouts({ shopId: shop.id })
+
+    expect(result.skippedFresh).toBe(true)
+    expect(listSettlements).not.toHaveBeenCalled()
+  })
+
   it('stores the provider error on the connection and keeps the old payouts', async () => {
     const shop = await shopWithConfig()
     await db.payout.create({

@@ -52,7 +52,7 @@ export type PayoutLineRow = {
   order: { number: string; placedAt: string; status: string; total: number } | null
 }
 
-type Detail = { currency: string; linesPending: boolean; lines: PayoutLineRow[] }
+type Detail = { currency: string; linesPending: boolean; reference: string | null; lines: PayoutLineRow[] }
 
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'
@@ -81,7 +81,11 @@ function ConnectCta() {
 
 /** How the orders column reads: complete, short, or still being fetched. */
 export function ordersCell(p: PayoutRow): { text: string; tone: string } {
-  if (p.linesPending) return { text: 'report pending', tone: 'text-faint' }
+  // No lines AND no bank reference means the report is still owed - the sync
+  // retries it. Only a stored reference proves an empty week is real.
+  if (p.linesPending || (p.orders === 0 && p.reference === null)) {
+    return { text: 'report pending', tone: 'text-faint' }
+  }
   if (p.orders === 0) return { text: 'no orders', tone: 'text-faint' }
   if (p.matched === p.orders) return { text: `${p.orders} of ${p.orders}`, tone: 'text-ink' }
   // Short is the state this page exists to surface.
@@ -89,7 +93,7 @@ export function ordersCell(p: PayoutRow): { text: string; tone: string } {
 }
 
 function Lines({ detail }: { detail: Detail }) {
-  if (detail.linesPending) {
+  if (detail.linesPending || (detail.lines.length === 0 && detail.reference === null)) {
     return (
       <p className="px-4 py-3 text-[13px] text-muted">
         The order report for this payout has not been fetched yet. It arrives with the next sync.
@@ -251,7 +255,7 @@ export function PayoutsClient({ email }: { email: string }) {
                   >
                     <div className="text-[11px] font-semibold uppercase text-faint">Paid out - {currency}</div>
                     <div className="num text-[15px] font-semibold text-ink">{formatMoney(t.amount, currency)}</div>
-                    <div className="num text-[11px] text-muted">fees {formatMoney(t.fee, currency)}</div>
+                    <div className="num text-[11px] text-muted">fees {formatMoney(-t.fee || 0, currency)}</div>
                   </div>
                 ))}
               </div>

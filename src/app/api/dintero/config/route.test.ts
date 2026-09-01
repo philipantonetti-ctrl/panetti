@@ -58,7 +58,12 @@ describe('Dintero connections', () => {
 
     expect(getToken).toHaveBeenCalledWith({ accountId: 'P12345678', clientId: 'cid-1234', clientSecret: 'sec-1234' })
     expect(listSettlements).toHaveBeenCalled()
-    expect(syncDinteroPayouts).toHaveBeenCalledWith({ force: true, shopId: shop.id })
+    expect(syncDinteroPayouts).toHaveBeenCalledWith({
+      force: true,
+      shopId: shop.id,
+      // The connect answer must land inside the route's own 60 seconds.
+      deadline: expect.any(Number),
+    })
 
     const cfg = await db.dinteroConfig.findUniqueOrThrow({ where: { shopId: shop.id } })
     expect(cfg.clientSecret).not.toBe('sec-1234') // at rest it is ciphertext

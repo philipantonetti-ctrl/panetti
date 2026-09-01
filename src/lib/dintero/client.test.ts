@@ -179,6 +179,16 @@ describe('listSettlements', () => {
     const [row] = await listSettlements(CREDS, 'tok')
     expect(row.settledAt).toBeNull()
   })
+
+  it('stores the fee as a magnitude whichever sign Dintero sends it with', async () => {
+    // The docs example says fee: 600; the live API says fee: -600. Both mean
+    // the same money left, so both must land as the same number.
+    const s = { ...settlement('s1'), amounts: [{ amount: 19400, capture: 30000, refund: -10000, fee: -600, currency: 'DKK' }] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([s])))
+    const [row] = await listSettlements(CREDS, 'tok')
+    expect(row.fee).toBe(600)
+    expect(row.refund).toBe(-10000)
+  })
 })
 
 describe('pickJsonReport', () => {
@@ -264,6 +274,52 @@ describe('downloadReport', () => {
       cardBrand: 'Visa',
     })
     expect(report.lines[1].amount).toBe(-10000)
+  })
+
+  it('follows the link envelope to the report file, leaving our token at home', async () => {
+    // The attachment endpoint answers {url} pointing at the file on storage -
+    // that is how Dintero's own Backoffice downloads reports. The signed link
+    // carries its own authorization, so our bearer must not travel with it.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ url: 'https://storage.dintero.example/reports/s1.json?sig=abc' }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          settlement_reference: 'DINTERO-42',
+          transactions: [
+            {
+              transaction_id: 'P12345678.abc',
+              reference: '3041',
+              amount: 4900,
+              capture: 5000,
+              refund: 0,
+              fee: -100,
+              transaction_date: '2026-08-18',
+              payment_product_type: 'dintero_payout.creditcard',
+              card_brand: 'Visa',
+            },
+          ],
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const report = await downloadReport(CREDS, 'tok', 's1', 'a-json')
+    expect(report.reference).toBe('DINTERO-42')
+    expect(report.lines).toHaveLength(1)
+    // The live report writes the fee negative; it lands as a magnitude.
+    expect(report.lines[0].fee).toBe(100)
+
+    const [fileUrl, fileInit] = fetchMock.mock.calls[1]
+    expect(String(fileUrl)).toBe('https://storage.dintero.example/reports/s1.json?sig=abc')
+    expect(fileInit?.headers).toBeUndefined()
+  })
+
+  it('refuses a report link that is not https', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ url: 'http://storage.dintero.example/reports/s1.json' })),
+    )
+    await expect(downloadReport(CREDS, 'tok', 's1', 'a-json')).rejects.toThrow(DinteroApiError)
   })
 
   it('drops a line with no transaction id rather than storing an unkeyable row', async () => {
