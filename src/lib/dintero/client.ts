@@ -322,8 +322,11 @@ export async function downloadReport(
     const row = {
       transactionId,
       reference: str(t.reference) ?? '',
-      reference2: str(t.merchant_reference_2),
-      amount: int(t.amount),
+      // The order number. Live reports carry it as event_reference (read
+      // from Philip's own report file); merchant_reference_2 is the name
+      // the docs use, kept as the fallback.
+      reference2: str(t.event_reference) ?? str(t.merchant_reference_2),
+      amount: int(t.amount) !== 0 ? int(t.amount) : int(t.net_amount),
       capture: int(t.capture),
       refund: int(t.refund),
       fee: Math.abs(int(t.fee)),
