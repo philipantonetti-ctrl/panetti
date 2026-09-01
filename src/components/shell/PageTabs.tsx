@@ -52,3 +52,12 @@ export const MARKETING_TABS: Tab[] = [
   { href: '/marketing', label: 'Advertising' },
   { href: '/marketing/email', label: 'Email' },
 ]
+
+/**
+ * Finance's two screens: what customers still owe us, and what Dintero has
+ * paid out to the bank. One sidebar entry, two tabs - marketing's trade.
+ */
+export const FINANCE_TABS: Tab[] = [
+  { href: '/finance', label: 'Receivables' },
+  { href: '/finance/payouts', label: 'Payouts' },
+]

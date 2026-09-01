@@ -75,6 +75,8 @@ model Shop {
   knowledgeItems        KnowledgeItem[]
   affiliateTransactions AffiliateTransaction[]
   mailboxes             Mailbox[]
+  dinteroConfig         DinteroConfig?
+  payouts               Payout[]
 }
 
 model Product {
@@ -186,6 +188,7 @@ model Order {
   items       OrderItem[]
   shipments   Shipment[]
   tickets     Ticket[]
+  payoutLines PayoutLine[]
 
   @@unique([shopId, externalId])
   @@index([shopId, placedAt])
@@ -1463,4 +1466,98 @@ model EmailCampaignStat {
   updatedAt DateTime @updatedAt
 
   @@index([sentAt])
+}
+
+/// One webshop's connection to Dintero, where its card payments settle.
+/// Each webshop is paid out separately, so the connection lives on the shop.
+model DinteroConfig {
+  id        String @id @default(cuid())
+  shopId    String @unique
+  /// Dintero account id: T or P plus eight digits. P is production.
+  accountId String
+  /// API client credentials - encrypted, like every other stored secret.
+  clientId     String
+  clientSecret String
+  /// Set only when one Dintero account pays out several shops; it narrows the
+  /// settlement list to this shop's payout destination.
+  payoutDestinationId String?
+
+  active     Boolean   @default(true)
+  lastSyncAt DateTime?
+  lastError  String?
+  createdAt  DateTime  @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+/// One payout from Dintero to the bank - a settlement, with a report naming
+/// every order the money came from. An exact mirror of Dintero's reporting,
+/// re-upserted by settlement id; nothing here is ever edited by hand.
+model Payout {
+  id         String  @id @default(cuid())
+  shopId     String
+  externalId String // Dintero settlement id
+  provider   String? // dintero_payout, vipps, klarna, ...
+
+  /// The day the money reached the bank. Null while Dintero has announced the
+  /// settlement but not paid it out yet.
+  settledAt   DateTime?
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  currency String
+  // Minor units of `currency`, exactly as the settlement report states them.
+  // capture + refund - fee = amount, the figure on the bank statement.
+  amount  Int
+  capture Int
+  refund  Int
+  fee     Int
+
+  /// The reference carried on the bank transfer - what a bookkeeper matches
+  /// the bank statement line against.
+  reference String?
+
+  /// True until the JSON report attachment has been fetched and its lines
+  /// stored, so the page can say "report pending" instead of "no orders".
+  linesPending Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shop  Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  lines PayoutLine[]
+
+  @@unique([shopId, externalId])
+  @@index([settledAt])
+}
+
+/// One order's slice of a payout, straight from the settlement report.
+model PayoutLine {
+  id            String @id @default(cuid())
+  payoutId      String
+  transactionId String
+  /// What Dintero calls the order - the webshop's own order number.
+  reference     String
+
+  // Minor units of the payout's currency.
+  amount  Int
+  capture Int
+  refund  Int
+  fee     Int
+
+  transactionDate DateTime?
+  paymentType     String? // e.g. dintero_payout.creditcard, vipps
+  cardBrand       String?
+
+  /// The webshop order this money paid for, matched by order number within
+  /// the payout's shop. Null = no order wears that number, and the page says
+  /// so out loud: an unmatched line is exactly the discrepancy bookkeeping
+  /// exists to catch.
+  orderId String?
+
+  payout Payout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  order  Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([payoutId, transactionId])
+  @@index([orderId])
+  @@index([reference])
 }
