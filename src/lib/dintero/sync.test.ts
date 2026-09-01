@@ -199,13 +199,13 @@ describe('syncDinteroPayouts', () => {
     expect(payout.linesPending).toBe(false)
   })
 
-  it('leaves a genuinely empty report alone once its reference is stored', async () => {
+  it('leaves a report alone once the current parser has read it', async () => {
     const shop = await shopWithConfig()
     await db.payout.create({
       data: {
         shopId: shop.id, externalId: 's1', currency: 'NOK',
         amount: 0, capture: 0, refund: 0, fee: 0,
-        linesPending: false, reference: 'REF-KEPT',
+        linesPending: false, reference: 'REF-KEPT', reportVersion: 2,
       },
     })
     listSettlements.mockResolvedValue([settlement('s1')])
@@ -213,6 +213,56 @@ describe('syncDinteroPayouts', () => {
     await syncDinteroPayouts({ force: true, shopId: shop.id })
 
     expect(downloadReport).not.toHaveBeenCalled()
+  })
+
+  it('re-ingests a report read by an older parser, even one that stored lines', async () => {
+    const shop = await shopWithConfig()
+    const payout = await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 's1', currency: 'NOK',
+        amount: 9800, capture: 10000, refund: 0, fee: 200,
+        linesPending: false, reference: 'OLD-REF', reportVersion: 0,
+        lines: { create: { transactionId: 't-old', reference: 'dwc1.1', amount: 0, capture: 10000, refund: 0, fee: 200 } },
+      },
+    })
+    listSettlements.mockResolvedValue([settlement('s1')])
+    downloadReport.mockResolvedValue({
+      reference: 'DINTERO-42',
+      lines: [{ transactionId: 't1', reference: 'dwc1.1', reference2: '3041', amount: 9800, capture: 10000, refund: 0, fee: 200, transactionDate: null, paymentType: null, cardBrand: null }],
+    })
+
+    await syncDinteroPayouts({ force: true, shopId: shop.id })
+
+    expect(downloadReport).toHaveBeenCalledTimes(1)
+    const after = await db.payout.findUniqueOrThrow({ where: { id: payout.id }, include: { lines: true } })
+    expect(after.reportVersion).toBeGreaterThanOrEqual(2)
+    expect(after.reference).toBe('DINTERO-42')
+    expect(after.lines).toHaveLength(1)
+    expect(after.lines[0].reference2).toBe('3041')
+  })
+
+  it('matches by the order number Dintero keeps in merchant_reference_2', async () => {
+    const shop = await shopWithConfig()
+    await db.order.create({ data: orderData(shop.id, '3041') })
+    listSettlements.mockResolvedValue([settlement('s1')])
+    downloadReport.mockResolvedValue({
+      reference: 'DINTERO-42',
+      lines: [{
+        // The WooCommerce plugin's real shape: a generated merchant_reference,
+        // the order number one field over.
+        transactionId: 't1', reference: 'dwc6a8ea49994f8f8.21480369', reference2: '3041',
+        amount: 4900, capture: 5000, refund: 0, fee: 100, transactionDate: null, paymentType: null, cardBrand: null,
+      }],
+    })
+
+    const result = await syncDinteroPayouts({ force: true, shopId: shop.id })
+
+    expect(result.matched).toBe(1)
+    const line = await db.payoutLine.findFirstOrThrow({
+      where: { reference2: '3041', payout: { shopId: shop.id } },
+      include: { order: true },
+    })
+    expect(line.order?.number).toBe('3041')
   })
 
   it('a backlog of unread reports makes even a fresh connection due', async () => {

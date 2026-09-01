@@ -54,8 +54,13 @@ export type DinteroSettlement = {
 
 export type DinteroReportLine = {
   transactionId: string
-  /** What Dintero calls the order - the webshop's own order number. */
+  /**
+   * The transaction's merchant_reference. The Dintero WooCommerce plugin
+   * fills it with a generated id (dwc...), not the order number.
+   */
   reference: string
+  /** merchant_reference_2 - where the plugin puts the real order number. */
+  reference2: string | null
   amount: number
   capture: number
   refund: number
@@ -303,24 +308,49 @@ export async function downloadReport(
     body = (await fetchReportFile(fileUrl)) as { settlement_reference?: unknown; transactions?: unknown }
   }
 
-  const lines: DinteroReportLine[] = (Array.isArray(body.transactions) ? body.transactions : [])
-    .map((raw) => {
-      const t = raw as Record<string, unknown>
-      const transactionId = str(t.transaction_id)
-      if (!transactionId) return null
-      return {
-        transactionId,
-        reference: str(t.reference) ?? '',
-        amount: int(t.amount),
-        capture: int(t.capture),
-        refund: int(t.refund),
-        fee: Math.abs(int(t.fee)),
-        transactionDate: when(t.transaction_date),
-        paymentType: str(t.payment_product_type),
-        cardBrand: str(t.card_brand),
-      }
-    })
-    .filter((l): l is DinteroReportLine => l !== null)
+  // One line per transaction. A capture event and its refund can arrive as
+  // separate rows wearing the same transaction id - merged here, because two
+  // stored rows would break the unique key and take the shop's sync down.
+  const byId = new Map<string, DinteroReportLine>()
+  for (const raw of Array.isArray(body.transactions) ? body.transactions : []) {
+    const t = raw as Record<string, unknown>
+    const transactionId = str(t.transaction_id)
+    if (!transactionId) continue
+
+    const row = {
+      transactionId,
+      reference: str(t.reference) ?? '',
+      reference2: str(t.merchant_reference_2),
+      amount: int(t.amount),
+      capture: int(t.capture),
+      refund: int(t.refund),
+      fee: Math.abs(int(t.fee)),
+      transactionDate: when(t.transaction_date),
+      paymentType: str(t.payment_product_type),
+      cardBrand: str(t.card_brand),
+    }
+    const seen = byId.get(transactionId)
+    if (!seen) {
+      byId.set(transactionId, row)
+    } else {
+      seen.amount += row.amount
+      seen.capture += row.capture
+      seen.refund += row.refund
+      seen.fee += row.fee
+      seen.reference ||= row.reference
+      seen.reference2 ??= row.reference2
+      seen.transactionDate ??= row.transactionDate
+      seen.paymentType ??= row.paymentType
+      seen.cardBrand ??= row.cardBrand
+    }
+  }
+
+  const lines = [...byId.values()].map((l) => ({
+    ...l,
+    // The live rows carry no amount of their own; the header's identity
+    // (amount = capture + refund - fee) holds per line too.
+    amount: l.amount !== 0 ? l.amount : l.capture + l.refund - l.fee,
+  }))
 
   return { reference: str(body.settlement_reference), lines }
 }

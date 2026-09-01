@@ -1520,8 +1520,13 @@ model Payout {
   /// True until the JSON report attachment has been fetched and its lines
   /// stored, so the page can say "report pending" instead of "no orders".
   linesPending Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+
+  /// Which parser wrote the stored lines. Bumping REPORT_VERSION in the sync
+  /// makes every payout re-download its report - how a parser fix reaches
+  /// reports that were already ingested wrong.
+  reportVersion Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   shop  Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
   lines PayoutLine[]
@@ -1535,8 +1540,12 @@ model PayoutLine {
   id            String @id @default(cuid())
   payoutId      String
   transactionId String
-  /// What Dintero calls the order - the webshop's own order number.
+  /// The transaction's merchant_reference. The Dintero WooCommerce plugin
+  /// fills it with a generated id (dwc...), NOT the order number.
   reference     String
+  /// The transaction's merchant_reference_2 - where the WooCommerce plugin
+  /// puts the actual order number. The primary matching key.
+  reference2    String?
 
   // Minor units of the payout's currency.
   amount  Int

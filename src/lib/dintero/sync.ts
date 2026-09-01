@@ -28,6 +28,17 @@ const MAX_REPORTS_PER_RUN = 40
  */
 const BACKLOG_MINUTES_BETWEEN = 30
 
+/**
+ * Which parser wrote a payout's stored lines. Bump it when the report
+ * mapping changes and every payout re-downloads its report on the next
+ * runs, budget-capped - the only way a parser fix reaches reports that
+ * were already ingested wrong.
+ *
+ * v2: reads merchant_reference_2 (the order number), merges duplicate
+ * transaction ids, derives the per-line amount.
+ */
+const REPORT_VERSION = 2
+
 export type DinteroSyncResult = {
   configured: boolean
   ok: boolean
@@ -70,15 +81,15 @@ export async function syncDinteroPayouts(
   }
 
   const now = new Date()
-  // Payouts whose report is still owed: never downloaded, or ingested as
-  // empty with no reference - the state a misread report leaves behind.
+  // Payouts whose report is still owed: never downloaded, or read by an
+  // older parser than the one running now.
   const owing = new Set(
     (
       await db.payout.groupBy({
         by: ['shopId'],
         where: {
           shopId: { in: configs.map((c) => c.shopId) },
-          OR: [{ linesPending: true }, { reference: null, lines: { none: {} } }],
+          OR: [{ linesPending: true }, { reportVersion: { lt: REPORT_VERSION } }],
         },
       })
     ).map((g) => g.shopId),
@@ -119,17 +130,6 @@ export async function syncDinteroPayouts(
         payoutDestinationId: config.payoutDestinationId,
       })
 
-      // Which payouts already hold lines: those reports are ingested for
-      // good, whatever their reference says.
-      const withLines = new Set(
-        (
-          await db.payoutLine.groupBy({
-            by: ['payoutId'],
-            where: { payout: { shopId: config.shopId } },
-          })
-        ).map((g) => g.payoutId),
-      )
-
       for (const s of settlements) {
         const header = {
           provider: s.provider,
@@ -149,11 +149,10 @@ export async function syncDinteroPayouts(
         })
         result.payouts++
 
-        // Ingested means lines stored, or a reference proving the report was
-        // truly read and truly empty. No lines AND no reference is the trail
-        // of a misread report - downloaded again until it speaks.
-        const ingested =
-          !payout.linesPending && (payout.reference !== null || withLines.has(payout.id))
+        // Ingested means the CURRENT parser has read the report. An older
+        // version's rows - however plausible they look - are downloaded
+        // again, because that is how a parser fix reaches them.
+        const ingested = !payout.linesPending && payout.reportVersion >= REPORT_VERSION
         if (ingested || reportBudget <= 0) continue
         if (opts.deadline && Date.now() >= opts.deadline) break
         const attachmentId = pickJsonReport(s.attachments)
@@ -170,6 +169,7 @@ export async function syncDinteroPayouts(
               payoutId: payout.id,
               transactionId: l.transactionId,
               reference: l.reference,
+              reference2: l.reference2,
               amount: l.amount,
               capture: l.capture,
               refund: l.refund,
@@ -181,7 +181,7 @@ export async function syncDinteroPayouts(
           }),
           db.payout.update({
             where: { id: payout.id },
-            data: { reference: report.reference, linesPending: false },
+            data: { reference: report.reference, linesPending: false, reportVersion: REPORT_VERSION },
           }),
         ])
         result.lines += report.lines.length
@@ -189,15 +189,18 @@ export async function syncDinteroPayouts(
 
       // Match every line of this shop's payouts that still points at no
       // order - the fresh ones and any the order sync had not caught up
-      // with last time. By number first (what the checkout usually sends),
-      // then by the Woo order id, always within this shop: order numbers
-      // repeat across nine webshops.
+      // with last time. merchant_reference_2 first: that is where the
+      // WooCommerce plugin puts the order number, while reference carries
+      // its generated id. Always within this shop: order numbers repeat
+      // across nine webshops.
       const open = await db.payoutLine.findMany({
         where: { orderId: null, payout: { shopId: config.shopId } },
-        select: { id: true, reference: true },
+        select: { id: true, reference: true, reference2: true },
       })
       if (open.length > 0) {
-        const refs = [...new Set(open.map((l) => l.reference).filter((r) => r !== ''))]
+        const refs = [
+          ...new Set(open.flatMap((l) => [l.reference2, l.reference]).filter((r): r is string => !!r)),
+        ]
         const orders = await db.order.findMany({
           where: { shopId: config.shopId, OR: [{ number: { in: refs } }, { externalId: { in: refs } }] },
           select: { id: true, number: true, externalId: true },
@@ -206,7 +209,10 @@ export async function syncDinteroPayouts(
         const byWooId = new Map(orders.map((o) => [o.externalId, o.id]))
 
         for (const line of open) {
-          const orderId = byNumber.get(line.reference) ?? byWooId.get(line.reference)
+          const orderId =
+            (line.reference2 ? (byNumber.get(line.reference2) ?? byWooId.get(line.reference2)) : undefined) ??
+            byNumber.get(line.reference) ??
+            byWooId.get(line.reference)
           if (orderId) {
             await db.payoutLine.update({ where: { id: line.id }, data: { orderId } })
             result.matched++
@@ -222,7 +228,10 @@ export async function syncDinteroPayouts(
       })
     } catch (e) {
       // Provider wording is safe to show; anything else gets a plain
-      // sentence rather than a stack trace on the settings page.
+      // sentence rather than a stack trace on the settings page - and the
+      // real exception goes to the server log, because a swallowed error
+      // cost half a day of blind debugging once already.
+      if (!(e instanceof DinteroApiError)) console.error('dintero sync', config.shop.name, e)
       const error =
         e instanceof DinteroApiError ? e.message : 'The Dintero sync failed. It retries on the next run.'
       result.ok = false

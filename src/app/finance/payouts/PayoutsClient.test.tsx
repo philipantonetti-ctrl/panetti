@@ -98,7 +98,9 @@ describe('PayoutsClient', () => {
               linesPending: false,
               lines: [
                 { id: 'l1', reference: '3041', amount: 490000, capture: 500000, refund: 0, fee: 10000, transactionDate: '2026-08-18T00:00:00Z', paymentType: 'dintero_payout.creditcard', cardBrand: 'Visa', order: { number: '3041', placedAt: '2026-08-18T10:00:00Z', status: 'completed', total: 625000 } },
-                { id: 'l2', reference: '9999', amount: 490000, capture: 500000, refund: 0, fee: 10000, transactionDate: null, paymentType: null, cardBrand: null, order: null },
+                // The plugin's generated id in reference, the order number in
+                // reference2 - the page must name the ORDER, not the id.
+                { id: 'l2', reference: 'dwc6a8ea49994f8f8.21480369', reference2: '9999', amount: 490000, capture: 500000, refund: 0, fee: 10000, transactionDate: null, paymentType: null, cardBrand: null, order: null },
               ],
             }),
             { status: 200 },
