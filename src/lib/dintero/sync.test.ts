@@ -96,6 +96,7 @@ describe('syncDinteroPayouts', () => {
     listSettlements.mockResolvedValue([settlement('s1')])
     downloadReport.mockResolvedValue({
       reference: 'DINTERO-42',
+      fileUrl: 'https://storage.dintero.example/reports/s1.json?sig=abc',
       lines: [
         { transactionId: 't1', reference: '3041', amount: 4900, capture: 5000, refund: 0, fee: 100, transactionDate: new Date('2026-08-18'), paymentType: 'dintero_payout.creditcard', cardBrand: 'Visa' },
         { transactionId: 't2', reference: 'woo-77', amount: 4900, capture: 5000, refund: 0, fee: 100, transactionDate: new Date('2026-08-19'), paymentType: 'dintero_payout.creditcard', cardBrand: null },
@@ -121,6 +122,7 @@ describe('syncDinteroPayouts', () => {
     const cfg = await db.dinteroConfig.findUniqueOrThrow({ where: { shopId: shop.id } })
     expect(cfg.lastSyncAt).not.toBeNull()
     expect(cfg.lastError).toBeNull()
+    expect(cfg.lastReportUrl).toBe('https://storage.dintero.example/reports/s1.json?sig=abc')
   })
 
   it('skips a fresh connection and syncs it again after six hours, or when forced', async () => {
