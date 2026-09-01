@@ -42,6 +42,7 @@ type Payload = { from: string; to: string; connected: boolean; payouts: PayoutRo
 export type PayoutLineRow = {
   id: string
   reference: string
+  reference2: string | null
   amount: number
   capture: number
   refund: number
@@ -124,8 +125,9 @@ function Lines({ detail }: { detail: Detail }) {
                 <span className="font-medium text-ink">#{l.order.number}</span>
               ) : (
                 // The discrepancy, named: Dintero paid us for an order our
-                // webshop mirror does not hold under this reference.
-                <span className="font-semibold text-warn">{l.reference || '(no reference)'} - no order with this number</span>
+                // webshop mirror does not hold under this number. The order
+                // number lives in reference2; reference is the plugin's id.
+                <span className="font-semibold text-warn">{l.reference2 || l.reference || '(no reference)'} - no order with this number</span>
               )}
             </td>
             <td className="num px-3 py-2 text-muted">{shortDay(l.transactionDate ?? l.order?.placedAt ?? null)}</td>

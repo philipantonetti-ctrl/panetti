@@ -45,6 +45,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         lines: payout.lines.map((l) => ({
           id: l.id,
           reference: l.reference,
+          reference2: l.reference2,
           amount: l.amount,
           capture: l.capture,
           refund: l.refund,

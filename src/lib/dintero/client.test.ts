@@ -289,8 +289,10 @@ describe('downloadReport', () => {
           transactions: [
             {
               transaction_id: 'P12345678.abc',
-              reference: '3041',
-              amount: 4900,
+              // What the WooCommerce plugin really sends: a generated id in
+              // merchant_reference, the order number in merchant_reference_2.
+              reference: 'dwc6a8ea49994f8f8.21480369',
+              merchant_reference_2: '3041',
               capture: 5000,
               refund: 0,
               fee: -100,
@@ -306,12 +308,45 @@ describe('downloadReport', () => {
     const report = await downloadReport(CREDS, 'tok', 's1', 'a-json')
     expect(report.reference).toBe('DINTERO-42')
     expect(report.lines).toHaveLength(1)
+    expect(report.lines[0].reference2).toBe('3041')
     // The live report writes the fee negative; it lands as a magnitude.
     expect(report.lines[0].fee).toBe(100)
+    // The live rows carry no amount of their own - it is derived from the
+    // same identity the header keeps: capture + refund - fee.
+    expect(report.lines[0].amount).toBe(4900)
 
     const [fileUrl, fileInit] = fetchMock.mock.calls[1]
     expect(String(fileUrl)).toBe('https://storage.dintero.example/reports/s1.json?sig=abc')
     expect(fileInit?.headers).toBeUndefined()
+  })
+
+  it('merges rows wearing the same transaction id into one line per order', async () => {
+    // A capture event and its refund can arrive as two rows sharing one
+    // transaction id - as two stored rows they would break the unique key
+    // and take the whole shop's sync down with them.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          settlement_reference: 'X',
+          transactions: [
+            { transaction_id: 'P1.abc', type: 'capture', reference: 'dwc1.1', merchant_reference_2: '3041', capture: 5000, refund: 0, fee: -100, transaction_date: '2026-08-18', payment_product_type: 'dintero_payout.creditcard', card_brand: 'Visa' },
+            { transaction_id: 'P1.abc', type: 'refund', reference: 'dwc1.1', capture: 0, refund: -2000, fee: 0, transaction_date: '2026-08-20' },
+          ],
+        }),
+      ),
+    )
+    const report = await downloadReport(CREDS, 'tok', 's1', 'a-json')
+    expect(report.lines).toHaveLength(1)
+    expect(report.lines[0]).toMatchObject({
+      transactionId: 'P1.abc',
+      reference2: '3041',
+      capture: 5000,
+      refund: -2000,
+      fee: 100,
+      amount: 2900,
+      cardBrand: 'Visa',
+    })
   })
 
   it('refuses a report link that is not https', async () => {
