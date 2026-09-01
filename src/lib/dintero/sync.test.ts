@@ -207,7 +207,9 @@ describe('syncDinteroPayouts', () => {
       data: {
         shopId: shop.id, externalId: 's1', currency: 'NOK',
         amount: 0, capture: 0, refund: 0, fee: 0,
-        linesPending: false, reference: 'REF-KEPT', reportVersion: 2,
+        // Pinned to the sync's current REPORT_VERSION: bumping that constant
+        // must come back here, deciding anew what "already read" means.
+        linesPending: false, reference: 'REF-KEPT', reportVersion: 3,
       },
     })
     listSettlements.mockResolvedValue([settlement('s1')])

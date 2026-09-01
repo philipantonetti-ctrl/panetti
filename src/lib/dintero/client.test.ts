@@ -289,13 +289,17 @@ describe('downloadReport', () => {
           transactions: [
             {
               transaction_id: 'P12345678.abc',
-              // What the WooCommerce plugin really sends: a generated id in
-              // merchant_reference, the order number in merchant_reference_2.
+              // The live row shape, read from a real report: a generated id
+              // in reference, the order number in event_reference, the net
+              // in net_amount - and no amount field at all.
+              type: 'settlement',
               reference: 'dwc6a8ea49994f8f8.21480369',
-              merchant_reference_2: '3041',
+              event_reference: '3041',
               capture: 5000,
               refund: 0,
               fee: -100,
+              net_amount: 4900,
+              gross_amount: 5000,
               transaction_date: '2026-08-18',
               payment_product_type: 'dintero_payout.creditcard',
               card_brand: 'Visa',
@@ -311,8 +315,7 @@ describe('downloadReport', () => {
     expect(report.lines[0].reference2).toBe('3041')
     // The live report writes the fee negative; it lands as a magnitude.
     expect(report.lines[0].fee).toBe(100)
-    // The live rows carry no amount of their own - it is derived from the
-    // same identity the header keeps: capture + refund - fee.
+    // No amount field in the live rows - net_amount carries the net.
     expect(report.lines[0].amount).toBe(4900)
 
     const [fileUrl, fileInit] = fetchMock.mock.calls[1]

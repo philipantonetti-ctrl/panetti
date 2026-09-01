@@ -36,8 +36,10 @@ const BACKLOG_MINUTES_BETWEEN = 30
  *
  * v2: reads merchant_reference_2 (the order number), merges duplicate
  * transaction ids, derives the per-line amount.
+ * v3: the live rows carry the order number as event_reference and the net
+ * as net_amount - both read from Philip's own report file.
  */
-const REPORT_VERSION = 2
+const REPORT_VERSION = 3
 
 export type DinteroSyncResult = {
   configured: boolean
