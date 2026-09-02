@@ -93,6 +93,31 @@ describe('backfillOrderTransactionIds', () => {
     expect((await db.order.findFirstOrThrow({ where: { shopId: shop.id } })).transactionId).toBeNull()
   })
 
+  it('a shop with unmatched payout lines goes first, whatever its name', async () => {
+    // Alphabetically "aaa" would win - but "zzz" is the shop someone is
+    // staring at an orange line on, so it gets the budget first.
+    const plain = await db.shop.create({
+      data: { name: `${MARK} aaa`, currency: 'NOK', wooUrl: 'https://a.test', wooKey: 'k', wooSecret: 's' },
+    })
+    const hurting = await db.shop.create({
+      data: { name: `${MARK} zzz`, currency: 'SEK', wooUrl: 'https://z.test', wooKey: 'k', wooSecret: 's' },
+    })
+    await db.order.create({ data: orderData(plain.id, '1') })
+    await db.order.create({ data: orderData(hurting.id, '2') })
+    await db.payout.create({
+      data: {
+        shopId: hurting.id, externalId: 'p1', currency: 'SEK', amount: 1, capture: 1, refund: 0, fee: 0,
+        linesPending: false, reportVersion: 3,
+        lines: { create: { transactionId: 'tx-open', reference: 'dwc1', amount: 1, capture: 1, refund: 0, fee: 0 } },
+      },
+    })
+    fetchOrdersByIds.mockResolvedValue([])
+
+    await backfillOrderTransactionIds({ shopIds: [plain.id, hurting.id] })
+
+    expect(fetchOrdersByIds.mock.calls[0][0]).toMatchObject({ url: 'https://z.test' })
+  })
+
   it('a store that fails keeps its error and costs nobody else their turn', async () => {
     const bad = await db.shop.create({
       data: { name: `${MARK} bad`, currency: 'SEK', wooUrl: 'https://x.test', wooKey: 'k', wooSecret: 's' },

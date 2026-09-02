@@ -68,7 +68,11 @@ vi.mock('@/lib/klaviyo/sync', () => ({ syncKlaviyo: () => syncKlaviyo() }))
 const syncDinteroPayouts = vi.fn(async () => ({
   configured: false, ok: true, payouts: 0, lines: 0, matched: 0, unmatched: 0, errors: [],
 }))
-vi.mock('@/lib/dintero/sync', () => ({ syncDinteroPayouts: () => syncDinteroPayouts() }))
+const rematchOpenPayoutLines = vi.fn(async () => ({ matched: 0, unmatched: 0 }))
+vi.mock('@/lib/dintero/sync', () => ({
+  syncDinteroPayouts: () => syncDinteroPayouts(),
+  rematchOpenPayoutLines: () => rematchOpenPayoutLines(),
+}))
 
 // Nor the transaction-id backfill: it would read every shop another test
 // file left in the shared database and call their fake stores.
@@ -94,6 +98,7 @@ beforeEach(() => {
   syncKlaviyo.mockClear()
   syncDinteroPayouts.mockClear()
   backfillOrderTransactionIds.mockClear()
+  rematchOpenPayoutLines.mockClear()
   importVismaB2bSales.mockClear()
   importVismaPurchaseOrders.mockClear()
   syncBringInvoices.mockClear()
@@ -158,7 +163,8 @@ describe('the scheduled sync endpoint', () => {
 
   it('backfills payment transaction ids under a deadline, and reports it', async () => {
     process.env.CRON_SECRET = 'right-secret'
-    backfillOrderTransactionIds.mockResolvedValue({ checked: 200, filled: 41, errors: [] })
+    backfillOrderTransactionIds.mockResolvedValueOnce({ checked: 200, filled: 41, errors: [] })
+    rematchOpenPayoutLines.mockResolvedValueOnce({ matched: 3, unmatched: 9 })
     const body = await (await call('Bearer right-secret')).json()
 
     expect(backfillOrderTransactionIds).toHaveBeenCalledTimes(1)
@@ -166,6 +172,9 @@ describe('the scheduled sync endpoint', () => {
     expect(body.txIdsChecked).toBe(200)
     expect(body.txIdsFilled).toBe(41)
     expect(body.txIdsErrors).toEqual([])
+    // Freshly stamped ids re-match their payout lines on the same tick.
+    expect(rematchOpenPayoutLines).toHaveBeenCalledTimes(1)
+    expect(body.rematchedLines).toBe(3)
   })
 
   // A half-failed run that reports success would hide stale figures.

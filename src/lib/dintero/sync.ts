@@ -41,6 +41,86 @@ const BACKLOG_MINUTES_BETWEEN = 30
  */
 const REPORT_VERSION = 3
 
+/**
+ * Match a shop's unmatched payout lines against the orders we hold now.
+ * merchant_reference_2 first (where the WooCommerce plugin puts the order
+ * number, while reference carries its generated id), then the Woo order id,
+ * then the payment transaction id - the only key Swish report rows carry.
+ * Always within one shop: order numbers repeat across nine webshops.
+ * Database only, so it can run any time an order might have arrived, not
+ * just when Dintero is asked for settlements.
+ */
+export async function matchOpenPayoutLines(
+  shopId: string,
+): Promise<{ matched: number; unmatched: number }> {
+  const result = { matched: 0, unmatched: 0 }
+  const open = await db.payoutLine.findMany({
+    where: { orderId: null, payout: { shopId } },
+    select: { id: true, reference: true, reference2: true, transactionId: true },
+  })
+  if (open.length === 0) return result
+
+  const refs = [
+    ...new Set(open.flatMap((l) => [l.reference2, l.reference]).filter((r): r is string => !!r)),
+  ]
+  const txIds = [...new Set(open.map((l) => l.transactionId))]
+  const orders = await db.order.findMany({
+    where: {
+      shopId,
+      OR: [
+        { number: { in: refs } },
+        { externalId: { in: refs } },
+        { transactionId: { in: txIds } },
+      ],
+    },
+    select: { id: true, number: true, externalId: true, transactionId: true },
+  })
+  const byNumber = new Map(orders.map((o) => [o.number, o.id]))
+  const byWooId = new Map(orders.map((o) => [o.externalId, o.id]))
+  const byTxId = new Map(orders.filter((o) => o.transactionId).map((o) => [o.transactionId!, o.id]))
+
+  for (const line of open) {
+    const orderId =
+      (line.reference2 ? (byNumber.get(line.reference2) ?? byWooId.get(line.reference2)) : undefined) ??
+      byNumber.get(line.reference) ??
+      byWooId.get(line.reference) ??
+      byTxId.get(line.transactionId)
+    if (orderId) {
+      await db.payoutLine.update({ where: { id: line.id }, data: { orderId } })
+      result.matched++
+    } else {
+      result.unmatched++
+    }
+  }
+  return result
+}
+
+/**
+ * Re-run the matching for every shop holding unmatched lines, from the
+ * database alone - the cron calls it right after the transaction-id backfill
+ * so a stamped order matches its payout line on the same tick, instead of
+ * waiting for the shop's next six-hourly settlement pull.
+ */
+export async function rematchOpenPayoutLines(
+  opts: { shopId?: string } = {},
+): Promise<{ matched: number; unmatched: number }> {
+  const shops = await db.payout.findMany({
+    where: {
+      lines: { some: { orderId: null } },
+      ...(opts.shopId ? { shopId: opts.shopId } : {}),
+    },
+    select: { shopId: true },
+    distinct: ['shopId'],
+  })
+  const result = { matched: 0, unmatched: 0 }
+  for (const s of shops) {
+    const run = await matchOpenPayoutLines(s.shopId)
+    result.matched += run.matched
+    result.unmatched += run.unmatched
+  }
+  return result
+}
+
 export type DinteroSyncResult = {
   configured: boolean
   ok: boolean
@@ -196,52 +276,10 @@ export async function syncDinteroPayouts(
 
       // Match every line of this shop's payouts that still points at no
       // order - the fresh ones and any the order sync had not caught up
-      // with last time. merchant_reference_2 first: that is where the
-      // WooCommerce plugin puts the order number, while reference carries
-      // its generated id. Always within this shop: order numbers repeat
-      // across nine webshops.
-      const open = await db.payoutLine.findMany({
-        where: { orderId: null, payout: { shopId: config.shopId } },
-        select: { id: true, reference: true, reference2: true, transactionId: true },
-      })
-      if (open.length > 0) {
-        const refs = [
-          ...new Set(open.flatMap((l) => [l.reference2, l.reference]).filter((r): r is string => !!r)),
-        ]
-        const txIds = [...new Set(open.map((l) => l.transactionId))]
-        const orders = await db.order.findMany({
-          where: {
-            shopId: config.shopId,
-            OR: [
-              { number: { in: refs } },
-              { externalId: { in: refs } },
-              // Swish report rows carry no order number at all - but the
-              // WooCommerce plugin wrote the same transaction id on the order.
-              { transactionId: { in: txIds } },
-            ],
-          },
-          select: { id: true, number: true, externalId: true, transactionId: true },
-        })
-        const byNumber = new Map(orders.map((o) => [o.number, o.id]))
-        const byWooId = new Map(orders.map((o) => [o.externalId, o.id]))
-        const byTxId = new Map(
-          orders.filter((o) => o.transactionId).map((o) => [o.transactionId!, o.id]),
-        )
-
-        for (const line of open) {
-          const orderId =
-            (line.reference2 ? (byNumber.get(line.reference2) ?? byWooId.get(line.reference2)) : undefined) ??
-            byNumber.get(line.reference) ??
-            byWooId.get(line.reference) ??
-            byTxId.get(line.transactionId)
-          if (orderId) {
-            await db.payoutLine.update({ where: { id: line.id }, data: { orderId } })
-            result.matched++
-          } else {
-            result.unmatched++
-          }
-        }
-      }
+      // with last time.
+      const matchRun = await matchOpenPayoutLines(config.shopId)
+      result.matched += matchRun.matched
+      result.unmatched += matchRun.unmatched
 
       await db.dinteroConfig.update({
         where: { id: config.id },

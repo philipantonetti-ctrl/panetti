@@ -186,6 +186,40 @@ describe('syncDinteroPayouts', () => {
     expect(line.order?.number).toBe('13894')
   })
 
+  it('rematchOpenPayoutLines matches from the database alone - Dintero is never asked', async () => {
+    const { rematchOpenPayoutLines } = await import('./sync')
+    const shop = await shopWithConfig()
+    await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 's1', currency: 'SEK',
+        amount: 496851, capture: 499900, refund: 0, fee: 3049,
+        linesPending: false, reference: 'R', reportVersion: 3,
+        lines: {
+          create: {
+            transactionId: 'P11114428.5GosbmSZphtGtEUHpecS7a',
+            reference: 'dwc6a8c02eee87996.69737219',
+            amount: 496851, capture: 499900, refund: 0, fee: 3049,
+          },
+        },
+      },
+    })
+    // The backfill stamps the order between two payout syncs...
+    await db.order.create({
+      data: { ...orderData(shop.id, '13901'), transactionId: 'P11114428.5GosbmSZphtGtEUHpecS7a' },
+    })
+
+    const result = await rematchOpenPayoutLines({ shopId: shop.id })
+
+    // ...and the line matches right then, with no Dintero call at all.
+    expect(result.matched).toBe(1)
+    expect(getToken).not.toHaveBeenCalled()
+    const line = await db.payoutLine.findFirstOrThrow({
+      where: { transactionId: 'P11114428.5GosbmSZphtGtEUHpecS7a' },
+      include: { order: true },
+    })
+    expect(line.order?.number).toBe('13901')
+  })
+
   it('never matches an order from another shop wearing the same number', async () => {
     const shop = await shopWithConfig()
     const other = await db.shop.create({ data: { name: `${MARK} SE`, currency: 'SEK' } })
