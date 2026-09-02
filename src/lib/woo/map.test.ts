@@ -151,3 +151,15 @@ describe('customer phone', () => {
     expect(mapOrder(baseOrder).customerPhone).toBe('')
   })
 })
+
+describe('the payment transaction id', () => {
+  it('travels through as WooCommerce holds it', () => {
+    const o = mapOrder({ ...baseOrder, transaction_id: 'P11114428.5Gooe6v4sQE1VE1VxCGY8m' })
+    expect(o.transactionId).toBe('P11114428.5Gooe6v4sQE1VE1VxCGY8m')
+  })
+
+  it("reads as '' when the store has none on file - checked, not unknown", () => {
+    expect(mapOrder(baseOrder).transactionId).toBe('')
+    expect(mapOrder({ ...baseOrder, transaction_id: '  ' }).transactionId).toBe('')
+  })
+})

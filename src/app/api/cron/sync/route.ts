@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { syncAllShops } from '@/lib/woo/sync'
+import { backfillOrderTransactionIds, type TxBackfillResult } from '@/lib/woo/transaction-backfill'
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affiliate/sync'
 import { syncKlaviyo, type KlaviyoSyncResult } from '@/lib/klaviyo/sync'
@@ -114,6 +115,14 @@ const BRING_INVOICES_DEADLINE_MS = 270_000
  * each clamped to twenty seconds inside the client.
  */
 const DINTERO_DEADLINE_MS = 265_000
+
+/**
+ * The transaction-id backfill is finished by this point in the run. Bounded
+ * batches against the stores (25 pages of 100), newest orders first; once
+ * history is stamped a run costs no HTTP at all, so this stage spends real
+ * time only for a while after it ships or after a new store connects.
+ */
+const TX_BACKFILL_DEADLINE_MS = 255_000
 
 /**
  * The helpdesk import, bounded well short of the parcel poll.
@@ -248,6 +257,18 @@ export async function GET(req: Request) {
     receivables = await importVismaReceivables()
   } catch {
     // It does not throw either. Same belt and braces as the others.
+  }
+
+  // The payment transaction ids the payout matcher joins on - Swish payout
+  // rows carry no order number, so this key is what matches them. Reads the
+  // stores in bounded batches until history is stamped, then costs nothing.
+  // Best-effort like everything after the shops.
+  let txBackfill: TxBackfillResult = { checked: 0, filled: 0, errors: [] }
+  try {
+    txBackfill = await backfillOrderTransactionIds({ deadline: runStartedAt + TX_BACKFILL_DEADLINE_MS })
+  } catch {
+    // It does not throw, but a caller that assumes so is one refactor away
+    // from a failed sync.
   }
 
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
@@ -406,6 +427,9 @@ export async function GET(req: Request) {
     // naming orders we do not hold.
     dinteroUnmatched: dintero.unmatched,
     dinteroErrors: dintero.errors,
+    txIdsChecked: txBackfill.checked,
+    txIdsFilled: txBackfill.filled,
+    txIdsErrors: txBackfill.errors,
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,

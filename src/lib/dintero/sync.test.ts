@@ -157,6 +157,35 @@ describe('syncDinteroPayouts', () => {
     expect(line.order?.number).toBe('3041')
   })
 
+  it('a Swish line with no order number matches through the transaction id', async () => {
+    const shop = await shopWithConfig()
+    // Swish report rows carry no order number at all - but the WooCommerce
+    // plugin wrote the same Dintero transaction id onto the order.
+    await db.order.create({
+      data: { ...orderData(shop.id, '13894'), transactionId: 'P11114428.5Gooe6v4sQE1VE1VxCGY8m' },
+    })
+    listSettlements.mockResolvedValue([settlement('s1')])
+    downloadReport.mockResolvedValue({
+      reference: 'DINTERO-42',
+      fileUrl: null,
+      lines: [{
+        transactionId: 'P11114428.5Gooe6v4sQE1VE1VxCGY8m',
+        reference: 'dwc6a853ea38988a9.79866913', reference2: null,
+        amount: 665549, capture: 669600, refund: 0, fee: 4051,
+        transactionDate: null, paymentType: 'swish.swish', cardBrand: null,
+      }],
+    })
+
+    const result = await syncDinteroPayouts({ force: true, shopId: shop.id })
+
+    expect(result.matched).toBe(1)
+    const line = await db.payoutLine.findFirstOrThrow({
+      where: { transactionId: 'P11114428.5Gooe6v4sQE1VE1VxCGY8m' },
+      include: { order: true },
+    })
+    expect(line.order?.number).toBe('13894')
+  })
+
   it('never matches an order from another shop wearing the same number', async () => {
     const shop = await shopWithConfig()
     const other = await db.shop.create({ data: { name: `${MARK} SE`, currency: 'SEK' } })

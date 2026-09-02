@@ -203,6 +203,7 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
     customerEmail: o.customerEmail,
     customerPhone: o.customerPhone,
     shippingCountry: o.shippingCountry,
+    transactionId: o.transactionId,
     ambassadorId,
   }
 

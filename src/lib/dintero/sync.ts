@@ -202,24 +202,38 @@ export async function syncDinteroPayouts(
       // across nine webshops.
       const open = await db.payoutLine.findMany({
         where: { orderId: null, payout: { shopId: config.shopId } },
-        select: { id: true, reference: true, reference2: true },
+        select: { id: true, reference: true, reference2: true, transactionId: true },
       })
       if (open.length > 0) {
         const refs = [
           ...new Set(open.flatMap((l) => [l.reference2, l.reference]).filter((r): r is string => !!r)),
         ]
+        const txIds = [...new Set(open.map((l) => l.transactionId))]
         const orders = await db.order.findMany({
-          where: { shopId: config.shopId, OR: [{ number: { in: refs } }, { externalId: { in: refs } }] },
-          select: { id: true, number: true, externalId: true },
+          where: {
+            shopId: config.shopId,
+            OR: [
+              { number: { in: refs } },
+              { externalId: { in: refs } },
+              // Swish report rows carry no order number at all - but the
+              // WooCommerce plugin wrote the same transaction id on the order.
+              { transactionId: { in: txIds } },
+            ],
+          },
+          select: { id: true, number: true, externalId: true, transactionId: true },
         })
         const byNumber = new Map(orders.map((o) => [o.number, o.id]))
         const byWooId = new Map(orders.map((o) => [o.externalId, o.id]))
+        const byTxId = new Map(
+          orders.filter((o) => o.transactionId).map((o) => [o.transactionId!, o.id]),
+        )
 
         for (const line of open) {
           const orderId =
             (line.reference2 ? (byNumber.get(line.reference2) ?? byWooId.get(line.reference2)) : undefined) ??
             byNumber.get(line.reference) ??
-            byWooId.get(line.reference)
+            byWooId.get(line.reference) ??
+            byTxId.get(line.transactionId)
           if (orderId) {
             await db.payoutLine.update({ where: { id: line.id }, data: { orderId } })
             result.matched++

@@ -131,6 +131,12 @@ model Order {
   status     String // "completed" | "processing" | "refunded" | "cancelled" | ...
   currency   String // shop's currency at time of order
 
+  /// The payment gateway's transaction id as WooCommerce holds it - for
+  /// Dintero orders the plugin writes the Dintero transaction id here, the
+  /// ONLY key the payout report carries for Swish rows. '' = checked, the
+  /// store has none on file; null = not read yet, the backfill knows to ask.
+  transactionId String?
+
   grossSales      Int // line value BEFORE discount, excl VAT
   discountTotal   Int // excl VAT
   netSales        Int // grossSales - discountTotal. THE COMMISSION BASE. Stored for audit.
@@ -195,6 +201,8 @@ model Order {
   @@index([ambassadorId, placedAt])
   @@index([b2bCustomerId])
   @@index([customerEmail])
+  // The payout matcher joins on it; the backfill queries for null.
+  @@index([shopId, transactionId])
 }
 
 model OrderItem {

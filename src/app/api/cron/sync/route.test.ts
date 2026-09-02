@@ -70,6 +70,15 @@ const syncDinteroPayouts = vi.fn(async () => ({
 }))
 vi.mock('@/lib/dintero/sync', () => ({ syncDinteroPayouts: () => syncDinteroPayouts() }))
 
+// Nor the transaction-id backfill: it would read every shop another test
+// file left in the shared database and call their fake stores.
+const backfillOrderTransactionIds = vi.fn(
+  async (_opts?: { deadline?: number }) => ({ checked: 0, filled: 0, errors: [] as string[] }),
+)
+vi.mock('@/lib/woo/transaction-backfill', () => ({
+  backfillOrderTransactionIds: (opts?: { deadline?: number }) => backfillOrderTransactionIds(opts),
+}))
+
 const { GET } = await import('./route')
 
 const call = (auth?: string) =>
@@ -84,6 +93,7 @@ const REAL = process.env.CRON_SECRET
 beforeEach(() => {
   syncKlaviyo.mockClear()
   syncDinteroPayouts.mockClear()
+  backfillOrderTransactionIds.mockClear()
   importVismaB2bSales.mockClear()
   importVismaPurchaseOrders.mockClear()
   syncBringInvoices.mockClear()
@@ -144,6 +154,18 @@ describe('the scheduled sync endpoint', () => {
     expect(body.dinteroPayouts).toBe(0)
     expect(body.dinteroUnmatched).toBe(0)
     expect(body.dinteroErrors).toEqual([])
+  })
+
+  it('backfills payment transaction ids under a deadline, and reports it', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    backfillOrderTransactionIds.mockResolvedValue({ checked: 200, filled: 41, errors: [] })
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(backfillOrderTransactionIds).toHaveBeenCalledTimes(1)
+    expect(backfillOrderTransactionIds.mock.calls[0][0]?.deadline).toBeTypeOf('number')
+    expect(body.txIdsChecked).toBe(200)
+    expect(body.txIdsFilled).toBe(41)
+    expect(body.txIdsErrors).toEqual([])
   })
 
   // A half-failed run that reports success would hide stale figures.
