@@ -13,8 +13,13 @@ import { fetchOrdersByIds } from './client'
  * history is stamped, a run costs no HTTP at all.
  */
 
-/** 100-order pages against the stores, across all shops, per run. */
-const MAX_BATCHES_PER_RUN = 25
+/**
+ * 100-order pages against the stores, across all shops, per run. Sized so
+ * one whole store's history fits in a single run - the deadline is what
+ * actually bounds the time spent, and the main order sync already reads up
+ * to 50 pages from one store per run, so the stores are fine with the pace.
+ */
+const MAX_BATCHES_PER_RUN = 60
 
 export type TxBackfillResult = {
   /** Orders asked about this run. */
