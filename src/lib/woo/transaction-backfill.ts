@@ -41,6 +41,20 @@ export async function backfillOrderTransactionIds(
     select: { id: true, name: true, wooUrl: true, wooKey: true, wooSecret: true },
   })
 
+  // A shop with unmatched payout lines goes first: its missing transaction
+  // ids are the ones somebody is looking at an orange line over. Ties keep
+  // the name order.
+  const hurting = new Set(
+    (
+      await db.payout.findMany({
+        where: { shopId: { in: shops.map((s) => s.id) }, lines: { some: { orderId: null } } },
+        select: { shopId: true },
+        distinct: ['shopId'],
+      })
+    ).map((p) => p.shopId),
+  )
+  shops.sort((a, b) => Number(hurting.has(b.id)) - Number(hurting.has(a.id)))
+
   let budget = MAX_BATCHES_PER_RUN
   for (const shop of shops) {
     try {

@@ -4,7 +4,7 @@ import { backfillOrderTransactionIds, type TxBackfillResult } from '@/lib/woo/tr
 import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affiliate/sync'
 import { syncKlaviyo, type KlaviyoSyncResult } from '@/lib/klaviyo/sync'
-import { syncDinteroPayouts, type DinteroSyncResult } from '@/lib/dintero/sync'
+import { rematchOpenPayoutLines, syncDinteroPayouts, type DinteroSyncResult } from '@/lib/dintero/sync'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
@@ -271,6 +271,16 @@ export async function GET(req: Request) {
     // from a failed sync.
   }
 
+  // Orders stamped this tick match their payout lines this tick - database
+  // only, no Dintero call - instead of waiting for the shop's next
+  // six-hourly settlement pull. Best-effort like the stage above.
+  let rematch = { matched: 0, unmatched: 0 }
+  try {
+    if (txBackfill.filled > 0) rematch = await rematchOpenPayoutLines()
+  } catch {
+    // The lines stay open and match on the next settlement pull instead.
+  }
+
   // Ad platforms refresh their numbers a few times a day; syncAllAdAccounts
   // skips accounts synced in the last six hours, so most runs cost nothing.
   // Best-effort like the rates: a broken token must never fail the shop sync.
@@ -430,6 +440,7 @@ export async function GET(req: Request) {
     txIdsChecked: txBackfill.checked,
     txIdsFilled: txBackfill.filled,
     txIdsErrors: txBackfill.errors,
+    rematchedLines: rematch.matched,
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,
