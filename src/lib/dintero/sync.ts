@@ -88,6 +88,14 @@ export async function matchOpenPayoutLines(
   const byDwc = new Map(
     orders.filter((o) => o.dinteroReference).map((o) => [o.dinteroReference!, o.id]),
   )
+  // A refund arrives in a LATER payout wearing the same transaction id as
+  // its capture. When the capture line already found its order - by any key -
+  // the refund follows it, whatever its own reference resolves to.
+  const siblings = await db.payoutLine.findMany({
+    where: { orderId: { not: null }, transactionId: { in: txIds }, payout: { shopId } },
+    select: { transactionId: true, orderId: true },
+  })
+  const bySibling = new Map(siblings.map((s) => [s.transactionId, s.orderId!]))
 
   for (const line of open) {
     const orderId =
@@ -96,6 +104,7 @@ export async function matchOpenPayoutLines(
       byWooId.get(line.reference) ??
       byTxId.get(line.transactionId) ??
       byDwc.get(line.reference) ??
+      bySibling.get(line.transactionId) ??
       typedNumbers(line.reference)
         .map((n) => byNumber.get(n) ?? byWooId.get(n))
         .find((id) => id !== undefined)

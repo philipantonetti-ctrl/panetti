@@ -268,6 +268,35 @@ describe('syncDinteroPayouts', () => {
     expect(tik.orderId).toBeNull()
   })
 
+  it('a later refund line follows its matched capture line to the same order', async () => {
+    const { rematchOpenPayoutLines } = await import('./sync')
+    const shop = await shopWithConfig()
+    const order = await db.order.create({ data: orderData(shop.id, '11793') })
+    // The capture, matched in an earlier payout.
+    await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 'p-cap', currency: 'NOK', amount: 300000, capture: 300000, refund: 0, fee: 0,
+        linesPending: false, reportVersion: 3,
+        lines: { create: { transactionId: 'P1.same', reference: 'Mazzetti.no 11793x', amount: 300000, capture: 300000, refund: 0, fee: 0, orderId: order.id } },
+      },
+    })
+    // The refund, in a later payout, wearing the SAME transaction id but a
+    // reference nothing resolves.
+    await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 'p-ref', currency: 'NOK', amount: -300000, capture: 0, refund: -300000, fee: 0,
+        linesPending: false, reportVersion: 3,
+        lines: { create: { transactionId: 'P1.same', reference: 'unresolvable', amount: -300000, capture: 0, refund: -300000, fee: 0 } },
+      },
+    })
+
+    const result = await rematchOpenPayoutLines({ shopId: shop.id })
+
+    expect(result.matched).toBe(1)
+    const refund = await db.payoutLine.findFirstOrThrow({ where: { reference: 'unresolvable' }, include: { order: true } })
+    expect(refund.order?.number).toBe('11793')
+  })
+
   it('never matches an order from another shop wearing the same number', async () => {
     const shop = await shopWithConfig()
     const other = await db.shop.create({ data: { name: `${MARK} SE`, currency: 'SEK' } })
