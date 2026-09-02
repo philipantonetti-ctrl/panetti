@@ -113,6 +113,11 @@ describe('orders waiting for a payout', () => {
     const worrying = await db.order.create({
       data: { ...base, externalId: '9001', number: '9001', placedAt: days(12), transactionId: 'P1.a' },
     })
+    // Placed before the earliest settlement Dintero's API still serves: there
+    // is no payout it could have been in, so it is history, not a debt.
+    const ancient = await db.order.create({
+      data: { ...base, externalId: '9000', number: '9000', placedAt: new Date('2023-01-10T10:00:00Z'), transactionId: 'P1.z' },
+    })
     // Too young to worry - payouts come weekly.
     const young = await db.order.create({
       data: { ...base, externalId: '9002', number: '9002', placedAt: days(3), transactionId: 'P1.b' },
@@ -126,7 +131,10 @@ describe('orders waiting for a payout', () => {
       data: { ...base, externalId: '9004', number: '9004', placedAt: days(12), transactionId: 'P1.c' },
     })
     const payout = await db.payout.create({
-      data: { shopId: shop.id, externalId: 's-w', currency: 'SEK', amount: 1, capture: 1, refund: 0, fee: 0 },
+      data: {
+        shopId: shop.id, externalId: 's-w', currency: 'SEK', amount: 1, capture: 1, refund: 0, fee: 0,
+        periodStart: new Date('2024-06-01T00:00:00Z'),
+      },
     })
     await db.payoutLine.create({
       data: { payoutId: payout.id, transactionId: 'P1.c', reference: 'x', amount: 1, capture: 1, refund: 0, fee: 0, orderId: paid.id },
@@ -139,6 +147,7 @@ describe('orders waiting for a payout', () => {
     expect(ids).not.toContain(young.id)
     expect(ids).not.toContain(other.id)
     expect(ids).not.toContain(paid.id)
+    expect(ids).not.toContain(ancient.id)
     const row = body.waiting.find((w: { id: string }) => w.id === worrying.id)
     expect(row).toMatchObject({ number: '9001', shopName: `${MARK} wait`, currency: 'SEK', total: 6250 })
     expect(body.waitingCount).toBe(1)
