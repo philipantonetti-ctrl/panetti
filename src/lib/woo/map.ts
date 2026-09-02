@@ -37,6 +37,11 @@ export type WooOrder = {
    * report rows carry.
    */
   transaction_id?: string
+  /**
+   * Order metas. The Dintero plugin keeps its session reference (dwc...)
+   * and - on older versions, ONLY here - its transaction id in these.
+   */
+  meta_data?: { key: string; value: unknown }[]
   billing?: { first_name?: string; last_name?: string; email?: string; country?: string; phone?: string }
   shipping?: { country?: string }
 }
@@ -63,6 +68,9 @@ export type MappedOrder = {
   // Same convention again - the payout matcher joins on it, and the backfill
   // must know a checked-and-empty order from one never read.
   transactionId: string
+  // The Dintero plugin's dwc... session reference from the order meta - what
+  // old payout report rows carry as their reference. Same convention.
+  dinteroReference: string
   // ISO-2, uppercased. '' when the store has none on file - never null, so a
   // synced order counts as "country checked" and the backfill knows it is done.
   shippingCountry: string
@@ -93,6 +101,11 @@ export function mapOrder(woo: WooOrder): MappedOrder {
   const grossSales = woo.line_items.reduce((sum, li) => sum + num(li.subtotal), 0)
   const netSales = woo.line_items.reduce((sum, li) => sum + num(li.total), 0)
 
+  const meta = (key: string): string => {
+    const hit = woo.meta_data?.find((m) => m.key === key)
+    return typeof hit?.value === 'string' ? hit.value.trim() : ''
+  }
+
   // Prefer the discount implied by the lines; fall back to Woo's own figure.
   const discountTotal = grossSales - netSales || num(woo.discount_total)
 
@@ -112,7 +125,10 @@ export function mapOrder(woo: WooOrder): MappedOrder {
     customerName: [woo.billing?.first_name, woo.billing?.last_name].filter(Boolean).join(' ').trim(),
     customerEmail: woo.billing?.email?.trim() ?? '',
     customerPhone: woo.billing?.phone?.trim() ?? '',
-    transactionId: woo.transaction_id?.trim() ?? '',
+    // The core field when the plugin set it; older plugin versions wrote
+    // only the meta, so the meta fills in for their orders.
+    transactionId: woo.transaction_id?.trim() || meta('_dintero_transaction_id'),
+    dinteroReference: meta('_dintero_merchant_reference'),
     // Shipping first: it is where the parcel actually goes, which is what the
     // delivery promise is about. Billing is the fallback for stores that only
     // collect one address.

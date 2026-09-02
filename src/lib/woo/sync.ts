@@ -204,6 +204,7 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
     customerPhone: o.customerPhone,
     shippingCountry: o.shippingCountry,
     transactionId: o.transactionId,
+    dinteroReference: o.dinteroReference,
     ambassadorId,
   }
 

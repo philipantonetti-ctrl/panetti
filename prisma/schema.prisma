@@ -137,6 +137,11 @@ model Order {
   /// store has none on file; null = not read yet, the backfill knows to ask.
   transactionId String?
 
+  /// The Dintero plugin's generated session reference (dwc...), from the
+  /// order's _dintero_merchant_reference meta - what old payout report rows
+  /// carry as their reference. Same '' / null convention.
+  dinteroReference String?
+
   grossSales      Int // line value BEFORE discount, excl VAT
   discountTotal   Int // excl VAT
   netSales        Int // grossSales - discountTotal. THE COMMISSION BASE. Stored for audit.

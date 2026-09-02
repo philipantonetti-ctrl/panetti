@@ -40,6 +40,32 @@ const orderData = (shopId: string, externalId: string, transactionId: string | n
 })
 
 describe('backfillOrderTransactionIds', () => {
+  it('revisits an order stamped before the dwc reference column existed', async () => {
+    const shop = await db.shop.create({
+      data: { name: `${MARK} revisit`, currency: 'SEK', wooUrl: 'https://x.test', wooKey: 'k', wooSecret: 's' },
+    })
+    // Stamped by the first backfill: transactionId checked, dwc column new.
+    await db.order.create({ data: { ...orderData(shop.id, '11536', ''), dinteroReference: null } })
+    fetchOrdersByIds.mockResolvedValue([
+      {
+        id: 11536,
+        transaction_id: '',
+        meta_data: [
+          { key: '_dintero_merchant_reference', value: 'dwc69f647252c3054.1' },
+          { key: '_dintero_transaction_id', value: 'P1.meta' },
+        ],
+      },
+    ])
+
+    const result = await backfillOrderTransactionIds({ shopIds: [shop.id] })
+
+    expect(result.checked).toBe(1)
+    const row = await db.order.findFirstOrThrow({ where: { shopId: shop.id } })
+    expect(row.dinteroReference).toBe('dwc69f647252c3054.1')
+    // The meta transaction id fills in what the core field never held.
+    expect(row.transactionId).toBe('P1.meta')
+  })
+
   it('fills the transaction id from the store, and marks the rest as checked', async () => {
     const shop = await db.shop.create({
       data: { name: `${MARK} SE`, currency: 'SEK', wooUrl: 'https://x.test', wooKey: 'k', wooSecret: 's' },
@@ -47,7 +73,8 @@ describe('backfillOrderTransactionIds', () => {
     // Distinct placedAt: the walk is newest-first, and the assertion below
     // reads the request order.
     await db.order.create({ data: { ...orderData(shop.id, '13894'), placedAt: new Date('2026-08-18T11:00:00Z') } })
-    await db.order.create({ data: orderData(shop.id, '13895') }) // Woo holds no id for it
+    // Woo holds no id for it.
+    await db.order.create({ data: { ...orderData(shop.id, '13895'), placedAt: new Date('2026-08-18T10:30:00Z') } })
     await db.order.create({ data: orderData(shop.id, '13896', 'already-set') })
 
     fetchOrdersByIds.mockResolvedValue([
@@ -57,14 +84,16 @@ describe('backfillOrderTransactionIds', () => {
 
     const result = await backfillOrderTransactionIds({ shopIds: [shop.id] })
 
-    expect(result.checked).toBe(2)
+    // All three go: the dwc column is new, so even the stamped one is
+    // revisited once for it - and keeps its id when the store omits it.
+    expect(result.checked).toBe(3)
     expect(result.filled).toBe(1)
     expect(result.errors).toEqual([])
-    // Only the unchecked rows were asked about - never the one already holding an id.
-    expect(fetchOrdersByIds.mock.calls[0][1]).toEqual(['13894', '13895'])
+    expect(fetchOrdersByIds.mock.calls[0][1]).toEqual(['13894', '13895', '13896'])
 
     const rows = await db.order.findMany({ where: { shopId: shop.id }, orderBy: { externalId: 'asc' } })
     expect(rows.map((r) => r.transactionId)).toEqual(['P11114428.5Gooe6v4sQE1VE1VxCGY8m', '', 'already-set'])
+    expect(rows.map((r) => r.dinteroReference)).toEqual(['', '', ''])
   })
 
   it('marks an order the store no longer returns as checked, so it is never asked again', async () => {

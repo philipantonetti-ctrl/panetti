@@ -61,7 +61,11 @@ export async function matchOpenPayoutLines(
   if (open.length === 0) return result
 
   const refs = [
-    ...new Set(open.flatMap((l) => [l.reference2, l.reference]).filter((r): r is string => !!r)),
+    ...new Set(
+      open
+        .flatMap((l) => [l.reference2, l.reference, ...typedNumbers(l.reference)])
+        .filter((r): r is string => !!r),
+    ),
   ]
   const txIds = [...new Set(open.map((l) => l.transactionId))]
   const orders = await db.order.findMany({
@@ -71,20 +75,30 @@ export async function matchOpenPayoutLines(
         { number: { in: refs } },
         { externalId: { in: refs } },
         { transactionId: { in: txIds } },
+        // Old report rows carry only the plugin's dwc session reference; the
+        // order kept the same string in its _dintero_merchant_reference meta.
+        { dinteroReference: { in: refs } },
       ],
     },
-    select: { id: true, number: true, externalId: true, transactionId: true },
+    select: { id: true, number: true, externalId: true, transactionId: true, dinteroReference: true },
   })
   const byNumber = new Map(orders.map((o) => [o.number, o.id]))
   const byWooId = new Map(orders.map((o) => [o.externalId, o.id]))
   const byTxId = new Map(orders.filter((o) => o.transactionId).map((o) => [o.transactionId!, o.id]))
+  const byDwc = new Map(
+    orders.filter((o) => o.dinteroReference).map((o) => [o.dinteroReference!, o.id]),
+  )
 
   for (const line of open) {
     const orderId =
       (line.reference2 ? (byNumber.get(line.reference2) ?? byWooId.get(line.reference2)) : undefined) ??
       byNumber.get(line.reference) ??
       byWooId.get(line.reference) ??
-      byTxId.get(line.transactionId)
+      byTxId.get(line.transactionId) ??
+      byDwc.get(line.reference) ??
+      typedNumbers(line.reference)
+        .map((n) => byNumber.get(n) ?? byWooId.get(n))
+        .find((id) => id !== undefined)
     if (orderId) {
       await db.payoutLine.update({ where: { id: line.id }, data: { orderId } })
       result.matched++
@@ -93,6 +107,18 @@ export async function matchOpenPayoutLines(
     }
   }
   return result
+}
+
+/**
+ * Order numbers inside a hand-typed reference - "Order #11536",
+ * "Mazzetti.no 11793" - from payment links staff created in Backoffice.
+ * Never from a dwc session id (its digit runs are noise) and never from a
+ * "Ticket:" reference (Bambora's ticket ids are digit-shaped non-orders);
+ * and a candidate only matches if the shop truly holds that order.
+ */
+export function typedNumbers(reference: string): string[] {
+  if (reference.startsWith('dwc') || reference.startsWith('Ticket:')) return []
+  return reference.match(/\d{4,}/g) ?? []
 }
 
 /**
