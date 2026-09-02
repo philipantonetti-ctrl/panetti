@@ -97,3 +97,50 @@ describe('payouts list', () => {
     expect(body.payouts[0].shopId).toBe(a.id)
   })
 })
+
+describe('orders waiting for a payout', () => {
+  it('lists a Dintero-paid order older than eight days that no payout contains', async () => {
+    const shop = await db.shop.create({ data: { name: `${MARK} wait`, currency: 'SEK' } })
+    await db.dinteroConfig.create({
+      data: { shopId: shop.id, accountId: 'P11114428', clientId: 'x', clientSecret: 'y' },
+    })
+    const days = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000)
+    const base = {
+      shopId: shop.id, status: 'completed', currency: 'SEK', grossSales: 5000, discountTotal: 0,
+      netSales: 5000, shippingCharged: 0, taxTotal: 1250, total: 6250,
+    }
+    // Paid through Dintero, 12 days old, in no payout: the one to worry about.
+    const worrying = await db.order.create({
+      data: { ...base, externalId: '9001', number: '9001', placedAt: days(12), transactionId: 'P1.a' },
+    })
+    // Too young to worry - payouts come weekly.
+    const young = await db.order.create({
+      data: { ...base, externalId: '9002', number: '9002', placedAt: days(3), transactionId: 'P1.b' },
+    })
+    // Not paid through Dintero at all (no gateway marker): not this page's business.
+    const other = await db.order.create({
+      data: { ...base, externalId: '9003', number: '9003', placedAt: days(12), transactionId: '' },
+    })
+    // Old and Dintero-paid, but inside a payout already.
+    const paid = await db.order.create({
+      data: { ...base, externalId: '9004', number: '9004', placedAt: days(12), transactionId: 'P1.c' },
+    })
+    const payout = await db.payout.create({
+      data: { shopId: shop.id, externalId: 's-w', currency: 'SEK', amount: 1, capture: 1, refund: 0, fee: 0 },
+    })
+    await db.payoutLine.create({
+      data: { payoutId: payout.id, transactionId: 'P1.c', reference: 'x', amount: 1, capture: 1, refund: 0, fee: 0, orderId: paid.id },
+    })
+
+    const body = await (await get(`?from=2026-08-01&to=2026-08-31&shop=${shop.id}`)).json()
+
+    const ids = body.waiting.map((w: { id: string }) => w.id)
+    expect(ids).toContain(worrying.id)
+    expect(ids).not.toContain(young.id)
+    expect(ids).not.toContain(other.id)
+    expect(ids).not.toContain(paid.id)
+    const row = body.waiting.find((w: { id: string }) => w.id === worrying.id)
+    expect(row).toMatchObject({ number: '9001', shopName: `${MARK} wait`, currency: 'SEK', total: 6250 })
+    expect(body.waitingCount).toBe(1)
+  })
+})
