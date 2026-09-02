@@ -271,12 +271,14 @@ export async function GET(req: Request) {
     // from a failed sync.
   }
 
-  // Orders stamped this tick match their payout lines this tick - database
-  // only, no Dintero call - instead of waiting for the shop's next
-  // six-hourly settlement pull. Best-effort like the stage above.
+  // Match open payout lines every run - database only, no Dintero call,
+  // and self-limiting: only shops still holding open lines are touched, a
+  // handful of small queries. Every run rather than only after a backfill,
+  // because a matching-key improvement must reach old lines on the next
+  // tick, not on each shop's next six-hourly settlement pull.
   let rematch = { matched: 0, unmatched: 0 }
   try {
-    if (txBackfill.filled > 0) rematch = await rematchOpenPayoutLines()
+    rematch = await rematchOpenPayoutLines()
   } catch {
     // The lines stay open and match on the next settlement pull instead.
   }
