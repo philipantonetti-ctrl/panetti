@@ -46,19 +46,18 @@ export async function backfillOrderTransactionIds(
     select: { id: true, name: true, wooUrl: true, wooKey: true, wooSecret: true },
   })
 
-  // A shop with unmatched payout lines goes first: its missing transaction
-  // ids are the ones somebody is looking at an orange line over. Ties keep
-  // the name order.
-  const hurting = new Set(
-    (
-      await db.payout.findMany({
-        where: { shopId: { in: shops.map((s) => s.id) }, lines: { some: { orderId: null } } },
-        select: { shopId: true },
-        distinct: ['shopId'],
-      })
-    ).map((p) => p.shopId),
-  )
-  shops.sort((a, b) => Number(hurting.has(b.id)) - Number(hurting.has(a.id)))
+  // The shop with the MOST unmatched payout lines goes first: those missing
+  // transaction ids are the ones somebody is looking at orange lines over.
+  // A count, not a flag - nearly every shop carries one stray unmatched
+  // line, and a flag ranked a 16,000-order shop with one stray ahead of the
+  // shop with 171. Ties keep the name order.
+  const openLines = (await db.$queryRaw`
+    SELECT p."shopId" AS id, count(*)::int AS n
+    FROM "PayoutLine" l JOIN "Payout" p ON p.id = l."payoutId"
+    WHERE l."orderId" IS NULL GROUP BY 1
+  `) as { id: string; n: number }[]
+  const hurt = new Map(openLines.map((r) => [r.id, r.n]))
+  shops.sort((a, b) => (hurt.get(b.id) ?? 0) - (hurt.get(a.id) ?? 0))
 
   let budget = MAX_BATCHES_PER_RUN
   for (const shop of shops) {
