@@ -70,32 +70,49 @@ export async function backfillOrderTransactionIds(
       while (budget > 0) {
         if (opts.deadline && Date.now() >= opts.deadline) return result
         const rows = await db.order.findMany({
-          where: { shopId: shop.id, transactionId: null },
+          // Either column still null means the order has not been read since
+          // that column existed - the dwc reference arrived after the first
+          // full walk, so stamped orders are revisited exactly once for it.
+          where: { shopId: shop.id, OR: [{ transactionId: null }, { dinteroReference: null }] },
           orderBy: { placedAt: 'desc' },
           take: 100,
-          select: { id: true, externalId: true },
+          select: { id: true, externalId: true, transactionId: true, dinteroReference: true },
         })
         if (rows.length === 0) break
         budget--
 
         const woo = await fetchOrdersByIds(creds, rows.map((r) => r.externalId))
-        const byId = new Map(woo.map((w) => [String(w.id), w.transaction_id?.trim() ?? '']))
-
-        const filled = rows.filter((r) => byId.get(r.externalId))
-        // Everything asked about gets stamped - including orders the store no
-        // longer returns - or this batch would be refetched forever.
-        const empty = rows.filter((r) => !byId.get(r.externalId))
-        for (const r of filled) {
-          await db.order.update({ where: { id: r.id }, data: { transactionId: byId.get(r.externalId)! } })
+        const meta = (w: (typeof woo)[number], key: string): string => {
+          const hit = w.meta_data?.find((m) => m.key === key)
+          return typeof hit?.value === 'string' ? hit.value.trim() : ''
         }
-        if (empty.length > 0) {
-          await db.order.updateMany({
-            where: { id: { in: empty.map((r) => r.id) } },
-            data: { transactionId: '' },
+        const byId = new Map(
+          woo.map((w) => [
+            String(w.id),
+            {
+              // Core field first; older plugin versions wrote only the meta.
+              transactionId: w.transaction_id?.trim() || meta(w, '_dintero_transaction_id'),
+              dinteroReference: meta(w, '_dintero_merchant_reference'),
+            },
+          ]),
+        )
+
+        // Everything asked about gets stamped - including orders the store no
+        // longer returns - or this batch would be refetched forever. An order
+        // the store stopped returning keeps whatever it already held: a
+        // revisit must never wipe a good id with ''.
+        for (const r of rows) {
+          const found = byId.get(r.externalId)
+          await db.order.update({
+            where: { id: r.id },
+            data: {
+              transactionId: found ? found.transactionId : (r.transactionId ?? ''),
+              dinteroReference: found ? found.dinteroReference : (r.dinteroReference ?? ''),
+            },
           })
+          if (found?.transactionId) result.filled++
         }
         result.checked += rows.length
-        result.filled += filled.length
       }
     } catch (e) {
       // The store's turn ends; the rest still get theirs. Rows already

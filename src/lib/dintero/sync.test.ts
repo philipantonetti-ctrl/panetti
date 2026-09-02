@@ -220,6 +220,54 @@ describe('syncDinteroPayouts', () => {
     expect(line.order?.number).toBe('13901')
   })
 
+  it('an old report row matches through the dwc reference the order meta kept', async () => {
+    const shop = await shopWithConfig()
+    await db.order.create({
+      data: { ...orderData(shop.id, '11536'), transactionId: '', dinteroReference: 'dwc69f647252c3054.11111111' },
+    })
+    listSettlements.mockResolvedValue([settlement('s1')])
+    downloadReport.mockResolvedValue({
+      reference: 'R', fileUrl: null,
+      lines: [{
+        transactionId: 'P1.old', reference: 'dwc69f647252c3054.11111111', reference2: null,
+        amount: 529800, capture: 529800, refund: 0, fee: 0, transactionDate: null, paymentType: 'klarna.klarna', cardBrand: null,
+      }],
+    })
+
+    const result = await syncDinteroPayouts({ force: true, shopId: shop.id })
+
+    expect(result.matched).toBe(1)
+  })
+
+  it('a hand-typed reference like "Order #11536" matches by the number inside it', async () => {
+    const shop = await shopWithConfig()
+    await db.order.create({ data: orderData(shop.id, '11536') })
+    listSettlements.mockResolvedValue([settlement('s1')])
+    downloadReport.mockResolvedValue({
+      reference: 'R', fileUrl: null,
+      lines: [
+        {
+          transactionId: 'P1.moto', reference: 'Order #11536', reference2: null,
+          amount: 1500000, capture: 1500000, refund: 0, fee: 0, transactionDate: null, paymentType: 'bambora.creditcard', cardBrand: null,
+        },
+        // A Bambora ticket id is NOT an order number, however digit-shaped.
+        {
+          transactionId: 'P1.tik', reference: 'Ticket: 11536', reference2: null,
+          amount: 100, capture: 100, refund: 0, fee: 0, transactionDate: null, paymentType: 'bambora.creditcard', cardBrand: null,
+        },
+      ],
+    })
+
+    const result = await syncDinteroPayouts({ force: true, shopId: shop.id })
+
+    expect(result.matched).toBe(1)
+    expect(result.unmatched).toBe(1)
+    const moto = await db.payoutLine.findFirstOrThrow({ where: { transactionId: 'P1.moto' }, include: { order: true } })
+    expect(moto.order?.number).toBe('11536')
+    const tik = await db.payoutLine.findFirstOrThrow({ where: { transactionId: 'P1.tik' } })
+    expect(tik.orderId).toBeNull()
+  })
+
   it('never matches an order from another shop wearing the same number', async () => {
     const shop = await shopWithConfig()
     const other = await db.shop.create({ data: { name: `${MARK} SE`, currency: 'SEK' } })

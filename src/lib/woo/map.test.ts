@@ -163,3 +163,30 @@ describe('the payment transaction id', () => {
     expect(mapOrder({ ...baseOrder, transaction_id: '  ' }).transactionId).toBe('')
   })
 })
+
+describe('the dintero plugin metas', () => {
+  it('reads the dwc session reference from the order meta', () => {
+    const o = mapOrder({
+      ...baseOrder,
+      meta_data: [{ key: '_dintero_merchant_reference', value: 'dwc6a853ea38988a9.79866913' }],
+    })
+    expect(o.dinteroReference).toBe('dwc6a853ea38988a9.79866913')
+    expect(mapOrder(baseOrder).dinteroReference).toBe('')
+  })
+
+  it('falls back to the meta transaction id when the core field is empty', () => {
+    // Older plugin versions wrote only the meta, never set_transaction_id.
+    const o = mapOrder({
+      ...baseOrder,
+      meta_data: [{ key: '_dintero_transaction_id', value: 'P11114417.OLD123' }],
+    })
+    expect(o.transactionId).toBe('P11114417.OLD123')
+    // The core field, when present, wins.
+    const o2 = mapOrder({
+      ...baseOrder,
+      transaction_id: 'P11114417.CORE',
+      meta_data: [{ key: '_dintero_transaction_id', value: 'P11114417.OLD123' }],
+    })
+    expect(o2.transactionId).toBe('P11114417.CORE')
+  })
+})
