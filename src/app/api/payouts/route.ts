@@ -67,15 +67,34 @@ export async function GET(req: Request) {
     const connectedShopIds = (
       await db.dinteroConfig.findMany({ where: { active: true }, select: { shopId: true } })
     ).map((c) => c.shopId)
+    // Each shop is judged only inside its payout coverage: an order placed
+    // before the earliest settlement Dintero's API still serves has no
+    // payout it could have been in - history, not a debt to chase.
+    const coverage = await db.payout.groupBy({
+      by: ['shopId'],
+      where: { shopId: { in: connectedShopIds }, periodStart: { not: null } },
+      _min: { periodStart: true },
+    })
+    const cutoff = new Date(Date.now() - WAITING_AFTER_DAYS * 24 * 60 * 60 * 1000)
     const waitingWhere = {
-      shopId: shopId ? shopId : { in: connectedShopIds },
-      placedAt: { lte: new Date(Date.now() - WAITING_AFTER_DAYS * 24 * 60 * 60 * 1000) },
       status: { in: CAPTURED_STATUSES },
-      voidedAt: null,
+      voidedAt: null as null,
       payoutLines: { none: {} },
-      OR: [
-        { AND: [{ transactionId: { not: null } }, { transactionId: { not: '' } }] },
-        { AND: [{ dinteroReference: { not: null } }, { dinteroReference: { not: '' } }] },
+      AND: [
+        {
+          OR: coverage
+            .filter((c) => !shopId || c.shopId === shopId)
+            .map((c) => ({
+              shopId: c.shopId,
+              placedAt: { gte: c._min.periodStart!, lte: cutoff },
+            })),
+        },
+        {
+          OR: [
+            { AND: [{ transactionId: { not: null } }, { transactionId: { not: '' } }] },
+            { AND: [{ dinteroReference: { not: null } }, { dinteroReference: { not: '' } }] },
+          ],
+        },
       ],
     }
     const waiting = await db.order.findMany({
