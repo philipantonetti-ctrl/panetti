@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { cleanup, render, screen, fireEvent } from '@testing-library/react'
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/finance/payouts',
@@ -32,8 +32,11 @@ const payout = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-const listResponse = (payouts: unknown[], connected = true) =>
-  new Response(JSON.stringify({ from: '2026-08-01', to: '2026-08-31', connected, payouts }), { status: 200 })
+const listResponse = (payouts: unknown[], connected = true, waiting: unknown[] = []) =>
+  new Response(
+    JSON.stringify({ from: '2026-08-01', to: '2026-08-31', connected, payouts, waiting, waitingCount: waiting.length }),
+    { status: 200 },
+  )
 
 describe('ordersCell', () => {
   it('reads complete, short, and pending as three different sentences', () => {
@@ -117,6 +120,23 @@ describe('PayoutsClient', () => {
     expect(await screen.findByText('#3041')).toBeInTheDocument()
     expect(screen.getByText(/9999 - no order with this number/)).toBeInTheDocument()
     expect(screen.getByText('Visa')).toBeInTheDocument()
+  })
+
+  it('names the paid orders no payout contains, and says so when there are none', async () => {
+    const waiting = [{
+      id: 'o1', shopId: 'sh1', number: '14200', shopName: 'Panetti Norway',
+      placedAt: '2026-08-20T10:00:00Z', status: 'completed', total: 499900, currency: 'NOK',
+    }]
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(listResponse([payout()], true, waiting))))
+    render(<PayoutsClient email="a@b.test" />)
+
+    expect(await screen.findByText(/1 paid order older than 8 days in no payout/)).toBeInTheDocument()
+    expect(screen.getByText('#14200')).toBeInTheDocument()
+
+    cleanup()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(listResponse([payout()]))))
+    render(<PayoutsClient email="a@b.test" />)
+    expect(await screen.findByText(/Nothing is waiting on Dintero/)).toBeInTheDocument()
   })
 
   it('invites the connection when nothing is connected yet', async () => {

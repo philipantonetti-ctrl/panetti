@@ -10,6 +10,15 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 export const dynamic = 'force-dynamic'
 
 /**
+ * Payouts arrive weekly, so a captured order should be inside one within a
+ * week; a day of slack on top keeps the fresh weekend out of the list.
+ */
+const WAITING_AFTER_DAYS = 8
+
+/** Statuses where the money was captured - what a payout should contain. */
+const CAPTURED_STATUSES = ['completed', 'processing', 'shipping']
+
+/**
  * The payouts list: one row per settlement Dintero paid out, with how many
  * of its orders we hold. The range logic is the analytics routes', helper
  * for helper, so the same preset always means the same days everywhere.
@@ -51,6 +60,35 @@ export async function GET(req: Request) {
     const linesOf = new Map(lineCounts.map((c) => [c.payoutId, c._count]))
     const matchedOf = new Map(matchedCounts.map((c) => [c.payoutId, c._count]))
 
+    // The reverse check: money we captured that no payout contains. Only
+    // orders that went through Dintero (they carry its transaction id or
+    // session reference - a B2B invoice or another gateway's order is not
+    // this page's business), old enough that a weekly payout has had time.
+    const connectedShopIds = (
+      await db.dinteroConfig.findMany({ where: { active: true }, select: { shopId: true } })
+    ).map((c) => c.shopId)
+    const waitingWhere = {
+      shopId: shopId ? shopId : { in: connectedShopIds },
+      placedAt: { lte: new Date(Date.now() - WAITING_AFTER_DAYS * 24 * 60 * 60 * 1000) },
+      status: { in: CAPTURED_STATUSES },
+      voidedAt: null,
+      payoutLines: { none: {} },
+      OR: [
+        { AND: [{ transactionId: { not: null } }, { transactionId: { not: '' } }] },
+        { AND: [{ dinteroReference: { not: null } }, { dinteroReference: { not: '' } }] },
+      ],
+    }
+    const waiting = await db.order.findMany({
+      where: waitingWhere,
+      orderBy: { placedAt: 'desc' },
+      take: 200,
+      select: {
+        id: true, shopId: true, number: true, placedAt: true, status: true, total: true, currency: true,
+        shop: { select: { name: true } },
+      },
+    })
+    const waitingCount = await db.order.count({ where: waitingWhere })
+
     return NextResponse.json(
       {
         from: dayOf(fromDay),
@@ -74,6 +112,17 @@ export async function GET(req: Request) {
           orders: linesOf.get(p.id) ?? 0,
           matched: matchedOf.get(p.id) ?? 0,
         })),
+        waiting: waiting.map((o) => ({
+          id: o.id,
+          shopId: o.shopId,
+          number: o.number,
+          shopName: o.shop.name,
+          placedAt: o.placedAt.toISOString(),
+          status: o.status,
+          total: o.total,
+          currency: o.currency,
+        })),
+        waitingCount,
       },
       { headers: NO_STORE },
     )

@@ -37,7 +37,25 @@ export type PayoutRow = {
   matched: number
 }
 
-type Payload = { from: string; to: string; connected: boolean; payouts: PayoutRow[] }
+export type WaitingOrder = {
+  id: string
+  shopId: string
+  number: string
+  shopName: string
+  placedAt: string
+  status: string
+  total: number
+  currency: string
+}
+
+type Payload = {
+  from: string
+  to: string
+  connected: boolean
+  payouts: PayoutRow[]
+  waiting: WaitingOrder[]
+  waitingCount: number
+}
 
 export type PayoutLineRow = {
   id: string
@@ -144,6 +162,63 @@ function Lines({ detail }: { detail: Detail }) {
         ))}
       </tbody>
     </table>
+  )
+}
+
+/**
+ * The reverse check: money we captured that no payout contains. Payouts come
+ * weekly, so a Dintero-paid order still outside one after eight days is a
+ * payment worth chasing - the "did they forget to pay us" list.
+ */
+function WaitingOrders({ waiting, totalCount }: { waiting: WaitingOrder[]; totalCount: number }) {
+  if (waiting.length === 0) {
+    return (
+      <p className="rounded-[var(--radius-card)] border border-line bg-surface px-5 py-3 text-[13px] text-muted">
+        Every Dintero-paid order older than 8 days is inside a payout. Nothing is waiting on Dintero.
+      </p>
+    )
+  }
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+      <div className="border-b border-line bg-panel px-4 py-2.5">
+        <span className="text-[13px] font-semibold text-warn">
+          {totalCount.toLocaleString('en-US')} paid {totalCount === 1 ? 'order' : 'orders'} older than
+          8 days in no payout
+        </span>
+        <span className="ml-2 text-[12px] text-muted">
+          money the webshop captured that Dintero has not paid out - worth chasing.
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-line text-left text-[11px] font-semibold text-faint">
+              <th className="px-4 py-2">Order</th>
+              <th className="px-3 py-2">Shop</th>
+              <th className="px-3 py-2">Placed</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="num px-4 py-2 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {waiting.map((w) => (
+              <tr key={w.id} className="border-b border-line last:border-b-0">
+                <td className="px-4 py-2 font-medium text-ink">#{w.number}</td>
+                <td className="px-3 py-2">{w.shopName}</td>
+                <td className="num px-3 py-2 text-muted">{day(w.placedAt)}</td>
+                <td className="px-3 py-2 text-muted">{w.status}</td>
+                <td className="num px-4 py-2 text-right">{formatMoney(w.total, w.currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {totalCount > waiting.length && (
+        <p className="border-t border-line px-4 py-2 text-[12px] text-muted">
+          Showing the newest {waiting.length.toLocaleString('en-US')}.
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -350,6 +425,11 @@ export function PayoutsClient({ email }: { email: string }) {
                 </div>
               </div>
             )}
+
+            <WaitingOrders
+              waiting={(data.waiting ?? []).filter((w) => !shop || w.shopId === shop)}
+              totalCount={data.waitingCount ?? 0}
+            />
 
             <p className="text-[11px] text-faint">
               Straight from Dintero&apos;s settlement reports. An order shown in orange is one the
