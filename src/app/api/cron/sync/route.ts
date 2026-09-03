@@ -5,6 +5,7 @@ import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affiliate/sync'
 import { syncKlaviyo, type KlaviyoSyncResult } from '@/lib/klaviyo/sync'
 import { rematchOpenPayoutLines, syncDinteroPayouts, type DinteroSyncResult } from '@/lib/dintero/sync'
+import { runVismaProbe, type VismaProbeResult } from '@/lib/visma/probe'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
@@ -43,6 +44,13 @@ export const maxDuration = 300
  * of the next run.
  */
 const SHOPS_DEADLINE_MS = 240_000
+
+/**
+ * The read-only Visma questions stop here. Four short GETs at most, and a
+ * step is never started with less than its own margin left, so the imports
+ * that follow keep the time they had before this stage existed.
+ */
+const VISMA_PROBE_DEADLINE_MS = 200_000
 
 /**
  * Parcel polling is the LAST and greediest data pull, and it stops well short
@@ -204,6 +212,20 @@ export async function GET(req: Request) {
   } catch {
     // It does not throw, but a caller that assumes so is one refactor away
     // from a failed sync.
+  }
+
+  // The read-only questions the payout-posting design still owes Visma (see
+  // src/lib/visma/probe.ts). Asked here because this is the only place the
+  // credentials live; answered a few calls at a time into DiagnosticSnapshot,
+  // and costing nothing once every question has an answer. After DHL's single
+  // call, before the heavy reads, which are the ones built to survive a 429.
+  let vismaProbe: VismaProbeResult = {
+    configured: false, ran: [], pending: [], calls: 0, partial: false, error: null,
+  }
+  try {
+    vismaProbe = await runVismaProbe({ deadline: runStartedAt + VISMA_PROBE_DEADLINE_MS })
+  } catch {
+    // It does not throw. Same belt and braces as every stage below.
   }
 
   let b2bSales: VismaB2bSalesResult = {
@@ -453,6 +475,12 @@ export async function GET(req: Request) {
     supportError: support.error,
     alertsSent: alerts.sent,
     alertsSkipped: alerts.skipped,
+    // Which of the read-only Visma questions this run answered and which are
+    // still owed; both empty once every answer is stored.
+    vismaProbeRan: vismaProbe.ran,
+    vismaProbePending: vismaProbe.pending,
+    vismaProbePartial: vismaProbe.partial,
+    vismaProbeError: vismaProbe.error,
     // Reported per reason, not as a bare total: a line dropped because its SKU
     // did not match looks exactly like a line that never existed.
     vismaConfigured: visma.configured,

@@ -903,6 +903,15 @@ model Receivable {
   @@index([dueDate])
 }
 
+/// Something an integration answered, kept as it arrived so a person can
+/// read it later. Written only by the scheduled sync, which is where the
+/// credentials live; read by whoever is investigating. One row per question.
+model DiagnosticSnapshot {
+  key     String   @id
+  payload Json
+  takenAt DateTime @default(now())
+}
+
 model VismaStock {
   sku            String    @id
   /// The physical count, summed over COUNTED_WAREHOUSES. What the forecast reads.
