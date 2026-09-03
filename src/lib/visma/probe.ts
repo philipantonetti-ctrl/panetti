@@ -55,6 +55,13 @@ export type ProbeStep = {
   /** How many GETs the step makes. A run never starts a step it cannot afford. */
   calls: number
   run: (ctx: Ctx) => Promise<unknown>
+  /**
+   * True when a stored answer is not final and the question should be asked
+   * again next run. Only the write-scope step uses it: a refusal there means
+   * the company has not accepted the scopes YET, and the moment it does is
+   * something the cron should notice on its own.
+   */
+  again?: (stored: unknown) => boolean
 }
 
 export type VismaProbeResult = {
@@ -371,6 +378,11 @@ export const VISMA_PROBE_STEPS: ProbeStep[] = [
       ...(await scopeCheck(WRITE_SCOPES)),
       checkedAt: new Date().toISOString(),
     }),
+    // Asked every run until granted: production answered invalid_scope on
+    // 2026-09-03 15:16Z with both scopes Approved in the Developer Portal, so
+    // the missing piece is the company's acceptance, which arrives on its
+    // own schedule. One token request a tick costs nothing measurable.
+    again: (stored) => (stored as { granted?: boolean } | null)?.granted !== true,
   },
 ]
 
@@ -405,13 +417,18 @@ export async function runVismaProbe(
   let error: string | null = null
 
   try {
+    const answered = await db.diagnosticSnapshot.findMany({
+      where: { key: { in: names.map(probeKey) } },
+      select: { key: true, payload: true },
+    })
+    // A step is settled when it has an answer it does not want to revisit.
     const existing = new Set(
-      (
-        await db.diagnosticSnapshot.findMany({
-          where: { key: { in: names.map(probeKey) } },
-          select: { key: true },
+      answered
+        .filter((r) => {
+          const step = VISMA_PROBE_STEPS.find((s) => probeKey(s.name) === r.key)
+          return !(step?.again?.(r.payload) ?? false)
         })
-      ).map((r) => r.key),
+        .map((r) => r.key),
     )
 
     const get: Get = async (path) => {
