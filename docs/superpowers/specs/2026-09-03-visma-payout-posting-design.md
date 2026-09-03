@@ -319,14 +319,16 @@ model VismaPostingConfig {          // singleton, like DeliveryConfig
 
 ### Credentials and scope
 
-Every write needs the app to hold `vismanet_erp_service_api:create` (and
-`update` for the release/void actions, to be confirmed on the first call).
-Scopes are set per application in the Visma Developer Portal, the change is
-approved by Visma, and then the company's Integration Administrator
-approves the updated app again in the Visma App Store. The token request in
-`src/lib/visma/client.ts` then asks for the read and create scopes together.
-Until that is done the poster reports "Visma has not granted write access"
-and does nothing. The credentials themselves stay where they are: in the
+Every write needs the app to hold `vismanet_erp_service_api:create` (POST)
+and `update` (the release and void actions). Both were added to the app
+`isv_panetti_inventory_forecast` in the Visma Developer Portal on
+2026-09-03 and show **Approved** there. The Customers tab still lists
+Ledende Teknologi AS with 1 scope, so whether the company has accepted the
+new ones is answered by the token endpoint: the probe's last step (PR #119)
+asks for a token with both write scopes from production and stores
+granted / status / error, never the token. The posting client then asks
+for read, create and update together. Until the answer is "granted" the
+poster reports "Visma has not granted write access" and does nothing. The credentials themselves stay where they are: in the
 production environment only, which is why the live checks above were made
 by the cron and not from a laptop.
 
@@ -359,7 +361,7 @@ by the cron and not from a laptop.
 | refunds | credit notes exist per refund, then a `Refund` document by hand; two Denmark ones open |
 | cash accounts, payment methods, entry types | Dintero clearing per currency, banks per currency, method 5, `Gebyr` on banks only |
 | how settlements are booked today | one payment per invoice, by hand, in batches weeks later; 199 invoices waiting on 3 Sep |
-| the write scope | still to grant; nothing has been written |
+| the write scope | create + update approved in the Developer Portal 2026-09-03; company acceptance being checked by the token probe; nothing has been written |
 
 ## Questions for the accountant
 
