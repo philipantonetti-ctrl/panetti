@@ -99,6 +99,63 @@ export async function vismaToken(
 
 export type VismaRequestOpts = { deadline?: number }
 
+/** The scopes posting needs on top of read: create for POST, update for the release and void actions. */
+export const WRITE_SCOPES = 'vismanet_erp_service_api:create vismanet_erp_service_api:update'
+
+export type VismaScopeAnswer = {
+  granted: boolean
+  status: number
+  /** The scopes the token actually carries, when the server names them. */
+  scope: string | null
+  error: string | null
+}
+
+/**
+ * Ask connect.visma.com whether these credentials may hold `scope`, and
+ * report what it said - never the token itself, which is not needed for the
+ * answer and must not reach a log or a database row.
+ *
+ * Separate from vismaToken on purpose: a scope the company has not accepted
+ * yet is refused with invalid_scope, and asking through the cached path would
+ * either poison the cache or take every read import down with the question.
+ */
+export async function vismaScopeCheck(
+  creds: VismaCredentials,
+  scope: string,
+  opts: VismaRequestOpts = {},
+): Promise<VismaScopeAnswer> {
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
+      scope,
+      tenant_id: creds.tenantId,
+    }),
+    signal: AbortSignal.timeout(vismaRequestBudgetMs(opts)),
+  })
+
+  const text = await res.text()
+  let body: Record<string, unknown> = {}
+  try {
+    body = JSON.parse(text) as Record<string, unknown>
+  } catch {
+    body = {}
+  }
+  const granted = res.ok && typeof body.access_token === 'string'
+  const named = typeof body.error === 'string'
+    ? [body.error, body.error_description].filter((v) => typeof v === 'string').join(': ')
+    : text.replace(/\s+/g, ' ').slice(0, 200)
+  return {
+    granted,
+    status: res.status,
+    scope: typeof body.scope === 'string' ? body.scope : null,
+    error: granted ? null : named || `HTTP ${res.status}`,
+  }
+}
+
 /**
  * What one request is allowed: the ceiling, or whatever is left of the caller's
  * run, whichever is smaller.

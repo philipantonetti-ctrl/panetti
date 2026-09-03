@@ -157,6 +157,68 @@ describe('runVismaProbe', () => {
   })
 })
 
+describe('the write-scope step', () => {
+  /** Every step but the last already answered, so the last is what runs. */
+  const answerAllButLast = async () => {
+    for (const s of VISMA_PROBE_STEPS.slice(0, -1)) {
+      await db.diagnosticSnapshot.create({ data: { key: probeKey(s.name), payload: { rows: 0 } } })
+    }
+  }
+
+  const stubToken = (writeAnswer: (body: string) => Response) => {
+    const bodies: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url)
+        if (!u.includes('connect/token')) return json([])
+        const body = String(init?.body ?? '')
+        bodies.push(body)
+        if (body.includes('create')) return writeAnswer(body)
+        return json({ access_token: 'tok', expires_in: 3600 })
+      }),
+    )
+    return bodies
+  }
+
+  it('asks for a token with the write scopes last, and stores the answer without the token', async () => {
+    await answerAllButLast()
+    const bodies = stubToken(() =>
+      json({
+        access_token: 'secret-token',
+        expires_in: 3600,
+        scope: 'vismanet_erp_service_api:create vismanet_erp_service_api:update',
+      }),
+    )
+
+    const result = await runVismaProbe({ maxCalls: 1, pauseMs: 0 })
+    expect(result.ran).toEqual(['write-scope'])
+    expect(result.calls).toBe(1)
+    expect(
+      bodies.some(
+        (b) => b.includes('vismanet_erp_service_api%3Acreate') && b.includes('vismanet_erp_service_api%3Aupdate'),
+      ),
+    ).toBe(true)
+
+    const stored = await db.diagnosticSnapshot.findUnique({ where: { key: probeKey('write-scope') } })
+    expect(stored?.payload).toMatchObject({ granted: true, status: 200 })
+    expect(JSON.stringify(stored?.payload)).not.toContain('secret-token')
+  })
+
+  it('records a refused scope as an answer, not a failure', async () => {
+    await answerAllButLast()
+    stubToken(() => json({ error: 'invalid_scope' }, 400))
+
+    const result = await runVismaProbe({ maxCalls: 1, pauseMs: 0 })
+    expect(result.ran).toEqual(['write-scope'])
+    expect(result.error).toBeNull()
+
+    const stored = await db.diagnosticSnapshot.findUnique({ where: { key: probeKey('write-scope') } })
+    expect(stored?.payload).toMatchObject({ granted: false, status: 400 })
+    expect(JSON.stringify(stored?.payload)).toContain('invalid_scope')
+  })
+})
+
 describe('summariseWebshopCustomers', () => {
   it('groups the open ledger by webshop house account and counts the rest', () => {
     const out = summariseWebshopCustomers([
