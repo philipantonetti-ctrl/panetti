@@ -205,6 +205,29 @@ describe('the write-scope step', () => {
     expect(JSON.stringify(stored?.payload)).not.toContain('secret-token')
   })
 
+  it('asks again on every run while the answer is a refusal, and stops once granted', async () => {
+    await answerAllButLast()
+    const bodies = stubToken(() => json({ error: 'invalid_scope' }, 400))
+
+    await runVismaProbe({ maxCalls: 1, pauseMs: 0 })
+    const again = await runVismaProbe({ maxCalls: 1, pauseMs: 0 })
+    expect(again.ran).toEqual(['write-scope'])
+    expect(bodies.filter((b) => b.includes('create'))).toHaveLength(2)
+
+    // A refusal must not be re-asked on a run that has no budget for it.
+    const broke = await runVismaProbe({ maxCalls: 0, pauseMs: 0 })
+    expect(broke.ran).toEqual([])
+
+    await db.diagnosticSnapshot.update({
+      where: { key: probeKey('write-scope') },
+      data: { payload: { granted: true, status: 200 } },
+    })
+    const done = await runVismaProbe({ maxCalls: 1, pauseMs: 0 })
+    expect(done.ran).toEqual([])
+    expect(done.pending).toEqual([])
+    expect(bodies.filter((b) => b.includes('create'))).toHaveLength(2)
+  })
+
   it('records a refused scope as an answer, not a failure', async () => {
     await answerAllButLast()
     stubToken(() => json({ error: 'invalid_scope' }, 400))
