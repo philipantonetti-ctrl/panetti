@@ -33,6 +33,11 @@ const importVismaB2bSales = vi.fn(async (opts?: { deadline?: number }) => ({
   partial: opts?.deadline !== undefined && Date.now() > opts.deadline,
   error: null,
 }))
+// Nor the read-only Visma probe: unmocked it would ask the live ERP its
+// questions from a test and write the answers into the shared database.
+vi.mock('@/lib/visma/probe', () => ({
+  runVismaProbe: async () => ({ configured: false, ran: [], pending: [], calls: 0, partial: false, error: null }),
+}))
 vi.mock('@/lib/visma/import', () => ({
   importVismaPurchaseOrders: () => importVismaPurchaseOrders(),
   // Arguments forwarded, not dropped: the deadline this route hands it is the
