@@ -20,7 +20,14 @@
 
 import type { Prisma } from '@prisma/client'
 import { db } from '../db'
-import { vismaCredentials, vismaGet, VismaError } from './client'
+import {
+  vismaCredentials,
+  vismaGet,
+  vismaScopeCheck,
+  VismaError,
+  WRITE_SCOPES,
+  type VismaScopeAnswer,
+} from './client'
 import { unwrap } from './purchase-orders'
 import { isWebshopAccount } from './receivables'
 
@@ -36,7 +43,12 @@ const STEP_MARGIN_MS = 25_000
 
 type Row = Record<string, unknown>
 type Get = (path: string) => Promise<unknown>
-type Ctx = { get: Get; stored: (step: string) => Promise<unknown> }
+type Ctx = {
+  get: Get
+  stored: (step: string) => Promise<unknown>
+  /** One token request with the given scopes, answered without the token. */
+  scopeCheck: (scope: string) => Promise<VismaScopeAnswer>
+}
 
 export type ProbeStep = {
   name: string
@@ -348,6 +360,18 @@ export const VISMA_PROBE_STEPS: ProbeStep[] = [
       }
     },
   },
+  {
+    // May the production credentials WRITE? The create and update scopes were
+    // approved in the Developer Portal on 2026-09-03; the token endpoint is
+    // the proof that the company has accepted them too. Last, and one call.
+    name: 'write-scope',
+    calls: 1,
+    run: async ({ scopeCheck }) => ({
+      requested: WRITE_SCOPES,
+      ...(await scopeCheck(WRITE_SCOPES)),
+      checkedAt: new Date().toISOString(),
+    }),
+  },
 ]
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -397,6 +421,11 @@ export async function runVismaProbe(
     }
     const stored = async (step: string) =>
       (await db.diagnosticSnapshot.findUnique({ where: { key: probeKey(step) } }))?.payload ?? null
+    const scopeCheck = async (scope: string) => {
+      if (calls > 0 && pauseMs > 0) await pause(pauseMs)
+      calls++
+      return vismaScopeCheck(creds, scope, { deadline: opts.deadline })
+    }
 
     for (const step of VISMA_PROBE_STEPS) {
       if (existing.has(probeKey(step.name))) continue
@@ -406,7 +435,7 @@ export async function runVismaProbe(
         break
       }
       try {
-        await store(step.name, await step.run({ get, stored }))
+        await store(step.name, await step.run({ get, stored, scopeCheck }))
       } catch (e) {
         if (e instanceof VismaError && e.status === 429) {
           partial = true
