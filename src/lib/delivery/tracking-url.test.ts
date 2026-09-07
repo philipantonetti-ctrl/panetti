@@ -35,6 +35,22 @@ describe('trackingUrl', () => {
     expect(url).toContain('9599861672')
   })
 
+  /**
+   * The FREIGHT page, exactly as the client sent it, `submit=1` included -
+   * without that parameter the page loads its empty search form and the
+   * number has to be entered again by hand.
+   *
+   * Every DHL parcel we carry is DHL Freight Parcel Connect (the portal is
+   * mydhlfreight.com and the 10-digit ids are these tracking numbers), so the
+   * generic dhl.com page this used to return was one redirect further from
+   * the answer for all of them.
+   */
+  it('sends a DHL parcel to the Freight tracking page the client uses', () => {
+    expect(trackingUrl('6106283101', 'DHL')).toBe(
+      'https://www.dhl.com/se-en/home/tracking/tracking-freight.html?tracking-id=6106283101&submit=1',
+    )
+  })
+
   it('sends a Bring parcel to Bring', () => {
     expect(trackingUrl('TESTPACKAGE-AT-PICKUPPOINT', 'BRING')).toBe(
       'https://tracking.bring.com/tracking/TESTPACKAGE-AT-PICKUPPOINT',

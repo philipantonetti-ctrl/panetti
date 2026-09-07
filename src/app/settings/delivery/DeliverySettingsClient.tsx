@@ -14,7 +14,12 @@ type PromiseRow = {
   effectiveFrom: string
 }
 
-type ShopRow = { id: string; name: string; deliveryTrackingFrom: string | null }
+type ShopRow = {
+  id: string
+  name: string
+  deliveryTrackingFrom: string | null
+  wooNotesFrom: string | null
+}
 
 type ImportRow = {
   id: string
@@ -744,19 +749,35 @@ function ShopsSection({ shops, reload }: { shops: ShopRow[]; reload: () => void 
   const [saving, setSaving] = useState<string | null>(null)
   const toast = useToast()
 
-  async function setDate(shop: ShopRow, date: string) {
+  /**
+   * One save for both dates. `field` names which switch is being moved, and
+   * the request carries only that one - a body with both would send the value
+   * the browser happens to be holding for the other, which is how a stale tab
+   * quietly turns a shop back on.
+   */
+  async function setDate(shop: ShopRow, field: 'shopTracking' | 'shopNotes', date: string) {
     setSaving(shop.id)
     try {
       const res = await fetch('/api/delivery/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shopTracking: [{ shopId: shop.id, date }] }),
+        body: JSON.stringify({ [field]: [{ shopId: shop.id, date }] }),
       })
       if (!res.ok) {
         toast.error((await res.json().catch(() => null))?.error ?? 'Could not save')
         return
       }
-      toast.success(date ? `${shop.name} is now tracked from ${date}` : `${shop.name} is no longer tracked`)
+      if (field === 'shopTracking') {
+        toast.success(
+          date ? `${shop.name} is now tracked from ${date}` : `${shop.name} is no longer tracked`,
+        )
+      } else {
+        toast.success(
+          date
+            ? `${shop.name} writes tracking notes for parcels seen from ${date}`
+            : `${shop.name} no longer writes tracking notes`,
+        )
+      }
       reload()
     } catch {
       toast.error('Could not reach the server')
@@ -768,21 +789,22 @@ function ShopsSection({ shops, reload }: { shops: ShopRow[]; reload: () => void 
   return (
     <Card
       title="Which shops are tracked"
-      subtitle="The on and off switch. Blank means this shop is not tracked at all. A date means start judging orders from then, so switching on will not alert about old orders."
+      subtitle="The on and off switches. Blank means off. Tracking start date is when we begin judging orders, so switching on will not alert about old ones. Tracking notes writes each parcel's link into that order's private notes in WooCommerce - only for parcels first seen from the date you set, and only staff ever see it."
     >
-      <div className="overflow-hidden rounded-[var(--radius-control)] border border-line">
+      <div className="overflow-x-auto rounded-[var(--radius-control)] border border-line">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
               <th className="px-4 py-2 text-left">Shop</th>
               <th className="px-4 py-2 text-left">Tracking start date</th>
+              <th className="px-4 py-2 text-left">Tracking notes to webshop from</th>
               <th className="px-4 py-2" />
             </tr>
           </thead>
           <tbody>
             {shops.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-muted">
+                <td colSpan={4} className="px-4 py-6 text-center text-muted">
                   No shops yet.
                 </td>
               </tr>
@@ -795,7 +817,17 @@ function ShopsSection({ shops, reload }: { shops: ShopRow[]; reload: () => void 
                     type="date"
                     aria-label={`Tracking start date for ${s.name}`}
                     defaultValue={s.deliveryTrackingFrom ?? ''}
-                    onChange={(e) => void setDate(s, e.target.value)}
+                    onChange={(e) => void setDate(s, 'shopTracking', e.target.value)}
+                    disabled={saving === s.id}
+                    className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1.5 text-xs text-ink disabled:opacity-60"
+                  />
+                </td>
+                <td className="px-4 py-2.5">
+                  <input
+                    type="date"
+                    aria-label={`Tracking notes to the webshop for ${s.name}, from`}
+                    defaultValue={s.wooNotesFrom ?? ''}
+                    onChange={(e) => void setDate(s, 'shopNotes', e.target.value)}
                     disabled={saving === s.id}
                     className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1.5 text-xs text-ink disabled:opacity-60"
                   />
@@ -803,7 +835,7 @@ function ShopsSection({ shops, reload }: { shops: ShopRow[]; reload: () => void 
                 <td className="px-4 py-2.5 text-right">
                   {s.deliveryTrackingFrom && (
                     <button
-                      onClick={() => void setDate(s, '')}
+                      onClick={() => void setDate(s, 'shopTracking', '')}
                       disabled={saving === s.id}
                       className="text-xs font-medium text-loss hover:underline disabled:opacity-60"
                     >

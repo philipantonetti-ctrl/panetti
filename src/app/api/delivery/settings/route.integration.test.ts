@@ -190,3 +190,52 @@ describe('which shops are tracked', () => {
     expect(res.status).toBe(200)
   })
 })
+
+/**
+ * The other per-shop switch on this page, and the only way to turn tracking
+ * notes on at all: without it `Shop.wooNotesFrom` could be set by nobody, since
+ * production's database is not something an admin can reach by hand.
+ *
+ * Deliberately separate from deliveryTrackingFrom rather than reusing it. A
+ * shop can be tracked for months before anyone wants its parcels written back
+ * into the store, and the date here is what decides which parcels are in reach
+ * - sharing the other field would silently put every parcel since tracking
+ * began into the queue.
+ */
+describe('which shops write tracking notes back to WooCommerce', () => {
+  it('writes Shop.wooNotesFrom, and a blank date switches the shop off again', async () => {
+    const shop = await db.shop.create({ data: { name: `Note shop ${TAG}`, currency: 'DKK' } })
+
+    await put({ shopNotes: [{ shopId: shop.id, date: '2026-09-07' }] })
+    let row = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(row.wooNotesFrom?.toISOString().slice(0, 10)).toBe('2026-09-07')
+
+    const body = await (await GET()).json()
+    const listed = body.shops.find((s: { id: string }) => s.id === shop.id)
+    expect(listed.wooNotesFrom).toBe('2026-09-07')
+
+    await put({ shopNotes: [{ shopId: shop.id, date: '' }] })
+    row = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(row.wooNotesFrom).toBeNull()
+  })
+
+  /**
+   * The two dates are set by the same PUT and must not overwrite each other:
+   * a save that carries only one of them leaves the other exactly as it was.
+   */
+  it('leaves the tracking date alone when only the note date is sent', async () => {
+    const shop = await db.shop.create({
+      data: {
+        name: `Both dates ${TAG}`,
+        currency: 'DKK',
+        deliveryTrackingFrom: new Date('2026-01-01T00:00:00Z'),
+      },
+    })
+
+    await put({ shopNotes: [{ shopId: shop.id, date: '2026-09-07' }] })
+
+    const row = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(row.deliveryTrackingFrom?.toISOString().slice(0, 10)).toBe('2026-01-01')
+    expect(row.wooNotesFrom?.toISOString().slice(0, 10)).toBe('2026-09-07')
+  })
+})

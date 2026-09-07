@@ -92,7 +92,7 @@ describe('deliveryFor', () => {
       {
         number: 'D1',
         carrier: 'DHL',
-        url: 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=D1',
+        url: 'https://www.dhl.com/se-en/home/tracking/tracking-freight.html?tracking-id=D1&submit=1',
       },
     ])
   })
