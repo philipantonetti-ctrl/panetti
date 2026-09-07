@@ -5,6 +5,7 @@ import { syncAllAdAccounts, type AdSyncResult } from '@/lib/ads/sync'
 import { syncAllAffiliateAccounts, type AffiliateSyncResult } from '@/lib/affiliate/sync'
 import { syncKlaviyo, type KlaviyoSyncResult } from '@/lib/klaviyo/sync'
 import { rematchOpenPayoutLines, syncDinteroPayouts, type DinteroSyncResult } from '@/lib/dintero/sync'
+import { resolveUnpaidOrders, type ResolveResult } from '@/lib/dintero/resolve'
 import { runVismaProbe, type VismaProbeResult } from '@/lib/visma/probe'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
@@ -135,6 +136,17 @@ const BRING_INVOICES_DEADLINE_MS = 270_000
  * each clamped to twenty seconds inside the client.
  */
 const DINTERO_DEADLINE_MS = 265_000
+
+/**
+ * The per-order settlement lookup stops here.
+ *
+ * Twenty orders a run, one twenty-second-clamped request each and at most one
+ * settlement fetch on top, so the ceiling is nowhere near reachable in a
+ * normal tick - but the deadline is checked before every order, which is what
+ * makes a slow Dintero cost this stage rather than the parcel poll behind it.
+ * Set before the poll's own deadline for that reason.
+ */
+const SETTLEMENT_LOOKUP_DEADLINE_MS = 268_000
 
 /**
  * The transaction-id backfill is finished by this point in the run. Bounded
@@ -369,6 +381,19 @@ export async function GET(req: Request) {
     // refactor away from a failed sync.
   }
 
+  // Then the other direction: for orders that are in no payout we hold, ask
+  // Dintero which payout paid them. Right after the payout mirror, so a
+  // settlement imported a moment ago is already there to match against.
+  let settlements: ResolveResult = {
+    configured: false, checked: 0, resolved: 0, imported: 0, requeued: 0, unsettled: 0, errors: [],
+  }
+  try {
+    settlements = await resolveUnpaidOrders({ deadline: runStartedAt + SETTLEMENT_LOOKUP_DEADLINE_MS })
+  } catch {
+    // Nothing is stamped on the way out of a throw, so every order it was
+    // holding is simply first in line next run.
+  }
+
   // Top up exchange rates BEFORE parcel tracking, not after. Rates are one
   // cheap bounded call; parcel polling is greedy and runs to its deadline. With
   // the order reversed, a busy backlog of parcels could eat the whole
@@ -484,6 +509,15 @@ export async function GET(req: Request) {
     // naming orders we do not hold.
     dinteroUnmatched: dintero.unmatched,
     dinteroErrors: dintero.errors,
+    // The other direction: orders we asked Dintero about because they were in
+    // no payout we hold. `imported` is the interesting one - a settlement
+    // older than anything the list walks, recovered by id.
+    settlementChecked: settlements.checked,
+    settlementResolved: settlements.resolved,
+    settlementImported: settlements.imported,
+    settlementRequeued: settlements.requeued,
+    settlementUnsettled: settlements.unsettled,
+    settlementErrors: settlements.errors,
     txIdsChecked: txBackfill.checked,
     txIdsFilled: txBackfill.filled,
     txIdsErrors: txBackfill.errors,

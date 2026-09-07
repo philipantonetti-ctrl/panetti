@@ -152,4 +152,38 @@ describe('orders waiting for a payout', () => {
     expect(row).toMatchObject({ number: '9001', shopName: `${MARK} wait`, currency: 'SEK', total: 6250 })
     expect(body.waitingCount).toBe(1)
   })
+
+  /**
+   * The row used to state a suspicion and nothing else, which is what sent the
+   * client to Dintero's support by email. When the settlement lookup has asked
+   * Dintero about an order, the row carries Dintero's own answer.
+   */
+  it('carries what Dintero said about an order it has not paid out', async () => {
+    const shop = await db.shop.create({ data: { name: `${MARK} note`, currency: 'NOK' } })
+    await db.dinteroConfig.create({
+      data: { shopId: shop.id, accountId: 'P11114434', clientId: 'x', clientSecret: 'y' },
+    })
+    const days = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000)
+    await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 's-note', currency: 'NOK', amount: 1, capture: 1, refund: 0, fee: 0,
+        periodStart: new Date('2024-06-01T00:00:00Z'),
+      },
+    })
+    const asked = await db.order.create({
+      data: {
+        shopId: shop.id, externalId: '9101', number: '9101', placedAt: days(30),
+        status: 'completed', currency: 'NOK', grossSales: 5000, discountTotal: 0, netSales: 5000,
+        shippingCharged: 0, taxTotal: 1250, total: 6250, transactionId: 'P11114434.abc',
+        payoutCheckedAt: days(1),
+        payoutCheckNote: 'Dintero says this is not settled yet (NOT_SETTLED).',
+      },
+    })
+
+    const body = await (await get(`?from=2026-08-01&to=2026-08-31&shop=${shop.id}`)).json()
+
+    const row = body.waiting.find((w: { id: string }) => w.id === asked.id)
+    expect(row.payoutCheckNote).toBe('Dintero says this is not settled yet (NOT_SETTLED).')
+    expect(row.payoutCheckedAt).toBeTypeOf('string')
+  })
 })

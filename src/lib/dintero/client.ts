@@ -87,13 +87,31 @@ const when = (v: unknown): Date | null => {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-async function request(path: string, init: RequestInit): Promise<unknown> {
+type RequestOpts = {
+  /**
+   * Answer null instead of throwing when Dintero says 404. Only for lookups
+   * where "this account has never heard of it" is an ANSWER - asking about a
+   * transaction id that belongs to another shop, say - and never for a list,
+   * where a 404 would be a broken path we want to hear about.
+   */
+  nullOn404?: boolean
+  /**
+   * What a 403 means for THIS call. The default sentence sends someone to
+   * re-paste the Client ID and Secret, which is right for a bad credential and
+   * wrong for a good credential that simply lacks a scope.
+   */
+  forbidden?: string
+}
+
+async function request(path: string, init: RequestInit, opts: RequestOpts = {}): Promise<unknown> {
   let res: Response
   try {
     res = await fetch(`${BASE}${path}`, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) })
   } catch {
     throw new DinteroApiError('Could not reach Dintero. Check the connection and try again.')
   }
+  if (res.status === 404 && opts.nullOn404) return null
+  if (res.status === 403 && opts.forbidden) throw new DinteroApiError(opts.forbidden)
   if (res.status === 401 || res.status === 403) {
     // Covers a mistyped secret, a deleted API client and a missing scope
     // alike - one sentence a person can act on, and never the secret itself.
@@ -217,7 +235,7 @@ function mapSettlement(row: {
 export async function listSettlements(
   creds: DinteroCredentials,
   token: string,
-  opts: { payoutDestinationId?: string | null; probe?: boolean } = {},
+  opts: { payoutDestinationId?: string | null; probe?: boolean; search?: string } = {},
 ): Promise<DinteroSettlement[]> {
   const rows: DinteroSettlement[] = []
   let after: { id: string; date: string } | null = null
@@ -225,6 +243,11 @@ export async function listSettlements(
   for (let page = 0; page < MAX_PAGES; page++) {
     const params = new URLSearchParams({ limit: String(opts.probe ? 1 : PAGE_SIZE) })
     if (opts.payoutDestinationId) params.set('payout_destination_id', opts.payoutDestinationId)
+    // Documented as "Will try to match the search to settlement_id" - the only
+    // way to reach a settlement older than the pages this walks, which is what
+    // a transaction lookup hands us when an order was paid out before our
+    // imported history begins.
+    if (opts.search) params.set('search', opts.search)
     if (after) {
       params.set('starting_after_id', after.id)
       params.set('starting_after_date', after.date)
@@ -252,6 +275,97 @@ export async function listSettlements(
     after = { id, date }
   }
   return rows
+}
+
+/** One payout a transaction was part of, as the transaction itself reports it. */
+export type DinteroTransactionSettlement = {
+  settlementId: string
+  amount: number
+  capture: number
+  refund: number
+  fee: number
+}
+
+export type DinteroTransaction = {
+  id: string
+  /** NOT_SETTLED | PENDING_SETTLEMENT | PARTIALLY_SETTLED | SETTLED. */
+  settlementStatus: string | null
+  /** merchant_reference - the plugin's generated dwc id. */
+  reference: string | null
+  /**
+   * merchant_reference_2 - the order number. Worth having: Swish rows carry no
+   * order number in the settlement report at all, and this is where the number
+   * a person sees in Backoffice actually lives.
+   */
+  reference2: string | null
+  /** Every payout this transaction appeared in, each listed once. */
+  settlements: DinteroTransactionSettlement[]
+}
+
+/**
+ * Ask Dintero which payout a single transaction was settled in.
+ *
+ * This is the question Backoffice's History panel answers, and until now the
+ * only way to answer it was to email Dintero: our own view is built from
+ * settlement reports, so an order whose settlement we never imported looks
+ * exactly like an order that was never paid.
+ *
+ * `settlements` hangs off each transaction EVENT rather than the transaction,
+ * and its `events` array is documented as "One item per payout to the
+ * merchants bank account" - so a capture and a later refund of the same order
+ * name two different payouts, and both are returned here, each once.
+ *
+ * Null means this account has never heard of the transaction. That is an
+ * answer (an id belonging to another shop, or a payment that never completed),
+ * not a failure.
+ */
+export async function getTransaction(
+  creds: DinteroCredentials,
+  token: string,
+  transactionId: string,
+): Promise<DinteroTransaction | null> {
+  const body = await request(
+    `/accounts/${creds.accountId}/payments/transactions/${encodeURIComponent(transactionId)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+    {
+      nullOn404: true,
+      // These API clients were created to read settlement reports. This
+      // endpoint needs read:checkout, and the default 403 sentence would send
+      // someone to re-paste credentials that are perfectly good.
+      forbidden:
+        'Dintero refused the transaction lookup. This shop\'s API client needs the "read:checkout" scope - add it in Dintero Backoffice under Settings, API & Integrations, API clients.',
+    },
+  )
+  if (body === null || typeof body !== 'object') return null
+
+  const row = body as Record<string, unknown>
+  const settlements: DinteroTransactionSettlement[] = []
+  const seen = new Set<string>()
+  for (const raw of Array.isArray(row.events) ? row.events : []) {
+    const event = (raw ?? {}) as Record<string, unknown>
+    const holder = (event.settlements ?? {}) as Record<string, unknown>
+    for (const item of Array.isArray(holder.events) ? holder.events : []) {
+      const s = (item ?? {}) as Record<string, unknown>
+      const settlementId = str(s.settlement_id)
+      if (!settlementId || seen.has(settlementId)) continue
+      seen.add(settlementId)
+      settlements.push({
+        settlementId,
+        amount: int(s.amount),
+        capture: int(s.capture),
+        refund: int(s.refund),
+        fee: int(s.fee),
+      })
+    }
+  }
+
+  return {
+    id: str(row.id) ?? transactionId,
+    settlementStatus: str(row.settlement_status),
+    reference: str(row.merchant_reference),
+    reference2: str(row.merchant_reference_2),
+    settlements,
+  }
 }
 
 /** The normalized JSON report among a settlement's attachments, or null. */

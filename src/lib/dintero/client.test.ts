@@ -5,6 +5,7 @@ import {
   listSettlements,
   pickJsonReport,
   downloadReport,
+  getTransaction,
 } from './client'
 
 const CREDS = { accountId: 'P12345678', clientId: 'cid', clientSecret: 'sec' }
@@ -372,5 +373,127 @@ describe('downloadReport', () => {
     )
     const report = await downloadReport(CREDS, 'tok', 's1', 'a1')
     expect(report.lines).toHaveLength(0)
+  })
+})
+
+describe('getTransaction', () => {
+  /**
+   * The real shape, from Dintero's own spec: `settlements` hangs off each
+   * transaction EVENT, not off the transaction, and its `events` array is
+   * documented as "One item per payout to the merchants bank account". A
+   * capture and a later refund of the same order are settled in two different
+   * payouts - which is exactly what Dintero sent Philip two report PDFs for.
+   */
+  const transaction = (over: Record<string, unknown> = {}) => ({
+    id: 'P12345678.5z9ac5KspRdX4MccGKLR7a',
+    settlement_status: 'SETTLED',
+    merchant_reference: 'dwc682ccdd8f12eb2.35071570',
+    merchant_reference_2: '10972',
+    events: [
+      {
+        event: 'CAPTURE',
+        settlements: {
+          settlement_status: 'SETTLED',
+          events: [
+            {
+              settlement_id: 'R17483-E4839A',
+              provider_reference: 'klarna-1',
+              amount: 493301,
+              capture: 499900,
+              refund: 0,
+              fee: 6599,
+            },
+          ],
+        },
+      },
+    ],
+    ...over,
+  })
+
+  it('asks the account-scoped payments endpoint for one transaction', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(transaction()))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getTransaction(CREDS, 'tok', 'P12345678.5z9ac5KspRdX4MccGKLR7a')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe(
+      'https://api.dintero.com/v1/accounts/P12345678/payments/transactions/P12345678.5z9ac5KspRdX4MccGKLR7a',
+    )
+    expect(init.headers.Authorization).toBe('Bearer tok')
+  })
+
+  it('reads which settlement paid the transaction, and the order number reports omit', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(transaction())))
+
+    const tx = await getTransaction(CREDS, 'tok', 'P12345678.5z9ac5KspRdX4MccGKLR7a')
+
+    expect(tx).toMatchObject({
+      settlementStatus: 'SETTLED',
+      reference: 'dwc682ccdd8f12eb2.35071570',
+      reference2: '10972',
+    })
+    expect(tx?.settlements).toEqual([
+      { settlementId: 'R17483-E4839A', amount: 493301, capture: 499900, refund: 0, fee: 6599 },
+    ])
+  })
+
+  /** A capture and a refund of the same order land in different payouts. */
+  it('collects a settlement from every event, listing each payout once', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          transaction({
+            events: [
+              {
+                event: 'CAPTURE',
+                settlements: { events: [{ settlement_id: 'R17652-2B818E', amount: 347736 }] },
+              },
+              {
+                event: 'REFUND',
+                settlements: { events: [{ settlement_id: 'R17664-A3EB93', amount: -50000 }] },
+              },
+              // The same payout named again by a second event must not become
+              // a second settlement to go and fetch.
+              {
+                event: 'CAPTURE',
+                settlements: { events: [{ settlement_id: 'R17652-2B818E', amount: 347736 }] },
+              },
+            ],
+          }),
+        ),
+      ),
+    )
+
+    const tx = await getTransaction(CREDS, 'tok', 'P12345678.5zv48mieq8HB34rXMPGjKe')
+    expect(tx?.settlements.map((s) => s.settlementId)).toEqual(['R17652-2B818E', 'R17664-A3EB93'])
+  })
+
+  it('reports a transaction the account does not know as null, not as a failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ message: 'not found' }, 404)))
+    expect(await getTransaction(CREDS, 'tok', 'P12345678.nope')).toBeNull()
+  })
+
+  /**
+   * The one refusal that is not about the secret. These API clients were made
+   * for settlement reading; this endpoint needs read:checkout, and a message
+   * about pasting the Client ID again would send someone to re-enter
+   * credentials that are perfectly good.
+   */
+  it('says which scope is missing when Dintero forbids the call', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, 403)))
+    await expect(getTransaction(CREDS, 'tok', 'P12345678.x')).rejects.toThrow(/read:checkout/)
+  })
+})
+
+describe('listSettlements with a search', () => {
+  it('asks Dintero for one settlement by its id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listSettlements(CREDS, 'tok', { search: 'R17483-E4839A' })
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('search=R17483-E4839A')
   })
 })

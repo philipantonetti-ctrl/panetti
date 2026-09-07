@@ -103,6 +103,10 @@ export async function GET(req: Request) {
       take: 200,
       select: {
         id: true, shopId: true, number: true, placedAt: true, status: true, total: true, currency: true,
+        // What Dintero itself said about this order, when the settlement
+        // lookup has asked. Without it the row states a suspicion and nothing
+        // more, which is what sent the owner to Dintero's support by email.
+        payoutCheckedAt: true, payoutCheckNote: true,
         shop: { select: { name: true } },
       },
     })
@@ -140,6 +144,8 @@ export async function GET(req: Request) {
           status: o.status,
           total: o.total,
           currency: o.currency,
+          payoutCheckedAt: o.payoutCheckedAt?.toISOString() ?? null,
+          payoutCheckNote: o.payoutCheckNote,
         })),
         waitingCount,
       },
