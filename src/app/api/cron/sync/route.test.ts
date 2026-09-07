@@ -79,6 +79,16 @@ vi.mock('@/lib/dintero/sync', () => ({
   rematchOpenPayoutLines: () => rematchOpenPayoutLines(),
 }))
 
+// Nor the per-order settlement lookup, for the same reason: a Dintero
+// connection left in the shared database would send this test to the real
+// payment API asking about real orders.
+const resolveUnpaidOrders = vi.fn(async (_opts?: { deadline?: number }) => ({
+  configured: false, checked: 0, resolved: 0, imported: 0, requeued: 0, unsettled: 0, errors: [] as string[],
+}))
+vi.mock('@/lib/dintero/resolve', () => ({
+  resolveUnpaidOrders: (opts?: { deadline?: number }) => resolveUnpaidOrders(opts),
+}))
+
 // Nor the transaction-id backfill: it would read every shop another test
 // file left in the shared database and call their fake stores.
 const backfillOrderTransactionIds = vi.fn(
@@ -110,6 +120,7 @@ const REAL = process.env.CRON_SECRET
 beforeEach(() => {
   syncKlaviyo.mockClear()
   postWooTrackingNotes.mockClear()
+  resolveUnpaidOrders.mockClear()
   syncDinteroPayouts.mockClear()
   backfillOrderTransactionIds.mockClear()
   rematchOpenPayoutLines.mockClear()
@@ -190,6 +201,25 @@ describe('the scheduled sync endpoint', () => {
     expect(body.dinteroPayouts).toBe(0)
     expect(body.dinteroUnmatched).toBe(0)
     expect(body.dinteroErrors).toEqual([])
+  })
+
+  /**
+   * The reverse check that needs Dintero rather than our own reports: for an
+   * order in no payout we hold, ask Dintero which payout paid it.
+   */
+  it('asks Dintero about orders that are in no payout, and reports it', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    resolveUnpaidOrders.mockResolvedValueOnce({
+      configured: true, checked: 20, resolved: 3, imported: 2, requeued: 1, unsettled: 14, errors: [],
+    })
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(resolveUnpaidOrders).toHaveBeenCalledTimes(1)
+    expect(resolveUnpaidOrders.mock.calls[0][0]?.deadline).toBeTypeOf('number')
+    expect(body.settlementChecked).toBe(20)
+    expect(body.settlementResolved).toBe(3)
+    expect(body.settlementImported).toBe(2)
+    expect(body.settlementErrors).toEqual([])
   })
 
   it('backfills payment transaction ids under a deadline, and reports it', async () => {

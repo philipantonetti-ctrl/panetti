@@ -156,6 +156,22 @@ model Order {
   /// carry as their reference. Same '' / null convention.
   dinteroReference String?
 
+  /// When we last asked Dintero, transaction by transaction, which payout this
+  /// order was settled in, and what it answered.
+  ///
+  /// The reverse check on /finance/payouts can only ever say "this order is in
+  /// no payout we hold", and an order paid out before our imported settlement
+  /// history begins looks exactly like an order that was never paid - which is
+  /// what sent the client to Dintero's support by email. The transaction
+  /// endpoint answers it outright, and these two fields are what stop the same
+  /// question being asked again every fifteen minutes.
+  ///
+  /// The note is Dintero's answer in words ("not settled yet"), kept for the
+  /// orders that stay unpaid; an order that resolves gets a real PayoutLine
+  /// and leaves the list, so its note stops being read.
+  payoutCheckedAt  DateTime?
+  payoutCheckNote  String?
+
   grossSales      Int // line value BEFORE discount, excl VAT
   discountTotal   Int // excl VAT
   netSales        Int // grossSales - discountTotal. THE COMMISSION BASE. Stored for audit.
@@ -222,6 +238,9 @@ model Order {
   @@index([customerEmail])
   // The payout matcher joins on it; the backfill queries for null.
   @@index([shopId, transactionId])
+  /// The settlement-lookup queue: never asked (null) first, then oldest answer
+  /// first. Nulls sort first here, which is the polarity the resolver wants.
+  @@index([payoutCheckedAt])
 }
 
 model OrderItem {

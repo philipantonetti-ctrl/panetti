@@ -6,6 +6,8 @@ import {
   getToken,
   listSettlements,
   pickJsonReport,
+  type DinteroCredentials,
+  type DinteroSettlement,
 } from './client'
 
 /**
@@ -184,6 +186,75 @@ export type DinteroSyncResult = {
  * Failure keeps the previous rows standing; stale payouts beat a table that
  * empties itself whenever Dintero has a bad morning.
  */
+/**
+ * The settlement header, stored. Its own function because the settlement
+ * lookup in resolve.ts stores a payout Dintero named to it, and a second copy
+ * of these nine fields is a second thing to keep in step.
+ */
+export async function upsertPayout(shopId: string, s: DinteroSettlement) {
+  const header = {
+    provider: s.provider,
+    settledAt: s.settledAt,
+    periodStart: s.periodStart,
+    periodEnd: s.periodEnd,
+    currency: s.currency,
+    amount: s.amount,
+    capture: s.capture,
+    refund: s.refund,
+    fee: s.fee,
+  }
+  return db.payout.upsert({
+    where: { shopId_externalId: { shopId, externalId: s.id } },
+    create: { shopId, externalId: s.id, ...header },
+    update: header,
+  })
+}
+
+/**
+ * Ingested means the CURRENT parser has read the report. An older version's
+ * rows - however plausible they look - are downloaded again, because that is
+ * how a parser fix reaches them.
+ */
+export function payoutIsIngested(payout: { linesPending: boolean; reportVersion: number }): boolean {
+  return !payout.linesPending && payout.reportVersion >= REPORT_VERSION
+}
+
+/** Download one settlement's report and make its lines the payout's lines. */
+export async function ingestReport(
+  creds: DinteroCredentials,
+  token: string,
+  payoutId: string,
+  settlementId: string,
+  attachmentId: string,
+): Promise<{ lines: number; fileUrl: string | null }> {
+  const report = await downloadReport(creds, token, settlementId, attachmentId)
+  // Wholesale replace, atomically: half a report's lines under a
+  // "report stored" flag would be a payout quietly missing orders.
+  await db.$transaction([
+    db.payoutLine.deleteMany({ where: { payoutId } }),
+    db.payoutLine.createMany({
+      data: report.lines.map((l) => ({
+        payoutId,
+        transactionId: l.transactionId,
+        reference: l.reference,
+        reference2: l.reference2,
+        amount: l.amount,
+        capture: l.capture,
+        refund: l.refund,
+        fee: l.fee,
+        transactionDate: l.transactionDate,
+        paymentType: l.paymentType,
+        cardBrand: l.cardBrand,
+      })),
+    }),
+    db.payout.update({
+      where: { id: payoutId },
+      data: { reference: report.reference, linesPending: false, reportVersion: REPORT_VERSION },
+    }),
+  ])
+  return { lines: report.lines.length, fileUrl: report.fileUrl }
+}
+
 export async function syncDinteroPayouts(
   opts: { force?: boolean; deadline?: number; shopId?: string } = {},
 ): Promise<DinteroSyncResult> {
@@ -252,61 +323,18 @@ export async function syncDinteroPayouts(
       let lastReportUrl: string | null = null
 
       for (const s of settlements) {
-        const header = {
-          provider: s.provider,
-          settledAt: s.settledAt,
-          periodStart: s.periodStart,
-          periodEnd: s.periodEnd,
-          currency: s.currency,
-          amount: s.amount,
-          capture: s.capture,
-          refund: s.refund,
-          fee: s.fee,
-        }
-        const payout = await db.payout.upsert({
-          where: { shopId_externalId: { shopId: config.shopId, externalId: s.id } },
-          create: { shopId: config.shopId, externalId: s.id, ...header },
-          update: header,
-        })
+        const payout = await upsertPayout(config.shopId, s)
         result.payouts++
 
-        // Ingested means the CURRENT parser has read the report. An older
-        // version's rows - however plausible they look - are downloaded
-        // again, because that is how a parser fix reaches them.
-        const ingested = !payout.linesPending && payout.reportVersion >= REPORT_VERSION
-        if (ingested || reportBudget <= 0) continue
+        if (payoutIsIngested(payout) || reportBudget <= 0) continue
         if (opts.deadline && Date.now() >= opts.deadline) break
         const attachmentId = pickJsonReport(s.attachments)
         if (!attachmentId) continue
 
         reportBudget--
-        const report = await downloadReport(creds, token, s.id, attachmentId)
-        lastReportUrl = report.fileUrl ?? lastReportUrl
-        // Wholesale replace, atomically: half a report's lines under a
-        // "report stored" flag would be a payout quietly missing orders.
-        await db.$transaction([
-          db.payoutLine.deleteMany({ where: { payoutId: payout.id } }),
-          db.payoutLine.createMany({
-            data: report.lines.map((l) => ({
-              payoutId: payout.id,
-              transactionId: l.transactionId,
-              reference: l.reference,
-              reference2: l.reference2,
-              amount: l.amount,
-              capture: l.capture,
-              refund: l.refund,
-              fee: l.fee,
-              transactionDate: l.transactionDate,
-              paymentType: l.paymentType,
-              cardBrand: l.cardBrand,
-            })),
-          }),
-          db.payout.update({
-            where: { id: payout.id },
-            data: { reference: report.reference, linesPending: false, reportVersion: REPORT_VERSION },
-          }),
-        ])
-        result.lines += report.lines.length
+        const stored = await ingestReport(creds, token, payout.id, s.id, attachmentId)
+        lastReportUrl = stored.fileUrl ?? lastReportUrl
+        result.lines += stored.lines
       }
 
       // Match every line of this shop's payouts that still points at no

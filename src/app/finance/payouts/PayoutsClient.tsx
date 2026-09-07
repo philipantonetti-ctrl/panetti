@@ -46,6 +46,9 @@ export type WaitingOrder = {
   status: string
   total: number
   currency: string
+  /** When we last asked Dintero about this order, and what it answered. */
+  payoutCheckedAt: string | null
+  payoutCheckNote: string | null
 }
 
 type Payload = {
@@ -197,6 +200,7 @@ function WaitingOrders({ waiting, totalCount }: { waiting: WaitingOrder[]; total
               <th className="px-3 py-2">Shop</th>
               <th className="px-3 py-2">Placed</th>
               <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">What Dintero says</th>
               <th className="num px-4 py-2 text-right">Total</th>
             </tr>
           </thead>
@@ -207,6 +211,12 @@ function WaitingOrders({ waiting, totalCount }: { waiting: WaitingOrder[]; total
                 <td className="px-3 py-2">{w.shopName}</td>
                 <td className="num px-3 py-2 text-muted">{day(w.placedAt)}</td>
                 <td className="px-3 py-2 text-muted">{w.status}</td>
+                {/* Dintero's own answer, asked transaction by transaction.
+                    Blank means the lookup has not reached this order yet - it
+                    works through them oldest first. */}
+                <td className="px-3 py-2 text-muted">
+                  {w.payoutCheckNote ?? <span className="text-faint">not asked yet</span>}
+                </td>
                 <td className="num px-4 py-2 text-right">{formatMoney(w.total, w.currency)}</td>
               </tr>
             ))}
