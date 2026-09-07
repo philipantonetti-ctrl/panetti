@@ -88,6 +88,14 @@ vi.mock('@/lib/woo/transaction-backfill', () => ({
   backfillOrderTransactionIds: (opts?: { deadline?: number }) => backfillOrderTransactionIds(opts),
 }))
 
+// Nor the webshops the tracking notes are posted to. Unmocked, a shop another
+// test file left in the shared database with a wooNotesFrom date would have
+// this test POST a note to whatever URL that row carries.
+const postWooTrackingNotes = vi.fn(async (_opts?: { deadline?: number }) => ({ posted: 0, failed: 0 }))
+vi.mock('@/lib/delivery/woo-notes', () => ({
+  postWooTrackingNotes: (opts?: { deadline?: number }) => postWooTrackingNotes(opts),
+}))
+
 const { GET } = await import('./route')
 
 const call = (auth?: string) =>
@@ -101,6 +109,7 @@ const REAL = process.env.CRON_SECRET
 
 beforeEach(() => {
   syncKlaviyo.mockClear()
+  postWooTrackingNotes.mockClear()
   syncDinteroPayouts.mockClear()
   backfillOrderTransactionIds.mockClear()
   rematchOpenPayoutLines.mockClear()
@@ -153,6 +162,23 @@ describe('the scheduled sync endpoint', () => {
     expect(body.klaviyoConfigured).toBe(false)
     expect(body.klaviyoCampaigns).toBe(0)
     expect(body.klaviyoError).toBeNull()
+  })
+
+  /**
+   * Last of all the stages, after the delivery alert. A note posted fifteen
+   * minutes later costs nobody anything; an alert not sent is silence.
+   */
+  it('sends matched parcels back to the webshop as private order notes, and reports it', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    postWooTrackingNotes.mockResolvedValueOnce({ posted: 4, failed: 1 })
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(postWooTrackingNotes).toHaveBeenCalledTimes(1)
+    // A deadline it can stop at, like every other stage. Without one a slow
+    // store would spend the platform's remaining seconds on notes.
+    expect(postWooTrackingNotes.mock.calls[0][0]?.deadline).toBeTypeOf('number')
+    expect(body.wooNotesPosted).toBe(4)
+    expect(body.wooNotesFailed).toBe(1)
   })
 
   it('runs the Dintero payout mirror as one more best-effort stage, and reports it', async () => {

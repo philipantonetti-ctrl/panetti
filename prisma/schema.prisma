@@ -35,6 +35,20 @@ model Shop {
   /// historical warehouse files to get real history on day one.
   deliveryTrackingFrom DateTime?
 
+  /// Null = this shop's orders never receive a tracking note, which is what
+  /// every shop reads until someone switches one on. Set = when a parcel of
+  /// this shop's is matched to an order, its tracking link is written into that
+  /// order's PRIVATE notes in WooCommerce (customer_note: false - the customer
+  /// never sees it and is never emailed).
+  ///
+  /// A date rather than a boolean, and compared against Shipment.createdAt, so
+  /// that switching a shop on can only ever affect parcels seen from that
+  /// moment. Every parcel already in the table is permanently out of reach -
+  /// which is what "no backfill" means here, structurally rather than by
+  /// remembering not to run something. Same shape and same reason as
+  /// deliveryTrackingFrom above.
+  wooNotesFrom         DateTime?
+
   /// True = this shop's catalogue decides what the Forecast and Stock tabs show,
   /// and what "in stock" says.
   ///
@@ -655,6 +669,23 @@ model Shipment {
   /// DELIVERED | RETURNED | CANCELLED. Null while still moving.
   outcome     String?
 
+  /// When this parcel's tracking link was written into its order's private
+  /// notes in WooCommerce, and the note id the store gave back.
+  ///
+  /// Null is the WORK QUEUE, not a hole: the selector asks for `wooNoteAt:
+  /// null`, so a row with no stamp is one still to post rather than one the
+  /// query can never see. (The opposite polarity to nextPollAt, whose `lte`
+  /// silently drops nulls.) It is also the whole double-post guard - a parcel
+  /// with a stamp is never selected again, whatever the note says.
+  wooNoteAt    DateTime?
+  wooNoteId    Int?
+  /// Why the last attempt to post the note failed; null when it worked or has
+  /// not been tried. Its own field rather than lastError, which belongs to the
+  /// carrier poll: one column shared by two subsystems means each wipes the
+  /// other's live failure, which is the bug DeliveryConfig.slackLastError
+  /// exists to avoid.
+  wooNoteError String?
+
   lastStatus String?
   nextPollAt DateTime?
   terminal   Boolean   @default(false)
@@ -670,6 +701,11 @@ model Shipment {
 
   @@index([terminal, nextPollAt])
   @@index([orderId])
+  /// The note queue. Every parcel that predates the feature keeps `wooNoteAt`
+  /// null forever and is excluded by the date instead, so the unstamped set
+  /// never shrinks - without the createdAt column here the queue read would
+  /// scan all of it on every tick.
+  @@index([wooNoteAt, createdAt])
 }
 
 /// Bring restates events. The unique constraint is what makes re-ingestion a

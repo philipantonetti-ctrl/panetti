@@ -48,6 +48,16 @@ const Body = z.object({
   shopTracking: z
     .array(z.object({ shopId: z.string().min(1), date: z.string() }))
     .optional(),
+  // Which shops write a parcel's tracking link back into the WooCommerce
+  // order's private notes, and from when. Its own switch rather than a reuse
+  // of shopTracking above: a shop is usually tracked long before anyone wants
+  // its parcels posted back, and this date is what decides which parcels the
+  // queue can reach - sharing the other one would put every parcel since
+  // tracking began into it. A blank date is the same deliberate "off" it is
+  // there.
+  shopNotes: z
+    .array(z.object({ shopId: z.string().min(1), date: z.string() }))
+    .optional(),
 })
 
 export async function GET() {
@@ -62,7 +72,7 @@ export async function GET() {
       }),
       db.shop.findMany({
         where: { active: true },
-        select: { id: true, name: true, deliveryTrackingFrom: true },
+        select: { id: true, name: true, deliveryTrackingFrom: true, wooNotesFrom: true },
         orderBy: { name: 'asc' },
       }),
       db.trackingImport.findMany({
@@ -103,6 +113,7 @@ export async function GET() {
           deliveryTrackingFrom: s.deliveryTrackingFrom
             ? s.deliveryTrackingFrom.toISOString().slice(0, 10)
             : null,
+          wooNotesFrom: s.wooNotesFrom ? s.wooNotesFrom.toISOString().slice(0, 10) : null,
         })),
         imports: imports.map((i) => ({ ...i, receivedAt: i.receivedAt.toISOString() })),
       },
@@ -176,6 +187,19 @@ export async function PUT(req: Request) {
           db.shop.updateMany({
             where: { id: s.shopId },
             data: { deliveryTrackingFrom: s.date ? new Date(`${s.date}T00:00:00Z`) : null },
+          }),
+        ),
+      )
+    }
+
+    if (b.shopNotes) {
+      // Its own updateMany rather than a merge into the loop above, so a save
+      // carrying only one of the two dates leaves the other exactly as it was.
+      await Promise.all(
+        b.shopNotes.map((s) =>
+          db.shop.updateMany({
+            where: { id: s.shopId },
+            data: { wooNotesFrom: s.date ? new Date(`${s.date}T00:00:00Z`) : null },
           }),
         ),
       )

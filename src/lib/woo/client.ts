@@ -74,11 +74,26 @@ export function requestBudgetMs(filter: FetchFilter, now = Date.now()): number {
  * <title>, so the cut kept the boilerplate and threw away the sentence.
  * readableErrorBody extracts instead.
  */
-async function wooError(res: Response): Promise<Error> {
+export class WooError extends Error {
+  /**
+   * The HTTP status, carried for the same reason VismaError carries it: some
+   * statuses are answers rather than failures. A 404 from the notes endpoint
+   * means that order is not in the store any more, which is permanent and has
+   * to be told apart from a 500, which means try again in fifteen minutes.
+   */
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message)
+  }
+}
+
+async function wooError(res: Response): Promise<WooError> {
   const said = readableErrorBody(await res.text())
   // Status alone when the page had no words in it at all: a trailing colon
   // with nothing after it reads as a truncation bug of its own.
-  return new Error(`WooCommerce responded ${res.status}${said ? `: ${said}` : ''}`)
+  return new WooError(`WooCommerce responded ${res.status}${said ? `: ${said}` : ''}`, res.status)
 }
 
 /**
@@ -349,6 +364,39 @@ export async function activateWebhook(
     body: JSON.stringify({ status: 'active', secret }),
   })
   if (!res.ok) throw await wooError(res)
+}
+
+/**
+ * Write one note onto an order, PRIVATE to whoever administers the store.
+ *
+ * `customer_note: false` is the whole safety of this call and is sent
+ * explicitly rather than left to Woo's default. The documented behaviour of
+ * the other value is "the note will be shown to customers and they will be
+ * notified" - it emails them - and these notes are for the warehouse and
+ * support, on stores whose fulfilment plugin already writes to the customer.
+ *
+ * Returns the id the store assigned, or null if it answered without one. The
+ * id is stored so a note can be found again from our side; not having it is
+ * not a reason to call the post a failure and repeat it.
+ */
+export async function createOrderNote(
+  creds: WooCredentials,
+  orderId: string,
+  note: string,
+): Promise<number | null> {
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  const res = await fetch(
+    `${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders/${encodeURIComponent(orderId)}/notes`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      body: JSON.stringify({ note, customer_note: false }),
+    },
+  )
+  if (!res.ok) throw await wooError(res)
+  const body = await readJson<{ id?: number }>(res, 'the new order note')
+  return typeof body.id === 'number' ? body.id : null
 }
 
 /**

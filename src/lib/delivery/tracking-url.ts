@@ -15,11 +15,19 @@
  */
 const SITES: Record<string, (escaped: string) => string> = {
   BRING: (n) => `https://tracking.bring.com/tracking/${n}`,
-  // The generic tracking page, deliberately, not one of the product-specific
-  // ones. Our DHL parcels come back as a mix of services - 'freight' and
-  // 'ecommerce' both seen on the live API - and this page works out which is
-  // which itself, where tracking-parcel.html would be wrong for half of them.
-  DHL: (n) => `https://www.dhl.com/global-en/home/tracking.html?tracking-id=${n}`,
+  /**
+   * DHL FREIGHT's page, which is the division every parcel we carry belongs
+   * to: the client books through mydhlfreight.com on Parcel Connect, and the
+   * 10-digit ids on those shipments ARE these tracking numbers.
+   *
+   * This used to be the generic dhl.com tracking page, on the reasoning that
+   * it works out the service itself. It does - by making whoever clicked it
+   * wait through a redirect that always lands here. The client asked for this
+   * exact URL, and `submit=1` is the load-bearing part of it: without that
+   * parameter the page opens its empty search box and the number has to be
+   * typed in again.
+   */
+  DHL: (n) => `https://www.dhl.com/se-en/home/tracking/tracking-freight.html?tracking-id=${n}&submit=1`,
 }
 
 export function trackingUrl(trackingNumber: string, carrier: string): string {

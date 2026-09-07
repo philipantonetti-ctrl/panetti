@@ -11,6 +11,7 @@ import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invo
 import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
 import { ensureRates } from '@/lib/fx/rates'
 import { flushDeliveryAlerts } from '@/lib/delivery/alerts'
+import { postWooTrackingNotes } from '@/lib/delivery/woo-notes'
 import {
   importVismaB2bSales,
   importVismaPurchaseOrders,
@@ -84,6 +85,17 @@ const SHIPMENTS_DEADLINE_MS = 275_000
  * would look exactly like a quiet week with nothing late.
  */
 const ALERT_START_BY_MS = 280_000
+
+/**
+ * The tracking notes stop here, on whatever is left after everything else.
+ *
+ * Last on purpose, and after the alert: a note that reaches the webshop
+ * fifteen minutes later costs nobody anything, while an alert not sent is
+ * silence about a late parcel. Each note is one small POST and the stage
+ * checks this before every one of them, so a run with no time left simply
+ * posts nothing and the queue is untouched.
+ */
+const WOO_NOTES_DEADLINE_MS = 290_000
 
 /**
  * The B2B sales import is finished by this point in the run - genuinely, not
@@ -439,6 +451,17 @@ export async function GET(req: Request) {
     }
   }
 
+  // The tracking link goes back to the webshop, into the order's private
+  // notes. Last, and best-effort like the rest: a store being down must never
+  // fail the sync, and an unposted parcel keeps its place in the queue.
+  let wooNotes = { posted: 0, failed: 0 }
+  try {
+    wooNotes = await postWooTrackingNotes({ deadline: runStartedAt + WOO_NOTES_DEADLINE_MS })
+  } catch {
+    // Nothing is stamped on the way out of a throw, so every parcel it was
+    // holding is simply first in line next run.
+  }
+
   // Report honestly: a half-failed run that claimed success would hide stale figures.
   return NextResponse.json({
     ok: failed.length === 0,
@@ -475,6 +498,10 @@ export async function GET(req: Request) {
     supportError: support.error,
     alertsSent: alerts.sent,
     alertsSkipped: alerts.skipped,
+    // Tracking links written back into WooCommerce order notes. Both zero on
+    // every shop until one is switched on, which is what Shop.wooNotesFrom is.
+    wooNotesPosted: wooNotes.posted,
+    wooNotesFailed: wooNotes.failed,
     // Which of the read-only Visma questions this run answered and which are
     // still owed; both empty once every answer is stored.
     vismaProbeRan: vismaProbe.ran,

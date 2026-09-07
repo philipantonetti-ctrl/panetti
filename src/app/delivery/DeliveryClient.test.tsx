@@ -10,7 +10,7 @@ const order = (over: Partial<LateOrder> = {}): LateOrder => ({
   daysOver: 4, waitingDays: 9, placedAtLocal: '2026-08-11T14:30:00', promiseDays: 5, state: 'IN_TRANSIT',
   parcels: [{
     number: '9597256404', carrier: 'DHL',
-    url: 'https://www.dhl.com/global-en/home/tracking.html?tracking-id=9597256404',
+    url: 'https://www.dhl.com/se-en/home/tracking/tracking-freight.html?tracking-id=9597256404&submit=1',
   }],
   ...over,
 })
