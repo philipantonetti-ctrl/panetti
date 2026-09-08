@@ -159,3 +159,101 @@ describe('the session gate, unchanged behind the host check', () => {
     expect(res.headers.get('location')).toBe('https://panetti.vercel.app/login')
   })
 })
+
+const asOperations = async () =>
+  signSession({ userId: 'u6', email: 'ops@test.local', role: 'OPERATIONS', ambassadorId: null })
+
+const asAdmin = async () =>
+  signSession({ userId: 'u7', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null })
+
+const go = async (path: string, cookie?: string) =>
+  middleware(
+    new NextRequest(`https://panetti.vercel.app${path}`, {
+      headers: cookie ? { cookie: `${SESSION_COOKIE}=${cookie}` } : undefined,
+    }),
+  )
+
+/**
+ * The operations manager runs orders, delivery, products, inventory and B2B.
+ * Everything else - the dashboard, finance, marketing, support, the settings
+ * house - belongs to the owner, and typing its URL walks him back to Orders.
+ */
+describe('the operations manager is fenced onto his five tabs', () => {
+  it('lets him through to every tab he was given, and to his own account', async () => {
+    production()
+    const token = await asOperations()
+    for (const path of [
+      '/orders',
+      '/delivery',
+      '/products',
+      '/inventory',
+      '/inventory/stock',
+      '/inventory/purchase-orders',
+      '/inventory/suppliers',
+      '/b2b',
+      '/b2b/some-customer-id',
+      '/account',
+    ]) {
+      const res = await go(path, token)
+      expect(res.headers.get('location'), `${path} should be his`).toBeNull()
+    }
+  })
+
+  it('walks him back to Orders from every page that is not his', async () => {
+    production()
+    const token = await asOperations()
+    for (const path of [
+      '/dashboard',
+      '/finance',
+      '/finance/payouts',
+      '/marketing',
+      '/support',
+      '/inbox',
+      '/advisor',
+      '/ambassadors',
+      '/settings',
+      '/settings/users',
+      '/settings/costs',
+      '/settings/shops',
+    ]) {
+      const res = await go(path, token)
+      expect(res.headers.get('location'), `${path} is not his`).toBe(
+        'https://panetti.vercel.app/orders',
+      )
+    }
+  })
+
+  /**
+   * The five tabs were reachable without a session gate before this role
+   * existed - each page carried its own guard and nothing else. They are
+   * protected pages now, or the fence above would have no door to stand in.
+   */
+  it('sends a guest on the operations tabs to /login', async () => {
+    production()
+    for (const path of ['/orders', '/delivery', '/products', '/inventory', '/b2b']) {
+      const res = await go(path)
+      expect(res.headers.get('location'), path).toBe('https://panetti.vercel.app/login')
+    }
+  })
+
+  it('keeps an ambassador off the operations tabs', async () => {
+    production()
+    const res = await go('/orders', await asAmbassador())
+    expect(res.headers.get('location')).toBe('https://panetti.vercel.app/portal')
+  })
+
+  it('keeps marketing off the operations tabs', async () => {
+    production()
+    const res = await go('/orders', await asMarketing())
+    expect(res.headers.get('location')).toBe('https://panetti.vercel.app/ambassadors')
+  })
+
+  it('leaves the admin free to walk anywhere', async () => {
+    production()
+    const token = await asAdmin()
+    for (const path of ['/orders', '/dashboard', '/settings/users', '/b2b', '/finance']) {
+      const res = await go(path, token)
+      expect(res.headers.get('location'), path).toBeNull()
+    }
+  })
+})

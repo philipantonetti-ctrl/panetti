@@ -3,7 +3,26 @@
 import { Fragment, useState } from 'react'
 import { formatMoney } from '@/lib/money'
 import { Thumb } from '@/components/Thumb'
-import type { ProductRow, ProductTotals } from '@/lib/metrics/products'
+import type { ProductRow, ProductStoreRow, ProductTotals } from '@/lib/metrics/products'
+
+/**
+ * A row as this page RECEIVES it, which is not always a whole one.
+ *
+ * The three figures that reveal a margin are absent for a viewer who may not
+ * see profit - the route omits them rather than the page painting over them -
+ * so the type says optional. Declaring them required would be a lie the
+ * compiler enforced, and the first `row.profit` written without a guard would
+ * render "NaN" on his screen instead of failing to compile.
+ */
+type MaybeProfit<T extends Pick<ProductTotals, 'cogs' | 'profit' | 'margin'>> = Omit<
+  T,
+  'cogs' | 'profit' | 'margin'
+> &
+  Partial<Pick<T, 'cogs' | 'profit' | 'margin'>>
+
+export type ViewTotals = MaybeProfit<ProductTotals>
+export type ViewStoreRow = MaybeProfit<ProductStoreRow>
+export type ViewProductRow = MaybeProfit<Omit<ProductRow, 'stores'>> & { stores: ViewStoreRow[] }
 
 /**
  * One product per row, merged across stores, expanding into the stores that
@@ -15,8 +34,8 @@ import type { ProductRow, ProductTotals } from '@/lib/metrics/products'
  * A margin with nothing to divide by is unknown, never 0.0%. Same convention
  * as `ratios()` in marketing.ts and the dash in BreakdownTable.
  */
-function marginText(netSales: number, margin: number): string {
-  if (netSales === 0) return '-'
+function marginText(netSales: number, margin: number | undefined): string {
+  if (netSales === 0 || margin === undefined) return '-'
   return `${(margin * 100).toFixed(1)}%`
 }
 
@@ -41,10 +60,13 @@ export function ProductsTable({
   rows,
   total,
   currency,
+  showProfit,
 }: {
-  rows: ProductRow[]
-  total: ProductTotals
+  rows: ViewProductRow[]
+  total: ViewTotals
   currency: string
+  /** False for the operations manager: COGS, Profit and Margin never render. */
+  showProfit: boolean
 }) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
 
@@ -76,9 +98,13 @@ export function ProductsTable({
               <th className="px-4 py-2 text-right">Qty</th>
               <th className="px-4 py-2 text-right">Gross</th>
               <th className="px-4 py-2 text-right">Revenue</th>
-              <th className="px-4 py-2 text-right">COGS</th>
-              <th className="px-4 py-2 text-right">Profit</th>
-              <th className="px-4 py-2 text-right">Margin</th>
+              {showProfit && (
+                <>
+                  <th className="px-4 py-2 text-right">COGS</th>
+                  <th className="px-4 py-2 text-right">Profit</th>
+                  <th className="px-4 py-2 text-right">Margin</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -126,9 +152,13 @@ export function ProductsTable({
                     <td className="num px-4 py-2 text-right text-ink">{countText(row.quantity)}</td>
                     <td className="num px-4 py-2 text-right text-ink">{formatMoney(row.grossSales, currency)}</td>
                     <td className="num px-4 py-2 text-right text-ink">{formatMoney(row.netSales, currency)}</td>
-                    <td className="num px-4 py-2 text-right text-ink">{formatMoney(row.cogs, currency)}</td>
-                    <td className="num px-4 py-2 text-right text-ink">{formatMoney(row.profit, currency)}</td>
-                    <td className="num px-4 py-2 text-right text-ink">{marginText(row.netSales, row.margin)}</td>
+                    {showProfit && (
+                      <>
+                        <td className="num px-4 py-2 text-right text-ink">{formatMoney(row.cogs ?? 0, currency)}</td>
+                        <td className="num px-4 py-2 text-right text-ink">{formatMoney(row.profit ?? 0, currency)}</td>
+                        <td className="num px-4 py-2 text-right text-ink">{marginText(row.netSales, row.margin)}</td>
+                      </>
+                    )}
                   </tr>
 
                   {expandable &&
@@ -146,9 +176,13 @@ export function ProductsTable({
                         <td className="num px-4 py-2 text-right text-[12px] text-muted">{countText(s.quantity)}</td>
                         <td className="num px-4 py-2 text-right text-[12px] text-muted">{formatMoney(s.grossSales, currency)}</td>
                         <td className="num px-4 py-2 text-right text-[12px] text-muted">{formatMoney(s.netSales, currency)}</td>
-                        <td className="num px-4 py-2 text-right text-[12px] text-muted">{formatMoney(s.cogs, currency)}</td>
-                        <td className="num px-4 py-2 text-right text-[12px] text-muted">{formatMoney(s.profit, currency)}</td>
-                        <td className="num px-4 py-2 text-right text-[12px] text-muted">{marginText(s.netSales, s.margin)}</td>
+                        {showProfit && (
+                          <>
+                            <td className="num px-4 py-2 text-right text-[12px] text-muted">{formatMoney(s.cogs ?? 0, currency)}</td>
+                            <td className="num px-4 py-2 text-right text-[12px] text-muted">{formatMoney(s.profit ?? 0, currency)}</td>
+                            <td className="num px-4 py-2 text-right text-[12px] text-muted">{marginText(s.netSales, s.margin)}</td>
+                          </>
+                        )}
                       </tr>
                     ))}
                 </Fragment>
@@ -162,9 +196,13 @@ export function ProductsTable({
               <td className="num px-4 py-2 text-right">{countText(total.quantity)}</td>
               <td className="num px-4 py-2 text-right">{formatMoney(total.grossSales, currency)}</td>
               <td className="num px-4 py-2 text-right">{formatMoney(total.netSales, currency)}</td>
-              <td className="num px-4 py-2 text-right">{formatMoney(total.cogs, currency)}</td>
-              <td className="num px-4 py-2 text-right">{formatMoney(total.profit, currency)}</td>
-              <td className="num px-4 py-2 text-right">{marginText(total.netSales, total.margin)}</td>
+              {showProfit && (
+                <>
+                  <td className="num px-4 py-2 text-right">{formatMoney(total.cogs ?? 0, currency)}</td>
+                  <td className="num px-4 py-2 text-right">{formatMoney(total.profit ?? 0, currency)}</td>
+                  <td className="num px-4 py-2 text-right">{marginText(total.netSales, total.margin)}</td>
+                </>
+              )}
             </tr>
           </tfoot>
         </table>

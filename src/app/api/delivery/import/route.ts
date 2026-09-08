@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { importWarehouseFile, ImportParseError } from '@/lib/bring/import'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
@@ -40,7 +40,7 @@ const UPLOAD_DEADLINE_MS = (maxDuration - 10) * 1_000
  */
 export async function POST(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
 
     const form = await req.formData()
     const file = form.get('file')

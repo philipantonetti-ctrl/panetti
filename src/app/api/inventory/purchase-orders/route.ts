@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
@@ -9,7 +9,7 @@ const fail = (message: string, status: number) =>
 
 const guard = async (fn: () => Promise<NextResponse>) => {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
     return await fn()
   } catch (e) {
     if (e instanceof AuthError) return fail(e.message, 403)

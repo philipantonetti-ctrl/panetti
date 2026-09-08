@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { rangeFromQuery } from '@/lib/api/range'
 import { getSetting } from '@/lib/settings'
@@ -33,7 +33,7 @@ const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/
  */
 export async function GET(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
 
     const params = new URL(req.url).searchParams
     const { timezone, displayCurrency } = await getSetting()
@@ -163,7 +163,7 @@ export async function GET(req: Request) {
 /** Record, change or clear one carrier's invoice for one month. */
 export async function PUT(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
 
     const body = (await req.json()) as {
       carrier?: unknown

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { toMinor } from '@/lib/money'
 import { EXCLUDED_STATUSES } from '@/lib/metrics/types'
@@ -75,7 +75,7 @@ export async function assertProductsBelongToShop(
 
 export async function GET(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
 
     const shopId = new URL(req.url).searchParams.get('shopId')
 
@@ -137,7 +137,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
 
     const parsed = Body.safeParse(await req.json())
     if (!parsed.success)

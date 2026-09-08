@@ -11,7 +11,7 @@ import { ForgotClient } from './ForgotClient'
  */
 export default async function ForgotPage() {
   const user = await currentUser()
-  if (user) redirect(user.role === 'ADMIN' ? '/dashboard' : '/portal')
+  if (user) redirect(user.role === 'ADMIN' ? '/dashboard' : user.role === 'OPERATIONS' ? '/orders' : '/portal')
 
   return <ForgotClient />
 }

@@ -82,7 +82,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('CustomerClient', () => {
   it('labels each price column with its OWN currency and never conflates the two', async () => {
     mockFetch({ customer: twoProductCustomer })
-    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} />)
+    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} showProfit />)
 
     await screen.findByText('Nordic Widget')
 
@@ -106,7 +106,7 @@ describe('CustomerClient', () => {
 
   it('warns on a product with no cost entered, and only that one', async () => {
     mockFetch({ customer: twoProductCustomer })
-    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} />)
+    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} showProfit />)
 
     await screen.findByText('Nordic Widget')
 
@@ -128,7 +128,7 @@ describe('CustomerClient', () => {
     mockFetch({
       customer: { ...twoProductCustomer, priceCount: 0, prices: [] },
     })
-    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} />)
+    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} showProfit />)
 
     expect(await screen.findByText('No agreed prices yet')).toBeInTheDocument()
     expect(
@@ -138,7 +138,7 @@ describe('CustomerClient', () => {
 
   it('states a load failure in place, not as a toast that fades', async () => {
     mockFetch({ error: 'Could not load the customer' }, 500)
-    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} />)
+    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} showProfit />)
 
     const message = await screen.findByText('Could not load the customer')
 
@@ -158,7 +158,7 @@ describe('CustomerClient', () => {
     // - or sends them in the wrong units - this customer's whole agreed
     // price list is destroyed or corrupted by a click that looks harmless.
     const calls = mockFetchCapturing(twoProductCustomer)
-    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} />)
+    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} showProfit />)
 
     // Let the detail load settle before acting on it.
     await screen.findByText('Nordic Widget')
@@ -181,5 +181,34 @@ describe('CustomerClient', () => {
       { productId: 'p1', unitPrice: toMajor(15000) },
       { productId: 'p2', unitPrice: toMajor(22000) },
     ])
+  })
+})
+
+/**
+ * "Our cost" is what we pay for the product - the owner's figure. The
+ * operations manager keeps the agreed price, which is what he needs to enter
+ * an order, and never sees the number beside it.
+ */
+describe('CustomerClient without profit', () => {
+  it('drops the "Our cost" column and keeps the agreed price', async () => {
+    mockFetch({ customer: twoProductCustomer })
+    renderWithToast(
+      <CustomerClient email="ops@b.test" customerId="c1" shops={shops} showProfit={false} />,
+    )
+
+    await screen.findByText('Nordic Widget')
+
+    expect(screen.queryByText('Our cost (NOK)')).not.toBeInTheDocument()
+    expect(screen.getByText('Agreed price (EUR)')).toBeInTheDocument()
+    expect(screen.queryByText(money(8050, 'NOK'))).not.toBeInTheDocument()
+    expect(screen.getByText(money(15000, 'EUR'))).toBeInTheDocument()
+  })
+
+  it('still shows the owner both columns', async () => {
+    mockFetch({ customer: twoProductCustomer })
+    renderWithToast(<CustomerClient email="a@b.test" customerId="c1" shops={shops} showProfit />)
+
+    await screen.findByText('Nordic Widget')
+    expect(screen.getByText('Our cost (NOK)')).toBeInTheDocument()
   })
 })

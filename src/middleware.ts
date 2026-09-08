@@ -1,14 +1,25 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/auth/session'
 
+/**
+ * The operations manager's tabs: the four under Operations, plus Orders.
+ *
+ * Named once and used twice below - as pages needing a session, and as the
+ * pages this role may open - so the two can never drift apart.
+ */
+const OPERATIONS_TABS = ['/orders', '/delivery', '/products', '/inventory', '/b2b']
+
 /** Pages that need a session at all. Everything else passes straight through. */
-const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox', '/support']
+const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox', '/support', '/finance', '/advisor', ...OPERATIONS_TABS]
 
 /** Pages an ambassador is allowed to open. Everything else is the company's. */
 const AMBASSADOR_PAGES = ['/portal', '/account']
 
 /** Pages marketing is allowed to open: the ambassador program and themselves. */
 const MARKETING_PAGES = ['/ambassadors', '/account']
+
+/** Pages the operations manager is allowed to open: his five tabs and himself. */
+const OPERATIONS_PAGES = [...OPERATIONS_TABS, '/account']
 
 /**
  * Doors only machines knock on, exempt from the one-live-host walk below.
@@ -87,6 +98,14 @@ export async function middleware(req: NextRequest) {
   if (user.role === 'MARKETING' && !MARKETING_PAGES.some((p) => req.nextUrl.pathname.startsWith(p))) {
     const url = req.nextUrl.clone()
     url.pathname = '/ambassadors'
+    return NextResponse.redirect(url)
+  }
+
+  // Operations runs the five tabs and nothing else - the dashboard, finance,
+  // marketing, support and the settings house all belong to the owner.
+  if (user.role === 'OPERATIONS' && !OPERATIONS_PAGES.some((p) => req.nextUrl.pathname.startsWith(p))) {
+    const url = req.nextUrl.clone()
+    url.pathname = '/orders'
     return NextResponse.redirect(url)
   }
 

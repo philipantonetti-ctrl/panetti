@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, canSeeProfit, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { costOn } from '@/lib/metrics/costs'
 import { isUsableSku, normaliseSku } from '@/lib/inventory/sku'
@@ -8,7 +8,15 @@ import { isUsableSku, normaliseSku } from '@/lib/inventory/sku'
 
 export async function GET(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    const user = await currentUser()
+    assertOperations(user)
+    /**
+     * The costs page is the owner's, but this list also feeds the product
+     * picker on a B2B order, which the operations manager fills in. He gets
+     * the catalogue - id, SKU, name, photo, selling price - and none of the
+     * three fields that say what we pay for it.
+     */
+    const showProfit = canSeeProfit(user)
 
     const params = new URL(req.url).searchParams
     const shopId = params.get('shopId')
@@ -114,15 +122,19 @@ export async function GET(req: Request) {
           // The store's own listed price (incl. VAT) when we have it; the
           // ex-VAT order-line price only until the first completed sync.
           sellingPrice: p.catalogPrice ?? p.lastPrice,
-          costPerItem: current.costPerItem,
-          handlingCost: current.handlingCost,
-          // The flag the UI uses to highlight a product whose cost was never entered.
-          missingCost: current.costPerItem === 0,
-          history: p.costs.map((c) => ({
-            costPerItem: c.costPerItem,
-            handlingCost: c.handlingCost,
-            effectiveFrom: c.effectiveFrom.toISOString(),
-          })),
+          ...(showProfit
+            ? {
+                costPerItem: current.costPerItem,
+                handlingCost: current.handlingCost,
+                // The flag the UI uses to highlight a product whose cost was never entered.
+                missingCost: current.costPerItem === 0,
+                history: p.costs.map((c) => ({
+                  costPerItem: c.costPerItem,
+                  handlingCost: c.handlingCost,
+                  effectiveFrom: c.effectiveFrom.toISOString(),
+                })),
+              }
+            : {}),
         }
       }),
     })

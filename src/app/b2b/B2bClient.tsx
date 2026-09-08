@@ -109,10 +109,19 @@ export function B2bClient({
   email,
   shops,
   importRun = null,
+  showProfit,
+  role = 'ADMIN',
 }: {
   email: string
   shops: Shop[]
   importRun?: ImportRun | null
+  /** Which sidebar to draw: the owner's full menu, or the five operations tabs. */
+  role?: 'ADMIN' | 'OPERATIONS'
+  /**
+   * False for the operations manager. This card reads /api/orders, which sends
+   * him no figures at all, so the column would have nothing but dashes in it.
+   */
+  showProfit: boolean
 }) {
   const toast = useToast()
   const [shopId, setShopId] = useState('') // '' = every shop
@@ -241,7 +250,7 @@ export function B2bClient({
   }
 
   return (
-    <AppShell email={email}>
+    <AppShell email={email} role={role}>
       <PageHeader
         title="B2B"
         subtitle="Business customers who order by email. Their orders count in the same revenue, cost and profit figures as the webshop."
@@ -392,16 +401,16 @@ export function B2bClient({
                   <th className="px-3 py-2.5 font-medium">Date</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   <th className="px-3 py-2.5 text-right font-medium">Net sales</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Profit</th>
+                  {showProfit && <th className="px-3 py-2.5 text-right font-medium">Profit</th>}
                   <th className="px-3 py-2.5" />
                 </tr>
               </thead>
               <tbody className="text-ink">
                 {loading ? (
-                  <tr><td colSpan={7} className="px-3 py-10 text-center text-faint">Loading…</td></tr>
+                  <tr><td colSpan={showProfit ? 7 : 6} className="px-3 py-10 text-center text-faint">Loading…</td></tr>
                 ) : orders.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-faint">
+                    <td colSpan={showProfit ? 7 : 6} className="px-3 py-10 text-center text-faint">
                       No B2B orders in the last 12 months.
                     </td>
                   </tr>
@@ -417,13 +426,15 @@ export function B2bClient({
                       </td>
                       {/* A voided order earns nothing and says so, rather than
                           showing a confident zero. */}
-                      <td
-                        className={`num px-3 py-3 text-right font-medium ${
-                          !o.figures ? 'text-faint' : o.figures.profit < 0 ? 'text-loss' : 'text-gain'
-                        }`}
-                      >
-                        {o.figures ? formatMoney(o.figures.profit, o.currency) : '-'}
-                      </td>
+                      {showProfit && (
+                        <td
+                          className={`num px-3 py-3 text-right font-medium ${
+                            !o.figures ? 'text-faint' : o.figures.profit < 0 ? 'text-loss' : 'text-gain'
+                          }`}
+                        >
+                          {o.figures ? formatMoney(o.figures.profit, o.currency) : '-'}
+                        </td>
+                      )}
                       <td className="relative px-3 py-3 text-right">
                         {/* Nothing to offer on an imported order: the route
                             refuses an edit and a delete, and the next run would

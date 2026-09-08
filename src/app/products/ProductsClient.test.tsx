@@ -45,7 +45,7 @@ beforeEach(() => {
 describe('ProductsClient', () => {
   describe('a shop list that already shares one currency', () => {
     it('loads every shop by default', async () => {
-      render(<ProductsClient email="a@b.c" shops={SAME_CURRENCY_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={SAME_CURRENCY_SHOPS} showProfit />)
       await waitFor(() => expect(fetch).toHaveBeenCalled())
 
       // Genuinely "every shop": no auto-narrowing kicks in when there is
@@ -58,7 +58,7 @@ describe('ProductsClient', () => {
       ;(fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         new Response(JSON.stringify({ ...EMPTY, uncosted: 7 }), { status: 200 }),
       )
-      render(<ProductsClient email="a@b.c" shops={SAME_CURRENCY_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={SAME_CURRENCY_SHOPS} showProfit />)
       expect(await screen.findByText(/7 products have no cost entered/i)).toBeInTheDocument()
     })
 
@@ -66,14 +66,14 @@ describe('ProductsClient', () => {
       ;(fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
         new Response(JSON.stringify({ error: 'Could not load product analytics' }), { status: 500 }),
       )
-      render(<ProductsClient email="a@b.c" shops={SAME_CURRENCY_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={SAME_CURRENCY_SHOPS} showProfit />)
       expect(await screen.findByText('Could not load product analytics')).toBeInTheDocument()
     })
   })
 
   describe('the mixed-currency guard', () => {
     it('refuses a mixed-currency selection without asking the server', async () => {
-      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} showProfit />)
       // Default lands on the auto-selected EUR group (2 shops beat NOK's 1),
       // which is not mixed and genuinely fetches.
       await waitFor(() => expect(fetch).toHaveBeenCalled())
@@ -93,7 +93,7 @@ describe('ProductsClient', () => {
     })
 
     it('offers each currency group as a one-click fix', async () => {
-      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} showProfit />)
       await waitFor(() => expect(fetch).toHaveBeenCalled())
 
       fireEvent.click(screen.getByLabelText('Shops'))
@@ -105,7 +105,7 @@ describe('ProductsClient', () => {
     })
 
     it('recovers when a currency group is chosen', async () => {
-      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} showProfit />)
       await waitFor(() => expect(fetch).toHaveBeenCalled())
 
       fireEvent.click(screen.getByLabelText('Shops'))
@@ -119,7 +119,7 @@ describe('ProductsClient', () => {
 
   describe('auto-selecting the biggest currency group', () => {
     it('auto-selects the largest currency group on first load and fetches it', async () => {
-      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} showProfit />)
       await waitFor(() => expect(fetch).toHaveBeenCalled())
 
       // EUR (Germany + Finland, 2 shops) beats NOK (Norway alone, 1 shop).
@@ -131,12 +131,12 @@ describe('ProductsClient', () => {
     })
 
     it('names the auto-selected currency and store count', async () => {
-      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} showProfit />)
       expect(await screen.findByText(/Showing your 2 EUR stores/i)).toBeInTheDocument()
     })
 
     it('reflects the auto-selection in the shop filter itself, not "All shops"', async () => {
-      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} showProfit />)
       await screen.findByText(/Showing your 2 EUR stores/i)
 
       expect(screen.getByLabelText('Shops')).toHaveTextContent('2 shops')
@@ -144,7 +144,7 @@ describe('ProductsClient', () => {
     })
 
     it('clears the explanatory line once the user changes the selection', async () => {
-      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} showProfit />)
       await screen.findByText(/Showing your 2 EUR stores/i)
 
       fireEvent.click(screen.getByLabelText('Shops'))
@@ -159,7 +159,7 @@ describe('ProductsClient', () => {
     // auto-selection. An explicit flag cleared on any onChange does not care
     // what the new array contains, only that the user chose it.
     it('clears the flag on any change, even one that ends up reselecting the same shops', async () => {
-      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={MIXED_SHOPS} showProfit />)
       await screen.findByText(/Showing your 2 EUR stores/i)
 
       fireEvent.click(screen.getByLabelText('Shops'))
@@ -170,7 +170,7 @@ describe('ProductsClient', () => {
     })
 
     it('does not auto-narrow or show the line when every shop already shares one currency', async () => {
-      render(<ProductsClient email="a@b.c" shops={SAME_CURRENCY_SHOPS} />)
+      render(<ProductsClient email="a@b.c" shops={SAME_CURRENCY_SHOPS} showProfit />)
       await waitFor(() => expect(fetch).toHaveBeenCalled())
 
       const url = String((fetch as ReturnType<typeof vi.fn>).mock.calls[0][0])

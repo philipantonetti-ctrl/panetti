@@ -4,17 +4,22 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { useToast } from '@/components/toast/useToast'
 
-type StaffUser = { id: string; email: string; role: 'ADMIN' | 'MARKETING' }
+type StaffUser = { id: string; email: string; role: 'ADMIN' | 'OPERATIONS' | 'MARKETING' }
 
-const ROLE_LABEL: Record<StaffUser['role'], string> = { ADMIN: 'Admin', MARKETING: 'Marketing' }
+const ROLE_LABEL: Record<StaffUser['role'], string> = {
+  ADMIN: 'Admin',
+  OPERATIONS: 'Operations',
+  MARKETING: 'Marketing',
+}
 
 const field = 'mt-1 w-full rounded-[var(--radius-control)] border border-line px-3 py-2 text-sm'
 const label = 'mt-3 block text-xs font-medium text-muted'
 
 /**
- * Admin and Marketing logins. Admins see everything; Marketing sees the
- * ambassador program and nothing else. Ambassador logins are not here -
- * they are minted by invites and belong to their ambassador.
+ * Staff logins. Admins see everything; Operations runs the orders list and the
+ * four Operations pages, without any cost or profit figure on them; Marketing
+ * sees the ambassador program and nothing else. Ambassador logins are not here
+ * - they are minted by invites and belong to their ambassador.
  */
 export function UsersClient({ email, myUserId }: { email: string; myUserId: string }) {
   const toast = useToast()
@@ -93,7 +98,7 @@ export function UsersClient({ email, myUserId }: { email: string; myUserId: stri
     <AppShell email={email}>
       <PageHeader
         title="Users"
-        subtitle="Admin sees everything. Marketing sees ambassador statistics and the roster, nothing else."
+        subtitle="Admin sees everything. Operations runs orders, delivery, products, inventory and B2B, with no cost or profit figures. Marketing sees ambassador statistics and the roster, nothing else."
       />
       <PageBody>
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -164,6 +169,7 @@ export function UsersClient({ email, myUserId }: { email: string; myUserId: stri
               className={field}
             >
               <option value="MARKETING">Marketing - ambassadors only</option>
+              <option value="OPERATIONS">Operations - orders and the operations tabs, no profit</option>
               <option value="ADMIN">Admin - everything</option>
             </select>
 

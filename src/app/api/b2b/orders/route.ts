@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { toMinor } from '@/lib/money'
 import { utcDay } from '@/lib/dates'
@@ -133,7 +133,7 @@ export async function saveStandingPrices(
 
 export async function POST(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
 
     const parsed = OrderBody.safeParse(await req.json())
     if (!parsed.success)

@@ -1270,10 +1270,13 @@ export function DeliveryClient({
   email,
   shops,
   initialPreset,
+  role = 'ADMIN',
 }: {
   email: string
   shops: Shop[]
   initialPreset?: Preset
+  /** Which sidebar to draw: the owner's full menu, or the five operations tabs. */
+  role?: 'ADMIN' | 'OPERATIONS'
 }) {
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
@@ -1371,7 +1374,7 @@ export function DeliveryClient({
   }
 
   return (
-    <AppShell email={email}>
+    <AppShell email={email} role={role}>
       <PageHeader
         title="Delivery"
         subtitle="How many days an order takes to reach the customer, and what we could not account for."

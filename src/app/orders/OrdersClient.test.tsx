@@ -87,7 +87,7 @@ const payload = { total: 2, orders: [paidOrder, refundedOrder] }
 
 function renderPage(body: unknown = payload) {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 })))
-  render(<OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} />)
+  render(<OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} showProfit />)
 }
 
 describe('arriving from a delivery alert', () => {
@@ -239,7 +239,7 @@ describe('OrdersClient', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     render(
-      <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} />,
+      <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} showProfit />,
     )
     await waitFor(() => expect(screen.getByText('B-0001')).toBeTruthy())
 
@@ -266,7 +266,7 @@ describe('OrdersClient', () => {
       })
       vi.stubGlobal('fetch', fetchMock)
       render(
-        <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} />,
+        <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} showProfit />,
       )
 
       await waitFor(() => expect(calls.length).toBeGreaterThan(0))
@@ -287,7 +287,7 @@ describe('OrdersClient', () => {
       })
       vi.stubGlobal('fetch', fetchMock)
       render(
-        <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} />,
+        <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} showProfit />,
       )
 
       await waitFor(() => expect(calls.length).toBeGreaterThan(0))
@@ -313,7 +313,7 @@ describe('live refresh', () => {
       <OrdersClient
         email="admin@test.local"
         shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]}
-      />,
+      showProfit />,
     )
     return fetchMock
   }
@@ -471,5 +471,52 @@ describe('delivery column', () => {
     // themselves rather than leaving the same bare dash as VOIDED.
     expect(within(row('DLV-BT')).getByTitle('Placed before delivery tracking started').textContent).toBe('-')
     expect(within(row('DLV-UT')).getByTitle('This shop is not delivery-tracked').textContent).toBe('-')
+  })
+})
+
+/**
+ * The six money columns are the owner's. The operations manager gets the same
+ * list - so he can find an order, read its status and see its delivery - with
+ * what the customer paid and nothing about what it earned us.
+ */
+describe('OrdersClient without profit', () => {
+  const MONEY_COLUMNS = ['Fulfillment', 'Fee', 'COGS', 'Commission', 'Profit', 'Margin']
+
+  function renderAs(showProfit: boolean) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 200 })))
+    render(
+      <OrdersClient
+        email="ops@test.local"
+        shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]}
+        showProfit={showProfit}
+      />,
+    )
+  }
+
+  it('draws none of the six money columns', async () => {
+    renderAs(false)
+    await waitFor(() => expect(screen.getByText('10356')).toBeDefined())
+
+    const headers = [...document.querySelectorAll('th')].map((th) => th.textContent)
+    for (const column of MONEY_COLUMNS) expect(headers, column).not.toContain(column)
+  })
+
+  it('still draws what the customer paid', async () => {
+    renderAs(false)
+    await waitFor(() => expect(screen.getByText('10356')).toBeDefined())
+
+    const headers = [...document.querySelectorAll('th')].map((th) => th.textContent)
+    expect(headers).toContain('Paid')
+    expect(headers).toContain('Shipping')
+    expect(headers).toContain('VAT')
+    expect(headers).toContain('Delivery')
+  })
+
+  it('draws all six for the owner', async () => {
+    renderAs(true)
+    await waitFor(() => expect(screen.getByText('10356')).toBeDefined())
+
+    const headers = [...document.querySelectorAll('th')].map((th) => th.textContent)
+    for (const column of MONEY_COLUMNS) expect(headers, column).toContain(column)
   })
 })

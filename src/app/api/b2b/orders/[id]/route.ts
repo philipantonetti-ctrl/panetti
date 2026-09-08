@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { VOIDED_STATUSES } from '@/lib/metrics/types'
 import { VISMA_EXTERNAL_ID_PREFIX } from '@/lib/visma/b2b-sales'
@@ -54,7 +54,7 @@ const ownB2bOrder = (id: string) =>
  */
 export async function GET(_req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
     const { id } = await params
 
     const order = await db.order.findFirst({
@@ -115,7 +115,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
     const { id } = await params
 
     const existing = await ownB2bOrder(id)
@@ -187,7 +187,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
 export async function DELETE(_req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
     const { id } = await params
 
     if (!(await ownB2bOrder(id)))

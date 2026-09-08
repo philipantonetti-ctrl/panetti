@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, canSeeProfit, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { toMinor } from '@/lib/money'
 import { costOn } from '@/lib/metrics/costs'
@@ -29,7 +29,9 @@ type Ctx = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    const user = await currentUser()
+    assertOperations(user)
+    const showProfit = canSeeProfit(user)
     const { id } = await params
 
     const c = await db.b2bCustomer.findUnique({
@@ -89,8 +91,14 @@ export async function GET(_req: Request, { params }: Ctx) {
               // The agreed price is in the CUSTOMER's currency…
               unitPrice: p.unitPrice,
               // …and these two are in the SHOP's. The UI labels both columns.
-              costPerItem: cost.costPerItem,
-              handlingCost: cost.handlingCost,
+              //
+              // What we pay for the product is the owner's business: the
+              // operations manager keeps the agreed price, which he needs to
+              // enter an order, and the "Our cost" column disappears for him
+              // rather than arriving in his browser and being painted over.
+              ...(showProfit
+                ? { costPerItem: cost.costPerItem, handlingCost: cost.handlingCost }
+                : {}),
             }
           }),
         },
@@ -107,7 +115,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
     const { id } = await params
 
     const parsed = Body.safeParse(await req.json())
@@ -185,7 +193,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
 export async function DELETE(_req: Request, { params }: Ctx) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
     const { id } = await params
 
     // Deleting a customer must never take their orders with them. Deactivating

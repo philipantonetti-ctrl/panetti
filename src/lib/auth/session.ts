@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose'
 
-export type Role = 'ADMIN' | 'MARKETING' | 'AMBASSADOR'
+export type Role = 'ADMIN' | 'OPERATIONS' | 'MARKETING' | 'AMBASSADOR'
 
 export type SessionUser = {
   userId: string

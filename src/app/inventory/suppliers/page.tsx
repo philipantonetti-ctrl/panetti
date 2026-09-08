@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { currentUser } from '@/lib/auth/current-user'
+import { canRunOperations } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { catalogueOf, namedFromSource, splitBySource } from '@/lib/inventory/sources'
 import { ensureSupplyItems } from '@/lib/inventory/supply-items'
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function SuppliersPage() {
   const user = await currentUser()
-  if (!user || user.role !== 'ADMIN') redirect('/login')
+  if (!canRunOperations(user)) redirect('/login')
 
   await ensureSupplyItems()
   const [items, suppliers, sourceProducts, sourceShops] = await Promise.all([
@@ -42,7 +43,7 @@ export default async function SuppliersPage() {
   const { carried, elsewhere } = splitBySource(namedFromSource(items, catalogue), catalogue)
 
   return (
-    <AppShell email={user.email}>
+    <AppShell email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'}>
       {/* The second sentence is the half of the client's question the list
           itself cannot show: he asked whether the sales, lead time and delivery
           days behind a product cover every webshop or only the one it is listed

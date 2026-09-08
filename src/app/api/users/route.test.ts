@@ -102,3 +102,40 @@ describe('staff logins', () => {
     expect((await create({ email: NEW_ADMIN, role: 'ADMIN', password: 'longenough1' })).status).toBe(403)
   })
 })
+
+/**
+ * The operations login is minted here like any other staff login, and removed
+ * here too. An ambassador login is still not this page's to touch.
+ */
+describe('the operations login', () => {
+  const NEW_OPS = 'plan-users-operations@example.local'
+  afterEach(async () => {
+    await db.user.deleteMany({ where: { email: NEW_OPS } })
+  })
+
+  it('is created with the operations role', async () => {
+    const res = await create({ email: NEW_OPS, role: 'OPERATIONS', password: 'password123' })
+    expect(res.status).toBe(200)
+
+    const made = await db.user.findUnique({ where: { email: NEW_OPS } })
+    expect(made?.role).toBe('OPERATIONS')
+  })
+
+  it('appears in the list beside the admins and marketing', async () => {
+    await create({ email: NEW_OPS, role: 'OPERATIONS', password: 'password123' })
+
+    const body = (await (await GET()).json()) as { users: { email: string; role: string }[] }
+    expect(body.users.find((u) => u.email === NEW_OPS)?.role).toBe('OPERATIONS')
+  })
+
+  it('can be removed again', async () => {
+    await create({ email: NEW_OPS, role: 'OPERATIONS', password: 'password123' })
+    const made = await db.user.findUnique({ where: { email: NEW_OPS } })
+
+    const res = await DELETE(new Request('http://localhost/api/users/x', { method: 'DELETE' }), {
+      params: Promise.resolve({ id: made!.id }),
+    })
+    expect(res.status).toBe(200)
+    expect(await db.user.findUnique({ where: { email: NEW_OPS } })).toBeNull()
+  })
+})

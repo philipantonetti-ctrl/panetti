@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { canViewAmbassador, assertAdmin, assertStaff, AuthError } from './guard'
+import {
+  canViewAmbassador,
+  canRunOperations,
+  canSeeProfit,
+  assertAdmin,
+  assertOperations,
+  assertStaff,
+  AuthError,
+} from './guard'
 import type { SessionUser } from './session'
 
 const admin: SessionUser = { userId: 'u1', email: 'admin@x.c', role: 'ADMIN', ambassadorId: null }
@@ -61,5 +69,64 @@ describe('assertAdmin', () => {
 
   it('throws for a logged-out visitor', () => {
     expect(() => assertAdmin(null)).toThrow(AuthError)
+  })
+})
+
+const olav: SessionUser = { userId: 'u5', email: 'olav@x.c', role: 'OPERATIONS', ambassadorId: null }
+
+describe('canRunOperations', () => {
+  it('passes for the operations manager - the five tabs are their job', () => {
+    expect(canRunOperations(olav)).toBe(true)
+  })
+
+  it('passes for an admin, who can do everything operations can', () => {
+    expect(canRunOperations(admin)).toBe(true)
+  })
+
+  it('refuses marketing, an ambassador and a logged-out visitor', () => {
+    expect(canRunOperations(mari)).toBe(false)
+    expect(canRunOperations(emma)).toBe(false)
+    expect(canRunOperations(null)).toBe(false)
+  })
+})
+
+describe('assertOperations', () => {
+  it('passes for operations and for an admin', () => {
+    expect(() => assertOperations(olav)).not.toThrow()
+    expect(() => assertOperations(admin)).not.toThrow()
+  })
+
+  it('throws for marketing, an ambassador and a logged-out visitor', () => {
+    expect(() => assertOperations(mari)).toThrow(AuthError)
+    expect(() => assertOperations(emma)).toThrow(AuthError)
+    expect(() => assertOperations(null)).toThrow(AuthError)
+  })
+})
+
+/**
+ * The rule the client asked for, in one predicate: the operations manager runs
+ * the five tabs but never learns what a product costs us or what an order
+ * earned. Every route that computes a cost, a margin or a profit asks this
+ * before putting the number in the response.
+ */
+describe('canSeeProfit', () => {
+  it('is true for an admin and nobody else', () => {
+    expect(canSeeProfit(admin)).toBe(true)
+    expect(canSeeProfit(olav)).toBe(false)
+    expect(canSeeProfit(mari)).toBe(false)
+    expect(canSeeProfit(emma)).toBe(false)
+    expect(canSeeProfit(null)).toBe(false)
+  })
+})
+
+describe('assertAdmin keeps operations out', () => {
+  it('throws - the dashboard, finance and settings are not theirs', () => {
+    expect(() => assertAdmin(olav)).toThrow(AuthError)
+  })
+})
+
+describe('assertStaff keeps operations out', () => {
+  it('throws - the ambassador program is not theirs either', () => {
+    expect(() => assertStaff(olav)).toThrow(AuthError)
   })
 })

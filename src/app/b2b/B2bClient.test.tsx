@@ -98,7 +98,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('B2bClient', () => {
   it('shows a customer’s revenue in THEIR currency, not the shop’s', async () => {
     mockFetch([customer])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     // The digits alone (14,220.00) are identical whether formatted as EUR or
     // NOK at this value, so assert the currency marker too: the EUR rendering
@@ -115,7 +115,7 @@ describe('B2bClient', () => {
 
   it('teaches the next action when there are no customers yet', async () => {
     mockFetch([])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
     expect(
       await screen.findByText(/add one and you can start entering their orders/i),
     ).toBeInTheDocument()
@@ -126,7 +126,7 @@ describe('B2bClient', () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response(JSON.stringify({ error: 'Could not load customers' }), { status: 500 }),
     ))
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     const message = await screen.findByText('Could not load customers')
     // Inline, in the table body - matching the empty-row convention - not a
@@ -138,7 +138,7 @@ describe('B2bClient', () => {
 
   it('offers no "add customer" button when there is no shop to attach one to', async () => {
     mockFetch([])
-    renderWithToast(<B2bClient email="a@b.test" shops={[]} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={[]} showProfit />)
     await waitFor(() => expect(screen.queryByRole('button', { name: /add customer/i })).toBeNull())
   })
 
@@ -152,7 +152,7 @@ describe('B2bClient', () => {
       currency: 'EUR', netSales: 30000, customer: 'Nordic Retail AS', figures: null,
     }
     mockFetch([customer], [liveOrder, voidedOrder])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     await screen.findByText('#1001')
 
@@ -168,7 +168,7 @@ describe('B2bClient', () => {
 
   it('opens the add-customer form and warns about a currency we hold no rate for', async () => {
     mockFetch([])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     fireEvent.click(await screen.findByRole('button', { name: /add customer/i }))
     // find*, not get*: CustomerModal's own product fetch resolves after the
@@ -187,7 +187,7 @@ describe('B2bClient', () => {
     // triggering it - AED is a real ISO currency but is not on the ECB list
     // src/lib/currencies.ts holds rates for, so it must switch the warning on.
     mockFetch([])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     fireEvent.click(await screen.findByRole('button', { name: /add customer/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Currency' }))
@@ -202,7 +202,7 @@ describe('B2bClient', () => {
 
   it('opens an order for editing from the card', async () => {
     mockFetch([customer], [b2bOrder])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     fireEvent.click(await screen.findByRole('button', { name: /edit order B-0001/i }))
     expect(await screen.findByRole('heading', { name: /edit order/i })).toBeInTheDocument()
@@ -224,7 +224,7 @@ describe('B2bClient', () => {
           ranAt: '2026-08-18T09:30:00.000Z', linked: 3, read: 40, imported: 2,
           partial: false, error: null,
         }}
-      />,
+      showProfit />,
     )
 
     expect(await screen.findByText(/imported 2/i)).toBeInTheDocument()
@@ -240,7 +240,7 @@ describe('B2bClient', () => {
           ranAt: '2026-08-18T09:30:00.000Z', linked: 3, read: 0, imported: 0,
           partial: false, error: 'Visma responded 429',
         }}
-      />,
+      showProfit />,
     )
 
     expect(await screen.findByText(/429/)).toBeInTheDocument()
@@ -257,7 +257,7 @@ describe('B2bClient', () => {
           ranAt: '2026-08-18T09:30:00.000Z', linked: 0, read: 0, imported: 0,
           partial: false, error: null,
         }}
-      />,
+      showProfit />,
     )
 
     expect(await screen.findByText(/no customers are linked to visma/i)).toBeInTheDocument()
@@ -272,7 +272,7 @@ describe('B2bClient', () => {
    */
   it('offers no edit or actions on an order imported from Visma, and says where it came from', async () => {
     mockFetch([customer], [b2bOrder, importedOrder])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     expect(await screen.findByText('123194')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /edit order 123194/i })).not.toBeInTheDocument()
@@ -295,7 +295,7 @@ describe('B2bClient', () => {
     // taken only to mark an order refunded - the worst possible outcome.
     const calls: { url: string; method?: string; body?: string }[] = []
     mockFetchCapturing(calls, [customer], [b2bOrder])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     fireEvent.click(await screen.findByRole('button', { name: /actions for B-0001/i }))
     fireEvent.click(screen.getByRole('button', { name: /mark refunded/i }))
@@ -349,7 +349,7 @@ describe('B2bClient', () => {
       }
       return new Response(JSON.stringify({ orders: [b2bOrder], total: 1 }), { status: 200 })
     }))
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     fireEvent.click(await screen.findByRole('button', { name: /actions for B-0001/i }))
     fireEvent.click(screen.getByRole('button', { name: /mark refunded/i }))
@@ -367,7 +367,7 @@ describe('B2bClient', () => {
     const calls: { url: string; method?: string }[] = []
     mockFetchCapturing(calls, [customer], [b2bOrder])
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     fireEvent.click(await screen.findByRole('button', { name: /actions for B-0001/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete order/i }))
@@ -383,7 +383,7 @@ describe('B2bClient', () => {
     // year - ninety days hid orders the client knew they had placed.
     const calls: { url: string; method?: string; body?: string }[] = []
     mockFetchCapturing(calls, [customer], [])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
 
     await waitFor(() => expect(calls.some((c) => c.url.includes('/api/orders?source=b2b'))).toBe(true))
 
@@ -397,7 +397,32 @@ describe('B2bClient', () => {
 
   it('says twelve months on the card', async () => {
     mockFetch([customer], [])
-    renderWithToast(<B2bClient email="a@b.test" shops={shops} />)
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
     expect(await screen.findByText(/last 12 months/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * The B2B orders card reads /api/orders, which sends the operations manager no
+ * figures at all - so its Profit column has nothing to draw and goes.
+ */
+describe('B2bClient without profit', () => {
+  it('drops the Profit column from the orders card', async () => {
+    mockFetch([customer], [b2bOrder])
+    renderWithToast(<B2bClient email="ops@b.test" shops={shops} showProfit={false} />)
+
+    await screen.findByText('B-0001')
+    const headers = [...document.querySelectorAll('th')].map((th) => th.textContent)
+    expect(headers).not.toContain('Profit')
+    expect(headers).toContain('Order')
+  })
+
+  it('still shows the owner the Profit column', async () => {
+    mockFetch([customer], [b2bOrder])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
+
+    await screen.findByText('B-0001')
+    const headers = [...document.querySelectorAll('th')].map((th) => th.textContent)
+    expect(headers).toContain('Profit')
   })
 })

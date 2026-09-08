@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { currentUser } from '@/lib/auth/current-user'
+import { canRunOperations } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { catalogueOf, imageOf, imagesOf, nameOf, namedFromSource } from '@/lib/inventory/sources'
 import { InventoryTabs } from '../InventoryTabs'
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function PurchaseOrdersPage() {
   const user = await currentUser()
-  if (!user || user.role !== 'ADMIN') redirect('/login')
+  if (!canRunOperations(user)) redirect('/login')
 
   const [orders, items, sourceProducts, sourceShops] = await Promise.all([
     db.purchaseOrder.findMany({
@@ -46,7 +47,7 @@ export default async function PurchaseOrdersPage() {
   const named = namedFromSource(items, catalogue)
 
   return (
-    <AppShell email={user.email}>
+    <AppShell email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'}>
       {/* "What is on the water" until 2026-08-18, which was wrong about most of
           the page and jargon besides. Measured that day: of 271 rows, 246 were
           already received and 25 still coming - so the old subtitle described
