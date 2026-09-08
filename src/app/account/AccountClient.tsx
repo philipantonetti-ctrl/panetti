@@ -60,7 +60,7 @@ export function AccountClient({
 }: {
   email: string
   isAmbassador: boolean
-  role?: 'ADMIN' | 'MARKETING'
+  role?: 'ADMIN' | 'OPERATIONS' | 'MARKETING'
 }) {
   const toast = useToast()
   const [account, setAccount] = useState<Account | null>(null)

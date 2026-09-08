@@ -314,7 +314,7 @@ model User {
   id           String  @id @default(cuid())
   email        String  @unique
   passwordHash String
-  role         String // "ADMIN" | "AMBASSADOR"
+  role         String // "ADMIN" | "OPERATIONS" | "MARKETING" | "AMBASSADOR"
   ambassadorId String? @unique
 
   ambassador      Ambassador?     @relation(fields: [ambassadorId], references: [id], onDelete: Cascade)

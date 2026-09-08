@@ -17,7 +17,7 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
     // Only staff logins are this page's to delete; ambassador logins belong
     // to their ambassador and go when the ambassador goes.
     const gone = await db.user.deleteMany({
-      where: { id, role: { in: ['ADMIN', 'MARKETING'] } },
+      where: { id, role: { in: ['ADMIN', 'OPERATIONS', 'MARKETING'] } },
     })
     if (gone.count === 0) {
       return NextResponse.json({ error: 'No such login' }, { status: 404 })

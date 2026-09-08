@@ -60,6 +60,73 @@ const AMBASSADORS_ITEM: NavItem = {
   ),
 }
 
+const ORDERS_ITEM: NavItem = {
+  href: '/orders',
+  label: 'Orders',
+  icon: icon(
+    <>
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+      <path d="M3 6h18" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </>,
+  ),
+}
+
+/**
+ * The four Operations pages, named once.
+ *
+ * The owner's sidebar and the operations manager's both point at this array,
+ * so a fifth page added to Operations appears on his menu the same day it
+ * appears on the owner's, and neither list can quietly drift from the other.
+ */
+const OPERATIONS_ITEMS: NavItem[] = [
+  {
+    href: '/delivery',
+    label: 'Delivery',
+    icon: icon(
+      <>
+        <path d="M3 7h11v10H3z" />
+        <path d="M14 10h4l3 3v4h-7z" />
+        <circle cx="7" cy="18" r="1.5" />
+        <circle cx="17" cy="18" r="1.5" />
+      </>,
+    ),
+  },
+  {
+    href: '/products',
+    label: 'Products',
+    icon: icon(
+      <>
+        <path d="M20 7 12 3 4 7v10l8 4 8-4V7Z" />
+        <path d="m4 7 8 4 8-4" />
+        <path d="M12 11v10" />
+      </>,
+    ),
+  },
+  {
+    href: '/inventory',
+    label: 'Inventory and forecasting',
+    icon: icon(
+      <>
+        <path d="M3 7h18v5H3z" />
+        <path d="M5 12v8h14v-8" />
+        <path d="M10 16h4" />
+      </>,
+    ),
+  },
+  {
+    href: '/b2b',
+    label: 'B2B',
+    icon: icon(
+      <>
+        <path d="M3 21h18" />
+        <path d="M5 21V8l7-5 7 5v13" />
+        <path d="M10 21v-6h4v6" />
+      </>,
+    ),
+  },
+]
+
 /**
  * Grouped the way the Gorgias sidebar the client sent is: a handful of small
  * labelled subjects, not one eleven-entry column under a single word. Same
@@ -82,17 +149,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
           </>,
         ),
       },
-      {
-        href: '/orders',
-        label: 'Orders',
-        icon: icon(
-          <>
-            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
-            <path d="M3 6h18" />
-            <path d="M16 10a4 4 0 0 1-8 0" />
-          </>,
-        ),
-      },
+      ORDERS_ITEM,
       {
         href: '/finance',
         label: 'Finance',
@@ -177,53 +234,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   },
   {
     section: 'Operations',
-    items: [
-      {
-        href: '/delivery',
-        label: 'Delivery',
-        icon: icon(
-          <>
-            <path d="M3 7h11v10H3z" />
-            <path d="M14 10h4l3 3v4h-7z" />
-            <circle cx="7" cy="18" r="1.5" />
-            <circle cx="17" cy="18" r="1.5" />
-          </>,
-        ),
-      },
-      {
-        href: '/products',
-        label: 'Products',
-        icon: icon(
-          <>
-            <path d="M20 7 12 3 4 7v10l8 4 8-4V7Z" />
-            <path d="m4 7 8 4 8-4" />
-            <path d="M12 11v10" />
-          </>,
-        ),
-      },
-      {
-        href: '/inventory',
-        label: 'Inventory and forecasting',
-        icon: icon(
-          <>
-            <path d="M3 7h18v5H3z" />
-            <path d="M5 12v8h14v-8" />
-            <path d="M10 16h4" />
-          </>,
-        ),
-      },
-      {
-        href: '/b2b',
-        label: 'B2B',
-        icon: icon(
-          <>
-            <path d="M3 21h18" />
-            <path d="M5 21V8l7-5 7 5v13" />
-            <path d="M10 21v-6h4v6" />
-          </>,
-        ),
-      },
-    ],
+    items: OPERATIONS_ITEMS,
   },
   {
     section: 'Costs',
@@ -330,6 +341,15 @@ const MARKETING_NAV: { section: string; items: NavItem[] }[] = [
   { section: 'People', items: [AMBASSADORS_ITEM] },
 ]
 
+/**
+ * The operations manager: the orders list, and the four Operations pages. The
+ * headings match the owner's so the two are talking about the same product.
+ */
+const OPERATIONS_NAV: { section: string; items: NavItem[] }[] = [
+  { section: 'Overview', items: [ORDERS_ITEM] },
+  { section: 'Operations', items: OPERATIONS_ITEMS },
+]
+
 function Wordmark({ home }: { home: string }) {
   return (
     <Link href={home} className="flex items-center gap-2 px-2.5 py-1">
@@ -350,7 +370,8 @@ export function AppShell({
   email: string
   children: React.ReactNode
   nav?: boolean // the ambassador portal has no admin nav
-  role?: 'ADMIN' | 'MARKETING' // marketing sees only the ambassador program
+  /** Marketing sees the ambassador program; operations sees its five tabs. */
+  role?: 'ADMIN' | 'OPERATIONS' | 'MARKETING'
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -386,8 +407,8 @@ export function AppShell({
     return paths.some((p) => pathname.startsWith(p))
   }
 
-  const groups = role === 'MARKETING' ? MARKETING_NAV : NAV
-  const home = role === 'MARKETING' ? '/ambassadors' : '/dashboard'
+  const groups = role === 'MARKETING' ? MARKETING_NAV : role === 'OPERATIONS' ? OPERATIONS_NAV : NAV
+  const home = role === 'MARKETING' ? '/ambassadors' : role === 'OPERATIONS' ? '/orders' : '/dashboard'
 
   /**
    * Which groups stand open. Starts empty (everything closed) and loads the

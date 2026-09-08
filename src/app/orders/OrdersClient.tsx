@@ -225,7 +225,23 @@ function initialParams() {
   return { source: p.get('source') ?? '', q: p.get('q')?.trim() ?? '' }
 }
 
-export function OrdersClient({ email, shops }: { email: string; shops: Shop[] }) {
+export function OrdersClient({
+  email,
+  shops,
+  showProfit,
+  role = 'ADMIN',
+}: {
+  email: string
+  shops: Shop[]
+  /** Which sidebar to draw: the owner's full menu, or the five operations tabs. */
+  role?: 'ADMIN' | 'OPERATIONS'
+  /**
+   * False for the operations manager. The six money columns are not drawn,
+   * and the route sends him no `figures` to draw them from either - this only
+   * stops the table reserving six columns of dashes.
+   */
+  showProfit: boolean
+}) {
   const initial = initialParams()
   // A search arriving in the URL comes from somewhere specific - a Slack
   // delivery alert, or the Delivery page's late list - and those orders are old
@@ -354,7 +370,7 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
   }
 
   return (
-    <AppShell email={email}>
+    <AppShell email={email} role={role}>
       <PageHeader
         title="Orders"
         subtitle="Keeps itself current: new orders, refunds and edits stream in from your stores the moment they happen, with a full re-check every 15 minutes."
@@ -469,12 +485,16 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                         <th className="py-2.5 pr-4 text-right">Paid</th>
                         <th className="py-2.5 pr-4 text-right">Shipping</th>
                         <th className="py-2.5 pr-4 text-right">VAT</th>
-                        <th className="py-2.5 pr-4 text-right">Fulfillment</th>
-                        <th className="py-2.5 pr-4 text-right">Fee</th>
-                        <th className="py-2.5 pr-4 text-right">COGS</th>
-                        <th className="py-2.5 pr-4 text-right">Commission</th>
-                        <th className="py-2.5 pr-4 text-right">Profit</th>
-                        <th className="py-2.5 pr-6 text-right">Margin</th>
+                        {showProfit && (
+                          <>
+                            <th className="py-2.5 pr-4 text-right">Fulfillment</th>
+                            <th className="py-2.5 pr-4 text-right">Fee</th>
+                            <th className="py-2.5 pr-4 text-right">COGS</th>
+                            <th className="py-2.5 pr-4 text-right">Commission</th>
+                            <th className="py-2.5 pr-4 text-right">Profit</th>
+                            <th className="py-2.5 pr-6 text-right">Margin</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -546,30 +566,34 @@ export function OrdersClient({ email, shops }: { email: string; shops: Shop[] })
                               <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
                                 <Money minor={o.taxTotal} currency={o.currency} />
                               </td>
-                              <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
-                                <Money minor={f?.fulfillment ?? null} currency={o.currency} />
-                              </td>
-                              <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
-                                <Money minor={f?.fee ?? null} currency={o.currency} />
-                              </td>
-                              <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
-                                <Money minor={f?.cogs ?? null} currency={o.currency} />
-                              </td>
-                              <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
-                                <Money minor={f?.commission ?? null} currency={o.currency} />
-                              </td>
-                              <td className={`num whitespace-nowrap py-2.5 pr-4 text-right font-semibold ${f ? (f.profit < 0 ? 'text-loss' : 'text-gain') : ''}`}>
-                                <Money minor={f?.profit ?? null} currency={o.currency} />
-                              </td>
-                              <td className={`num whitespace-nowrap py-2.5 pr-6 text-right ${f ? (f.profit < 0 ? 'text-loss' : 'text-gain') : ''}`}>
-                                {f ? `${(f.margin * 100).toFixed(2)}%` : <span className="text-faint">-</span>}
-                              </td>
+                              {showProfit && (
+                                <>
+                                  <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
+                                    <Money minor={f?.fulfillment ?? null} currency={o.currency} />
+                                  </td>
+                                  <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
+                                    <Money minor={f?.fee ?? null} currency={o.currency} />
+                                  </td>
+                                  <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
+                                    <Money minor={f?.cogs ?? null} currency={o.currency} />
+                                  </td>
+                                  <td className="num whitespace-nowrap py-2.5 pr-4 text-right text-muted">
+                                    <Money minor={f?.commission ?? null} currency={o.currency} />
+                                  </td>
+                                  <td className={`num whitespace-nowrap py-2.5 pr-4 text-right font-semibold ${f ? (f.profit < 0 ? 'text-loss' : 'text-gain') : ''}`}>
+                                    <Money minor={f?.profit ?? null} currency={o.currency} />
+                                  </td>
+                                  <td className={`num whitespace-nowrap py-2.5 pr-6 text-right ${f ? (f.profit < 0 ? 'text-loss' : 'text-gain') : ''}`}>
+                                    {f ? `${(f.margin * 100).toFixed(2)}%` : <span className="text-faint">-</span>}
+                                  </td>
+                                </>
+                              )}
                             </tr>
 
                             {isOpen && (
                               <tr className="border-b border-line last:border-0 bg-canvas">
                                 <td />
-                                <td colSpan={16} className="py-3 pr-6">
+                                <td colSpan={showProfit ? 16 : 10} className="py-3 pr-6">
                                   <p className="mb-2 text-[11px] font-semibold tracking-wide text-faint">WHAT WAS BOUGHT</p>
                                   <table className="w-full max-w-[720px] text-[12.5px]">
                                     <thead>

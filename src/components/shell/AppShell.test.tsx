@@ -166,3 +166,55 @@ it('offers B2B to an admin and never to marketing', () => {
   render(<AppShell email="a@b.test" role="MARKETING">x</AppShell>)
   expect(screen.queryByRole('link', { name: 'B2B' })).toBeNull()
 })
+
+/**
+ * The operations manager's sidebar: Orders, and the four Operations pages.
+ * Nothing else - a menu offering the dashboard would be a door that bounces
+ * him, and the pages behind those entries are the owner's money.
+ */
+describe('the operations sidebar', () => {
+  const HIS = ['Orders', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
+  const NOT_HIS = [
+    'Dashboard', 'Finance', 'Support AI', 'Agents', 'Inbox', 'Advisor briefing',
+    'Marketing', 'Ambassadors', 'Product costs', 'Operational expenses',
+    'Shops', 'Ad accounts', 'Delivery settings', 'Settings',
+  ]
+
+  it('offers his five tabs and nothing else', () => {
+    render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
+
+    for (const label of HIS) {
+      expect(screen.getByRole('link', { name: label }), label).toBeDefined()
+    }
+    for (const label of NOT_HIS) {
+      expect(screen.queryByRole('link', { name: label }), label).toBeNull()
+    }
+  })
+
+  it('names the two groups those five sit in', () => {
+    render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
+    expect(screen.getByRole('button', { name: /Overview/ })).toBeDefined()
+    expect(screen.getByRole('button', { name: /Operations/ })).toBeDefined()
+    for (const section of ['Support', 'Marketing', 'Costs', 'Setup']) {
+      expect(screen.queryByRole('button', { name: new RegExp(section) }), section).toBeNull()
+    }
+  })
+
+  it('points its wordmark at Orders, which is where he lands', () => {
+    render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
+    expect(screen.getByRole('link', { name: /panetti-analytics/ }).getAttribute('href')).toBe('/orders')
+  })
+
+  /**
+   * The assistant can read company money, so it stays with the owner. The
+   * routes behind it are the real gate; this only declines to show the door.
+   */
+  it('does not follow him around with the assistant', () => {
+    const { unmount } = render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
+    expect(screen.queryByRole('button', { name: /assistant/i })).toBeNull()
+    unmount()
+
+    render(<ToastProvider><AppShell email="a@b.test"><p>page</p></AppShell></ToastProvider>)
+    expect(screen.getByRole('button', { name: /assistant/i })).toBeDefined()
+  })
+})

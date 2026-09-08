@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, canSeeProfit, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { getSetting } from '@/lib/settings'
@@ -22,7 +22,7 @@ import type { CostPoint, RateTable } from '@/lib/metrics/types'
 // Voided or simply not paid yet - either way the order earns nothing (yet).
 const NOT_EARNING = new Set<string>(EXCLUDED_STATUSES)
 
-/** Admin-only financial JSON: no browser, proxy or CDN may ever replay it. */
+/** Private financial JSON: no browser, proxy or CDN may ever replay it. */
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
 /**
@@ -39,10 +39,18 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
  * Per-order figures mirror the engine exactly, at the rates in force on the
  * order's own date: cogs, fulfillment, gateway fee, commission, and
  * contribution profit = net sales + shipping − all of those.
+ *
+ * Those figures are the owner's alone. The operations manager reads this same
+ * list to run the warehouse, and for him `figures` is null on every row - the
+ * numbers are never computed into the response at all, so the six money
+ * columns his page drops are absent rather than merely undrawn. A voided order
+ * already carried null there, so the page had the shape for it.
  */
 export async function GET(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    const user = await currentUser()
+    assertOperations(user)
+    const showProfit = canSeeProfit(user)
 
     const params = new URL(req.url).searchParams
     const { timezone } = await getSetting()
@@ -258,7 +266,7 @@ export async function GET(req: Request) {
       const earnsNothing = NOT_EARNING.has(o.status.toLowerCase())
 
       let figures = null
-      if (!earnsNothing) {
+      if (!earnsNothing && showProfit) {
         // Costs are held in the SHOP's currency, which a B2B order invoiced in
         // another currency does not share. Same correction as engine.ts.
         const costCurrency = o.shop.currency

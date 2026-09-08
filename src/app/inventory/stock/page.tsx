@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { currentUser } from '@/lib/auth/current-user'
+import { canRunOperations } from '@/lib/auth/guard'
 import { describeSources } from '@/lib/inventory/describe'
 import { loadInventory } from '@/lib/inventory/load'
 import { InventoryTabs } from '../InventoryTabs'
@@ -10,12 +11,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function StockPage() {
   const user = await currentUser()
-  if (!user || user.role !== 'ADMIN') redirect('/login')
+  if (!canRunOperations(user)) redirect('/login')
 
   const { rows, stockFrom, shopCount } = await loadInventory()
 
   return (
-    <AppShell email={user.email}>
+    <AppShell email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'}>
       {/* Named for the same reason as the Forecast tab: once shops are marked
           as sources, "each shop" is no longer all of them, and a page that goes
           on implying it is would be quietly lying about its own scope. */}

@@ -156,6 +156,9 @@ async function main() {
   await db.user.create({
     data: { email: 'marketing@ecom.test', passwordHash, role: 'MARKETING' },
   })
+  await db.user.create({
+    data: { email: 'operations@ecom.test', passwordHash, role: 'OPERATIONS' },
+  })
 
   console.log('Creating products, costs and expenses per shop...')
   // Carry sku+name alongside the id - two products share a price, so looking one up
@@ -492,6 +495,7 @@ async function main() {
   console.log(`\nDone. ${shops.length} shops, ${ambassadors.length} ambassadors, ${orders} orders.`)
   console.log('Admin login:      admin@ecom.test / password123')
   console.log('Marketing login:  marketing@ecom.test / password123')
+  console.log('Operations login: operations@ecom.test / password123')
   console.log('Ambassador login: emma@ambassador.test / password123')
 }
 

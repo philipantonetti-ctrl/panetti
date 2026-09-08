@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { loadInventory } from '@/lib/inventory/load'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
@@ -14,7 +14,7 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
  */
 export async function GET(_req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
 
     const { rows, unusable } = await loadInventory()
 

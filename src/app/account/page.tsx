@@ -10,7 +10,7 @@ export default async function AccountPage() {
     <AccountClient
       email={user.email}
       isAmbassador={user.role === 'AMBASSADOR'}
-      role={user.role === 'MARKETING' ? 'MARKETING' : 'ADMIN'}
+      role={user.role === 'MARKETING' || user.role === 'OPERATIONS' ? user.role : 'ADMIN'}
     />
   )
 }

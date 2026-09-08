@@ -5,16 +5,15 @@ import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
-import { ProductsTable } from './ProductsTable'
+import { ProductsTable, type ViewProductRow, type ViewTotals } from './ProductsTable'
 import { groupByCurrency, selectedShops } from '@/lib/currency-groups'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { Preset } from '@/lib/dates'
-import type { ProductRow, ProductTotals } from '@/lib/metrics/products'
 
 type Payload = {
   displayCurrency: string
-  rows: ProductRow[]
-  total: ProductTotals
+  rows: ViewProductRow[]
+  total: ViewTotals
   uncosted: number
   range: { from: string; to: string }
 }
@@ -91,10 +90,16 @@ export function ProductsClient({
   email,
   shops,
   initialPreset,
+  showProfit,
+  role = 'ADMIN',
 }: {
   email: string
   shops: Shop[]
   initialPreset?: Preset
+  /** Which sidebar to draw: the owner's full menu, or the five operations tabs. */
+  role?: 'ADMIN' | 'OPERATIONS'
+  /** False for the operations manager: no COGS, Profit or Margin column. */
+  showProfit: boolean
 }) {
   const [preset, setPreset] = useState<Preset | 'custom'>(initialPreset ?? 'this_month')
   const [from, setFrom] = useState('')
@@ -160,10 +165,14 @@ export function ProductsClient({
   const currency = data?.displayCurrency ?? groups[0]?.currency ?? ''
 
   return (
-    <AppShell email={email}>
+    <AppShell email={email} role={role}>
       <PageHeader
         title="Products"
-        subtitle="What each product sold, what it cost you and what you kept, in your stores' own currency. Click a product to see it store by store."
+        subtitle={
+          showProfit
+            ? "What each product sold, what it cost you and what you kept, in your stores' own currency. Click a product to see it store by store."
+            : "What each product sold, in your stores' own currency. Click a product to see it store by store."
+        }
       >
         <ShopFilter
           shops={shops}
@@ -232,7 +241,7 @@ export function ProductsClient({
                 aria-busy={loading}
                 className={`transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-50' : ''}`}
               >
-                <ProductsTable rows={data.rows} total={data.total} currency={currency} />
+                <ProductsTable rows={data.rows} total={data.total} currency={currency} showProfit={showProfit} />
               </div>
             ) : null}
           </>

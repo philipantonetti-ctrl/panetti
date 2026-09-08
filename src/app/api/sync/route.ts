@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { syncAllShops, syncShop } from '@/lib/woo/sync'
 
 /**
@@ -15,7 +15,7 @@ const SHOPS_DEADLINE_MS = 240_000
 
 export async function POST(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
 
     const shopId = new URL(req.url).searchParams.get('shopId')
     const deadline = Date.now() + SHOPS_DEADLINE_MS

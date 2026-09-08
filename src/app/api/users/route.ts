@@ -6,11 +6,11 @@ import { hashPassword } from '@/lib/auth/password'
 import { db } from '@/lib/db'
 
 /**
- * Staff logins - Admin and Marketing. Ambassador logins never appear here:
- * they are minted by invites and die with their ambassador.
+ * Staff logins - Admin, Operations and Marketing. Ambassador logins never
+ * appear here: they are minted by invites and die with their ambassador.
  */
 
-const STAFF_ROLES = ['ADMIN', 'MARKETING'] as const
+const STAFF_ROLES = ['ADMIN', 'OPERATIONS', 'MARKETING'] as const
 
 const Body = z.object({
   email: z.string().email('Enter a real email'),

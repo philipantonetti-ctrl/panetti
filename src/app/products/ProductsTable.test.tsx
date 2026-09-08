@@ -47,13 +47,13 @@ const cellsOf = (name: string): string[] =>
 
 describe('ProductsTable', () => {
   it('names its columns in order', () => {
-    render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" showProfit />)
     const headers = [...document.querySelectorAll('th')].map((th) => th.textContent)
     expect(headers).toEqual(['Product', 'Orders', 'Qty', 'Gross', 'Revenue', 'COGS', 'Profit', 'Margin'])
   })
 
   it('shows a product with its figures', () => {
-    render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" showProfit />)
     const cells = cellsOf('Elektrischer Pizzaofen')
     expect(cells[1]).toBe('1')
     expect(cells[2]).toBe('2')
@@ -68,7 +68,7 @@ describe('ProductsTable', () => {
 
   it('hides the per-store rows until the product is expanded', () => {
     const merged = row({ stores: [store(), store({ shopId: 'fi', shopName: 'Panetti Finland', productId: 'p-fi' })] })
-    render(<ProductsTable rows={[merged]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[merged]} total={TOTAL} currency="EUR" showProfit />)
 
     expect(screen.queryByText('Panetti Finland')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Elektrischer Pizzaofen/ }))
@@ -81,7 +81,7 @@ describe('ProductsTable', () => {
     // to format as €200.00 / €200.00 / €64.00 / €136.00 above - so the
     // expectations here are derived from a known value, not newly guessed.
     const merged = row({ stores: [store(), store({ shopId: 'fi', shopName: 'Panetti Finland', productId: 'p-fi' })] })
-    render(<ProductsTable rows={[merged]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[merged]} total={TOTAL} currency="EUR" showProfit />)
 
     fireEvent.click(screen.getByRole('button', { name: /Elektrischer Pizzaofen/ }))
     const cells = cellsOf('Panetti Finland')
@@ -95,33 +95,33 @@ describe('ProductsTable', () => {
   })
 
   it('offers no expansion for a product that sold in only one store', () => {
-    render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" showProfit />)
     expect(screen.queryByRole('button', { name: /Elektrischer Pizzaofen/ })).not.toBeInTheDocument()
   })
 
   it('marks a product whose cost was never entered', () => {
-    render(<ProductsTable rows={[row({ hasCost: false })]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[row({ hasCost: false })]} total={TOTAL} currency="EUR" showProfit />)
     expect(screen.getByTitle(/no cost entered/i)).toBeInTheDocument()
   })
 
   it('shows no margin rather than 0.0% when nothing was sold', () => {
     const dead = row({ netSales: 0, profit: 0, margin: 0, cogs: 0 })
-    render(<ProductsTable rows={[dead]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[dead]} total={TOTAL} currency="EUR" showProfit />)
     expect(cellsOf('Elektrischer Pizzaofen')[7]).toBe('-')
   })
 
   it('says so plainly when nothing sold in the period', () => {
-    render(<ProductsTable rows={[]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[]} total={TOTAL} currency="EUR" showProfit />)
     expect(screen.getByText('No products sold in this period.')).toBeInTheDocument()
   })
 
   it('shows the product photo when the shop has one', () => {
-    render(<ProductsTable rows={[row({ imageUrl: 'https://shop.example/oven.png' })]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[row({ imageUrl: 'https://shop.example/oven.png' })]} total={TOTAL} currency="EUR" showProfit />)
     expect(screen.getByAltText('Elektrischer Pizzaofen')).toHaveAttribute('src', 'https://shop.example/oven.png')
   })
 
   it('leaves a quiet placeholder rather than a broken image when there is no photo', () => {
-    render(<ProductsTable rows={[row({ imageUrl: null })]} total={TOTAL} currency="EUR" />)
+    render(<ProductsTable rows={[row({ imageUrl: null })]} total={TOTAL} currency="EUR" showProfit />)
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 
@@ -156,10 +156,45 @@ describe('ProductsTable', () => {
       margin: 0.5,
     }
 
-    render(<ProductsTable rows={[rowA, rowB]} total={distinctTotal} currency="EUR" />)
+    render(<ProductsTable rows={[rowA, rowB]} total={distinctTotal} currency="EUR" showProfit />)
     const cells = cellsOf('Total')
     expect(cells[1]).toBe('42') // orders
     expect(cells[4]).toBe('€999.99') // Revenue (netSales)
     expect(cells[6]).toBe('€555.55') // profit
+  })
+})
+
+/**
+ * The operations manager runs this page to see what is selling and never
+ * learns the margin on it. The three columns go, and the totals row and the
+ * per-store rows underneath go with them - a profit one expand-arrow away
+ * would not be hidden at all.
+ */
+describe('ProductsTable without profit', () => {
+  it('drops COGS, Profit and Margin and keeps what sold', () => {
+    render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" showProfit={false} />)
+    const headers = [...document.querySelectorAll('th')].map((th) => th.textContent)
+    expect(headers).toEqual(['Product', 'Orders', 'Qty', 'Gross', 'Revenue'])
+
+    const cells = cellsOf('Elektrischer Pizzaofen')
+    expect(cells).toHaveLength(5)
+    expect(cells[3]).toBe('€200.00')
+    expect(cells[4]).toBe('€200.00')
+  })
+
+  it('drops them from an expanded per-store row too', () => {
+    const merged = row({ stores: [store(), store({ shopId: 'fi', shopName: 'Panetti Finland', productId: 'p-fi' })] })
+    render(<ProductsTable rows={[merged]} total={TOTAL} currency="EUR" showProfit={false} />)
+    fireEvent.click(screen.getByRole('button', { name: /Elektrischer Pizzaofen/ }))
+
+    const storeCells = cellsOf('Panetti Finland')
+    expect(storeCells).toHaveLength(5)
+    expect(storeCells.join(' ')).not.toContain('€136.00')
+  })
+
+  it('still shows every column to the owner', () => {
+    render(<ProductsTable rows={[row()]} total={TOTAL} currency="EUR" showProfit />)
+    const headers = [...document.querySelectorAll('th')].map((th) => th.textContent)
+    expect(headers).toEqual(['Product', 'Orders', 'Qty', 'Gross', 'Revenue', 'COGS', 'Profit', 'Margin'])
   })
 })

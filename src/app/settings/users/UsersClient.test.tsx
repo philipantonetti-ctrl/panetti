@@ -69,3 +69,38 @@ describe('UsersClient', () => {
     expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
   })
 })
+
+describe('the operations login on the Users page', () => {
+  it('offers Operations as a role, saying what it opens', async () => {
+    renderPage()
+    const option = await screen.findByRole('option', { name: /^Operations/ })
+    expect(option.getAttribute('value')).toBe('OPERATIONS')
+    expect(option.textContent).toMatch(/orders/i)
+  })
+
+  it('sends OPERATIONS when that role is chosen', async () => {
+    const fetchMock = renderPage()
+
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'ops@test.local' } })
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'OPERATIONS' } })
+    fireEvent.change(screen.getByLabelText('Starter password'), { target: { value: 'password123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create login' }))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'POST')
+      expect(post).toBeDefined()
+      expect(JSON.parse((post![1] as RequestInit).body as string)).toMatchObject({
+        email: 'ops@test.local',
+        role: 'OPERATIONS',
+      })
+    })
+  })
+
+  it('labels an operations row in the table', async () => {
+    renderPage([{ id: 'u3', email: 'ops@test.local', role: 'OPERATIONS' }])
+    await waitFor(() => {
+      const table = within(screen.getByRole('table'))
+      expect(table.getByText('Operations')).toBeTruthy()
+    })
+  })
+})

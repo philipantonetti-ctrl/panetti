@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { currentUser } from '@/lib/auth/current-user'
+import { canRunOperations } from '@/lib/auth/guard'
 import { describeSources } from '@/lib/inventory/describe'
 import { loadInventory } from '@/lib/inventory/load'
 import { InventoryTabs } from './InventoryTabs'
@@ -10,12 +11,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function InventoryPage() {
   const user = await currentUser()
-  if (!user || user.role !== 'ADMIN') redirect('/login')
+  if (!canRunOperations(user)) redirect('/login')
 
   const { rows, unusable, stockFrom, shopCount } = await loadInventory()
 
   return (
-    <AppShell email={user.email}>
+    <AppShell email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'}>
       {/* The subtitle names the two scopes on this page because no figure on it
           reveals them: the stock column comes from the shops marked as sources,
           the per-day rate from every shop. Both look equally plausible whichever

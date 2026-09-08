@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
-import { assertAdmin, AuthError } from '@/lib/auth/guard'
+import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { ensureSupplyItems } from '@/lib/inventory/supply-items'
 import { normaliseSku } from '@/lib/inventory/sku'
@@ -20,7 +20,7 @@ function whole(value: unknown, field: string): { ok: true; value: number | null 
 
 export async function GET() {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
     // Opening the page is the moment to make sure every product we sell has a
     // row, so the list is never empty and nobody types 63 SKUs.
     await ensureSupplyItems()
@@ -40,7 +40,7 @@ export async function GET() {
 
 export async function PUT(req: Request) {
   try {
-    assertAdmin(await currentUser())
+    assertOperations(await currentUser())
     const body = (await req.json()) as Record<string, unknown>
     const sku = normaliseSku(String(body.sku ?? ''))
     if (!sku) return fail('Which product?', 400)

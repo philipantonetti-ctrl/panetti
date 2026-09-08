@@ -17,8 +17,9 @@ type PriceRow = {
   /** Customer currency. */
   unitPrice: number
   /** Both in the SHOP's currency. */
-  costPerItem: number
-  handlingCost: number
+  // Absent for a viewer who may not see profit - the route omits both fields.
+  costPerItem?: number
+  handlingCost?: number
 }
 
 type Detail = Customer & { shopCurrency: string; canChangeShop: boolean; prices: PriceRow[] }
@@ -27,10 +28,19 @@ export function CustomerClient({
   email,
   customerId,
   shops,
+  showProfit,
+  role = 'ADMIN',
 }: {
   email: string
   customerId: string
   shops: Shop[]
+  /** Which sidebar to draw: the owner's full menu, or the five operations tabs. */
+  role?: 'ADMIN' | 'OPERATIONS'
+  /**
+   * False for the operations manager: "Our cost" is what we pay for the
+   * product, and the route omits it from his copy of the customer entirely.
+   */
+  showProfit: boolean
 }) {
   const toast = useToast()
   const [customer, setCustomer] = useState<Detail | null>(null)
@@ -81,7 +91,7 @@ export function CustomerClient({
   }
 
   return (
-    <AppShell email={email}>
+    <AppShell email={email} role={role}>
       <PageHeader
         title={customer?.name ?? 'Business customer'}
         subtitle={
@@ -151,9 +161,11 @@ export function CustomerClient({
                       <th className="px-3 py-2.5 font-medium">SKU</th>
                       {/* Two currencies, so both columns name theirs. They are
                           not comparable at a glance and must not pretend to be. */}
-                      <th className="px-3 py-2.5 text-right font-medium">
-                        Our cost ({customer.shopCurrency})
-                      </th>
+                      {showProfit && (
+                        <th className="px-3 py-2.5 text-right font-medium">
+                          Our cost ({customer.shopCurrency})
+                        </th>
+                      )}
                       <th className="px-3 py-2.5 text-right font-medium">
                         Agreed price ({customer.currency})
                       </th>
@@ -162,7 +174,7 @@ export function CustomerClient({
                   <tbody className="text-ink">
                     {customer.prices.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-3 py-10 text-center text-faint">
+                        <td colSpan={showProfit ? 4 : 3} className="px-3 py-10 text-center text-faint">
                           <span className="font-semibold text-ink">No agreed prices yet</span> - add
                           some with Edit, or type a price when you enter their first order.
                         </td>
@@ -172,15 +184,17 @@ export function CustomerClient({
                         <tr key={p.productId} className="border-t border-line">
                           <td className="px-3 py-3 font-medium text-ink">{p.name}</td>
                           <td className="px-3 py-3 text-muted">{p.sku}</td>
-                          <td className="num px-3 py-3 text-right text-muted">
-                            {p.costPerItem === 0 ? (
-                              <span className="text-warn" title="No cost entered for this product">
-                                not set
-                              </span>
-                            ) : (
-                              formatMoney(p.costPerItem + p.handlingCost, customer.shopCurrency)
-                            )}
-                          </td>
+                          {showProfit && (
+                            <td className="num px-3 py-3 text-right text-muted">
+                              {p.costPerItem ? (
+                                formatMoney(p.costPerItem + (p.handlingCost ?? 0), customer.shopCurrency)
+                              ) : (
+                                <span className="text-warn" title="No cost entered for this product">
+                                  not set
+                                </span>
+                              )}
+                            </td>
+                          )}
                           <td className="num px-3 py-3 text-right font-medium text-ink">
                             {formatMoney(p.unitPrice, customer.currency)}
                           </td>

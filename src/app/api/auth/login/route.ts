@@ -41,6 +41,8 @@ export async function POST(req: Request) {
     redirectTo = '/portal'
   } else if (user.role === 'MARKETING') {
     redirectTo = '/ambassadors'
+  } else if (user.role === 'OPERATIONS') {
+    redirectTo = '/orders'
   } else if (parsed.data.mode === 'ambassador') {
     const mine = await db.ambassador.findFirst({
       where: { email: user.email },
