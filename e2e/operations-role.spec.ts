@@ -54,6 +54,9 @@ const MONEY_COLUMNS = ['Profit', 'Margin', 'COGS', 'Commission', 'Fee', 'Fulfill
 const MARKER = 'E2E OPS ROLE'
 let customerId = ''
 
+/** The seed holds no Receivable either, and an empty ledger draws no table. */
+const INVOICE = 'E2E-OPS-INV-1'
+
 async function sweep() {
   const db = new PrismaClient()
   try {
@@ -68,6 +71,7 @@ async function sweep() {
       await db.order.deleteMany({ where: { b2bCustomerId: { in: ids } } })
       await db.b2bCustomer.deleteMany({ where: { id: { in: ids } } })
     }
+    await db.receivable.deleteMany({ where: { referenceNumber: INVOICE } })
   } finally {
     await db.$disconnect()
   }
@@ -95,6 +99,20 @@ test.beforeAll(async () => {
       },
     })
     customerId = made.id
+
+    await db.receivable.create({
+      data: {
+        referenceNumber: INVOICE,
+        customerNumber: '10488',
+        customerName: `${MARKER} Verkkokauppa`,
+        documentType: 'Invoice',
+        documentDate: new Date('2026-06-01T00:00:00Z'),
+        dueDate: new Date('2026-06-30T00:00:00Z'),
+        currency: 'EUR',
+        amount: 250000,
+        balance: 250000,
+      },
+    })
   } finally {
     await db.$disconnect()
   }
@@ -108,19 +126,22 @@ test('signing in lands him on Orders with only his five tabs in the menu', async
 
   await expect(page.getByRole('link', { name: 'Orders', exact: true })).toHaveCount(1)
 
+  await expect(page.getByRole('link', { name: 'Finance', exact: true })).toHaveCount(1)
+
   await openOperations(page)
   for (const label of ['Delivery', 'Products', 'Inventory and forecasting', 'B2B']) {
     await expect(page.getByRole('link', { name: label, exact: true }), label).toHaveCount(1)
   }
-  for (const label of ['Dashboard', 'Finance', 'Marketing', 'Ambassadors', 'Settings', 'Inbox']) {
-    await expect(page.getByRole('link', { name: label, exact: true })).toHaveCount(0)
+  for (const label of ['Dashboard', 'Marketing', 'Ambassadors', 'Settings', 'Inbox']) {
+    await expect(page.getByRole('link', { name: label, exact: true }), label).toHaveCount(0)
   }
 })
 
 test('typing the owner\'s pages into the URL walks him back to Orders', async ({ page }) => {
   await signIn(page, 'operations@ecom.test')
 
-  for (const path of ['/dashboard', '/finance', '/settings/users', '/settings/costs', '/marketing', '/advisor']) {
+  // /finance itself is his - the Receivables tab. Its sibling is not.
+  for (const path of ['/dashboard', '/finance/payouts', '/settings/users', '/settings/costs', '/marketing', '/advisor']) {
     await page.goto(path)
     await expect(page, path).toHaveURL(/\/orders/)
   }
@@ -203,4 +224,42 @@ test('the owner can see and mint an operations login', async ({ page }) => {
 
   await expect(page.getByText('operations@ecom.test')).toBeVisible()
   await expect(page.getByRole('option', { name: /^Operations/ })).toHaveCount(1)
+})
+
+/**
+ * Receivables is one tab of Finance and the client asked for it by name: what
+ * customers still owe us, straight from Visma. The Payouts tab beside it is
+ * not his - it carries the fee Dintero took on every order - so /finance must
+ * open while /finance/payouts still walks him back.
+ */
+test('Receivables opens for him, and Payouts does not', async ({ page }) => {
+  await signIn(page, 'operations@ecom.test')
+
+  await page.goto('/finance')
+  await expect(page).toHaveURL(/\/finance$/)
+  await expect(page.getByRole('heading', { name: 'Finance' })).toBeVisible()
+  await expect(page.getByText(`${MARKER} Verkkokauppa`)).toBeVisible()
+  expect(await headersOf(page)).toEqual(['Customer', 'Invoice', 'Invoiced', 'Status', 'Outstanding'])
+
+  // Not even offered the tab, because it is a door that would bounce him.
+  await expect(page.getByRole('link', { name: 'Payouts', exact: true })).toHaveCount(0)
+
+  await page.goto('/finance/payouts')
+  await expect(page).toHaveURL(/\/orders/)
+})
+
+test('the owner still has both Finance tabs', async ({ page }) => {
+  await signIn(page, 'admin@ecom.test')
+  await page.goto('/finance')
+
+  await expect(page.getByRole('link', { name: 'Receivables', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Payouts', exact: true })).toBeVisible()
+
+  await page.goto('/finance/payouts')
+  await expect(page).toHaveURL(/\/finance\/payouts/)
+})
+
+test('Finance sits in his sidebar, next to Orders', async ({ page }) => {
+  await signIn(page, 'operations@ecom.test')
+  await expect(page.getByRole('link', { name: 'Finance', exact: true })).toHaveCount(1)
 })

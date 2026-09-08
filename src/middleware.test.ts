@@ -192,6 +192,9 @@ describe('the operations manager is fenced onto his five tabs', () => {
       '/inventory/suppliers',
       '/b2b',
       '/b2b/some-customer-id',
+      // Receivables - what customers still owe us. The client asked for this
+      // one tab of Finance, not the Payouts tab beside it.
+      '/finance',
       '/account',
     ]) {
       const res = await go(path, token)
@@ -204,7 +207,7 @@ describe('the operations manager is fenced onto his five tabs', () => {
     const token = await asOperations()
     for (const path of [
       '/dashboard',
-      '/finance',
+      // The other Finance tab: Dintero's payouts, with the fee it took.
       '/finance/payouts',
       '/marketing',
       '/support',

@@ -22,6 +22,20 @@ const MARKETING_PAGES = ['/ambassadors', '/account']
 const OPERATIONS_PAGES = [...OPERATIONS_TABS, '/account']
 
 /**
+ * Pages of his that are matched WHOLE rather than as a prefix.
+ *
+ * Receivables is one tab of Finance - what customers still owe us, straight
+ * from Visma - and the client asked for that tab alone. The Payouts tab beside
+ * it carries what Dintero took in fees, so `/finance` must open while
+ * `/finance/payouts` still walks him back, which a prefix cannot express.
+ */
+const OPERATIONS_WHOLE_PAGES = ['/finance']
+
+const isOperationsPage = (pathname: string): boolean =>
+  OPERATIONS_PAGES.some((p) => pathname.startsWith(p)) ||
+  OPERATIONS_WHOLE_PAGES.some((p) => pathname === p || pathname === `${p}/`)
+
+/**
  * Doors only machines knock on, exempt from the one-live-host walk below.
  *
  * Vercel Cron calls the deployment's OWN generated URL - the log line reads
@@ -103,7 +117,7 @@ export async function middleware(req: NextRequest) {
 
   // Operations runs the five tabs and nothing else - the dashboard, finance,
   // marketing, support and the settings house all belong to the owner.
-  if (user.role === 'OPERATIONS' && !OPERATIONS_PAGES.some((p) => req.nextUrl.pathname.startsWith(p))) {
+  if (user.role === 'OPERATIONS' && !isOperationsPage(req.nextUrl.pathname)) {
     const url = req.nextUrl.clone()
     url.pathname = '/orders'
     return NextResponse.redirect(url)

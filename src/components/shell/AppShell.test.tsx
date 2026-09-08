@@ -173,9 +173,9 @@ it('offers B2B to an admin and never to marketing', () => {
  * him, and the pages behind those entries are the owner's money.
  */
 describe('the operations sidebar', () => {
-  const HIS = ['Orders', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
+  const HIS = ['Orders', 'Finance', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
   const NOT_HIS = [
-    'Dashboard', 'Finance', 'Support AI', 'Agents', 'Inbox', 'Advisor briefing',
+    'Dashboard', 'Support AI', 'Agents', 'Inbox', 'Advisor briefing',
     'Marketing', 'Ambassadors', 'Product costs', 'Operational expenses',
     'Shops', 'Ad accounts', 'Delivery settings', 'Settings',
   ]

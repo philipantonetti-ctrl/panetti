@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { FINANCE_TABS, PageTabs } from '@/components/shell/PageTabs'
 import { currentUser } from '@/lib/auth/current-user'
+import { canRunOperations, canSeeProfit } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { FinanceClient } from './FinanceClient'
 
@@ -9,7 +10,11 @@ export const dynamic = 'force-dynamic'
 
 export default async function FinancePage() {
   const user = await currentUser()
-  if (!user || user.role !== 'ADMIN') redirect('/login')
+  // Receivables is the operations manager's too - the client asked for this
+  // tab by name. The Payouts tab beside it is not, and the middleware matches
+  // /finance whole rather than as a prefix so that stays true.
+  if (!canRunOperations(user)) redirect('/login')
+  const bothTabs = canSeeProfit(user)
 
   // Whatever the last COMPLETE read of Visma established. A rate-limited run
   // leaves the previous snapshot standing rather than writing a half-read
@@ -22,7 +27,7 @@ export default async function FinancePage() {
   })
 
   return (
-    <AppShell email={user.email}>
+    <AppShell email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'}>
       {/* Said out loud because it bounds what this page can be blamed for: the
           figures are Visma's, and a payment booked there is what clears a row
           here. */}
@@ -30,7 +35,9 @@ export default async function FinancePage() {
         title="Finance"
         subtitle="What customers still owe us, straight from Visma. Webshop orders paid at the checkout are not counted."
       />
-      <PageTabs tabs={FINANCE_TABS} />
+      {/* One tab is not a choice, and offering Payouts to someone the
+          middleware would bounce is a door that does not open. */}
+      {bothTabs && <PageTabs tabs={FINANCE_TABS} />}
       <PageBody>
         <FinanceClient
           rows={rows.map((r) => ({

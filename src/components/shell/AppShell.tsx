@@ -73,6 +73,22 @@ const ORDERS_ITEM: NavItem = {
 }
 
 /**
+ * Receivables, which the operations manager shares with the owner. His menu
+ * and the owner's point at the same entry, so the two cannot drift.
+ */
+const FINANCE_ITEM: NavItem = {
+  href: '/finance',
+  label: 'Finance',
+  icon: icon(
+    <>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M6 15h4" />
+    </>,
+  ),
+}
+
+/**
  * The four Operations pages, named once.
  *
  * The owner's sidebar and the operations manager's both point at this array,
@@ -150,17 +166,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       ORDERS_ITEM,
-      {
-        href: '/finance',
-        label: 'Finance',
-        icon: icon(
-          <>
-            <rect x="2" y="5" width="20" height="14" rx="2" />
-            <path d="M2 10h20" />
-            <path d="M6 15h4" />
-          </>,
-        ),
-      },
+      FINANCE_ITEM,
     ],
   },
   {
@@ -346,7 +352,7 @@ const MARKETING_NAV: { section: string; items: NavItem[] }[] = [
  * headings match the owner's so the two are talking about the same product.
  */
 const OPERATIONS_NAV: { section: string; items: NavItem[] }[] = [
-  { section: 'Overview', items: [ORDERS_ITEM] },
+  { section: 'Overview', items: [ORDERS_ITEM, FINANCE_ITEM] },
   { section: 'Operations', items: OPERATIONS_ITEMS },
 ]
 
