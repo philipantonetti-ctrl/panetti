@@ -135,7 +135,9 @@ export async function GET(req: Request) {
 
     const [state, ai] = await Promise.all([
       db.supportSyncState.findFirst(),
-      db.aiConversation.groupBy({ by: ['decision'], _count: true }),
+      // Practice runs from the sandbox are never counted: this page is about
+      // what happened to customers.
+      db.aiConversation.groupBy({ by: ['decision'], _count: true, where: { source: { not: 'sandbox' } } }),
     ])
 
     return NextResponse.json(

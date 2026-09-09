@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { AnalyticsView } from './AnalyticsView'
 import { useToast } from '@/components/toast/useToast'
@@ -18,6 +19,8 @@ import { useToast } from '@/components/toast/useToast'
 type Conversation = {
   id: string
   externalTicketId: string
+  /** 'gorgias' | 'sandbox': practice is filed beside the real thing, never mixed into it. */
+  source: string
   customerEmail: string | null
   question: string
   answer: string | null
@@ -33,12 +36,13 @@ type Conversation = {
   createdAt: string
 }
 
-const FILTERS = ['all', 'sent', 'drafted', 'escalated'] as const
+const FILTERS = ['all', 'sent', 'drafted', 'escalated', 'sandbox'] as const
 
 const LABEL: Record<string, string> = {
   sent: 'Answered by itself',
   drafted: 'Suggested to an agent',
   escalated: 'Handed to a person',
+  sandbox: 'Sandbox practice',
 }
 
 /** The two things this page is: the numbers, and what the assistant said. */
@@ -62,7 +66,13 @@ export function ReviewClient({ email }: { email: string }) {
    */
   const load = useCallback(
     () =>
-      fetch(`/api/support/conversations?decision=${filter}`)
+      fetch(
+        // Practice is its own filter rather than a decision, because it is not
+        // one: a sandbox run has a decision of its own.
+        filter === 'sandbox'
+          ? '/api/support/conversations?decision=all&source=sandbox'
+          : `/api/support/conversations?decision=${filter}`,
+      )
         .then((r) => (r.ok ? r.json() : null))
         .then((body) => {
           if (!body) return
@@ -119,6 +129,15 @@ export function ReviewClient({ email }: { email: string }) {
             ))}
           </div>
 
+          <div className="flex justify-end">
+            <Link
+              href="/support/sandbox"
+              className="rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px] text-ink hover:border-faint"
+            >
+              Try the assistant in the sandbox
+            </Link>
+          </div>
+
           {view === 'analytics' && <AnalyticsView />}
 
           {view === 'ai' && (
@@ -164,7 +183,7 @@ export function ReviewClient({ email }: { email: string }) {
             <div className="skeleton h-[200px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
           ) : rows.length === 0 ? (
             <div className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-6 text-[13px] text-muted">
-              Nothing here yet. Conversations appear once Gorgias starts sending messages to the assistant.
+              Nothing here yet. Live conversations appear once Gorgias sends messages to the assistant; practice runs are under Sandbox practice.
             </div>
           ) : (
             <div className="space-y-2">

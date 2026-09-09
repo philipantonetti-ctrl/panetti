@@ -10,17 +10,21 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: Request) {
   try {
     assertAdmin(await currentUser())
-    const decision = new URL(req.url).searchParams.get('decision')
+    const url = new URL(req.url)
+    const decision = url.searchParams.get('decision')
+    // Practice runs from the sandbox are shown only when asked for, and never
+    // counted: "how often does it send" is a question about customers.
+    const source = url.searchParams.get('source') === 'sandbox' ? 'sandbox' : { not: 'sandbox' }
 
     const [rows, counts] = await Promise.all([
       db.aiConversation.findMany({
-        where: decision && decision !== 'all' ? { decision } : {},
+        where: { source, ...(decision && decision !== 'all' ? { decision } : {}) },
         orderBy: { createdAt: 'desc' },
         take: 100,
       }),
       // Counted over everything, never over the page: "how often does it send"
       // is a question about the whole history, not about the last hundred rows.
-      db.aiConversation.groupBy({ by: ['decision'], _count: true }),
+      db.aiConversation.groupBy({ by: ['decision'], _count: true, where: { source: { not: 'sandbox' } } }),
     ])
 
     return NextResponse.json(
@@ -28,6 +32,8 @@ export async function GET(req: Request) {
         conversations: rows.map((r) => ({
           id: r.id,
           externalTicketId: r.externalTicketId,
+          source: r.source,
+          shopId: r.shopId,
           customerEmail: r.customerEmail,
           question: r.question,
           answer: r.answer,
