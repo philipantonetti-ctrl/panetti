@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
+import { promoteCorrection } from '@/lib/support/examples'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 type Ctx = { params: Promise<{ id: string }> }
@@ -26,13 +27,23 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (!parsed.success) return NextResponse.json({ error: 'Nothing to record' }, { status: 400, headers: NO_STORE })
 
     const { id } = await params
+    const correction = parsed.data.correction?.trim() || null
+
+    // A non-empty correction is the teaching moment: it becomes an example
+    // the assistant retrieves, not only a note beside the answer.
+    if (correction) {
+      const promoted = await promoteCorrection(id, correction)
+      if (!promoted) {
+        return NextResponse.json({ error: 'No such conversation' }, { status: 404, headers: NO_STORE })
+      }
+      return NextResponse.json({ ok: true, knowledgeItemId: promoted.knowledgeItemId }, { headers: NO_STORE })
+    }
+
     const updated = await db.aiConversation.updateMany({
       where: { id },
       data: {
         ...(parsed.data.rating !== undefined ? { rating: parsed.data.rating } : {}),
-        ...(parsed.data.correction !== undefined
-          ? { correction: parsed.data.correction?.trim() || null }
-          : {}),
+        ...(parsed.data.correction !== undefined ? { correction: null } : {}),
       },
     })
     if (updated.count === 0) {

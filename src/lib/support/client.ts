@@ -120,3 +120,90 @@ export function fetchMessages(creds: GorgiasCredentials, cursor?: string | null,
     deadline,
   )
 }
+
+/** One message of one ticket, as the chat turn reads it. */
+export type GorgiasTicketMessage = {
+  id: number
+  from_agent: boolean | null
+  public: boolean | null
+  channel: string | null
+  via: string | null
+  body_text: string | null
+  created_datetime: string | null
+  sender: { id?: number | null; name?: string | null; email?: string | null } | null
+}
+
+/** Pages a chat can run to. Three hundred messages is a very long chat. */
+const TICKET_MESSAGE_PAGES = 3
+
+/**
+ * Every message of one ticket, oldest first.
+ *
+ * `GET /api/messages?ticket_id=…`, NOT `GET /api/tickets/{id}/messages`:
+ * Gorgias's reference marks the ticket-scoped one deprecated and says to use
+ * this instead. The two answer the same `{ data, meta.next_cursor }` envelope,
+ * so the only difference is which of them Gorgias intends to keep.
+ *
+ * This is also where the webhook learns what an HTTP integration cannot tell
+ * it - the message's id, its text, and whether an agent wrote it - because
+ * Gorgias documents no `message` template scope. Those three are documented
+ * fields of the TicketMessage object, so they are read from here instead of
+ * guessed into a template someone pastes by hand.
+ *
+ * Oldest first because the chat turn replays it as a conversation.
+ */
+export async function fetchTicketMessages(
+  creds: GorgiasCredentials,
+  ticketId: string,
+  deadline?: number,
+): Promise<GorgiasTicketMessage[]> {
+  const out: GorgiasTicketMessage[] = []
+  let cursor: string | null = null
+  for (let page = 0; page < TICKET_MESSAGE_PAGES; page++) {
+    const params: Record<string, string> = {
+      ticket_id: ticketId,
+      limit: '100',
+      order_by: 'created_datetime:asc',
+    }
+    if (cursor) params.cursor = cursor
+    const { data, nextCursor }: { data: GorgiasTicketMessage[]; nextCursor: string | null } =
+      await get<GorgiasTicketMessage>(creds, 'messages', params, deadline)
+    out.push(...data)
+    if (!nextCursor) break
+    cursor = nextCursor
+  }
+  return out
+}
+
+async function request<T>(
+  creds: GorgiasCredentials,
+  method: 'GET' | 'PUT',
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const auth = Buffer.from(`${creds.email}:${creds.apiKey}`).toString('base64')
+  const res = await fetch(`https://${creds.domain}.gorgias.com/api/${path}`, {
+    method,
+    headers: {
+      Authorization: `Basic ${auth}`,
+      Accept: 'application/json',
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  if (!res.ok) throw new GorgiasError(`Gorgias responded ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  return (await res.json()) as T
+}
+
+/**
+ * Mark a ticket for the people. Read first: `PUT /api/tickets/{id}` replaces
+ * the tag set, and a handover must not strip the tags the agents put there.
+ */
+export async function tagTicket(creds: GorgiasCredentials, ticketId: string, tag: string): Promise<void> {
+  const id = encodeURIComponent(ticketId)
+  const current = await request<{ tags?: { name: string }[] | null }>(creds, 'GET', `tickets/${id}`)
+  const names = (current.tags ?? []).map((t) => t.name)
+  if (!names.includes(tag)) names.push(tag)
+  await request(creds, 'PUT', `tickets/${id}`, { tags: names.map((name) => ({ name })) })
+}

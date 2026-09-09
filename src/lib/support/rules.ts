@@ -40,6 +40,13 @@ export const DEFAULT_RULES: RulesConfig = {
   minConfidence: 0.85,
 }
 
+/**
+ * Words that mean "I want a person", pre-filled once into the shared escalate
+ * list when it is empty. Danish first because panetti.dk is the first shop
+ * whose chat the assistant answers. Philip edits the list on the settings page.
+ */
+export const DEFAULT_ESCALATE_WORDS = ['menneske', 'person', 'medarbejder', 'kundeservice', 'human', 'agent']
+
 export function decide(judgement: Judgement, text: string, rules: RulesConfig): Verdict {
   // A word the CUSTOMER used, checked before anything the model concluded: a
   // legal threat read as a friendly question must still reach a person.

@@ -54,12 +54,21 @@ export type KnowledgeRow = {
 export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise<KnowledgeRow[]> {
   // Null scope means "everywhere", so each filter admits rows that named this
   // shop/country/language AND rows that named none.
+  //
+  // Language is the one dimension left out when it is not given, rather than
+  // narrowed to null-only like the rest: a shop or a country we do not know
+  // is a fact we could get wrong (a Danish return window is not Germany's),
+  // but a language we do not know yet - true of every turn before the model
+  // has read the message - is not a fact at all, and the system prompt
+  // already answers in the customer's own words regardless of which
+  // language a policy was written in. Hiding it would only mean escalating
+  // for no reason.
   const inScope = {
     active: true,
     AND: [
       { OR: [{ shopId: null }, ...(scope.shopId ? [{ shopId: scope.shopId }] : [])] },
       { OR: [{ country: null }, ...(scope.country ? [{ country: scope.country }] : [])] },
-      { OR: [{ language: null }, ...(scope.language ? [{ language: scope.language }] : [])] },
+      ...(scope.language ? [{ OR: [{ language: null }, { language: scope.language }] }] : []),
       { OR: [{ sku: null }, ...(scope.skus?.length ? [{ sku: { in: scope.skus } }] : [])] },
     ],
   }

@@ -23,6 +23,17 @@ export type IncomingMessage = {
   subject: string | null
   /** email, chat, instagram-direct-message, whatever the channel calls it. */
   via: string | null
+  /** The channel's own id for this one message. Null where messages are not numbered. */
+  messageId?: string | null
+}
+
+/** One line of a conversation as the channel holds it, customer-visible only. */
+export type TranscriptMessage = {
+  id: string
+  fromAgent: boolean
+  text: string
+  /** ISO timestamp as the channel reports it. */
+  at: string
 }
 
 export type Channel = {
@@ -35,6 +46,13 @@ export type Channel = {
    * conversation to a human: summary, reason, and a suggested reply.
    */
   addInternalNote(conversationId: string, text: string): Promise<void>
+  /**
+   * The conversation so far, oldest first, customer-visible messages only.
+   * Optional: an email channel answers one message at a time and needs none.
+   */
+  transcript?(conversationId: string): Promise<TranscriptMessage[]>
+  /** Mark the conversation for the people. Optional: not every channel has tags. */
+  tag?(conversationId: string, tag: string): Promise<void>
 }
 
 /**
