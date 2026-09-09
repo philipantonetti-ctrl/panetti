@@ -39,6 +39,82 @@ export type SupportJudgement = {
   reply: string | null
 }
 
+/** One turn of a conversation, as the model replays it. */
+export type Turn = { role: 'user' | 'assistant'; text: string }
+
+/** What is different about a live chat turn. */
+export type ChatMode = {
+  /** The assistant has not spoken in this chat yet, so it introduces itself. */
+  firstReply: boolean
+  /** We hold orders for this customer. False means it must not state order facts. */
+  customerKnown: boolean
+}
+
+/**
+ * The extra rules for a chat window. Appended to the system prompt as its
+ * own block so the cached first block stays byte-identical for email and chat.
+ */
+export function chatInstructions(mode: ChatMode): string {
+  const lines = [
+    'THIS IS A LIVE CHAT, not an email. Answer in a few short sentences, the way a person types',
+    'in a chat window. No greeting line on every turn, no sign-off.',
+    'If the customer asks for a person, a human, an agent or a colleague, set wantsHuman to true',
+    'and put one short sentence in reply saying you are getting a colleague.',
+    'If you cannot answer from the facts and knowledge in front of you, say so in one sentence and',
+    'set wantsHuman to true rather than guessing.',
+  ]
+  if (mode.firstReply) {
+    lines.push(
+      'This is your first reply in this chat: say in one short clause that you are Panetti\'s assistant',
+      'and that the customer can ask for a person at any time.',
+    )
+  }
+  if (!mode.customerKnown) {
+    lines.push(
+      'You have no orders in front of you for this customer. For anything about an order or a parcel,',
+      'ask for the order number and the email used at checkout, and state no order facts until then.',
+    )
+  }
+  return lines.join('\n')
+}
+
+/**
+ * The messages array, built once here so the shape is testable without a
+ * model. No history: one user message, as before. With history: the facts
+ * and knowledge first, then the conversation replayed as turns, then what
+ * the customer just wrote.
+ */
+export function judgeMessages(input: {
+  message: string
+  subject: string | null
+  context: CustomerContext
+  knowledge: KnowledgeRow[]
+  history?: Turn[]
+}): Anthropic.MessageParam[] {
+  const facts = [contextBlock(input.context), '', knowledgeBlock(input.knowledge)].join('\n')
+  if (!input.history?.length) {
+    return [
+      {
+        role: 'user',
+        content: [
+          facts,
+          '',
+          `THE CUSTOMER WROTE${input.subject ? ` (subject: ${input.subject})` : ''}:`,
+          input.message,
+        ].join('\n'),
+      },
+    ]
+  }
+  return [
+    {
+      role: 'user',
+      content: `${facts}\n\nTHE CONVERSATION SO FAR follows, oldest first. Your own earlier replies are the assistant turns.`,
+    },
+    ...input.history.map((t) => ({ role: t.role, content: t.text })),
+    { role: 'user', content: `THE CUSTOMER NOW WROTE:\n${input.message}` },
+  ]
+}
+
 const SYSTEM = `You are the first line of customer service for a group of webshops selling pizza
 ovens, massage chairs and kitchen machines in Norway, Sweden, Denmark, Finland and Germany.
 
@@ -56,6 +132,8 @@ THE RULES, in order:
    a safety problem, or you are simply unsure, ask for a human.
 4. Never promise a refund, a replacement, a discount or a date that is not already a
    fact in the context or a written policy in the knowledge base.
+5. When the KNOWLEDGE BASE holds an [example] whose question matches this one, follow its
+   answer: it is what a person said the reply should have been.
 
 Answer with the tool. Keep the reply short and plain, no markdown, no headings.
 Confidence is your own honest reading of whether this reply is safe to send with nobody
@@ -126,13 +204,18 @@ export async function judge(input: {
   context: CustomerContext
   knowledge: KnowledgeRow[]
   extraInstructions: string
+  history?: Turn[]
+  chat?: ChatMode
 }): Promise<SupportJudgement> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) throw new NoApiKey('No ANTHROPIC_API_KEY is configured, so the assistant cannot read tickets.')
 
-  const client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 1 })
+  // A chat window is waited on; an email is not. The chat budget is short on
+  // purpose - a reply that takes a minute to arrive is a reply nobody reads.
+  const client = new Anthropic({ apiKey, timeout: input.chat ? 25_000 : 60_000, maxRetries: 1 })
   const system = [
     { type: 'text' as const, text: SYSTEM, cache_control: { type: 'ephemeral' as const } },
+    ...(input.chat ? [{ type: 'text' as const, text: chatInstructions(input.chat) }] : []),
     ...(input.extraInstructions.trim()
       ? [{ type: 'text' as const, text: `HOUSE INSTRUCTIONS:\n${input.extraInstructions.trim()}` }]
       : []),
@@ -140,7 +223,8 @@ export async function judge(input: {
 
   const res = await client.messages.create({
     model: ADVISOR_MODEL,
-    max_tokens: 2000,
+    max_tokens: input.chat ? 1024 : 2000,
+    ...(input.chat ? { output_config: { effort: 'low' as const } } : {}),
     system,
     tools: [
       {
@@ -150,19 +234,7 @@ export async function judge(input: {
       },
     ],
     tool_choice: { type: 'tool', name: 'answer' },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          contextBlock(input.context),
-          '',
-          knowledgeBlock(input.knowledge),
-          '',
-          `THE CUSTOMER WROTE${input.subject ? ` (subject: ${input.subject})` : ''}:`,
-          input.message,
-        ].join('\n'),
-      },
-    ],
+    messages: judgeMessages(input),
   })
 
   // A refusal is a 200 with no tool call, so it is checked before the content
