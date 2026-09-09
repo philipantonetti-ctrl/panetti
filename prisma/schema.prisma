@@ -49,6 +49,16 @@ model Shop {
   /// deliveryTrackingFrom above.
   wooNotesFrom         DateTime?
 
+  /// Null = the assistant never answers this shop's live chats, which is what
+  /// every shop reads until someone switches one on. Set = a chat whose
+  /// Gorgias ticket was created at or after this instant may be answered by
+  /// the assistant, under the shared rules in AiSupportRules.
+  ///
+  /// A date rather than a boolean, compared against the chat's own start
+  /// time, for the same reason as wooNotesFrom above: switching a shop on can
+  /// never reach a chat already in progress.
+  aiChatFrom           DateTime?
+
   /// True = this shop's catalogue decides what the Forecast and Stock tabs show,
   /// and what "in stock" says.
   ///
@@ -87,6 +97,7 @@ model Shop {
   b2bCustomers          B2bCustomer[]
   deliveryPromises      DeliveryPromise[]
   knowledgeItems        KnowledgeItem[]
+  aiChatSessions        AiChatSession[]
   affiliateTransactions AffiliateTransaction[]
   mailboxes             Mailbox[]
   dinteroConfig         DinteroConfig?
@@ -1489,6 +1500,21 @@ model AiConversation {
   /// The order the conversation was about, if one was matched.
   orderNumber String?
 
+  /// Which shop's chat or email it came from. Null for rows written before
+  /// shops were known here.
+  shopId String?
+
+  /// The live chat this turn belongs to. Null for email and sandbox rows.
+  sessionId String?
+  session   AiChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  /// The channel's own id for the customer message this row answers. This is
+  /// the double-answer guard for chat: a row is CLAIMED with this id before
+  /// the assistant is asked, so a second delivery of the same message fails
+  /// the unique constraint and answers nothing. Null where the channel does
+  /// not number messages (email, sandbox).
+  externalMessageId String?
+
   /// good | bad, from the review screen. Null until someone judges it.
   rating     String?
   /// What it should have said. Becomes an example for later answers.
@@ -1499,6 +1525,50 @@ model AiConversation {
   @@unique([source, externalTicketId, createdAt])
   @@index([createdAt])
   @@index([decision])
+  @@unique([source, externalMessageId])
+  @@index([sessionId])
+}
+
+/// One live chat the assistant has been asked about, and whether it may still
+/// speak there.
+///
+/// The status is a one-way latch. `ai` means it may reply. `handed_over`
+/// means it handed the chat to a person and will never write on it again.
+/// `human` means a person wrote on the chat, which silences the assistant for
+/// good on that ticket. There is no hand-back in this version, deliberately:
+/// two writers on one chat window is the failure everyone would notice.
+model AiChatSession {
+  id String @id @default(cuid())
+
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  /// The channel's name and its own id for the conversation.
+  source           String @default("gorgias")
+  externalTicketId String
+
+  /// ai | handed_over | human
+  status String @default("ai")
+
+  customerEmail String?
+  /// Last language the assistant detected, nb | sv | da | fi | de | en.
+  language      String?
+
+  /// The newest customer message we have been told about.
+  lastCustomerMessageId String?
+  /// Replies the assistant has sent on this chat. Eight is the runaway cap.
+  replies               Int     @default(0)
+
+  handedOverAt   DateTime?
+  handoverReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations AiConversation[]
+
+  @@unique([source, externalTicketId])
+  @@index([shopId, status])
 }
 
 /// The Klaviyo connection. One account for the whole business, so a singleton
