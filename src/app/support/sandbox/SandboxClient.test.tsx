@@ -33,6 +33,9 @@ afterEach(() => vi.unstubAllGlobals())
 
 const SHOPS = [
   { id: 's-no', name: 'Panetti Norway' },
+  // Mazzetti Denmark is also a Danish shop and sorts first. panetti.dk is the
+  // one the assistant answers first, so the picker must prefer it by name.
+  { id: 's-mz', name: 'Mazzetti Denmark' },
   { id: 's-dk', name: 'Panetti Denmark' },
 ]
 
@@ -79,7 +82,7 @@ async function say(text: string) {
 }
 
 describe('the assistant sandbox', () => {
-  it('opens on the Danish shop, which is the one the assistant answers first', async () => {
+  it('opens on panetti.dk, not merely the first Danish shop in the list', async () => {
     mockFetch({ body: result() })
     draw()
 

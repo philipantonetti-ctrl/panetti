@@ -59,9 +59,15 @@ export function SandboxClient({ email }: { email: string }) {
       .then((body) => {
         if (!body) return
         setShops(body.shops)
-        // panetti.dk first, because it is the first shop the assistant answers.
-        const dk = (body.shops as Shop[]).find((s) => /denmark|\.dk/i.test(s.name))
-        setShopId((dk ?? body.shops[0])?.id ?? '')
+        /**
+         * panetti.dk first, because it is the first shop the assistant
+         * answers. Named twice on purpose: several brands have a Danish shop,
+         * and matching only "Denmark" opens on whichever of them sorts first.
+         */
+        const shops = body.shops as Shop[]
+        const danish = (s: Shop) => /denmark|\.dk/i.test(s.name)
+        const first = shops.find((s) => danish(s) && /panetti/i.test(s.name)) ?? shops.find(danish)
+        setShopId((first ?? shops[0])?.id ?? '')
       })
   }, [])
 
@@ -119,7 +125,7 @@ export function SandboxClient({ email }: { email: string }) {
   return (
     <AppShell email={email}>
       <PageHeader
-        title="Assistant sandbox"
+        title="Try the assistant"
         subtitle="Talk to it as a customer would. Nothing here reaches a customer or Gorgias."
       />
       <PageBody>

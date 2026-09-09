@@ -81,14 +81,20 @@ it('groups the sidebar by subject, with every entry still present', () => {
   expect(screen.getByRole('link', { name: 'Agents' }).getAttribute('href')).toBe('/support/agents')
   // Advisor moved out of Support AI's tabs to its own entry, below Inbox.
   const support = screen.getAllByRole('link').filter((a) =>
-    ['/support', '/support/agents', '/inbox', '/advisor'].includes(a.getAttribute('href')!),
+    ['/support', '/support/sandbox', '/support/agents', '/inbox', '/advisor'].includes(a.getAttribute('href')!),
   )
   expect(support.map((a) => a.getAttribute('href'))).toEqual([
     '/support',
+    '/support/sandbox',
     '/support/agents',
     '/inbox',
     '/advisor',
   ])
+  // The practice room. It was reachable only from a button on the Support
+  // page, and the client looked down the sidebar for it and did not find it.
+  expect(screen.getByRole('link', { name: 'Try the assistant' }).getAttribute('href')).toBe(
+    '/support/sandbox',
+  )
   expect(screen.getByRole('link', { name: 'Ambassadors' })).toBeDefined()
   expect(screen.getByRole('link', { name: 'Inventory and forecasting' })).toBeDefined()
   expect(screen.getByRole('link', { name: 'Product costs' })).toBeDefined()

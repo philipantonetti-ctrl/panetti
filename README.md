@@ -118,8 +118,9 @@ Switching a shop on, once:
    create the HTTP integration in Gorgias with exactly the URL and body shown
    (trigger: Ticket message created, method POST).
 3. Add a Gorgias rule so that integration fires only for that shop's chat.
-4. Practise first at Support -> Try the assistant in the sandbox: a wrong
-   answer plus a correction becomes an example it uses from the next turn.
+4. Practise first at Support -> Try the assistant (its own sidebar entry):
+   a wrong answer plus a correction becomes an example it uses from the next
+   turn.
 5. Set the shop's date. Start in draft mode and read the notes on real chats;
    switch the mode to auto when the drafts are right.
 

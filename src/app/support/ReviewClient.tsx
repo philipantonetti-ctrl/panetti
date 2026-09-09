@@ -134,7 +134,7 @@ export function ReviewClient({ email }: { email: string }) {
               href="/support/sandbox"
               className="rounded-[var(--radius-control)] border border-line px-3 py-1.5 text-[13px] text-ink hover:border-faint"
             >
-              Try the assistant in the sandbox
+              Try the assistant
             </Link>
           </div>
 
