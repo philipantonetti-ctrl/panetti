@@ -1,4 +1,4 @@
-import { gorgiasCredentials, GorgiasError, type GorgiasCredentials } from './client'
+import { fetchTicketMessages, gorgiasCredentials, GorgiasError, tagTicket, type GorgiasCredentials } from './client'
 import type { Channel } from './channel'
 
 /**
@@ -34,6 +34,21 @@ async function post(creds: GorgiasCredentials, path: string, body: unknown): Pro
 }
 
 /**
+ * Which Gorgias channel a reply goes out on.
+ *
+ * `via` is how the customer arrived; the reply channel is not always the same
+ * word. A chat ticket reports via as `gorgias_chat` (the widget) or
+ * `offline_capture` (the widget outside opening hours), and a message posted
+ * on either of those names is refused: the channel is `chat`. Everything the
+ * helpdesk itself made (`helpdesk`, `api`) is answered by email.
+ */
+export function replyChannelFor(via: string | null): string {
+  if (!via || via === 'api' || via === 'helpdesk') return 'email'
+  if (via === 'gorgias_chat' || via === 'offline_capture' || via === 'chat') return 'chat'
+  return via
+}
+
+/**
  * @param via what the customer wrote in on. The reply goes back the same way,
  * so an Instagram message is not answered by email.
  */
@@ -42,7 +57,7 @@ export function gorgiasChannel(via: string | null = 'email'): Channel | null {
   if (!creds) return null
 
   // An internal note is always a note, whatever channel the customer used.
-  const channel = via && via !== 'api' ? via : 'email'
+  const channel = replyChannelFor(via)
 
   return {
     name: 'gorgias',
@@ -66,6 +81,24 @@ export function gorgiasChannel(via: string | null = 'email'): Channel | null {
         public: false,
         body_text: text,
       })
+    },
+
+    async transcript(conversationId) {
+      const messages = await fetchTicketMessages(creds, conversationId)
+      // `public: false` is an internal note between agents. Replaying one to
+      // the model would let a note about a customer reach that customer.
+      return messages
+        .filter((m) => m.public !== false)
+        .map((m) => ({
+          id: String(m.id),
+          fromAgent: m.from_agent === true,
+          text: m.body_text ?? '',
+          at: m.created_datetime ?? '',
+        }))
+    },
+
+    async tag(conversationId, tag) {
+      await tagTicket(creds, conversationId, tag)
     },
   }
 }
