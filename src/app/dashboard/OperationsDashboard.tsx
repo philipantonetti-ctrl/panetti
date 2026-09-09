@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
-import { currentUser } from '@/lib/auth/current-user'
-import { canRunOperations } from '@/lib/auth/guard'
+import type { SessionUser } from '@/lib/auth/session'
 import { db } from '@/lib/db'
 import { ALERT_WINDOW_DAYS } from '@/lib/delivery/alerts'
 import { loadDelivery } from '@/lib/delivery/load'
@@ -17,13 +15,17 @@ import {
 import { getSetting } from '@/lib/settings'
 import { TodayCard } from './TodayCard'
 
-export const dynamic = 'force-dynamic'
-
 const DAY = 24 * 60 * 60 * 1000
 
 /**
- * The operations manager's first page: what needs doing, gathered from his own
+ * The operations manager's dashboard: what needs doing, gathered from his own
  * tabs, each row a link to the thing it is about.
+ *
+ * Same address as the owner's dashboard and a different page behind it. One
+ * word for one idea - the page you open on - rather than a second name for the
+ * same place, which is what the client asked for when he called this a
+ * dashboard.
+ *
  *
  * Server-rendered from the same functions the tabs themselves use - the
  * delivery view, the inventory forecast, Visma's open ledger - so there is no
@@ -35,10 +37,7 @@ const DAY = 24 * 60 * 60 * 1000
  * order-by dates, and what customers owe us, which is the Receivables tab he
  * already has - never what we paid or what we kept.
  */
-export default async function TodayPage() {
-  const user = await currentUser()
-  if (!canRunOperations(user)) redirect('/login')
-
+export async function OperationsDashboard({ user }: { user: SessionUser }) {
   const { timezone } = await getSetting()
   // One `now` for the whole page: a card computing its own a few milliseconds
   // later than its neighbour is a disagreement waiting for a midnight boundary.
@@ -86,10 +85,10 @@ export default async function TodayPage() {
     : 'No warehouse file has arrived yet.'
 
   return (
-    <AppShell email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'}>
+    <AppShell email={user.email} role="OPERATIONS">
       <PageHeader
-        title="Today"
-        subtitle={`Everything here is waiting for a decision. Parcels and orders go back ${ALERT_WINDOW_DAYS} days; a card with nothing in it means there is nothing to do.`}
+        title="Dashboard"
+        subtitle={`What needs doing today. Parcels and orders go back ${ALERT_WINDOW_DAYS} days; a card with nothing in it means there is nothing to do.`}
       />
       <PageBody>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

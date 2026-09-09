@@ -42,7 +42,9 @@ export async function POST(req: Request) {
   } else if (user.role === 'MARKETING') {
     redirectTo = '/ambassadors'
   } else if (user.role === 'OPERATIONS') {
-    redirectTo = '/today'
+    // Already the default, said out loud so an operations login coming through
+    // the ambassador door is never sent looking for an ambassador of its own.
+    redirectTo = '/dashboard'
   } else if (parsed.data.mode === 'ambassador') {
     const mine = await db.ambassador.findFirst({
       where: { email: user.email },
