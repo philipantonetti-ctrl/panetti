@@ -173,7 +173,7 @@ it('offers B2B to an admin and never to marketing', () => {
  * him, and the pages behind those entries are the owner's money.
  */
 describe('the operations sidebar', () => {
-  const HIS = ['Orders', 'Finance', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
+  const HIS = ['Today', 'Orders', 'Finance', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
   const NOT_HIS = [
     'Dashboard', 'Support AI', 'Agents', 'Inbox', 'Advisor briefing',
     'Marketing', 'Ambassadors', 'Product costs', 'Operational expenses',
@@ -200,9 +200,19 @@ describe('the operations sidebar', () => {
     }
   })
 
-  it('points its wordmark at Orders, which is where he lands', () => {
+  it('points its wordmark at Today, which is where he lands', () => {
     render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
-    expect(screen.getByRole('link', { name: /panetti-analytics/ }).getAttribute('href')).toBe('/orders')
+    expect(screen.getByRole('link', { name: /panetti-analytics/ }).getAttribute('href')).toBe('/today')
+  })
+
+  /**
+   * The client asked for a SHORTER sidebar once already, so his manager's new
+   * page does not quietly add an entry to his. He can still open /today by
+   * typing it, which is how he checks what his manager sees.
+   */
+  it("does not add Today to the owner's sidebar", () => {
+    render(<ToastProvider><AppShell email="a@b.test"><p>page</p></AppShell></ToastProvider>)
+    expect(screen.queryByRole('link', { name: 'Today' })).toBeNull()
   })
 
   /**

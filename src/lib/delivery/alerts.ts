@@ -26,8 +26,11 @@ const DAY = 24 * 60 * 60 * 1000
  * Bounds the candidate set in time, so the queue cannot silently fill with
  * history that will never alert. Also stops a flood on the day the feature is
  * switched on with a backdated tracking start.
+ *
+ * Exported because the operations manager's first page asks the same question
+ * - how far back is worth chasing - and two answers to one question drift.
  */
-const ALERT_WINDOW_DAYS = 90
+export const ALERT_WINDOW_DAYS = 90
 
 /**
  * How many candidates one run considers. With the outstanding-only filter and

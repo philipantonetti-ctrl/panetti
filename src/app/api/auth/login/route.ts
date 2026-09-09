@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   } else if (user.role === 'MARKETING') {
     redirectTo = '/ambassadors'
   } else if (user.role === 'OPERATIONS') {
-    redirectTo = '/orders'
+    redirectTo = '/today'
   } else if (parsed.data.mode === 'ambassador') {
     const mine = await db.ambassador.findFirst({
       where: { email: user.email },

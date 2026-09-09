@@ -183,6 +183,8 @@ describe('the operations manager is fenced onto his five tabs', () => {
     production()
     const token = await asOperations()
     for (const path of [
+      // His first page: what needs doing today, gathered from his own tabs.
+      '/today',
       '/orders',
       '/delivery',
       '/products',
@@ -220,8 +222,9 @@ describe('the operations manager is fenced onto his five tabs', () => {
       '/settings/shops',
     ]) {
       const res = await go(path, token)
+      // Back to his first page, which is where he starts every morning.
       expect(res.headers.get('location'), `${path} is not his`).toBe(
-        'https://panetti.vercel.app/orders',
+        'https://panetti.vercel.app/today',
       )
     }
   })
@@ -233,7 +236,7 @@ describe('the operations manager is fenced onto his five tabs', () => {
    */
   it('sends a guest on the operations tabs to /login', async () => {
     production()
-    for (const path of ['/orders', '/delivery', '/products', '/inventory', '/b2b']) {
+    for (const path of ['/today', '/orders', '/delivery', '/products', '/inventory', '/b2b']) {
       const res = await go(path)
       expect(res.headers.get('location'), path).toBe('https://panetti.vercel.app/login')
     }
@@ -254,7 +257,7 @@ describe('the operations manager is fenced onto his five tabs', () => {
   it('leaves the admin free to walk anywhere', async () => {
     production()
     const token = await asAdmin()
-    for (const path of ['/orders', '/dashboard', '/settings/users', '/b2b', '/finance']) {
+    for (const path of ['/today', '/orders', '/dashboard', '/settings/users', '/b2b', '/finance']) {
       const res = await go(path, token)
       expect(res.headers.get('location'), path).toBeNull()
     }

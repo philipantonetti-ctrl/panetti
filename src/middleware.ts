@@ -2,12 +2,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/auth/session'
 
 /**
- * The operations manager's tabs: the four under Operations, plus Orders.
+ * The operations manager's own pages: his first page, the four under
+ * Operations, and Orders.
  *
  * Named once and used twice below - as pages needing a session, and as the
  * pages this role may open - so the two can never drift apart.
  */
-const OPERATIONS_TABS = ['/orders', '/delivery', '/products', '/inventory', '/b2b']
+const OPERATIONS_TABS = ['/today', '/orders', '/delivery', '/products', '/inventory', '/b2b']
 
 /** Pages that need a session at all. Everything else passes straight through. */
 const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox', '/support', '/finance', '/advisor', ...OPERATIONS_TABS]
@@ -119,7 +120,7 @@ export async function middleware(req: NextRequest) {
   // marketing, support and the settings house all belong to the owner.
   if (user.role === 'OPERATIONS' && !isOperationsPage(req.nextUrl.pathname)) {
     const url = req.nextUrl.clone()
-    url.pathname = '/orders'
+    url.pathname = '/today'
     return NextResponse.redirect(url)
   }
 
