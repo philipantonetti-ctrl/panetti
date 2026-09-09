@@ -1,5 +1,7 @@
 import { timingSafeEqual } from 'crypto'
 import { NextResponse } from 'next/server'
+import { handleChatMessage } from '@/lib/support/chat'
+import { fetchTicketMessages, gorgiasCredentials } from '@/lib/support/client'
 import { gorgiasChannel } from '@/lib/support/gorgias-channel'
 import { handleMessage } from '@/lib/support/handle'
 
@@ -33,6 +35,10 @@ function authorised(req: Request): boolean {
 
 type Body = {
   ticketId?: string | number
+  /** chat | email | ... as Gorgias names the ticket's channel. */
+  channel?: string
+  /** ISO time the ticket was created; compared with the shop's chat switch. */
+  ticketCreatedAt?: string
   customerEmail?: string
   customerName?: string
   subject?: string
@@ -57,6 +63,72 @@ export async function POST(req: Request) {
   const ticketId = body.ticketId === undefined ? '' : String(body.ticketId).trim()
   if (!ticketId) {
     return NextResponse.json({ error: 'Which ticket?' }, { status: 400, headers: NO_STORE })
+  }
+
+  /**
+   * A chat, on a shop named in the URL: the chat turn owns it, agent messages
+   * included, because telling its own replies from a person's is its job.
+   * Without a shop the body is handled the old way, as an email-style ticket.
+   *
+   * The MESSAGE is read from the API rather than taken from the body. Gorgias
+   * documents no `message` template scope for an HTTP integration - their
+   * macro reference says outright that it does not document `from_agent` -
+   * and that field is what stops the assistant answering itself. So the
+   * template passes ticket facts, which Gorgias does document, and the three
+   * facts about the message come from the TicketMessage object, which it
+   * also documents.
+   */
+  const shopId = new URL(req.url).searchParams.get('shop')?.trim() || null
+  const isChat = body.channel === 'chat' || body.via === 'gorgias_chat' || body.via === 'offline_capture'
+  if (shopId && isChat) {
+    const creds = gorgiasCredentials()
+    if (!creds) {
+      return NextResponse.json(
+        { ok: true, decision: 'skipped', reason: 'Gorgias credentials are not configured' },
+        { headers: NO_STORE },
+      )
+    }
+    try {
+      // Oldest first, so the newest is the one that woke us. A message that
+      // arrived while we were being called is newer still, and answering that
+      // one is right: `superseded` in the chat turn settles the ordering.
+      const messages = await fetchTicketMessages(creds, ticketId)
+      const newest = messages[messages.length - 1]
+      if (!newest) {
+        return NextResponse.json(
+          { ok: true, decision: 'skipped', reason: 'The ticket has no message to read' },
+          { headers: NO_STORE },
+        )
+      }
+      const via = newest.via ?? body.via ?? 'chat'
+      const channel = gorgiasChannel(via)
+      if (!channel) {
+        return NextResponse.json(
+          { ok: true, decision: 'skipped', reason: 'Gorgias credentials are not configured' },
+          { headers: NO_STORE },
+        )
+      }
+      const startedAt = body.ticketCreatedAt ? new Date(body.ticketCreatedAt) : null
+      const result = await handleChatMessage(
+        {
+          shopId,
+          conversationId: ticketId,
+          messageId: String(newest.id),
+          customerEmail: body.customerEmail?.trim().toLowerCase() || null,
+          customerName: body.customerName?.trim() || null,
+          text: newest.body_text ?? '',
+          via,
+          fromAgent: newest.from_agent === true,
+          conversationStartedAt: startedAt && !Number.isNaN(startedAt.getTime()) ? startedAt : null,
+        },
+        { channel },
+      )
+      return NextResponse.json({ ok: true, ...result }, { headers: NO_STORE })
+    } catch (e) {
+      // 200 deliberately, for the same reason as below: Gorgias does not retry.
+      console.error(e)
+      return NextResponse.json({ ok: false, decision: 'failed', error: 'Could not handle the message' }, { headers: NO_STORE })
+    }
   }
 
   // Our own replies and our own notes come back through the same trigger.
