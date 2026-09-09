@@ -99,6 +99,46 @@ The endpoint is read-only and reaches nothing in Gorgias. It answers 200 with
 `found: false` for an address we have never sold to, because Gorgias hides an
 empty widget and an error would read as a broken integration instead.
 
+### The assistant on live chat
+
+The support assistant (`src/lib/support/`) can answer a shop's Gorgias live
+chats. Off for every shop until an admin sets a date on
+Settings -> Support assistant -> Live chat, per shop. It answers chats
+started from that date, under the same rules as email: draft mode leaves
+suggestions as internal notes, auto mode answers the ticked categories by
+itself and hands anything else to a person with a note and the tag
+`ai-handover`. A person writing on a chat silences the assistant on that
+chat for good.
+
+Switching a shop on, once:
+
+1. Set `GORGIAS_WEBHOOK_SECRET` in Vercel (any long random string) and
+   redeploy.
+2. Open Settings -> Support assistant, press Show setup beside the shop, and
+   create the HTTP integration in Gorgias with exactly the URL and body shown
+   (trigger: Ticket message created, method POST).
+3. Add a Gorgias rule so that integration fires only for that shop's chat.
+4. Practise first at Support -> Try the assistant in the sandbox: a wrong
+   answer plus a correction becomes an example it uses from the next turn.
+5. Set the shop's date. Start in draft mode and read the notes on real chats;
+   switch the mode to auto when the drafts are right.
+
+The webhook is `/api/gorgias/webhook?token=<secret>&shop=<shop id>`. Gorgias
+does not retry a failed delivery, so the route answers 200 to everything it
+has taken responsibility for and records the problem on the conversation.
+
+The body that page prints carries only TICKET facts, and deliberately nothing
+about the message. Gorgias documents template variables for the ticket
+(`{{ticket.id}}`, `{{ticket.channel}}`, `{{ticket.created_datetime}}`,
+`{{ticket.customer.email}}`, `{{ticket.customer.firstname}}`,
+`{{ticket.subject}}`) but documents no `message` scope at all - their macro
+reference says outright that it does not document `from_agent`, which is the
+field that stops the assistant answering its own replies. So the webhook reads
+the message from `GET /api/messages?ticket_id=...` instead, where `id`,
+`body_text`, `from_agent` and `via` are documented fields of the
+TicketMessage object. If a future Gorgias release documents a message scope,
+the template can carry it and the extra API call can go.
+
 ## The support inbox
 
 Every brand's support address in one queue, under Inbox. Each email becomes a
