@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { useToast } from '@/components/toast/useToast'
 import { LANGUAGES } from '@/lib/inbox/classify'
+import { DEFAULT_ESCALATE_WORDS } from '@/lib/support/rules'
 
 /**
  * Where a person decides how the support assistant behaves.
@@ -54,6 +55,8 @@ const MODE_HELP: Record<string, string> = {
   auto: 'It may answer by itself, but only the categories ticked below and only when sure enough.',
 }
 
+type ChatShop = { id: string; name: string; aiChatFrom: string | null; webhookUrl: string | null }
+
 export function SupportAiClient({ email }: { email: string }) {
   const toast = useToast()
   const [items, setItems] = useState<Item[] | null>(null)
@@ -62,6 +65,12 @@ export function SupportAiClient({ email }: { email: string }) {
   const [rules, setRules] = useState<Rules | null>(null)
   const [categories, setCategories] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  const [chatShops, setChatShops] = useState<ChatShop[]>([])
+  const [secretConfigured, setSecretConfigured] = useState(true)
+  const [bodyTemplate, setBodyTemplate] = useState('')
+  const [setupFor, setSetupFor] = useState<string | null>(null)
+  const [savingShop, setSavingShop] = useState<string | null>(null)
+  const [prefilled, setPrefilled] = useState(false)
 
   const [draft, setDraft] = useState({ kind: 'faq', title: '', body: '', shopId: '', country: '', language: '', sku: '' })
 
@@ -75,21 +84,30 @@ export function SupportAiClient({ email }: { email: string }) {
       Promise.all([
         fetch('/api/support/knowledge').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/support/rules').then((r) => (r.ok ? r.json() : null)),
-      ]).then(([k, r]) => {
+        fetch('/api/support/chat-settings').then((r) => (r.ok ? r.json() : null)),
+      ]).then(([k, r, c]) => {
         if (k) {
           setItems(k.items)
           setShops(k.shops)
           setKinds(k.kinds)
         }
         if (r) {
+          const empty = r.rules.escalateKeywords.length === 0
           setRules({
             mode: r.rules.mode,
             autoCategories: r.rules.autoCategories,
-            escalateKeywords: r.rules.escalateKeywords,
+            // The words for "I want a person", suggested once; saving keeps them.
+            escalateKeywords: empty ? [...DEFAULT_ESCALATE_WORDS] : r.rules.escalateKeywords,
             minConfidence: r.rules.minConfidence,
             extraInstructions: r.rules.extraInstructions ?? '',
           })
+          setPrefilled(empty)
           setCategories(r.categories)
+        }
+        if (c) {
+          setChatShops(c.shops)
+          setSecretConfigured(c.secretConfigured)
+          setBodyTemplate(c.bodyTemplate)
         }
       }),
     [],
@@ -98,6 +116,38 @@ export function SupportAiClient({ email }: { email: string }) {
   useEffect(() => {
     void load()
   }, [load])
+
+  async function setChatDate(shop: ChatShop, date: string) {
+    setSavingShop(shop.id)
+    try {
+      const res = await fetch('/api/support/chat-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: shop.id, date: date || null }),
+      })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save')
+        return
+      }
+      toast.success(
+        date
+          ? `${shop.name}: the assistant answers chats started from ${date}`
+          : `${shop.name}: the assistant no longer answers chats`,
+      )
+      setChatShops((s) => s.map((x) => (x.id === shop.id ? { ...x, aiChatFrom: date || null } : x)))
+    } finally {
+      setSavingShop(null)
+    }
+  }
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success('Copied')
+    } catch {
+      toast.error('Could not copy. Select it and copy by hand.')
+    }
+  }
 
   async function saveRules() {
     if (!rules || saving) return
@@ -217,6 +267,11 @@ export function SupportAiClient({ email }: { email: string }) {
                     placeholder="lawyer, advokat, compensation, erstatning, injury"
                     className="mt-0.5 w-full rounded-[var(--radius-control)] border border-line bg-surface px-2 py-1.5 text-ink"
                   />
+                  {prefilled && (
+                    <span className="mt-0.5 block text-[11px] text-faint">
+                      Suggested words for &quot;I want a person&quot;. Press Save to keep them.
+                    </span>
+                  )}
                 </label>
 
                 <label className="block">
@@ -258,6 +313,102 @@ export function SupportAiClient({ email }: { email: string }) {
                 </div>
               </div>
             )}
+          </section>
+
+          <section className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
+            <h2 className="mb-1 text-[15px] font-semibold text-ink">Live chat, per shop</h2>
+            <p className="mb-3 text-[12px] text-muted">
+              Set a date and the assistant answers that shop&apos;s Gorgias chats started from that day, under the
+              rules above. Leave it empty and it answers none. Each shop also needs one HTTP integration in Gorgias:
+              press Show setup for the exact values.
+            </p>
+            {!secretConfigured && (
+              <p className="mb-3 rounded-[var(--radius-control)] border border-warn px-3 py-2 text-[12px] text-warn">
+                GORGIAS_WEBHOOK_SECRET is not set on the server, so there is no URL to paste yet.
+              </p>
+            )}
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-line text-left text-[12px] text-muted">
+                  <th className="py-2 pr-4">Shop</th>
+                  <th className="py-2 pr-4">Assistant answers chats from</th>
+                  <th className="py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {chatShops.map((s) => (
+                  <tr key={s.id} className="border-b border-line align-top last:border-b-0">
+                    <td className="py-2.5 pr-4 font-medium text-ink">{s.name}</td>
+                    <td className="py-2.5 pr-4">
+                      <input
+                        type="date"
+                        aria-label={`Assistant answers chats for ${s.name} from`}
+                        defaultValue={s.aiChatFrom ?? ''}
+                        onChange={(e) => void setChatDate(s, e.target.value)}
+                        disabled={savingShop === s.id}
+                        className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1.5 text-xs text-ink disabled:opacity-60"
+                      />
+                      {s.aiChatFrom && (
+                        <button
+                          onClick={() => void setChatDate(s, '')}
+                          disabled={savingShop === s.id}
+                          className="ml-2 text-xs font-medium text-loss hover:underline disabled:opacity-60"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <button onClick={() => setSetupFor(setupFor === s.id ? null : s.id)} className="text-xs text-accent">
+                        {setupFor === s.id ? 'Hide setup' : 'Show setup'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {setupFor &&
+              (() => {
+                const s = chatShops.find((x) => x.id === setupFor)
+                if (!s) return null
+                return (
+                  <div className="mt-3 space-y-2 rounded-[var(--radius-control)] border border-line bg-panel p-3 text-[12px] text-muted">
+                    <p className="text-ink">In Gorgias: Settings, Integrations, HTTP integration, Add. Fill in exactly this for {s.name}.</p>
+                    <ol className="list-decimal space-y-1 pl-4">
+                      <li>Name: Panetti assistant, {s.name}</li>
+                      <li>Trigger: Ticket message created</li>
+                      <li>Method: POST</li>
+                      <li>
+                        URL:{' '}
+                        {s.webhookUrl ? (
+                          <>
+                            <code className="break-all text-ink">{s.webhookUrl}</code>{' '}
+                            <button onClick={() => void copy(s.webhookUrl!)} className="text-accent">
+                              Copy
+                            </button>
+                          </>
+                        ) : (
+                          'not available until the secret is set'
+                        )}
+                      </li>
+                      <li>Headers: Content-Type: application/json</li>
+                      <li>
+                        Body:{' '}
+                        <button onClick={() => void copy(bodyTemplate)} className="text-accent">
+                          Copy
+                        </button>
+                        <pre className="mt-1 overflow-x-auto rounded-[var(--radius-control)] border border-line bg-surface p-2 text-[11px] text-ink">
+                          {bodyTemplate}
+                        </pre>
+                      </li>
+                      <li>
+                        Then add a Gorgias rule so it only fires for this shop&apos;s chat: when a ticket message is created,
+                        if channel is chat and integration is the {s.name} chat, trigger this HTTP integration.
+                      </li>
+                    </ol>
+                  </div>
+                )
+              })()}
           </section>
 
           <section className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
