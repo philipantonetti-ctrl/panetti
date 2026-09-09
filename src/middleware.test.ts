@@ -183,8 +183,9 @@ describe('the operations manager is fenced onto his five tabs', () => {
     production()
     const token = await asOperations()
     for (const path of [
-      // His first page: what needs doing today, gathered from his own tabs.
-      '/today',
+      // His first page. Same address as the owner's dashboard, a different
+      // page behind it: the owner's is the money, his is what needs doing.
+      '/dashboard',
       '/orders',
       '/delivery',
       '/products',
@@ -208,7 +209,6 @@ describe('the operations manager is fenced onto his five tabs', () => {
     production()
     const token = await asOperations()
     for (const path of [
-      '/dashboard',
       // The other Finance tab: Dintero's payouts, with the fee it took.
       '/finance/payouts',
       '/marketing',
@@ -224,7 +224,7 @@ describe('the operations manager is fenced onto his five tabs', () => {
       const res = await go(path, token)
       // Back to his first page, which is where he starts every morning.
       expect(res.headers.get('location'), `${path} is not his`).toBe(
-        'https://panetti.vercel.app/today',
+        'https://panetti.vercel.app/dashboard',
       )
     }
   })
@@ -236,7 +236,7 @@ describe('the operations manager is fenced onto his five tabs', () => {
    */
   it('sends a guest on the operations tabs to /login', async () => {
     production()
-    for (const path of ['/today', '/orders', '/delivery', '/products', '/inventory', '/b2b']) {
+    for (const path of ['/dashboard', '/orders', '/delivery', '/products', '/inventory', '/b2b']) {
       const res = await go(path)
       expect(res.headers.get('location'), path).toBe('https://panetti.vercel.app/login')
     }
@@ -257,7 +257,7 @@ describe('the operations manager is fenced onto his five tabs', () => {
   it('leaves the admin free to walk anywhere', async () => {
     production()
     const token = await asAdmin()
-    for (const path of ['/today', '/orders', '/dashboard', '/settings/users', '/b2b', '/finance']) {
+    for (const path of ['/dashboard', '/orders', '/settings/users', '/b2b', '/finance']) {
       const res = await go(path, token)
       expect(res.headers.get('location'), path).toBeNull()
     }

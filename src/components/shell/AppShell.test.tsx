@@ -173,9 +173,9 @@ it('offers B2B to an admin and never to marketing', () => {
  * him, and the pages behind those entries are the owner's money.
  */
 describe('the operations sidebar', () => {
-  const HIS = ['Today', 'Orders', 'Finance', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
+  const HIS = ['Dashboard', 'Orders', 'Finance', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
   const NOT_HIS = [
-    'Dashboard', 'Support AI', 'Agents', 'Inbox', 'Advisor briefing',
+    'Support AI', 'Agents', 'Inbox', 'Advisor briefing',
     'Marketing', 'Ambassadors', 'Product costs', 'Operational expenses',
     'Shops', 'Ad accounts', 'Delivery settings', 'Settings',
   ]
@@ -200,19 +200,24 @@ describe('the operations sidebar', () => {
     }
   })
 
-  it('points its wordmark at Today, which is where he lands', () => {
+  it('points its wordmark at the dashboard, which is where he lands', () => {
     render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
-    expect(screen.getByRole('link', { name: /panetti-analytics/ }).getAttribute('href')).toBe('/today')
+    expect(screen.getByRole('link', { name: /panetti-analytics/ }).getAttribute('href')).toBe('/dashboard')
   })
 
   /**
-   * The client asked for a SHORTER sidebar once already, so his manager's new
-   * page does not quietly add an entry to his. He can still open /today by
-   * typing it, which is how he checks what his manager sees.
+   * His Dashboard entry points at the same address the owner's does. One word
+   * for one idea - the page you open on - with a different page behind it for
+   * each of them, and no new entry on the owner's sidebar, which he asked to
+   * keep short.
    */
-  it("does not add Today to the owner's sidebar", () => {
+  it('sends him to the same address the owner’s Dashboard uses', () => {
+    const { unmount } = render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
+    expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/dashboard')
+    unmount()
+
     render(<ToastProvider><AppShell email="a@b.test"><p>page</p></AppShell></ToastProvider>)
-    expect(screen.queryByRole('link', { name: 'Today' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/dashboard')
   })
 
   /**

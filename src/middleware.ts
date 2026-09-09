@@ -2,16 +2,18 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE, verifySession } from '@/lib/auth/session'
 
 /**
- * The operations manager's own pages: his first page, the four under
- * Operations, and Orders.
+ * The operations manager's own pages: the dashboard he opens on, the four
+ * under Operations, and Orders.
  *
  * Named once and used twice below - as pages needing a session, and as the
- * pages this role may open - so the two can never drift apart.
+ * pages this role may open - so the two can never drift apart. `/dashboard`
+ * is one address serving two different pages: the owner's figures, or his
+ * manager's list of what needs doing.
  */
-const OPERATIONS_TABS = ['/today', '/orders', '/delivery', '/products', '/inventory', '/b2b']
+const OPERATIONS_TABS = ['/dashboard', '/orders', '/delivery', '/products', '/inventory', '/b2b']
 
 /** Pages that need a session at all. Everything else passes straight through. */
-const PROTECTED_PAGES = ['/dashboard', '/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox', '/support', '/finance', '/advisor', ...OPERATIONS_TABS]
+const PROTECTED_PAGES = ['/marketing', '/settings', '/portal', '/account', '/ambassadors', '/inbox', '/support', '/finance', '/advisor', ...OPERATIONS_TABS]
 
 /** Pages an ambassador is allowed to open. Everything else is the company's. */
 const AMBASSADOR_PAGES = ['/portal', '/account']
@@ -120,7 +122,7 @@ export async function middleware(req: NextRequest) {
   // marketing, support and the settings house all belong to the owner.
   if (user.role === 'OPERATIONS' && !isOperationsPage(req.nextUrl.pathname)) {
     const url = req.nextUrl.clone()
-    url.pathname = '/today'
+    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
