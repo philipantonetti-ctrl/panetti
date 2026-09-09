@@ -126,7 +126,7 @@ export function SandboxClient({ email }: { email: string }) {
     <AppShell email={email}>
       <PageHeader
         title="Try the assistant"
-        subtitle="Talk to it as a customer would. Nothing here reaches a customer or Gorgias."
+        subtitle="Practice with the assistant before a customer ever sees it. Write as a customer would, then mark an answer wrong to teach it. Nothing on this page reaches a real customer or Gorgias."
       />
       <PageBody>
         <div className="grid max-w-[1100px] gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -170,7 +170,10 @@ export function SandboxClient({ email }: { email: string }) {
 
             <div className="min-h-[320px] space-y-2 rounded-[var(--radius-card)] border border-line bg-surface p-3">
               {lines.length === 0 && (
-                <p className="text-[13px] text-muted">Write what a customer might write, in their language. For example: Hvor er min pakke?</p>
+                <p className="text-[13px] text-muted">
+                  Write what a customer might write, in their own language. For example: Hvor er min pakke? You
+                  will see its answer, whether it would really have sent it, and what it was looking at.
+                </p>
               )}
               {lines.map((l, i) => (
                 <div key={i} className={l.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
@@ -266,7 +269,10 @@ export function SandboxClient({ email }: { email: string }) {
           <aside className="rounded-[var(--radius-card)] border border-line bg-surface p-3 text-[12px]">
             <h2 className="mb-2 text-[13px] font-semibold text-ink">What it saw</h2>
             {!last ? (
-              <p className="text-muted">After the first answer, the customer facts and orders it had in front of it appear here.</p>
+              <p className="text-muted">
+                After the first answer, this shows the customer and the orders the assistant was looking at, so
+                you can see what it knew before it wrote.
+              </p>
             ) : (
               <div className="space-y-2">
                 <div className="text-muted">Customer: {last.saw.customer ?? 'unknown, no orders for this email'}</div>
