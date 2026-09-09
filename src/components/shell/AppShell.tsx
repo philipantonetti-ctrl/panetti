@@ -73,6 +73,23 @@ const ORDERS_ITEM: NavItem = {
 }
 
 /**
+ * The operations manager's first page: what needs doing today, gathered from
+ * his own tabs. His alone - the owner asked for a SHORTER sidebar once, so his
+ * is left exactly as it was. He can still open /today by typing it.
+ */
+const TODAY_ITEM: NavItem = {
+  href: '/today',
+  label: 'Today',
+  icon: icon(
+    <>
+      <path d="M4 5h16v15H4z" />
+      <path d="M4 9h16" />
+      <path d="m8 14 2 2 4-4" />
+    </>,
+  ),
+}
+
+/**
  * Receivables, which the operations manager shares with the owner. His menu
  * and the owner's point at the same entry, so the two cannot drift.
  */
@@ -352,7 +369,7 @@ const MARKETING_NAV: { section: string; items: NavItem[] }[] = [
  * headings match the owner's so the two are talking about the same product.
  */
 const OPERATIONS_NAV: { section: string; items: NavItem[] }[] = [
-  { section: 'Overview', items: [ORDERS_ITEM, FINANCE_ITEM] },
+  { section: 'Overview', items: [TODAY_ITEM, ORDERS_ITEM, FINANCE_ITEM] },
   { section: 'Operations', items: OPERATIONS_ITEMS },
 ]
 
@@ -414,7 +431,7 @@ export function AppShell({
   }
 
   const groups = role === 'MARKETING' ? MARKETING_NAV : role === 'OPERATIONS' ? OPERATIONS_NAV : NAV
-  const home = role === 'MARKETING' ? '/ambassadors' : role === 'OPERATIONS' ? '/orders' : '/dashboard'
+  const home = role === 'MARKETING' ? '/ambassadors' : role === 'OPERATIONS' ? '/today' : '/dashboard'
 
   /**
    * Which groups stand open. Starts empty (everything closed) and loads the
