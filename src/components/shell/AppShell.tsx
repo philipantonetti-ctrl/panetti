@@ -208,6 +208,21 @@ const NAV: { section: string; items: NavItem[] }[] = [
         ),
       },
       {
+        href: '/support/sandbox',
+        // The client's own words for what he asked for: "try it out in the
+        // software first". "Sandbox" is our word, and he looked down this
+        // sidebar for the thing he had asked for and did not find it.
+        label: 'Try the assistant',
+        // A speech bubble with a spark: talking to it, and it is the machine
+        // talking back. Whole coordinates, so it stays crisp at 16px.
+        icon: icon(
+          <>
+            <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+            <path d="m12 9 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z" />
+          </>,
+        ),
+      },
+      {
         href: '/support/agents',
         label: 'Agents',
         // One person in front: this page is people, where Support AI is the

@@ -8,6 +8,7 @@ vi.mock('@/lib/auth/current-user', () => ({
 const { GET } = await import('./route')
 
 const PREFIX = 'convroute-'
+const PRACTICE_ONLY = 'convroute-practice-only'
 async function cleanup() {
   await db.aiConversation.deleteMany({ where: { externalTicketId: { startsWith: PREFIX } } })
 }
@@ -17,7 +18,10 @@ beforeEach(async () => {
   await db.aiConversation.createMany({
     data: [
       { source: 'gorgias', externalTicketId: `${PREFIX}1`, question: 'live', decision: 'sent' },
-      { source: 'sandbox', externalTicketId: `${PREFIX}sandbox:1`, question: 'practice', decision: 'sent' },
+      // A decision nothing else in the suite uses, so "is practice counted?"
+      // can be asked of the counts object directly rather than by comparing
+      // two totals taken a moment apart while other files are writing rows.
+      { source: 'sandbox', externalTicketId: `${PREFIX}sandbox:1`, question: 'practice', decision: PRACTICE_ONLY },
     ],
   })
 })
@@ -29,11 +33,12 @@ describe('GET /api/support/conversations', () => {
     const body = await (await get('decision=all')).json()
     const ours = body.conversations.filter((c: { externalTicketId: string }) => c.externalTicketId.startsWith(PREFIX))
     expect(ours.map((c: { question: string }) => c.question)).toEqual(['live'])
-    // Counts are over everything, so only prove the practice row is not among them.
-    const practice = await db.aiConversation.count({ where: { source: 'sandbox' } })
-    const live = await db.aiConversation.count({ where: { source: { not: 'sandbox' } } })
-    expect(Object.values(body.counts as Record<string, number>).reduce((a, b) => a + b, 0)).toBe(live)
-    expect(practice).toBeGreaterThan(0)
+
+    // The practice row is the only row in the whole database with this
+    // decision, so the counts having no such key is exactly the rule.
+    expect(await db.aiConversation.count({ where: { decision: PRACTICE_ONLY } })).toBe(1)
+    expect(body.counts).not.toHaveProperty(PRACTICE_ONLY)
+    expect(body.counts).toHaveProperty('sent')
   })
 
   it('shows practice runs on request', async () => {
