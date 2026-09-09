@@ -16,7 +16,7 @@ async function signIn(page: Page, email: string) {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill('password123')
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.waitForURL(/\/(orders|dashboard)/)
+  await page.waitForURL(/\/dashboard/)
 }
 
 const headersOf = (page: Page) => page.locator('table thead th').allTextContents()
@@ -120,10 +120,11 @@ test.beforeAll(async () => {
 
 test.afterAll(sweep)
 
-test('signing in lands him on Orders with only his five tabs in the menu', async ({ page }) => {
+test('signing in lands him on his dashboard with only his own pages in the menu', async ({ page }) => {
   await signIn(page, 'operations@ecom.test')
-  await expect(page).toHaveURL(/\/orders/)
+  await expect(page).toHaveURL(/\/dashboard/)
 
+  await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).toHaveCount(1)
   await expect(page.getByRole('link', { name: 'Orders', exact: true })).toHaveCount(1)
 
   await expect(page.getByRole('link', { name: 'Finance', exact: true })).toHaveCount(1)
@@ -132,18 +133,18 @@ test('signing in lands him on Orders with only his five tabs in the menu', async
   for (const label of ['Delivery', 'Products', 'Inventory and forecasting', 'B2B']) {
     await expect(page.getByRole('link', { name: label, exact: true }), label).toHaveCount(1)
   }
-  for (const label of ['Dashboard', 'Marketing', 'Ambassadors', 'Settings', 'Inbox']) {
+  for (const label of ['Marketing', 'Ambassadors', 'Settings', 'Inbox']) {
     await expect(page.getByRole('link', { name: label, exact: true }), label).toHaveCount(0)
   }
 })
 
-test('typing the owner\'s pages into the URL walks him back to Orders', async ({ page }) => {
+test('typing the owner\'s pages into the URL walks him back to his dashboard', async ({ page }) => {
   await signIn(page, 'operations@ecom.test')
 
   // /finance itself is his - the Receivables tab. Its sibling is not.
-  for (const path of ['/dashboard', '/finance/payouts', '/settings/users', '/settings/costs', '/marketing', '/advisor']) {
+  for (const path of ['/finance/payouts', '/settings/users', '/settings/costs', '/marketing', '/advisor']) {
     await page.goto(path)
-    await expect(page, path).toHaveURL(/\/orders/)
+    await expect(page, path).toHaveURL(/\/dashboard/)
   }
 })
 
@@ -245,7 +246,7 @@ test('Receivables opens for him, and Payouts does not', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Payouts', exact: true })).toHaveCount(0)
 
   await page.goto('/finance/payouts')
-  await expect(page).toHaveURL(/\/orders/)
+  await expect(page).toHaveURL(/\/dashboard/)
 })
 
 test('the owner still has both Finance tabs', async ({ page }) => {
@@ -262,4 +263,64 @@ test('the owner still has both Finance tabs', async ({ page }) => {
 test('Finance sits in his sidebar, next to Orders', async ({ page }) => {
   await signIn(page, 'operations@ecom.test')
   await expect(page.getByRole('link', { name: 'Finance', exact: true })).toHaveCount(1)
+})
+
+/**
+ * His first page. The rules that pick and rank each card are unit-tested away
+ * from the database; what is proved here is that the page draws all five, that
+ * a real overdue invoice reaches it, and that its rows lead somewhere useful.
+ */
+const CARDS = [
+  'Parcels late',
+  'Orders with no parcel',
+  'Stock to order',
+  'Overdue invoices',
+  'Warehouse file',
+]
+
+test('his dashboard gathers a card from each part of his job', async ({ page }) => {
+  await signIn(page, 'operations@ecom.test')
+  await expect(page).toHaveURL(/\/dashboard/)
+  await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible()
+
+  for (const title of CARDS) {
+    await expect(page.getByRole('heading', { name: title, exact: true }), title).toBeVisible()
+  }
+})
+
+test('an overdue invoice reaches his first page and leads to Receivables', async ({ page }) => {
+  await signIn(page, 'operations@ecom.test')
+
+  const invoice = page.getByRole('link', { name: new RegExp(`${MARKER} Verkkokauppa`) })
+  await expect(invoice).toBeVisible()
+  await expect(invoice).toContainText('overdue')
+  expect(await invoice.getAttribute('href')).toBe('/finance')
+
+  await invoice.click()
+  await expect(page).toHaveURL(/\/finance$/)
+})
+
+/**
+ * One address, two pages. The owner opening /dashboard gets his own figures,
+ * not his manager's job list - and the sidebar he asked to keep short gains
+ * nothing, because both of them already had a Dashboard entry.
+ */
+test('the same address gives the owner his own dashboard, not his manager\u2019s', async ({ page }) => {
+  await signIn(page, 'admin@ecom.test')
+  await expect(page).toHaveURL(/\/dashboard/)
+
+  await expect(page.getByText('Compare shops')).toBeVisible()
+  for (const title of CARDS) {
+    await expect(page.getByRole('heading', { name: title, exact: true }), title).toHaveCount(0)
+  }
+})
+
+/** Landing on the site root sends each of them to the page that is theirs. */
+test('the site root sends him to his dashboard rather than an ambassador portal', async ({ page }) => {
+  await signIn(page, 'operations@ecom.test')
+
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/dashboard/)
+  await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Parcels late', exact: true })).toBeVisible()
 })

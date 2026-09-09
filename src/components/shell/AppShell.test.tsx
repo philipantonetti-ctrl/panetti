@@ -173,9 +173,9 @@ it('offers B2B to an admin and never to marketing', () => {
  * him, and the pages behind those entries are the owner's money.
  */
 describe('the operations sidebar', () => {
-  const HIS = ['Orders', 'Finance', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
+  const HIS = ['Dashboard', 'Orders', 'Finance', 'Delivery', 'Products', 'Inventory and forecasting', 'B2B']
   const NOT_HIS = [
-    'Dashboard', 'Support AI', 'Agents', 'Inbox', 'Advisor briefing',
+    'Support AI', 'Agents', 'Inbox', 'Advisor briefing',
     'Marketing', 'Ambassadors', 'Product costs', 'Operational expenses',
     'Shops', 'Ad accounts', 'Delivery settings', 'Settings',
   ]
@@ -200,9 +200,24 @@ describe('the operations sidebar', () => {
     }
   })
 
-  it('points its wordmark at Orders, which is where he lands', () => {
+  it('points its wordmark at the dashboard, which is where he lands', () => {
     render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
-    expect(screen.getByRole('link', { name: /panetti-analytics/ }).getAttribute('href')).toBe('/orders')
+    expect(screen.getByRole('link', { name: /panetti-analytics/ }).getAttribute('href')).toBe('/dashboard')
+  })
+
+  /**
+   * His Dashboard entry points at the same address the owner's does. One word
+   * for one idea - the page you open on - with a different page behind it for
+   * each of them, and no new entry on the owner's sidebar, which he asked to
+   * keep short.
+   */
+  it('sends him to the same address the owner’s Dashboard uses', () => {
+    const { unmount } = render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
+    expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/dashboard')
+    unmount()
+
+    render(<ToastProvider><AppShell email="a@b.test"><p>page</p></AppShell></ToastProvider>)
+    expect(screen.getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe('/dashboard')
   })
 
   /**

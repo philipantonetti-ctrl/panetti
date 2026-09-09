@@ -4,8 +4,8 @@ import { SignInForm } from '@/components/SignInForm'
 
 /** Where a signed-in person belongs, matching the login route's landings. */
 function landingFor(role: string): string {
-  if (role === 'ADMIN') return '/dashboard'
-  if (role === 'OPERATIONS') return '/orders'
+  // Both dashboards live at one address; the role decides which page is drawn.
+  if (role === 'ADMIN' || role === 'OPERATIONS') return '/dashboard'
   if (role === 'MARKETING') return '/ambassadors'
   return '/portal'
 }

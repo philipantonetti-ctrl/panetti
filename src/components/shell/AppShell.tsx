@@ -73,6 +73,27 @@ const ORDERS_ITEM: NavItem = {
 }
 
 /**
+ * The operations manager's dashboard: what needs doing, gathered from his own
+ * tabs.
+ *
+ * The same label and the same address as the owner's Dashboard, because it is
+ * the same idea - the page you open on - with a different page behind it for
+ * each of them. Its own entry rather than the owner's only because the icon
+ * should say what is actually there: a checklist, not a rising chart.
+ */
+const OPERATIONS_DASHBOARD_ITEM: NavItem = {
+  href: '/dashboard',
+  label: 'Dashboard',
+  icon: icon(
+    <>
+      <path d="M4 5h16v15H4z" />
+      <path d="M4 9h16" />
+      <path d="m8 14 2 2 4-4" />
+    </>,
+  ),
+}
+
+/**
  * Receivables, which the operations manager shares with the owner. His menu
  * and the owner's point at the same entry, so the two cannot drift.
  */
@@ -352,7 +373,7 @@ const MARKETING_NAV: { section: string; items: NavItem[] }[] = [
  * headings match the owner's so the two are talking about the same product.
  */
 const OPERATIONS_NAV: { section: string; items: NavItem[] }[] = [
-  { section: 'Overview', items: [ORDERS_ITEM, FINANCE_ITEM] },
+  { section: 'Overview', items: [OPERATIONS_DASHBOARD_ITEM, ORDERS_ITEM, FINANCE_ITEM] },
   { section: 'Operations', items: OPERATIONS_ITEMS },
 ]
 
@@ -414,7 +435,7 @@ export function AppShell({
   }
 
   const groups = role === 'MARKETING' ? MARKETING_NAV : role === 'OPERATIONS' ? OPERATIONS_NAV : NAV
-  const home = role === 'MARKETING' ? '/ambassadors' : role === 'OPERATIONS' ? '/orders' : '/dashboard'
+  const home = role === 'MARKETING' ? '/ambassadors' : '/dashboard'
 
   /**
    * Which groups stand open. Starts empty (everything closed) and loads the

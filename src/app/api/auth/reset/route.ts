@@ -20,7 +20,7 @@ const Body = z.object({
 function landing(role: Role): string {
   if (role === 'AMBASSADOR') return '/portal'
   if (role === 'MARKETING') return '/ambassadors'
-  if (role === 'OPERATIONS') return '/orders'
+  // ADMIN and OPERATIONS share the address and get different pages behind it.
   return '/dashboard'
 }
 
