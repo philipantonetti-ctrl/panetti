@@ -1,3 +1,5 @@
+import { db } from '../db'
+import { matchByEmail } from '../bring/match'
 import { mapConsignments } from '../bring/map'
 import { mapShipments } from '../dhl/map'
 import { str, type MappedPackage } from './milestones'
@@ -130,4 +132,125 @@ export function unknownNext(
     return { terminal: true, nextPollAt: null, lastError, unlinkedReason: `No carrier knew this number in ${UNKNOWN_GRACE_DAYS} days` }
   }
   return { terminal: false, nextPollAt: new Date(now.getTime() + DAY), lastError, unlinkedReason: null }
+}
+
+export type IdentifyRow = { id: string; trackingNumber: string; orderId: string | null; createdAt: Date }
+
+/**
+ * A carrier answered. Write what it said, and try to attach the order.
+ *
+ * The link is attempted only for a row that has none: a row a person
+ * attached, or an earlier night did, keeps its order whatever the carrier
+ * now says about the email. Events are written the way the poller writes
+ * them, so the next poll is an ordinary poll of a known parcel.
+ */
+export async function applyIdentification(
+  row: IdentifyRow,
+  facts: CarrierFacts,
+  now: Date,
+): Promise<{ linked: boolean }> {
+  const m = facts.package?.milestones
+  const base = {
+    carrier: facts.carrier,
+    consignmentId: facts.consignmentId,
+    destinationCountry: facts.destinationCountry,
+    weightKg: facts.weightKg,
+    recipientEmail: facts.recipientEmail,
+    recipientName: facts.recipientName,
+    identifiedAt: now,
+    lastError: null,
+    ...(m
+      ? {
+          bookedAt: m.bookedAt, handedInAt: m.handedInAt, availableAt: m.availableAt,
+          collectedAt: m.collectedAt, outcome: m.outcome, lastStatus: m.lastStatus,
+        }
+      : {}),
+    // Due now: the poller's ordinary tiers take over from the next run.
+    nextPollAt: now,
+  }
+
+  let link: { orderId: string; linkSource: string } | null = null
+  let unlinkedReason: string | null = null
+
+  if (row.orderId === null) {
+    if (facts.carrier === 'BRING') {
+      const outcome = await matchByEmail(facts.recipientEmail, now, {
+        bookedAt: m?.bookedAt ?? null,
+        consignmentId: facts.consignmentId,
+      })
+      if (outcome.orderId !== null) link = { orderId: outcome.orderId, linkSource: 'BRING_EMAIL' }
+      else unlinkedReason = outcome.reason
+    } else {
+      // DHL Freight: the export path stored the 10-digit number with its
+      // order; this piece is the same physical shipment.
+      const known = facts.references.length
+        ? await db.shipment.findFirst({
+            where: { trackingNumber: { in: facts.references }, orderId: { not: null } },
+            select: { orderId: true },
+          })
+        : null
+      if (known?.orderId) link = { orderId: known.orderId, linkSource: 'DHL_REF' }
+      else
+        unlinkedReason = `DHL parcel to ${facts.destinationCountry ?? 'an unknown country'}: DHL gives no name or email, so no order could be matched by itself`
+    }
+  }
+
+  await db.$transaction(async (tx) => {
+    if (facts.package) {
+      await tx.shipmentEvent.createMany({
+        data: facts.package.events.map((e) => ({
+          shipmentId: row.id, status: e.status, occurredAt: e.occurredAt,
+          description: e.description, location: e.location,
+        })),
+        skipDuplicates: true,
+      })
+    }
+    await tx.shipment.update({
+      where: { id: row.id },
+      data: {
+        ...base,
+        ...(link ? { ...link, unlinkedReason: null } : {}),
+        ...(row.orderId === null && !link ? { unlinkedReason } : {}),
+      },
+    })
+  })
+
+  return { linked: link !== null }
+}
+
+/** Neither carrier knows the number. Ask again tomorrow, or give up after the grace period. */
+export async function applyUnknown(row: IdentifyRow, now: Date): Promise<void> {
+  const next = unknownNext(row.createdAt, now)
+  await db.shipment.update({
+    where: { id: row.id },
+    data: {
+      terminal: next.terminal,
+      nextPollAt: next.nextPollAt,
+      lastError: next.lastError,
+      ...(next.unlinkedReason ? { unlinkedReason: next.unlinkedReason } : {}),
+    },
+  })
+}
+
+/**
+ * A refused Bring row, matched again under today's rules. The twin order may
+ * have received its own parcel since, which is what resolves the common case.
+ */
+export async function rematchByEmail(
+  row: { id: string; recipientEmail: string | null; bookedAt: Date | null; consignmentId: string | null },
+  now: Date,
+): Promise<{ linked: boolean }> {
+  const outcome = await matchByEmail(row.recipientEmail, now, {
+    bookedAt: row.bookedAt,
+    consignmentId: row.consignmentId,
+  })
+  if (outcome.orderId !== null) {
+    await db.shipment.update({
+      where: { id: row.id },
+      data: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL', unlinkedReason: null },
+    })
+    return { linked: true }
+  }
+  await db.shipment.update({ where: { id: row.id }, data: { unlinkedReason: outcome.reason } })
+  return { linked: false }
 }
