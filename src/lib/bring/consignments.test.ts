@@ -37,6 +37,9 @@ describe('resolveConsignments', () => {
         packageNumbers: ['373325386490923366'],
         recipientEmail: 'buyer@example.test',
         recipientName: 'Test Person',
+        destinationCountry: null,
+        weightKg: null,
+        bookedAt: null,
       },
     ])
   })
@@ -117,5 +120,43 @@ describe('resolveConsignments', () => {
     ])
     const { consignments } = await resolveConsignments(CREDS, ['373325386490923366'])
     expect(consignments[0].recipientEmail).toBeNull()
+  })
+
+  it('reads the destination country, the weight and the earliest event as the booking time', async () => {
+    fetchTracking.mockResolvedValue([
+      {
+        consignmentId: '73325383681096808',
+        recipientName: 'Test Person',
+        packageSet: [
+          {
+            packageNumber: '473325380023135087',
+            recipientEmailAddress: 'buyer@example.test',
+            weightInKgs: 16,
+            recipientAddress: { countryCode: 'dk', city: 'Rønne' },
+            eventSet: [
+              { status: 'IN_TRANSIT', dateIso: '2026-09-08T06:00:00+02:00' },
+              { status: 'PRE_NOTIFIED', dateIso: '2026-09-07T10:17:14+02:00' },
+            ],
+          },
+          {
+            packageNumber: '473325380023135094',
+            weightInKgs: 0.7,
+            eventSet: [{ status: 'PRE_NOTIFIED', dateIso: '2026-09-07T10:17:05+02:00' }],
+          },
+        ],
+      },
+    ])
+    const { consignments } = await resolveConsignments(CREDS, ['473325380023135087'])
+    expect(consignments[0]).toMatchObject({
+      destinationCountry: 'DK',
+      weightKg: 16,
+      bookedAt: new Date('2026-09-07T08:17:05.000Z'),
+    })
+  })
+
+  it('leaves country, weight and booking time null when Bring gives none', async () => {
+    fetchTracking.mockResolvedValue([reply('7332538366', [{ packageNumber: '373325386490923366' }])])
+    const { consignments } = await resolveConsignments(CREDS, ['373325386490923366'])
+    expect(consignments[0]).toMatchObject({ destinationCountry: null, weightKg: null, bookedAt: null })
   })
 })
