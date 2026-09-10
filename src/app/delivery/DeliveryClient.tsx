@@ -949,14 +949,18 @@ export function LateList({
                           // wide, and the name is only ever read together with
                           // the number it belongs to.
                           <span key={p.number} className="whitespace-nowrap">
-                            <a
-                              href={p.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-accent hover:underline"
-                            >
-                              {p.number}
-                            </a>
+                            {p.url ? (
+                              <a
+                                href={p.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-accent hover:underline"
+                              >
+                                {p.number}
+                              </a>
+                            ) : (
+                              <span className="num text-ink">{p.number}</span>
+                            )}
                             <span className="ml-1 text-[11px] text-faint">{p.carrier}</span>
                           </span>
                         ))
@@ -1134,6 +1138,25 @@ function refusalsOf(raw: string | null): Refusal[] {
 }
 
 /**
+ * A refusal's own number, linked to Bring when refusalUrl resolves one.
+ *
+ * refusalUrl always does today - every number here is Bring's own by
+ * construction - but its return type is the same `string | null` as every
+ * other tracking link on this page, so this renders the same way the rest do
+ * rather than assuming a link that might not be there.
+ */
+function RefusalNumber({ number }: { number: string }) {
+  const url = refusalUrl(number)
+  return url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="num text-accent hover:underline">
+      {number}
+    </a>
+  ) : (
+    <span className="num text-ink">{number}</span>
+  )
+}
+
+/**
  * What arrived and what it did with itself.
  *
  * The counts alone are not enough now that a refusal is a deliberate outcome
@@ -1204,14 +1227,7 @@ export function ImportsList({ items }: { items: ImportRow[] }) {
                                     {g.numbers.slice(0, GROUP_NUMBERS_SHOWN).map((num, k) => (
                                       <Fragment key={num}>
                                         {k > 0 && ', '}
-                                        <a
-                                          href={refusalUrl(num)}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="num text-accent hover:underline"
-                                        >
-                                          {num}
-                                        </a>
+                                        <RefusalNumber number={num} />
                                       </Fragment>
                                     ))}
                                     {g.numbers.length > GROUP_NUMBERS_SHOWN && (
@@ -1224,14 +1240,7 @@ export function ImportsList({ items }: { items: ImportRow[] }) {
                                   <>
                                     {g.numbers[0] && (
                                       <>
-                                        <a
-                                          href={refusalUrl(g.numbers[0])}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="num text-accent hover:underline"
-                                        >
-                                          {g.numbers[0]}
-                                        </a>
+                                        <RefusalNumber number={g.numbers[0]} />
                                         {' - '}
                                       </>
                                     )}

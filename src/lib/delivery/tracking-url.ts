@@ -8,31 +8,35 @@
  * never heard of the number - including the Slack alert, which is the one the
  * client actually clicks.
  *
- * Carrier is `Shipment.carrier`: a plain String column with a 'BRING' default,
- * not an enum. So an unknown value means old or bad data rather than a new
- * carrier, and it falls back to Bring - which is exactly where such a row
- * pointed before this existed.
+ * Carrier is `Shipment.carrier`: a plain String column, not an enum, so
+ * 'UNKNOWN' is a real value rather than a typo - it is what a parcel gets
+ * while no carrier has claimed it yet. See trackingUrl below for what a
+ * carrier this file has no page for gets: not a Bring link any more.
  */
-const SITES: Record<string, (escaped: string) => string> = {
+const SITES: Record<string, (escaped: string, raw: string) => string> = {
   BRING: (n) => `https://tracking.bring.com/tracking/${n}`,
   /**
-   * DHL FREIGHT's page, which is the division every parcel we carry belongs
-   * to: the client books through mydhlfreight.com on Parcel Connect, and the
-   * 10-digit ids on those shipments ARE these tracking numbers.
-   *
-   * This used to be the generic dhl.com tracking page, on the reasoning that
-   * it works out the service itself. It does - by making whoever clicked it
-   * wait through a redirect that always lands here. The client asked for this
-   * exact URL, and `submit=1` is the load-bearing part of it: without that
-   * parameter the page opens its empty search box and the number has to be
-   * typed in again.
+   * Two DHL pages. The freight page knows the 10-digit consignment numbers
+   * the DHL export carries. An 18-digit number is a piece id, which the
+   * unified page resolves for both DHL Freight and DHL eCommerce parcels
+   * (both divisions carry the warehouse's parcels; measured 2026-09-10).
    */
-  DHL: (n) => `https://www.dhl.com/se-en/home/tracking/tracking-freight.html?tracking-id=${n}&submit=1`,
+  DHL: (n, raw) =>
+    /^\d{18}$/.test(raw)
+      ? `https://www.dhl.com/se-en/home/tracking.html?tracking-id=${n}`
+      : `https://www.dhl.com/se-en/home/tracking/tracking-freight.html?tracking-id=${n}&submit=1`,
 }
 
-export function trackingUrl(trackingNumber: string, carrier: string): string {
-  const site = SITES[carrier.toUpperCase()] ?? SITES.BRING
-  return site(encodeURIComponent(trackingNumber))
+/**
+ * Null for a carrier we have no page for - including UNKNOWN, a parcel no
+ * carrier has claimed yet. A link that opens the wrong carrier's page and
+ * finds nothing is what the Delivery page showed for 41 parcels; no link is
+ * the honest state.
+ */
+export function trackingUrl(trackingNumber: string, carrier: string): string | null {
+  const site = SITES[carrier.toUpperCase()]
+  if (!site) return null
+  return site(encodeURIComponent(trackingNumber), trackingNumber)
 }
 
 /** How each carrier is written for a person to read. */

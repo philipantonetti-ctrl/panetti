@@ -86,11 +86,14 @@ export type OrderDelivery = {
 
 /**
  * Both `carrier` and `url` are ready to render: the name is already written
- * the way a person reads it and the link already points at the right site. The
- * page shows both carriers in one list, so it needs the name to tell them
- * apart - but it should not have to know the carrier rules to get either.
+ * the way a person reads it, and the link - when there is one - already points
+ * at the right site. `url` is null for a carrier this app has no page for
+ * (including UNKNOWN, a parcel nobody has claimed yet); a screen showing a
+ * parcel must render that as plain text, never as a link to nowhere. The page
+ * shows both carriers in one list, so it needs the name to tell them apart -
+ * but it should not have to know the carrier rules to get either.
  */
-export type Parcel = { number: string; carrier: string; url: string }
+export type Parcel = { number: string; carrier: string; url: string | null }
 
 const VOIDED = new Set<string>(VOIDED_STATUSES)
 

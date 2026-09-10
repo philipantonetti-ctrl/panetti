@@ -76,7 +76,10 @@ export function alertMessage(late: LateAlert[], appUrl: string): string {
     // Each parcel carries its own link. This line used to hardcode Bring's
     // tracking site, so every late DHL parcel sent the reader to a page that
     // has never heard of the number - and this alert is the link he clicks.
-    const track = l.parcels.map((p) => ` <${p.url}|track>`).join('')
+    // A parcel with no page for its carrier (UNKNOWN included) has no url at
+    // all now rather than a Bring link that finds nothing, so it prints its
+    // bare number instead of a Slack link to the literal text "null".
+    const track = l.parcels.map((p) => ` ${p.url ? `<${p.url}|track>` : p.number}`).join('')
     return (
       `• <${appUrl}/orders?q=${encodeURIComponent(l.number)}|${l.number}> ` +
       `${l.shop}${where} - ${l.daysOver} days over${promise}. ${SAYS[l.state]}.${track}`

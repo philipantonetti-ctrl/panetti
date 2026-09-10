@@ -515,11 +515,17 @@ export function InboxClient({
                           {o.products.map((p) => `${p.quantity} × ${p.name}`).join(', ')}
                         </div>
                         {o.deliveryPhrase && <div className="text-[12px] text-ink">{o.deliveryPhrase}</div>}
-                        {o.parcels.map((p) => (
-                          <a key={p.number} href={p.url} target="_blank" rel="noreferrer" className="block text-[12px] text-accent underline-offset-2 hover:underline">
-                            {p.carrier} {p.number}
-                          </a>
-                        ))}
+                        {o.parcels.map((p) =>
+                          p.url ? (
+                            <a key={p.number} href={p.url} target="_blank" rel="noreferrer" className="block text-[12px] text-accent underline-offset-2 hover:underline">
+                              {p.carrier} {p.number}
+                            </a>
+                          ) : (
+                            <span key={p.number} className="block text-[12px] text-ink">
+                              {p.carrier} {p.number}
+                            </span>
+                          ),
+                        )}
                       </div>
                     ))}
                   </div>
