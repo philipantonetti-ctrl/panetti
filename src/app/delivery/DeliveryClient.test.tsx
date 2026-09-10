@@ -523,6 +523,31 @@ describe('UnattachedParcels', () => {
     expect(JSON.parse((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as string)).toEqual({ orderId: 'o-typed' })
   })
 
+  it('disables Link while the typed-number lookup is pending, so a fast double click cannot send it twice', async () => {
+    let resolveLookup: (res: Response) => void = () => {}
+    const lookupPromise = new Promise<Response>((resolve) => { resolveLookup = resolve })
+    const fetchMock = vi.fn((url: string) =>
+      url.includes('/api/orders/lookup')
+        ? lookupPromise
+        : Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<ToastProvider><UnattachedParcels items={[parcel({ candidates: [], candidatesTotal: 0 })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.change(screen.getByLabelText('Order number'), { target: { value: '15866' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+    expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled()
+    // A second, fast click while the lookup is still pending must not fire again.
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+
+    resolveLookup(new Response(JSON.stringify({ orderId: 'o-typed' }), { status: 200 }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const patchCalls = fetchMock.mock.calls.filter(
+      (c) => !(c[0] as string).includes('/api/orders/lookup'),
+    )
+    expect(patchCalls.length).toBe(1)
+  })
+
   it('says a parcel nobody has been asked about yet is simply not identified yet', () => {
     const { container } = render(
       <ToastProvider><UnattachedParcels items={[parcel({ carrier: 'Unknown', url: null, reason: null, identifiedAt: null, candidates: [], candidatesTotal: 0 })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>,

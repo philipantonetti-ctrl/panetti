@@ -1050,17 +1050,27 @@ export function UnattachedParcels({
   }
 
   async function linkTyped(trackingNumber: string, shopId: string, number: string) {
-    if (!shopId || !number.trim()) {
-      toast.error('Choose the shop and type the order number')
-      return
+    // Set before the validation toast and the lookup, not just inside patch()
+    // below: without this the lookup's own await left the button enabled for
+    // its whole round trip, and a fast double click fired two lookups and two
+    // PATCHes. patch() clears this again in its own finally on the happy
+    // path; the outer finally here clearing it a second time is harmless.
+    setBusy(trackingNumber)
+    try {
+      if (!shopId || !number.trim()) {
+        toast.error('Choose the shop and type the order number')
+        return
+      }
+      const res = await fetch(`/api/orders/lookup?shop=${encodeURIComponent(shopId)}&number=${encodeURIComponent(number.trim())}`)
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => ({}))).error ?? 'Could not find that order')
+        return
+      }
+      const { orderId } = (await res.json()) as { orderId: string }
+      await patch(trackingNumber, { orderId })
+    } finally {
+      setBusy(null)
     }
-    const res = await fetch(`/api/orders/lookup?shop=${encodeURIComponent(shopId)}&number=${encodeURIComponent(number.trim())}`)
-    if (!res.ok) {
-      toast.error((await res.json().catch(() => ({}))).error ?? 'Could not find that order')
-      return
-    }
-    const { orderId } = (await res.json()) as { orderId: string }
-    await patch(trackingNumber, { orderId })
   }
 
   return (
