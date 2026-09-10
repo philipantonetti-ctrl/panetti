@@ -155,10 +155,8 @@ export async function importTrackingFile(
  * fifteen more digits. Measured, not assumed - of the 496 linked Bring parcels
  * in production on 2026-08-31, 263 start 373 and 233 start 473, and none of
  * the other carriers' numbers seen in the files (19 to 24 digits, or DHL's
- * ten) can collide with either. This said only 373 at first, and the
- * 2026-08-28 file is what that cost: Bring's API had a bad night, all 64 of
- * the file's numbers were 473-shaped, so none were stored for retry and the
- * whole day's parcels went unlinked.
+ * ten) can collide with either. A 473 or 373 number Bring does not know is
+ * stored as carrier UNKNOWN for the poller to identify; see the loop below.
  */
 const BRING_SHAPED = /^[34]73\d{15}$/
 
@@ -278,74 +276,49 @@ export async function importWarehouseFile(
     if (!creds)
       throw new ImportParseError('Bring is not connected, so parcels cannot be identified')
 
-    /**
-     * Yesterday's too-early parcels, retried tonight.
-     *
-     * The midnight import races Bring's own data feed: on 2026-08-21 six real
-     * parcels across two nights' files were refused as unknown, and Bring knew
-     * every one of them by the next day. Such numbers are stored below rather
-     * than refused, and THIS is the half that finishes the job - once Bring
-     * has the parcel it hands back the recipient, and the order link lands a
-     * night late instead of never.
-     *
-     * Best-effort and outside the file's own counts: housekeeping must
-     * neither fail the import nor inflate tonight's numbers.
-     */
-    try {
-      const early = await db.shipment.findMany({
-        where: {
-          orderId: null,
-          carrier: 'BRING',
-          // Both package series - see BRING_SHAPED. The regex below is still
-          // the real gate; these prefixes only keep the query off rows that
-          // could never pass it.
-          OR: [
-            { trackingNumber: { startsWith: '373' } },
-            { trackingNumber: { startsWith: '473' } },
-          ],
-          // A week is seven retries at one file a night. Older than that,
-          // Bring genuinely never heard of it and the nightly lookup stops.
-          createdAt: { gte: new Date(receivedAt.getTime() - 7 * 24 * 60 * 60 * 1000) },
-        },
-        select: { trackingNumber: true },
-        orderBy: { createdAt: 'asc' },
-        take: 40, // bounds the extra Bring calls a night can add
-      })
-      const retryNumbers = early.map((s) => s.trackingNumber).filter((n) => BRING_SHAPED.test(n))
-      if (retryNumbers.length > 0) {
-        const again = await resolveConsignments(creds, retryNumbers, opts)
-        for (const c of again.consignments) {
-          const outcome = await matchByEmail(c.recipientEmail, receivedAt)
-          if (outcome.orderId === null) continue // still ambiguous: next night
-          for (const trackingNumber of c.packageNumbers) {
-            await db.shipment.upsert({
-              where: { trackingNumber },
-              create: {
-                trackingNumber,
-                orderId: outcome.orderId,
-                linkSource: 'BRING_EMAIL',
-                nextPollAt: new Date(),
-              },
-              update: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL' },
-            })
-          }
-        }
-      }
-    } catch {
-      // A Bring blip during housekeeping must not fail the file; the same
-      // parcels are simply retried with tomorrow's import.
-    }
-
     ;({ consignments, unresolved } = await resolveConsignments(creds, numbers, opts))
 
     for (const c of consignments) {
-      const outcome = await matchByEmail(c.recipientEmail, receivedAt)
+      const facts = {
+        carrier: 'BRING',
+        consignmentId: c.consignmentId,
+        destinationCountry: c.destinationCountry,
+        weightKg: c.weightKg,
+        recipientEmail: c.recipientEmail,
+        recipientName: c.recipientName,
+        bookedAt: c.bookedAt,
+        identifiedAt: receivedAt,
+      }
+      const outcome = await matchByEmail(c.recipientEmail, receivedAt, {
+        bookedAt: c.bookedAt,
+        consignmentId: c.consignmentId,
+      })
       if (outcome.orderId === null) {
         unmatched.push({
           orderNumber: c.recipientName ?? c.consignmentId,
           trackingNumber: c.packageNumbers[0],
           reason: outcome.reason,
         })
+        // Stored, not dropped. A refusal used to survive only as a line of
+        // JSON on the import; as a row it is listed on the Delivery page with
+        // its reason and candidates, and the poller re-runs the match nightly
+        // so a refusal the rules later resolve (the twin order gets its own
+        // parcel) resolves itself. Due tomorrow: the parcel is not moving yet
+        // and a person may link it first.
+        for (const trackingNumber of c.packageNumbers) {
+          await db.shipment.upsert({
+            where: { trackingNumber },
+            create: {
+              trackingNumber,
+              ...facts,
+              unlinkedReason: outcome.reason,
+              nextPollAt: new Date(receivedAt.getTime() + 24 * 60 * 60 * 1000),
+            },
+            // Never unlinks: a row a person or an earlier night already
+            // attached keeps its order, and only learns the facts.
+            update: { ...facts },
+          })
+        }
         continue
       }
       for (const trackingNumber of c.packageNumbers) {
@@ -354,13 +327,25 @@ export async function importWarehouseFile(
           // Due immediately, so the next cron run picks it up.
           create: {
             trackingNumber,
+            ...facts,
             orderId: outcome.orderId,
             linkSource: 'BRING_EMAIL',
+            unlinkedReason: null,
             nextPollAt: new Date(),
           },
-          // Only the link. Milestones, events and poll state are the sync's
-          // to own, and a re-import must not undo a week of tracking.
-          update: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL' },
+          // Facts only. Milestones, events and poll state are the sync's to
+          // own, and the link is written below, never here - a re-import
+          // must never move a link a person, or an earlier night, already
+          // attached to a different order.
+          update: { ...facts },
+        })
+        // The link lands only on a row with no order yet. A row already
+        // linked - by hand, or by an earlier night's import - keeps its
+        // order no matter what today's file resolves the email to; only its
+        // facts move.
+        await db.shipment.updateMany({
+          where: { trackingNumber, orderId: null },
+          data: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL', unlinkedReason: null },
         })
       }
       // Once per CONSIGNMENT, not per package: a two-package consignment
@@ -369,36 +354,27 @@ export async function importWarehouseFile(
       linked++
     }
 
-    // A number Bring never resolved is a refusal like any other, and is listed
-    // beside them rather than merely counted. `orderNumber` is what we would
-    // have called it, and for these we genuinely never learned: Bring is the
-    // only thing that turns a number into a name, and Bring is what failed.
     for (const u of unresolved) {
-      // Unless the number is Bring-shaped - then "no parcel" is almost always
-      // a race lost against Bring's own feed, not a verdict, and treating it
-      // as final is what cost six real parcels their tracking (see
-      // BRING_SHAPED). Stored unlinked and poll-scheduled; the retry stage
-      // above links it once Bring catches up.
+      // A Bring-shaped number Bring does not know is not a verdict: the
+      // warehouse prints one label series for every carrier it ships with, so
+      // the number says who packed the parcel, not who carries it (17 of 17
+      // such numbers checked on 2026-09-10 were DHL's). Stored with carrier
+      // UNKNOWN and due now; the poller asks Bring again, then DHL, and the
+      // first to answer owns the row - see lib/delivery/identify.ts.
       if (BRING_SHAPED.test(u.number)) {
         await db.shipment.upsert({
           where: { trackingNumber: u.number },
-          create: { trackingNumber: u.number, nextPollAt: new Date() },
-          // Adopt, never reset: it may already be mid-retry from an earlier
-          // night.
+          create: { trackingNumber: u.number, carrier: 'UNKNOWN', nextPollAt: new Date() },
+          // Adopt, never reset: it may already be identified, or mid-way.
           update: {},
         })
         unmatched.push({
           orderNumber: '(not identified)',
           trackingNumber: u.number,
-          // Two different nights wear this branch. "No parcel" means Bring
-          // answered and did not know the number yet - the lost race. Anything
-          // else means Bring was never successfully asked (a fetch failure, a
-          // 403, this run's own deadline), and claiming Bring "has not heard
-          // of it" would be a lie about a question that was never put.
           reason:
             u.reason === 'Bring has no parcel with this number'
-              ? 'Bring has not heard of this parcel yet - stored, it will be linked once Bring knows it'
-              : `${u.reason} - stored, it will be retried with the next nightly file`,
+              ? 'Bring has not heard of this parcel yet - stored, the next check asks Bring again, then DHL'
+              : `${u.reason} - stored, it will be retried by the next check`,
         })
         continue
       }

@@ -7,6 +7,16 @@ export type ResolvedConsignment = {
   /** Lower-cased. Null when Bring holds no email for the parcel. */
   recipientEmail: string | null
   recipientName: string | null
+  /** ISO-2, upper case, off the first package that carries an address. */
+  destinationCountry: string | null
+  /** The first package's weight. Two boxes report separately; the first is enough to tell a chair from a whisk. */
+  weightKg: number | null
+  /**
+   * The earliest event across every package, whatever its status. That is the
+   * moment the label existed, and an order placed after it cannot be the one
+   * the label is for - the upper bound match.ts uses.
+   */
+  bookedAt: Date | null
 }
 
 /**
@@ -97,14 +107,37 @@ export async function resolveConsignments(
     const packages = Array.isArray(first?.packageSet) ? first.packageSet : []
     const packageNumbers: string[] = []
     let recipientEmail: string | null = null
+    let destinationCountry: string | null = null
+    let weightKg: number | null = null
+    let bookedAt: Date | null = null
 
     for (const pkg of packages) {
-      const p = pkg as { packageNumber?: unknown; recipientEmailAddress?: unknown }
+      const p = pkg as {
+        packageNumber?: unknown
+        recipientEmailAddress?: unknown
+        weightInKgs?: unknown
+        recipientAddress?: { countryCode?: unknown }
+        eventSet?: unknown
+      }
       const n = str(p?.packageNumber)
       if (n) packageNumbers.push(n)
       if (!recipientEmail) {
         const e = str(p?.recipientEmailAddress)
         if (e) recipientEmail = e.toLowerCase()
+      }
+      if (!destinationCountry) {
+        const c = str(p?.recipientAddress?.countryCode)
+        if (c) destinationCountry = c.toUpperCase()
+      }
+      if (weightKg === null && typeof p?.weightInKgs === 'number' && Number.isFinite(p.weightInKgs)) {
+        weightKg = p.weightInKgs
+      }
+      for (const ev of Array.isArray(p?.eventSet) ? p.eventSet : []) {
+        const iso = str((ev as { dateIso?: unknown })?.dateIso)
+        if (!iso) continue
+        const when = new Date(iso)
+        if (Number.isNaN(when.getTime())) continue
+        if (!bookedAt || when < bookedAt) bookedAt = when
       }
     }
 
@@ -127,6 +160,9 @@ export async function resolveConsignments(
       packageNumbers,
       recipientEmail,
       recipientName: str(first?.recipientName),
+      destinationCountry,
+      weightKg,
+      bookedAt,
     })
   }
 

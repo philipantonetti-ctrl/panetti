@@ -1,0 +1,48 @@
+{
+  "shipments": [
+    {
+      "id": "JKG-HI-0001643",
+      "service": "freight",
+      "origin": { "address": { "countryCode": "SE" } },
+      "destination": { "address": { "countryCode": "FI" } },
+      "status": {
+        "timestamp": "2026-09-10T04:23:00",
+        "location": { "address": { "addressLocality": "ST", "countryCode": "SE" } },
+        "statusCode": "transit",
+        "status": "1-0",
+        "description": "Received at terminal"
+      },
+      "returnFlag": false,
+      "details": {
+        "product": { "productCode": "HD", "productName": "DHL Home Delivery" },
+        "proofOfDeliverySignedAvailable": false,
+        "totalNumberOfPieces": 1,
+        "pieceIds": ["00473325380028549070"],
+        "weight": { "unitText": "KGM", "value": 154 },
+        "volume": { "unitText": "MTQ", "value": 1.344 },
+        "loadingMeters": 0.4,
+        "references": [
+          { "number": "JKG-HI-0001643", "type": "shipment-id" },
+          { "number": "6109278751", "type": "domestic-consignment-id" },
+          { "number": "00063491697", "type": "domestic-consignment-id" }
+        ]
+      },
+      "events": [
+        {
+          "timestamp": "2026-09-10T04:23:00",
+          "location": { "address": { "addressLocality": "ST", "countryCode": "SE" } },
+          "statusCode": "transit",
+          "status": "1-0",
+          "description": "Received at terminal"
+        },
+        {
+          "timestamp": "2026-09-09T13:05:00",
+          "location": { "address": { "addressLocality": "GO", "countryCode": "SE" } },
+          "statusCode": "pre-transit",
+          "status": "ACT-2",
+          "description": "Consignment created"
+        }
+      ]
+    }
+  ]
+}

@@ -58,18 +58,33 @@ describe('trackingUrl', () => {
   })
 
   /**
-   * Shipment.carrier is a plain String column defaulting to 'BRING', not an
-   * enum, so an unrecognised value is a data problem rather than a new
-   * carrier. Falling back to Bring keeps every row that predates the column
-   * pointing exactly where it pointed before.
+   * Shipment.carrier is a plain String column, not an enum, so an
+   * unrecognised value is a data problem rather than a new carrier. This used
+   * to fall back to Bring's page - exactly the wrong site for a PostNord or a
+   * blank-carrier row, and one that finds nothing for either. No link is the
+   * honest state now.
    */
-  it('falls back to Bring for a carrier it does not know, matching the column default', () => {
-    expect(trackingUrl('123', 'POSTNORD')).toContain('bring.com')
-    expect(trackingUrl('123', '')).toContain('bring.com')
+  it('gives a carrier it does not know no link, rather than defaulting to Bring', () => {
+    expect(trackingUrl('123', 'POSTNORD')).toBeNull()
+    expect(trackingUrl('123', '')).toBeNull()
   })
 
   it('escapes the number so it cannot break out of the query string', () => {
     expect(trackingUrl('a&b=c', 'DHL')).toContain('a%26b%3Dc')
     expect(trackingUrl('a/b', 'BRING')).toContain('a%2Fb')
+  })
+
+  it('gives an UNKNOWN carrier no link at all, rather than a Bring page that finds nothing', () => {
+    expect(trackingUrl('473325380028549070', 'UNKNOWN')).toBeNull()
+    expect(carrierName('UNKNOWN')).toBe('Unknown')
+  })
+
+  it('sends an 18-digit DHL number to DHL\'s unified page and a 10-digit one to the freight page', () => {
+    expect(trackingUrl('473325380023179098', 'DHL')).toBe(
+      'https://www.dhl.com/se-en/home/tracking.html?tracking-id=473325380023179098',
+    )
+    expect(trackingUrl('9599036010', 'DHL')).toBe(
+      'https://www.dhl.com/se-en/home/tracking/tracking-freight.html?tracking-id=9599036010&submit=1',
+    )
   })
 })

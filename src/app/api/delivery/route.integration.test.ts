@@ -360,12 +360,24 @@ describe('GET /api/delivery', () => {
     // built a Bring one, which was wrong for every DHL parcel.
     await db.shipment.create({ data: { trackingNumber: UNLINKED, lastStatus: 'IN_TRANSIT' } })
     const body = await (await GET(new Request(url))).json()
+    // Full shape, not a subset: Task 11 added facts, reason, identifiedAt,
+    // candidates and candidatesTotal to every row, so a bare parcel with none
+    // of them set carries them all as null, empty or zero.
     expect(body.unlinked).toEqual([
       {
         trackingNumber: UNLINKED,
         lastStatus: 'IN_TRANSIT',
         carrier: 'Bring',
         url: `https://tracking.bring.com/tracking/${UNLINKED}`,
+        destinationCountry: null,
+        bookedAt: null,
+        weightKg: null,
+        recipientName: null,
+        reason: null,
+        identifiedAt: null,
+        createdAt: expect.any(String),
+        candidates: [],
+        candidatesTotal: 0,
       },
     ])
   })
@@ -430,6 +442,68 @@ describe('GET /api/delivery', () => {
     // one tagged (and tracked) shop - the 11 seeded shops are all UNTRACKED
     // and never contribute - so the true count is fully known here.
     expect(body.noTrackingTotal).toBe(count)
+  })
+
+  it('describes an unlinked parcel: carrier, country, weight, reason, and the orders it could belong to', async () => {
+    const o = await db.order.create({
+      data: {
+        shopId, externalId: 'U1', number: 'U1', placedAt: new Date('2026-08-10T10:00:00Z'), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        shippingCountry: 'DE', customerName: 'Tobias K',
+      },
+    })
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${TRACK}D1`, carrier: 'DHL', destinationCountry: 'DE', weightKg: 18.2,
+        bookedAt: new Date('2026-08-11T09:00:00Z'), identifiedAt: new Date('2026-08-11T12:00:00Z'),
+        unlinkedReason: 'DHL parcel to DE: DHL gives no name or email, so no order could be matched by itself',
+        lastStatus: 'HANDED_IN',
+      },
+    })
+
+    const body = await (await GET(new Request(url))).json()
+    const p = body.unlinked.find((x: { trackingNumber: string }) => x.trackingNumber === `${TRACK}D1`)
+    expect(p).toMatchObject({
+      carrier: 'DHL', destinationCountry: 'DE', weightKg: 18.2, lastStatus: 'HANDED_IN',
+      reason: 'DHL parcel to DE: DHL gives no name or email, so no order could be matched by itself',
+      candidatesTotal: 1,
+    })
+    expect(p.url).toContain('dhl.com')
+    expect(p.candidates[0]).toMatchObject({ orderId: o.id, number: 'U1', customerName: 'Tobias K', holdsParcel: false })
+    expect(body.shops.some((s: { id: string }) => s.id === shopId)).toBe(true)
+  })
+
+  it('never sends a recipient email to the browser, and leaves out dismissed parcels', async () => {
+    await db.shipment.create({ data: { trackingNumber: `${TRACK}E1`, carrier: 'BRING', recipientEmail: 'secret@example.test', recipientName: 'Some One' } })
+    await db.shipment.create({ data: { trackingNumber: `${TRACK}E2`, carrier: 'DHL', terminal: true, dismissedAt: new Date(), unlinkedReason: 'Not a customer parcel (dismissed by a@b.c)' } })
+    const text = await (await GET(new Request(url))).text()
+    expect(text).not.toContain('secret@example.test')
+    expect(text).toContain('Some One')
+    expect(text).not.toContain(`${TRACK}E2`)
+    expect(JSON.parse(text).unlinkedTotal).toBe(1)
+  })
+
+  it('tells a no-tracking order that a parcel for its customer was refused, and why', async () => {
+    await db.order.create({
+      data: {
+        shopId, externalId: 'N1', number: 'N1', placedAt: new Date('2026-08-10T10:00:00Z'), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerEmail: 'Twice@Example.test',
+      },
+    })
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${TRACK}R1`, carrier: 'BRING', recipientEmail: 'twice@example.test',
+        unlinkedReason: 'twice@example.test matched 2 orders in the last 30 days: N0, N1', createdAt: new Date('2026-08-11T18:00:00Z'),
+      },
+    })
+    const body = await (await GET(new Request(url))).json()
+    const row = body.noTracking.find((r: { number: string }) => r.number === 'N1')
+    expect(row.refusedParcel).toEqual({
+      trackingNumber: `${TRACK}R1`,
+      reason: 'twice@example.test matched 2 orders in the last 30 days: N0, N1',
+      createdAt: '2026-08-11T18:00:00.000Z',
+    })
   })
 })
 

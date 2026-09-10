@@ -1,0 +1,50 @@
+{
+  "shipments": [
+    {
+      "id": "00473325380023179098",
+      "service": "ecommerce-europe",
+      "division": "DHL eCommerce",
+      "origin": { "address": { "countryCode": "SE" } },
+      "destination": { "address": { "countryCode": "DE" } },
+      "status": {
+        "timestamp": "2026-09-10T08:47:22+02:00",
+        "location": { "address": { "addressLocality": "Ot", "countryCode": "DE" } },
+        "statusCode": "transit",
+        "status": "42",
+        "description": "The shipment has been loaded to the van"
+      },
+      "returnFlag": false,
+      "details": {
+        "product": { "deliveryMethodRemark": "doorstep", "productName": "DHL Parcel Connect" },
+        "provider": { "destinationProvider": "parcel-de" },
+        "proofOfDeliverySignedAvailable": false,
+        "totalNumberOfPieces": 1,
+        "pieceIds": ["00473325380023179098"],
+        "weight": { "unitText": "KG", "value": 18.2 }
+      },
+      "events": [
+        {
+          "timestamp": "2026-09-10T08:47:22+02:00",
+          "location": { "address": { "addressLocality": "Ot", "countryCode": "DE" } },
+          "statusCode": "transit",
+          "status": "42",
+          "description": "The shipment has been loaded to the van"
+        },
+        {
+          "timestamp": "2026-09-08T16:16:34+02:00",
+          "location": { "address": { "addressLocality": "Ne", "countryCode": "DE" } },
+          "statusCode": "transit",
+          "status": "33",
+          "description": "The shipment has arrived in destination country"
+        },
+        {
+          "timestamp": "2026-09-07T19:30:00+02:00",
+          "location": { "address": { "countryCode": "SE" } },
+          "statusCode": "pre-transit",
+          "status": "0",
+          "description": "The shipment has been announced"
+        }
+      ]
+    }
+  ]
+}

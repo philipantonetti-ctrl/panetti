@@ -1,0 +1,33 @@
+[
+  {
+    "consignmentId": "73325383681096808",
+    "recipientName": "Test Person",
+    "senderReference": "028221",
+    "packageSet": [
+      {
+        "packageNumber": "473325380023135094",
+        "productName": "PickUp Parcel Bulk",
+        "weightInKgs": 0.7,
+        "recipientName": "Test Person",
+        "recipientEmailAddress": "Buyer@Example.TEST",
+        "recipientAddress": { "city": "Ronne", "country": "Denmark", "countryCode": "DK", "postalCode": "3700" },
+        "eventSet": [
+          { "status": "READY_FOR_PICKUP", "dateIso": "2026-09-09T09:12:00+02:00", "description": "Ready for pickup", "city": "Ronne", "countryCode": "DK" },
+          { "status": "PRE_NOTIFIED", "dateIso": "2026-09-07T10:17:20+02:00", "description": "Pre-notified", "city": "Jonkoping", "countryCode": "SE" }
+        ]
+      },
+      {
+        "packageNumber": "473325380023135087",
+        "productName": "PickUp Parcel Bulk",
+        "weightInKgs": 16,
+        "recipientName": "Test Person",
+        "recipientEmailAddress": "Buyer@Example.TEST",
+        "recipientAddress": { "city": "Ronne", "country": "Denmark", "countryCode": "DK", "postalCode": "3700" },
+        "eventSet": [
+          { "status": "READY_FOR_PICKUP", "dateIso": "2026-09-09T09:12:00+02:00", "description": "Ready for pickup", "city": "Ronne", "countryCode": "DK" },
+          { "status": "PRE_NOTIFIED", "dateIso": "2026-09-07T10:17:14+02:00", "description": "Pre-notified", "city": "Jonkoping", "countryCode": "SE" }
+        ]
+      }
+    ]
+  }
+]

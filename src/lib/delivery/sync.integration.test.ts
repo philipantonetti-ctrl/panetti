@@ -457,21 +457,42 @@ describe('syncShipments', () => {
   // null) and the rule it is proving - "A number Bring does not know is not
   // an error... Record it and try later; do not mark it terminal." Retitled
   // to match what the test actually asserts; the body is unchanged.
+  //
+  // TASK 7 UPDATE: this row used to be UNLINKED (no orderId). That is now
+  // exactly the shape that flips a Bring row to UNKNOWN so DHL can be asked
+  // next - see "flips an unlinked BRING row Bring does not know to UNKNOWN"
+  // above - so it is given an orderId here instead, the same way "leaves a
+  // LINKED Bring row Bring does not know alone" does. Without this change the
+  // assertions below still happen to pass (the flip's own lastError also
+  // matches /not know/i, and neither terminal nor nextPollAt is left null),
+  // but the row would silently be proving the flip rather than the "simply
+  // early" rule its title and comments describe.
   it('records a number Bring does not know, and keeps asking later', async () => {
-    await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
-    // The REAL shape, captured from api.bring.com on 2026-08-07 with the
-    // client's own credentials. Bring answers an unknown number with HTTP 200
-    // and a consignmentSet holding an ERROR entry - not the empty array this
-    // test used to assume, and not an HTTP error either. The outcome is the
-    // same (the number never reaches byNumber, so it is recorded as unknown),
-    // but the shape we assert against is now one Bring actually sends.
-    stubBring([{ error: { code: 404, message: 'No shipments found' } }])
-    await syncShipments({ now })
-    const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
-    expect(s.lastError).toMatch(/not know/i)
-    // Still due later: the warehouse may not have handed it over yet.
-    expect(s.terminal).toBe(false)
-    expect(s.nextPollAt).not.toBeNull()
+    const shop = await db.shop.create({ data: { name: 'Sync unknown [sync-unknown-test]', currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') } })
+    const order = await db.order.create({
+      data: { shopId: shop.id, externalId: 'SU1', number: 'SU1', placedAt: now, status: 'completed', currency: 'NOK', grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0 },
+    })
+    try {
+      await db.shipment.create({ data: { trackingNumber: T1, orderId: order.id, nextPollAt: new Date('2026-01-01') } })
+      // The REAL shape, captured from api.bring.com on 2026-08-07 with the
+      // client's own credentials. Bring answers an unknown number with HTTP 200
+      // and a consignmentSet holding an ERROR entry - not the empty array this
+      // test used to assume, and not an HTTP error either. The outcome is the
+      // same (the number never reaches byNumber, so it is recorded as unknown),
+      // but the shape we assert against is now one Bring actually sends.
+      stubBring([{ error: { code: 404, message: 'No shipments found' } }])
+      await syncShipments({ now })
+      const s = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+      expect(s.carrier).toBe('BRING')
+      expect(s.lastError).toMatch(/not know/i)
+      // Still due later: the order may simply not have been handed over yet.
+      expect(s.terminal).toBe(false)
+      expect(s.nextPollAt).not.toBeNull()
+    } finally {
+      await db.shipment.deleteMany({ where: { trackingNumber: T1 } })
+      await db.order.deleteMany({ where: { shopId: shop.id } })
+      await db.shop.delete({ where: { id: shop.id } })
+    }
   })
 
   it('reports itself unconfigured rather than throwing', async () => {
@@ -684,5 +705,159 @@ describe('syncShipments', () => {
     // count check below.
     for (const numbers of calls) expect(numbers).toHaveLength(1)
     expect(calls.length).toBeGreaterThanOrEqual(3)
+  })
+
+  describe('identifying an UNKNOWN parcel', () => {
+    // DEVIATION FROM BRIEF: the brief lists `noSleep` among this file's
+    // helpers, but the copy already in the file is scoped inside the sibling
+    // `describe('with DHL connected', ...)` block above, not visible here. A
+    // second, identical copy - rather than hoisting the original and touching
+    // a block this task has no reason to change.
+    const noSleep = async () => {}
+
+    const DHL_BODY = (id: string, country: string) => ({
+      shipments: [{
+        id, service: 'ecommerce-europe',
+        destination: { address: { countryCode: country } },
+        details: { weight: { unitText: 'KG', value: 18.2 } },
+        events: [{ timestamp: '2026-08-05T09:00:00', statusCode: 'transit', description: 'On the way' }],
+      }],
+    })
+
+    it('asks Bring first and, when Bring knows it, needs no DHL call', async () => {
+      await db.shipment.create({ data: { trackingNumber: T1, carrier: 'UNKNOWN', nextPollAt: new Date('2026-01-01') } })
+      const fetchMock = vi.fn(async (url: string) =>
+        url.includes('bring.com')
+          ? new Response(JSON.stringify({ consignmentSet: [{ consignmentId: 'C1', packageSet: [{ packageNumber: T1, recipientEmailAddress: 'x@example.test', eventSet: [{ status: 'PRE_NOTIFIED', dateIso: '2026-08-04T10:00:00Z' }] }] }] }), { status: 200 })
+          : new Response(JSON.stringify({ shipments: [] }), { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubEnv('DHL_API_KEY', 'k')
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.identified).toBe(1)
+      expect(fetchMock.mock.calls.some(([u]) => String(u).includes('dhl.com'))).toBe(false)
+      const row = await db.shipment.findUnique({ where: { trackingNumber: T1 } })
+      expect(row?.carrier).toBe('BRING')
+      expect(row?.recipientEmail).toBe('x@example.test')
+      expect(row?.identifiedAt).toEqual(now)
+    })
+
+    it('asks DHL when Bring has nothing, within the run budget, and the row becomes a DHL parcel', async () => {
+      await db.shipment.create({ data: { trackingNumber: T2, carrier: 'UNKNOWN', nextPollAt: new Date('2026-01-01') } })
+      const fetchMock = vi.fn(async (url: string) =>
+        url.includes('bring.com')
+          ? new Response(JSON.stringify({ consignmentSet: [{ error: { code: 404, message: 'No shipments found' } }] }), { status: 200 })
+          : new Response(JSON.stringify(DHL_BODY(`00${T2}`, 'DE')), { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubEnv('DHL_API_KEY', 'k')
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.identified).toBe(1)
+      expect(r.dhlCalls).toBe(1)
+      const row = await db.shipment.findUnique({ where: { trackingNumber: T2 }, include: { events: true } })
+      expect(row?.carrier).toBe('DHL')
+      expect(row?.destinationCountry).toBe('DE')
+      expect(row?.weightKg).toBe(18.2)
+      expect(row?.events).toHaveLength(1)
+      expect(row?.unlinkedReason).toMatch(/^DHL parcel to DE/)
+    })
+
+    it('leaves the DHL half for the next run when the budget is spent, and keeps the row UNKNOWN', async () => {
+      for (let i = 0; i < DHL_CALLS_PER_RUN + 1; i++) {
+        await db.shipment.create({ data: { trackingNumber: `${TRACK}U${i}`, carrier: 'UNKNOWN', nextPollAt: new Date(`2026-01-0${i + 1}`) } })
+      }
+      const fetchMock = vi.fn(async (url: string) =>
+        url.includes('bring.com')
+          ? new Response(JSON.stringify({ consignmentSet: [] }), { status: 200 })
+          : new Response(JSON.stringify({ shipments: [] }), { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubEnv('DHL_API_KEY', 'k')
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.dhlCalls).toBe(DHL_CALLS_PER_RUN)
+      const rows = await db.shipment.findMany({ where: { trackingNumber: { startsWith: `${TRACK}U` } }, orderBy: { trackingNumber: 'asc' } })
+      // The two asked of DHL were unknown to it: asked again tomorrow.
+      // The third was never asked of DHL this run: still due, untouched.
+      expect(rows.filter((x) => x.lastError === 'Neither Bring nor DHL knows this number')).toHaveLength(DHL_CALLS_PER_RUN)
+      expect(rows.every((x) => x.carrier === 'UNKNOWN')).toBe(true)
+      expect(rows[DHL_CALLS_PER_RUN].nextPollAt).toEqual(new Date('2026-01-03'))
+      // The third row was not asked of Bring either: once DHL's budget is
+      // spent, the row is skipped before Bring is ever called, so the
+      // backlog does not cost one Bring call per row per run while it waits.
+      const bringCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('bring.com')).length
+      expect(bringCalls).toBe(DHL_CALLS_PER_RUN)
+    })
+
+    it('does not expire the UNKNOWN grace period on a row DHL was never asked about, when no key is configured', async () => {
+      // DHL_API_KEY is left at the suite's default of '' - not connected.
+      await db.shipment.create({ data: { trackingNumber: T1, carrier: 'UNKNOWN', nextPollAt: new Date('2026-01-01') } })
+      // Bring answers, but does not know it - the real shape captured from
+      // api.bring.com (see "records a number Bring does not know" above).
+      stubBring([{ error: { code: 404, message: 'No shipments found' } }])
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.dhlSkippedNoKey).toBe(1)
+      const row = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+      expect(row.carrier).toBe('UNKNOWN')
+      expect(row.terminal).toBe(false)
+      expect(row.lastError).toBe('DHL is not connected, so this number could not be identified')
+      expect(row.nextPollAt).toEqual(new Date(now.getTime() + 24 * HOUR))
+    })
+
+    it('flips an unlinked BRING row Bring does not know to UNKNOWN', async () => {
+      await db.shipment.create({ data: { trackingNumber: T3, carrier: 'BRING', nextPollAt: new Date('2026-01-01') } })
+      stubBring([{ error: { code: 404, message: 'No shipments found' } }])
+
+      await syncShipments({ now, sleep: noSleep })
+
+      const row = await db.shipment.findUnique({ where: { trackingNumber: T3 } })
+      expect(row?.carrier).toBe('UNKNOWN')
+      expect(row?.nextPollAt).toEqual(now)
+    })
+
+    it('leaves a LINKED Bring row Bring does not know alone - it belongs to an order and is simply early', async () => {
+      const shop = await db.shop.create({ data: { name: 'Sync flip [sync-flip-test]', currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') } })
+      const order = await db.order.create({
+        data: { shopId: shop.id, externalId: 'SF1', number: 'SF1', placedAt: now, status: 'completed', currency: 'NOK', grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0 },
+      })
+      try {
+        await db.shipment.create({ data: { trackingNumber: `${TRACK}L1`, carrier: 'BRING', orderId: order.id, nextPollAt: new Date('2026-01-01') } })
+        stubBring([])
+        await syncShipments({ now, sleep: noSleep })
+        const row = await db.shipment.findUnique({ where: { trackingNumber: `${TRACK}L1` } })
+        expect(row?.carrier).toBe('BRING')
+        expect(row?.lastError).toBe('BRING does not know this number yet')
+      } finally {
+        await db.shipment.deleteMany({ where: { trackingNumber: `${TRACK}L1` } })
+        await db.order.deleteMany({ where: { shopId: shop.id } })
+        await db.shop.delete({ where: { id: shop.id } })
+      }
+    })
+
+    it('re-matches a refused Bring row after polling it', async () => {
+      const shop = await db.shop.create({ data: { name: 'Sync rematch [sync-rematch-test]', currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') } })
+      const order = await db.order.create({
+        data: { shopId: shop.id, externalId: 'SR1', number: 'SR1', placedAt: new Date(now.getTime() - 2 * 24 * HOUR), status: 'completed', currency: 'NOK', grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0, customerEmail: 're@example.test' },
+      })
+      try {
+        await db.shipment.create({
+          data: { trackingNumber: `${TRACK}R1`, carrier: 'BRING', recipientEmail: 're@example.test', consignmentId: 'CR1', unlinkedReason: 'old', nextPollAt: new Date('2026-01-01') },
+        })
+        stubBring([consignment(`${TRACK}R1`, [{ status: 'PRE_NOTIFIED', dateIso: '2026-08-04T10:00:00Z' }])])
+        await syncShipments({ now, sleep: noSleep })
+        const row = await db.shipment.findUnique({ where: { trackingNumber: `${TRACK}R1` } })
+        expect(row?.orderId).toBe(order.id)
+        expect(row?.linkSource).toBe('BRING_EMAIL')
+        expect(row?.unlinkedReason).toBeNull()
+      } finally {
+        await db.shipment.deleteMany({ where: { trackingNumber: `${TRACK}R1` } })
+        await db.order.deleteMany({ where: { shopId: shop.id } })
+        await db.shop.delete({ where: { id: shop.id } })
+      }
+    })
   })
 })

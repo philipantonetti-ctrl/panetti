@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
-import { ImportsList, LateList, NoTracking, Pipeline, Split, Tiles, type LateOrder } from './DeliveryClient'
+import {
+  ImportsList, LateList, NoTracking, Pipeline, Split, Tiles, UnattachedParcels,
+  type LateOrder, type UnlinkedParcel,
+} from './DeliveryClient'
 import type { DeliveryStats } from '@/lib/delivery/stats'
+import { ToastProvider } from '@/components/toast/ToastProvider'
 
 const order = (over: Partial<LateOrder> = {}): LateOrder => ({
   id: 'o1', number: '15749', customerName: null, shop: 'Panetti Germany', country: 'DE',
@@ -171,7 +175,7 @@ describe('NoTracking', () => {
   it('does not call these orders late, because nothing has said that they are', () => {
     const { container } = render(shut())
     expect(container.textContent).not.toMatch(/\blate\b/i)
-    expect(container.textContent).toMatch(/no warehouse file/i)
+    expect(container.textContent).toMatch(/we hold no parcel/i)
   })
 
   /**
@@ -427,5 +431,143 @@ describe('ImportsList refusals', () => {
     expect(text).not.toContain('parcels')
     // Both numbers still render, still as tracking links.
     expect(container.querySelectorAll('a').length).toBe(2)
+  })
+})
+
+const parcel = (over: Partial<UnlinkedParcel> = {}): UnlinkedParcel => ({
+  trackingNumber: '473325380023179098', carrier: 'DHL',
+  url: 'https://www.dhl.com/se-en/home/tracking.html?tracking-id=473325380023179098',
+  lastStatus: 'DELIVERED', destinationCountry: 'DE', bookedAt: '2026-09-07T17:30:00.000Z', weightKg: 18.2,
+  recipientName: null, reason: 'DHL parcel to DE: DHL gives no name or email, so no order could be matched by itself',
+  identifiedAt: '2026-09-08T00:15:00.000Z', createdAt: '2026-09-07T16:00:00.000Z',
+  candidates: [
+    { orderId: 'o-15864', number: '15864', shop: 'Panetti Germany', customerName: 'Tobias Kohlmeyer', placedAt: '2026-09-07T15:49:00.000Z', items: '1 x Panetti ProMix', holdsParcel: false },
+    { orderId: 'o-15865', number: '15865', shop: 'Panetti Germany', customerName: 'Martin Röthke', placedAt: '2026-09-07T16:29:00.000Z', items: '1 x Pizza oven', holdsParcel: true },
+  ],
+  candidatesTotal: 2,
+  ...over,
+})
+
+const SHOPS = [{ id: 's-de', name: 'Panetti Germany' }]
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('UnattachedParcels', () => {
+  it('shows the carrier, where it goes, the weight, the status and the reason', () => {
+    const { container } = render(
+      <ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    expect(container.textContent).toContain('DHL')
+    expect(container.textContent).toContain('DE')
+    expect(container.textContent).toContain('18.2 kg')
+    expect(container.textContent).toContain('DELIVERED')
+    expect(container.textContent).toContain('DHL gives no name or email')
+  })
+
+  it('offers each candidate as a button naming the order, the customer and what they bought, flagging one that holds a parcel', () => {
+    render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    expect(screen.getByRole('button', { name: /Link to 15864/ }).textContent).toContain('Tobias Kohlmeyer')
+    expect(screen.getByRole('button', { name: /Link to 15864/ }).textContent).toContain('1 x Panetti ProMix')
+    expect(screen.getByRole('button', { name: /Link to 15865/ }).textContent).toContain('(has a parcel)')
+  })
+
+  it('sends the chosen order to the parcel route and asks the page to reload', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const onChanged = vi.fn()
+    render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={onChanged} /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Link to 15864/ }))
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/delivery/parcels/473325380023179098')
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(init.body as string)).toEqual({ orderId: 'o-15864' })
+  })
+
+  it('shows the route\'s own words when a link is refused', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'This parcel is already linked to an order' }), { status: 400 })))
+    render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Link to 15864/ }))
+    expect(await screen.findByText('This parcel is already linked to an order')).toBeInTheDocument()
+  })
+
+  it('dismisses a parcel that is not a customer delivery', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const onChanged = vi.fn()
+    render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={onChanged} /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Not a customer parcel' }))
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
+    expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ dismiss: true })
+  })
+
+  it('links by typed order number and shop when no candidate fits', async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes('/api/orders/lookup')
+        ? new Response(JSON.stringify({ orderId: 'o-typed' }), { status: 200 })
+        : new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<ToastProvider><UnattachedParcels items={[parcel({ candidates: [], candidatesTotal: 0 })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.change(screen.getByLabelText('Order number'), { target: { value: '15866' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe('/api/orders/lookup?shop=s-de&number=15866')
+    expect(JSON.parse((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as string)).toEqual({ orderId: 'o-typed' })
+  })
+
+  it('disables Link while the typed-number lookup is pending, so a fast double click cannot send it twice', async () => {
+    let resolveLookup: (res: Response) => void = () => {}
+    const lookupPromise = new Promise<Response>((resolve) => { resolveLookup = resolve })
+    const fetchMock = vi.fn((url: string) =>
+      url.includes('/api/orders/lookup')
+        ? lookupPromise
+        : Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 })))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<ToastProvider><UnattachedParcels items={[parcel({ candidates: [], candidatesTotal: 0 })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.change(screen.getByLabelText('Order number'), { target: { value: '15866' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+    expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled()
+    // A second, fast click while the lookup is still pending must not fire again.
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+
+    resolveLookup(new Response(JSON.stringify({ orderId: 'o-typed' }), { status: 200 }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const patchCalls = fetchMock.mock.calls.filter(
+      (c) => !(c[0] as string).includes('/api/orders/lookup'),
+    )
+    expect(patchCalls.length).toBe(1)
+  })
+
+  it('says a parcel nobody has been asked about yet is simply not identified yet', () => {
+    const { container } = render(
+      <ToastProvider><UnattachedParcels items={[parcel({ carrier: 'Unknown', url: null, reason: null, identifiedAt: null, candidates: [], candidatesTotal: 0 })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    expect(container.textContent).toContain('Not identified yet - the next check asks Bring, then DHL')
+    expect(container.querySelector('a[href]')).toBeNull()
+  })
+})
+
+describe('NoTracking, when a parcel was refused for that customer', () => {
+  it('says so on the row, with the reason and a link down to the parcel', () => {
+    const { container } = render(
+      <NoTracking
+        rows={[order({ state: 'NO_TRACKING', refusedParcel: { trackingNumber: '373325386490923366', reason: 'a@b.c matched 2 orders in the last 30 days: 14582, 14692', createdAt: '2026-09-07T16:00:00.000Z' } })]}
+        total={1} open onToggle={() => {}}
+      />,
+    )
+    expect(container.textContent).toContain('A parcel for this customer was in the file of 7 Sept 2026 but was not attached: a@b.c matched 2 orders in the last 30 days: 14582, 14692')
+    expect(container.querySelector('a[href="#unattached"]')?.textContent).toBe('373325386490923366')
+    expect(container.textContent).toContain('Where the warehouse file named a parcel we could not attach')
   })
 })

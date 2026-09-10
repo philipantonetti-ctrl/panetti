@@ -357,4 +357,21 @@ describe('alertMessage', () => {
     expect(text).toContain('dhl.com')
     expect(text).not.toContain('bring.com')
   })
+
+  /**
+   * A parcel with no carrier page - UNKNOWN included - carries url: null now
+   * instead of a Bring link that finds nothing (see tracking-url.ts). Without
+   * this guard the line printed a Slack link to the literal text "null",
+   * which is worse than the Bring link it replaced: that one at least opened.
+   */
+  it('prints the bare number for a parcel with no url, never the word null', () => {
+    const text = alertMessage(
+      [{ id: 'o1', number: '1001', shop: 'Panetti', country: 'NO',
+         daysOver: 1, promiseDays: 3, state: 'IN_TRANSIT',
+         parcels: [{ number: '473325380028549070', carrier: 'Unknown', url: null }] }],
+      'https://panetti.vercel.app',
+    )
+    expect(text).toContain('473325380028549070')
+    expect(text).not.toContain('null')
+  })
 })

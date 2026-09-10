@@ -61,6 +61,7 @@ function loaded(over: {
       shipments: [],
     },
     customerName: over.customerName === undefined ? 'Dag-Eivind Nicolaisen' : over.customerName,
+    customerEmail: null,
     view: view(over.view),
   }
 }
