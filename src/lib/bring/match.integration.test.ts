@@ -68,11 +68,15 @@ describe('matchByEmail', () => {
   })
 
   it('refuses when two live orders share an email in the window, rather than guessing', async () => {
-    await order(trackedShopId, 'M3a', 'twice@example.test', '2026-08-09T09:00:00Z')
-    await order(trackedShopId, 'M3b', 'twice@example.test', '2026-08-10T09:00:00Z')
-    const out = await matchByEmail('twice@example.test', RECEIVED)
-    expect(out.orderId).toBeNull()
-    expect((out as { reason: string }).reason).toMatch(/2 orders/)
+    const m3a = await order(trackedShopId, 'M3a', 'twice@example.test', '2026-08-09T09:00:00Z')
+    const m3b = await order(trackedShopId, 'M3b', 'twice@example.test', '2026-08-10T09:00:00Z')
+    try {
+      const out = await matchByEmail('twice@example.test', RECEIVED)
+      expect(out.orderId).toBeNull()
+      expect((out as { reason: string }).reason).toMatch(/2 orders/)
+    } finally {
+      await db.order.deleteMany({ where: { id: { in: [m3a.id, m3b.id] } } })
+    }
   })
 
   /**
@@ -153,5 +157,65 @@ describe('matchByEmail', () => {
     await order(trackedShopId, 'B3', 'boundary-too-early@example.test', tooEarlyDate.toISOString())
     const out = await matchByEmail('boundary-too-early@example.test', RECEIVED)
     expect(out.orderId).toBeNull()
+  })
+
+  it('does not offer an order that already holds another consignment\'s parcel', async () => {
+    const held = await order(trackedShopId, 'PM-HELD', 'twice@example.test', '2026-08-01T10:00:00Z')
+    const open = await order(trackedShopId, 'PM-OPEN', 'twice@example.test', '2026-08-02T10:00:00Z')
+    await db.shipment.create({
+      data: { trackingNumber: 'PMATCH-HELD-1', orderId: held.id, consignmentId: 'CONS-OLD', carrier: 'BRING' },
+    })
+    try {
+      const r = await matchByEmail('twice@example.test', RECEIVED, { consignmentId: 'CONS-NEW' })
+      expect(r.orderId).not.toBeNull()
+      const linked = await db.order.findUnique({ where: { id: r.orderId! }, select: { number: true } })
+      expect(linked?.number).toBe('PM-OPEN')
+    } finally {
+      await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: 'PMATCH-' } } })
+      await db.order.deleteMany({ where: { id: { in: [held.id, open.id] } } })
+    }
+  })
+
+  it('still offers the order when the parcel it holds is this same consignment - the second box', async () => {
+    const same = await order(trackedShopId, 'PM-SAME', 'box@example.test', '2026-08-01T10:00:00Z')
+    await db.shipment.create({
+      data: { trackingNumber: 'PMATCH-SAME-1', orderId: same.id, consignmentId: 'CONS-SAME', carrier: 'BRING' },
+    })
+    try {
+      const r = await matchByEmail('box@example.test', RECEIVED, { consignmentId: 'CONS-SAME' })
+      expect(r.orderId).toBe(same.id)
+    } finally {
+      await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: 'PMATCH-' } } })
+      await db.order.deleteMany({ where: { id: same.id } })
+    }
+  })
+
+  it('treats a held parcel with no consignment id as another consignment, so it can only refuse', async () => {
+    const held = await order(trackedShopId, 'PM-NOID', 'noid@example.test', '2026-08-01T10:00:00Z')
+    await db.shipment.create({
+      data: { trackingNumber: 'PMATCH-NOID-1', orderId: held.id, carrier: 'BRING' },
+    })
+    try {
+      const r = await matchByEmail('noid@example.test', RECEIVED, { consignmentId: 'CONS-X' })
+      expect(r.orderId).toBeNull()
+      expect((r as { reason: string }).reason).toBe('No order for noid@example.test')
+    } finally {
+      await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: 'PMATCH-' } } })
+      await db.order.deleteMany({ where: { id: held.id } })
+    }
+  })
+
+  it('uses the booking time, not the file time, as the upper bound', async () => {
+    const early = await order(trackedShopId, 'PM-EARLY', 'twins@example.test', '2026-08-10T08:00:00Z')
+    const late = await order(trackedShopId, 'PM-LATE', 'twins@example.test', '2026-08-10T20:00:00Z')
+    // Booked at noon: only the morning order existed then.
+    try {
+      const r = await matchByEmail('twins@example.test', RECEIVED, { bookedAt: new Date('2026-08-10T12:00:00Z') })
+      expect(r.orderId).not.toBeNull()
+      const linked = await db.order.findUnique({ where: { id: r.orderId! }, select: { number: true } })
+      expect(linked?.number).toBe('PM-EARLY')
+    } finally {
+      await db.order.deleteMany({ where: { id: { in: [early.id, late.id] } } })
+    }
   })
 })

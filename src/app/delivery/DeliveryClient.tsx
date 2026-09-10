@@ -13,6 +13,7 @@ import type { DeliveryStats, CountryStat } from '@/lib/delivery/stats'
 import type { DeliveryState, Parcel } from '@/lib/delivery/view'
 import type { CarrierAverage } from '@/lib/delivery/carrier-cost'
 import { CarrierCosts, type CarrierCostSave, type CarrierMonth } from './CarrierCosts'
+import { useToast } from '@/components/toast/useToast'
 
 type CarrierCostPayload = {
   carriers: CarrierAverage[]
@@ -56,13 +57,34 @@ export type LateOrder = {
   promiseDays: number | null
   state: DeliveryState
   parcels: Parcel[]
+  /** A parcel for this customer was in a file and refused. Null when none. */
+  refusedParcel?: { trackingNumber: string; reason: string; createdAt: string } | null
 }
 
-type UnlinkedParcel = {
+export type Candidate = {
+  orderId: string
+  number: string
+  shop: string
+  customerName: string | null
+  placedAt: string
+  items: string
+  holdsParcel: boolean
+}
+
+export type UnlinkedParcel = {
   trackingNumber: string
   carrier: string
-  url: string
+  url: string | null
   lastStatus: string | null
+  destinationCountry: string | null
+  bookedAt: string | null
+  weightKg: number | null
+  recipientName: string | null
+  reason: string | null
+  identifiedAt: string | null
+  createdAt: string
+  candidates: Candidate[]
+  candidatesTotal: number
 }
 
 type ImportRow = {
@@ -92,6 +114,7 @@ type Payload = {
   noTrackingTotal: number
   unlinked: UnlinkedParcel[]
   unlinkedTotal: number
+  shops: { id: string; name: string }[]
   imports: ImportRow[]
   trackedShops: number
   /** ISO, or null if the carrier has never been asked. */
@@ -732,9 +755,8 @@ export function NoTracking({
               what the client could not interpret; the answer to "what are
               these?" is that no warehouse file has named them yet. */}
           <span className="mt-0.5 block text-[12px] text-muted">
-            No warehouse file has mentioned these orders yet, so we hold no parcel for them and
-            cannot say what happened. Many will have arrived. Importing the file for this period is
-            what answers it.
+            We hold no parcel for these orders. Some are simply not shipped yet. Where the warehouse
+            file named a parcel we could not attach, the row says so and the parcel is listed below.
           </span>
         </span>
         <span aria-hidden="true" className="text-faint">
@@ -794,6 +816,15 @@ export function NoTracking({
                     >
                       {r.number}
                     </Link>
+                    {r.refusedParcel && (
+                      <span className="mt-0.5 block text-[12px] font-normal text-warn">
+                        A parcel for this customer was in the file of {orderedOn(r.refusedParcel.createdAt.slice(0, 10))} but
+                        was not attached: {r.refusedParcel.reason}{' '}
+                        <a href="#unattached" className="num text-accent hover:underline">
+                          {r.refusedParcel.trackingNumber}
+                        </a>
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-ink">{r.customerName || DASH}</td>
                   <td className="px-4 py-2.5 text-ink">{r.shop}</td>
@@ -949,14 +980,18 @@ export function LateList({
                           // wide, and the name is only ever read together with
                           // the number it belongs to.
                           <span key={p.number} className="whitespace-nowrap">
-                            <a
-                              href={p.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-accent hover:underline"
-                            >
-                              {p.number}
-                            </a>
+                            {p.url ? (
+                              <a
+                                href={p.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-accent hover:underline"
+                              >
+                                {p.number}
+                              </a>
+                            ) : (
+                              <span className="num text-ink">{p.number}</span>
+                            )}
                             <span className="ml-1 text-[11px] text-faint">{p.carrier}</span>
                           </span>
                         ))
@@ -974,81 +1009,202 @@ export function LateList({
 }
 
 /**
- * Collapsed by default - most days this is empty and nobody needs to see it -
- * but the count in the heading is always real, so "0" here is a checked fact,
- * not silence.
+ * Every parcel we hold that belongs to no order, with the facts a person
+ * needs to attach it and the buttons to do so. The machine refuses whenever
+ * two orders could be right; this is where a person decides. Collapsed by
+ * default, but the count in the heading is always the true total.
  */
-function UnlinkedParcels({ items, total }: { items: UnlinkedParcel[]; total: number }) {
+export function UnattachedParcels({
+  items,
+  total,
+  shops,
+  onChanged,
+}: {
+  items: UnlinkedParcel[]
+  total: number
+  shops: { id: string; name: string }[]
+  onChanged: () => void
+}) {
   const [open, setOpen] = useState(false)
-  // `total` can exceed `items.length`: the route caps the list it sends. This
-  // heading exists specifically to make a linking outage visible, so it must
-  // never quietly understate it the moment the outage is largest.
+  const [busy, setBusy] = useState<string | null>(null)
+  const toast = useToast()
   const capped = total > items.length
+
+  async function patch(trackingNumber: string, body: { orderId: string } | { dismiss: true }) {
+    setBusy(trackingNumber)
+    try {
+      const res = await fetch(`/api/delivery/parcels/${encodeURIComponent(trackingNumber)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => ({}))).error ?? 'Could not update this parcel')
+        return
+      }
+      toast.success('dismiss' in body ? 'Parcel dismissed' : 'Parcel linked')
+      onChanged()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function linkTyped(trackingNumber: string, shopId: string, number: string) {
+    // Set before the validation toast and the lookup, not just inside patch()
+    // below: without this the lookup's own await left the button enabled for
+    // its whole round trip, and a fast double click fired two lookups and two
+    // PATCHes. patch() clears this again in its own finally on the happy
+    // path; the outer finally here clearing it a second time is harmless.
+    setBusy(trackingNumber)
+    try {
+      if (!shopId || !number.trim()) {
+        toast.error('Choose the shop and type the order number')
+        return
+      }
+      const res = await fetch(`/api/orders/lookup?shop=${encodeURIComponent(shopId)}&number=${encodeURIComponent(number.trim())}`)
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => ({}))).error ?? 'Could not find that order')
+        return
+      }
+      const { orderId } = (await res.json()) as { orderId: string }
+      await patch(trackingNumber, { orderId })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
-    <section className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
+    <section id="unattached" className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         className="flex w-full items-center justify-between px-5 py-3.5 text-left"
       >
-        <span className="text-[13px] font-semibold text-ink">
-          Unlinked parcels{' '}
-          <span className="num font-normal text-muted">
-            (
-            {capped
-              ? `${items.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}`
-              : items.length.toLocaleString('en-US')}
-            )
+        <span>
+          <span className="text-[13px] font-semibold text-ink">
+            Parcels without an order{' '}
+            <span className="num font-normal text-muted">
+              ({capped ? `${items.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}` : items.length.toLocaleString('en-US')})
+            </span>
+          </span>
+          <span className="mt-0.5 block text-[12px] text-muted">
+            Parcels a warehouse file named that we could not attach to an order, with the reason. Pick the
+            order, or type its number. Nothing here is guessed.
           </span>
         </span>
-        <span aria-hidden="true" className="text-faint">
-          {open ? '▾' : '▸'}
-        </span>
+        <span aria-hidden="true" className="text-faint">{open ? '▾' : '▸'}</span>
       </button>
 
       {open &&
         (items.length === 0 ? (
           <p className="border-t border-line px-5 py-4 text-[13px] text-muted">
-            None right now - every parcel the carriers have told us about is linked to an
-            order.
+            None right now - every parcel the carriers have told us about is linked to an order.
           </p>
         ) : (
           <div className="overflow-x-auto border-t border-line">
             <table className="w-full border-collapse text-[13px]">
               <thead>
                 <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
-                  <th className="px-5 py-2 text-left">Tracking number</th>
-                  {/* Its own column here, unlike the late table above: this one
-                      has two columns and the room, and an unlinked parcel is
-                      chased BY carrier - you go and ask that carrier's file
-                      where the order reference went. */}
-                  <th className="px-5 py-2 text-left">Carrier</th>
-                  <th className="px-5 py-2 text-left">Last status</th>
+                  <th className="px-5 py-2 text-left">Parcel</th>
+                  <th className="px-3 py-2 text-left">Carrier</th>
+                  <th className="px-3 py-2 text-left">To</th>
+                  <th className="px-3 py-2 text-left">Booked</th>
+                  <th className="px-3 py-2 text-right">Weight</th>
+                  <th className="px-3 py-2 text-left">Last status</th>
+                  <th className="px-5 py-2 text-left">Why</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
-                  <tr key={p.trackingNumber} className="border-b border-line last:border-b-0 hover:bg-panel">
-                    <td className="px-5 py-2.5">
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-accent hover:underline"
-                      >
-                        {p.trackingNumber}
-                      </a>
-                    </td>
-                    <td className="px-5 py-2.5 text-muted">{p.carrier}</td>
-                    <td className="px-5 py-2.5 text-ink">{p.lastStatus ?? DASH}</td>
-                  </tr>
+                  <ParcelRow key={p.trackingNumber} p={p} shops={shops} busy={busy === p.trackingNumber} onLink={patch} onLinkTyped={linkTyped} />
                 ))}
               </tbody>
             </table>
           </div>
         ))}
     </section>
+  )
+}
+
+const bookedOn = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+    : DASH
+
+function ParcelRow({
+  p,
+  shops,
+  busy,
+  onLink,
+  onLinkTyped,
+}: {
+  p: UnlinkedParcel
+  shops: { id: string; name: string }[]
+  busy: boolean
+  onLink: (trackingNumber: string, body: { orderId: string } | { dismiss: true }) => Promise<void>
+  onLinkTyped: (trackingNumber: string, shopId: string, number: string) => Promise<void>
+}) {
+  const [shopId, setShopId] = useState(shops[0]?.id ?? '')
+  const [number, setNumber] = useState('')
+  const why = p.reason ?? (p.identifiedAt ? DASH : 'Not identified yet - the next check asks Bring, then DHL')
+  const more = p.candidatesTotal - p.candidates.length
+
+  return (
+    <>
+      <tr className="hover:bg-panel">
+        <td className="px-5 py-2.5">
+          {p.url ? (
+            <a href={p.url} target="_blank" rel="noopener noreferrer" className="num text-accent hover:underline">{p.trackingNumber}</a>
+          ) : (
+            <span className="num text-ink">{p.trackingNumber}</span>
+          )}
+          {p.recipientName && <span className="block text-[12px] text-muted">{p.recipientName}</span>}
+        </td>
+        <td className="px-3 py-2.5 text-muted">{p.carrier}</td>
+        <td className="px-3 py-2.5 text-ink">{p.destinationCountry ?? DASH}</td>
+        <td className="px-3 py-2.5 text-ink">{bookedOn(p.bookedAt)}</td>
+        <td className="num px-3 py-2.5 text-right text-ink">{p.weightKg !== null ? `${p.weightKg} kg` : DASH}</td>
+        <td className="px-3 py-2.5 text-ink">{p.lastStatus ?? DASH}</td>
+        <td className="max-w-[320px] px-5 py-2.5 text-[12px] text-warn">{why}</td>
+      </tr>
+      <tr className="border-b border-line last:border-b-0">
+        <td colSpan={7} className="px-5 pb-3 pt-0">
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            {p.candidates.map((c) => (
+              <button
+                key={c.orderId}
+                type="button"
+                disabled={busy}
+                onClick={() => void onLink(p.trackingNumber, { orderId: c.orderId })}
+                className="rounded-[var(--radius-control)] border border-line px-2 py-1 text-accent hover:bg-panel disabled:opacity-50"
+              >
+                Link to {c.number} · {c.customerName || 'name unknown'} · {orderedOn(c.placedAt.slice(0, 10))}
+                {c.items ? ` · ${c.items}` : ''}
+                {c.holdsParcel ? ' (has a parcel)' : ''}
+              </button>
+            ))}
+            {more > 0 && <span className="text-muted">and {more} more</span>}
+            <label className="ml-auto flex items-center gap-1 text-muted">
+              Shop
+              <select aria-label="Shop" value={shopId} onChange={(e) => setShopId(e.target.value)} className="rounded-[var(--radius-control)] border border-line bg-surface px-1.5 py-1 text-ink">
+                {shops.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-muted">
+              Order number
+              <input aria-label="Order number" value={number} onChange={(e) => setNumber(e.target.value)} className="w-24 rounded-[var(--radius-control)] border border-line bg-surface px-1.5 py-1 text-ink" />
+            </label>
+            <button type="button" disabled={busy} onClick={() => void onLinkTyped(p.trackingNumber, shopId, number)} className="rounded-[var(--radius-control)] border border-line px-2 py-1 text-accent hover:bg-panel disabled:opacity-50">
+              Link
+            </button>
+            <button type="button" disabled={busy} onClick={() => void onLink(p.trackingNumber, { dismiss: true })} className="rounded-[var(--radius-control)] border border-line px-2 py-1 text-muted hover:bg-panel disabled:opacity-50">
+              Not a customer parcel
+            </button>
+          </div>
+        </td>
+      </tr>
+    </>
   )
 }
 
@@ -1134,6 +1290,25 @@ function refusalsOf(raw: string | null): Refusal[] {
 }
 
 /**
+ * A refusal's own number, linked to Bring when refusalUrl resolves one.
+ *
+ * refusalUrl always does today - every number here is Bring's own by
+ * construction - but its return type is the same `string | null` as every
+ * other tracking link on this page, so this renders the same way the rest do
+ * rather than assuming a link that might not be there.
+ */
+function RefusalNumber({ number }: { number: string }) {
+  const url = refusalUrl(number)
+  return url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="num text-accent hover:underline">
+      {number}
+    </a>
+  ) : (
+    <span className="num text-ink">{number}</span>
+  )
+}
+
+/**
  * What arrived and what it did with itself.
  *
  * The counts alone are not enough now that a refusal is a deliberate outcome
@@ -1204,14 +1379,7 @@ export function ImportsList({ items }: { items: ImportRow[] }) {
                                     {g.numbers.slice(0, GROUP_NUMBERS_SHOWN).map((num, k) => (
                                       <Fragment key={num}>
                                         {k > 0 && ', '}
-                                        <a
-                                          href={refusalUrl(num)}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="num text-accent hover:underline"
-                                        >
-                                          {num}
-                                        </a>
+                                        <RefusalNumber number={num} />
                                       </Fragment>
                                     ))}
                                     {g.numbers.length > GROUP_NUMBERS_SHOWN && (
@@ -1224,14 +1392,7 @@ export function ImportsList({ items }: { items: ImportRow[] }) {
                                   <>
                                     {g.numbers[0] && (
                                       <>
-                                        <a
-                                          href={refusalUrl(g.numbers[0])}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="num text-accent hover:underline"
-                                        >
-                                          {g.numbers[0]}
-                                        </a>
+                                        <RefusalNumber number={g.numbers[0]} />
                                         {' - '}
                                       </>
                                     )}
@@ -1448,7 +1609,12 @@ export function DeliveryClient({
                     open={noTrackingOpen}
                     onToggle={() => setNoTrackingOpen((o) => !o)}
                   />
-                  <UnlinkedParcels items={data.unlinked} total={data.unlinkedTotal} />
+                  <UnattachedParcels
+                    items={data.unlinked}
+                    total={data.unlinkedTotal}
+                    shops={data.shops}
+                    onChanged={reload}
+                  />
                   <div className="space-y-3">
                     <UploadBox onImported={reload} />
                     <ImportsList items={data.imports} />

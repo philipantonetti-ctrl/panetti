@@ -11,6 +11,17 @@ const CANDIDATES_NAMED = 4
 export type MatchOutcome = { orderId: string } | { orderId: null; reason: string }
 
 /**
+ * What the caller knows about the parcel beyond its email.
+ *
+ * `bookedAt` is when the label was made. An order placed after that cannot be
+ * the one the label is for, so it replaces the file's arrival time as the
+ * upper bound when known. `consignmentId` is the carrier's id for the whole
+ * consignment: an order already holding a parcel from ANOTHER consignment is
+ * not a candidate, while one holding this consignment's first box still is.
+ */
+export type MatchScope = { bookedAt?: Date | null; consignmentId?: string | null }
+
+/**
  * Find the order a parcel belongs to, from the recipient email Bring returns.
  *
  * The warehouse's own `Order` column cannot do this job. It is their internal
@@ -28,23 +39,38 @@ export type MatchOutcome = { orderId: string } | { orderId: null; reason: string
  * Reading that column would put us back to parsing their table, which is the
  * dependency this path exists to remove. Receipt is a few hours after dispatch,
  * so the bound is looser but never wrong: it exists to stop a parcel attaching
- * to an order the same customer placed AFTER it shipped.
+ * to an order the same customer placed AFTER it shipped. When the caller knows
+ * the booking time it is used instead - see MatchScope.
  */
 export async function matchByEmail(
   email: string | null,
   receivedAt: Date,
+  scope: MatchScope = {},
 ): Promise<MatchOutcome> {
   if (!email) return { orderId: null, reason: 'Bring holds no email for this parcel' }
+
+  const upper = scope.bookedAt ?? receivedAt
+
+  /**
+   * "Holds a parcel from another consignment". A held parcel with no
+   * consignment id recorded (rows written before the column existed) counts
+   * as another consignment: the rule can then only refuse, never wrongly
+   * accept, which is the side a wrong link must always land on.
+   */
+  const heldByAnother = scope.consignmentId
+    ? { OR: [{ consignmentId: null }, { consignmentId: { not: scope.consignmentId } }] }
+    : {}
 
   const orders = await db.order.findMany({
     where: {
       customerEmail: { equals: email, mode: 'insensitive' },
       shop: { deliveryTrackingFrom: { not: null } },
       placedAt: {
-        gte: new Date(receivedAt.getTime() - MATCH_WINDOW_DAYS * DAY),
-        lte: receivedAt,
+        gte: new Date(upper.getTime() - MATCH_WINDOW_DAYS * DAY),
+        lte: upper,
       },
       voidedAt: null,
+      NOT: { shipments: { some: heldByAnother } },
     },
     select: { id: true, number: true },
     // One is enough to link and two are enough to refuse, so the extra rows buy

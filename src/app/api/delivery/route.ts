@@ -6,6 +6,7 @@ import { rangeFromQuery, shopIdsFromQuery } from '@/lib/api/range'
 import { getSetting } from '@/lib/settings'
 import { wallClock, zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
 import { utcDay } from '@/lib/dates'
+import { candidatesFor } from '@/lib/delivery/candidates'
 import { daysBetween } from '@/lib/delivery/days'
 import { loadDelivery, type LoadedDelivery } from '@/lib/delivery/load'
 import { deliveryStats } from '@/lib/delivery/stats'
@@ -40,8 +41,9 @@ export async function GET(req: Request) {
 
     const shops = await db.shop.findMany({
       where: { active: true, ...(shopIds?.length ? { id: { in: shopIds } } : {}) },
-      select: { id: true, deliveryTrackingFrom: true },
+      select: { id: true, name: true, deliveryTrackingFrom: true },
     })
+    const shopRows = shops.map((s) => ({ id: s.id, name: s.name }))
 
     // One `now` for the whole response. loadDelivery would default its own,
     // and a row's "waiting 9 days" computed a few milliseconds later than the
@@ -150,19 +152,21 @@ export async function GET(req: Request) {
     const lateTotal = chasable.length
     const late = chasable.sort(byUrgency).slice(0, LATE_LIMIT).map(toRow)
     const noTrackingTotal = unfiled.length
-    const noTracking = unfiled.sort(byWaiting).slice(0, LATE_LIMIT).map(toRow)
 
     const [unlinked, unlinkedTotal, imports, config] = await Promise.all([
       db.shipment.findMany({
-        where: { orderId: null },
+        where: { orderId: null, dismissedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 50,
-        // carrier so an unlinked parcel links to whoever is actually holding
-        // it. These come straight off the shipment rather than through
-        // deliveryFor, which is why the URL is built here instead.
-        select: { trackingNumber: true, carrier: true, lastStatus: true },
+        select: {
+          trackingNumber: true, carrier: true, lastStatus: true,
+          destinationCountry: true, weightKg: true, bookedAt: true, recipientName: true,
+          unlinkedReason: true, identifiedAt: true, createdAt: true,
+          // Server-side only, for candidates and the note below. Stripped before the response.
+          recipientEmail: true, consignmentId: true,
+        },
       }),
-      db.shipment.count({ where: { orderId: null } }),
+      db.shipment.count({ where: { orderId: null, dismissedAt: null } }),
       db.trackingImport.findMany({
         orderBy: { receivedAt: 'desc' },
         take: 10,
@@ -187,6 +191,31 @@ export async function GET(req: Request) {
       }),
     ])
 
+    // Candidates are computed live, one query per listed parcel: the answer
+    // changes as other parcels link, and fifty small reads on a page load is
+    // cheaper than a stored answer that is wrong by the next morning.
+    const withCandidates = await Promise.all(
+      unlinked.map(async (s) => ({ ...s, ...(await candidatesFor(s)) })),
+    )
+
+    /**
+     * The one thing a no-tracking order can be told in this phase: a parcel
+     * for the same customer was in a file and refused. Keyed on the email
+     * both sides hold; DHL parcels carry none, which is what phase 2 is for.
+     */
+    const refusedByEmail = new Map<string, { trackingNumber: string; reason: string; createdAt: string }>()
+    for (const s of [...unlinked].reverse()) {
+      if (s.recipientEmail && s.unlinkedReason) {
+        refusedByEmail.set(s.recipientEmail.toLowerCase(), {
+          trackingNumber: s.trackingNumber, reason: s.unlinkedReason, createdAt: s.createdAt.toISOString(),
+        })
+      }
+    }
+    const noteFor = (r: LoadedDelivery) =>
+      (r.customerEmail && refusedByEmail.get(r.customerEmail.toLowerCase())) ?? null
+
+    const noTracking = unfiled.sort(byWaiting).slice(0, LATE_LIMIT).map((r) => ({ ...toRow(r), refusedParcel: noteFor(r) }))
+
     return NextResponse.json(
       {
         stats,
@@ -194,15 +223,24 @@ export async function GET(req: Request) {
         lateTotal,
         noTracking,
         noTrackingTotal,
-        // The link is built here, beside every other one, so the page never
-        // has to know which carrier's site a number belongs to.
-        unlinked: unlinked.map((s) => ({
+        unlinked: withCandidates.map((s) => ({
           trackingNumber: s.trackingNumber,
           carrier: carrierName(s.carrier),
           url: trackingUrl(s.trackingNumber, s.carrier),
           lastStatus: s.lastStatus,
+          destinationCountry: s.destinationCountry,
+          bookedAt: s.bookedAt?.toISOString() ?? null,
+          weightKg: s.weightKg,
+          recipientName: s.recipientName,
+          reason: s.unlinkedReason,
+          identifiedAt: s.identifiedAt?.toISOString() ?? null,
+          createdAt: s.createdAt.toISOString(),
+          candidates: s.candidates,
+          candidatesTotal: s.total,
         })),
         unlinkedTotal,
+        // For the manual link form: an order number means nothing without its shop.
+        shops: shopRows,
         imports: imports.map((i) => ({ ...i, receivedAt: i.receivedAt.toISOString() })),
         trackedShops: shops.filter((s) => s.deliveryTrackingFrom !== null).length,
         // When the carrier was last asked about the moving parcels. Null means

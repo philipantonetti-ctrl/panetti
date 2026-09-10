@@ -15,6 +15,8 @@ export type LoadedDelivery = {
    * reads, to satisfy a page neither of them draws.
    */
   customerName: string | null
+  /** Server-side only: matched against unlinked parcels, never sent to the browser. */
+  customerEmail: string | null
   view: OrderDelivery
 }
 
@@ -37,6 +39,7 @@ export async function loadDelivery(
       select: {
         id: true, number: true, placedAt: true, status: true, shippingCountry: true,
         customerName: true,
+        customerEmail: true,
         shopId: true,
         shop: { select: { name: true, timezone: true, deliveryTrackingFrom: true } },
         shipments: {
@@ -66,6 +69,7 @@ export async function loadDelivery(
     return {
       order,
       customerName: o.customerName,
+      customerEmail: o.customerEmail,
       view: deliveryFor(order, promises, timezone, now),
     }
   })
