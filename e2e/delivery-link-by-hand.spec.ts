@@ -59,6 +59,14 @@ test('the operations manager attaches a DHL parcel to its order and both lists u
   await page.getByRole('button', { name: 'Date range' }).click()
   await page.getByRole('button', { name: 'Last 12 months', exact: true }).click()
 
+  // Open "No tracking yet" and prove the seeded order really is in it before
+  // the link happens - otherwise the later toHaveCount(0) on this same
+  // section would pass whether or not the order ever left, because the
+  // section renders no rows at all while collapsed.
+  const noTracking = page.locator('#no-tracking')
+  await page.getByRole('button', { name: /Show these orders/i }).click()
+  await expect(noTracking.getByText(ORDER)).toBeVisible({ timeout: 15_000 })
+
   const section = page.locator('#unattached')
   await section.getByRole('button', { name: /Parcels without an order/ }).click()
   await expect(section.getByText(PARCEL)).toBeVisible({ timeout: 15_000 })
@@ -68,8 +76,7 @@ test('the operations manager attaches a DHL parcel to its order and both lists u
   await expect(page.getByText('Parcel linked')).toBeVisible()
 
   await expect(section.getByText(PARCEL)).toHaveCount(0, { timeout: 15_000 })
-  const noTracking = page.locator('#no-tracking')
-  await expect(noTracking.getByText(ORDER)).toHaveCount(0)
+  await expect(noTracking.getByText(ORDER)).toHaveCount(0, { timeout: 15_000 })
 
   const row = await db.shipment.findUnique({ where: { trackingNumber: PARCEL } })
   expect(row?.linkSource).toBe('MANUAL')
