@@ -9,7 +9,7 @@ const { PATCH } = await import('./route')
 const { currentUser } = await import('@/lib/auth/current-user')
 
 const TAG = '[parcel-link-route-test]'
-const TRACK = 'TLINK'
+const TRACK = 'TPLINK'
 const scoped = { shop: { name: { contains: TAG } } }
 
 let trackedId: string
