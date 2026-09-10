@@ -25,9 +25,16 @@ import { carrierName, trackingUrl } from './tracking-url'
  * Two lines, and the number appears twice on purpose: outside the URL it is
  * the value support quotes on the phone and pastes into the carrier's own
  * site, and a note that is only a link hides it.
+ *
+ * One line only when trackingUrl has no page for this carrier - UNKNOWN
+ * included, which a person can link to an order by hand before the poller has
+ * identified it. Without this guard the second line was the literal text
+ * "null", posted to a live order for staff and no one else to read.
  */
 export function trackingNoteText(carrier: string, trackingNumber: string): string {
-  return `${carrierName(carrier)} ${trackingNumber}\n${trackingUrl(trackingNumber, carrier)}`
+  const name = carrierName(carrier)
+  const url = trackingUrl(trackingNumber, carrier)
+  return url ? `${name} ${trackingNumber}\n${url}` : `${name} ${trackingNumber}`
 }
 
 export type WooNoteResult = {

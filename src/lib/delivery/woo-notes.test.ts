@@ -19,4 +19,13 @@ describe('trackingNoteText', () => {
       'DHL 6106283101\nhttps://www.dhl.com/se-en/home/tracking/tracking-freight.html?tracking-id=6106283101&submit=1',
     )
   })
+
+  /**
+   * UNKNOWN has no page to link to - a person can link a parcel to an order by
+   * hand before the poller has identified its carrier. Without a guard here
+   * the second line was the literal text "null", posted to a live order.
+   */
+  it('drops the link line for a carrier with no page, rather than printing null', () => {
+    expect(trackingNoteText('UNKNOWN', '473325380028549070')).toBe('Unknown 473325380028549070')
+  })
 })
