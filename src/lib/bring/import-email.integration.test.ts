@@ -77,6 +77,15 @@ beforeAll(async () => {
   })
 })
 
+// A block body on purpose: mockReset() returns the mock itself, and an arrow
+// function that RETURNS a function has that function run by Vitest as this
+// test's own cleanup, after the test - so an expression body here would call
+// resolveConsignments() a second time post-test, unhandled, against whatever
+// rejection or resolution the test just configured.
+beforeEach(() => {
+  resolveConsignments.mockReset()
+})
+
 afterAll(async () => {
   await cleanup()
   await db.deliveryConfig.upsert({
@@ -249,6 +258,110 @@ describe('importWarehouseFile', () => {
     expect(row).not.toBeNull()
     expect(row?.source).toBe('EMAIL')
   })
+
+  it('stores a refused consignment as unlinked rows that say why', async () => {
+    resolveConsignments.mockResolvedValue({
+      consignments: [
+        {
+          consignmentId: `${PREFIX}C-REF`,
+          packageNumbers: [`${PREFIX}0301`, `${PREFIX}0302`],
+          recipientEmail: 'nobody@example.test',
+          recipientName: 'No Body',
+          destinationCountry: 'NO',
+          weightKg: 16.5,
+          bookedAt: new Date('2026-08-11T08:19:24Z'),
+        },
+      ],
+      unresolved: [],
+    })
+    const r = await importWarehouseFile(book([`${PREFIX}0301`]), 'eod.xlsx', 'EMAIL')
+    expect(r.linked).toBe(0)
+    expect(r.unmatched).toHaveLength(1)
+
+    const rows = await db.shipment.findMany({
+      where: { trackingNumber: { in: [`${PREFIX}0301`, `${PREFIX}0302`] } },
+      orderBy: { trackingNumber: 'asc' },
+    })
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      expect(row.orderId).toBeNull()
+      expect(row.carrier).toBe('BRING')
+      expect(row.recipientEmail).toBe('nobody@example.test')
+      expect(row.recipientName).toBe('No Body')
+      expect(row.destinationCountry).toBe('NO')
+      expect(row.weightKg).toBe(16.5)
+      expect(row.consignmentId).toBe(`${PREFIX}C-REF`)
+      expect(row.unlinkedReason).toBe('No order for nobody@example.test')
+      expect(row.identifiedAt).not.toBeNull()
+      expect(row.nextPollAt).not.toBeNull()
+    }
+  })
+
+  it('writes the carrier facts on a linked row too', async () => {
+    // Its own order, on its own email - not the shared buyer@example.test
+    // fixture: by this point in the file that order already holds a parcel
+    // from consignment IMIMPC1 (the first test above), and matchByEmail
+    // correctly refuses to add a SECOND consignment to an order that already
+    // holds one from another. That rule is real and is not what this test is
+    // about, so it gets a customer of its own instead of tripping it.
+    const order = await db.order.create({
+      data: {
+        shopId, externalId: 'I-LINKED-FACTS', number: `${PREFIX}9002`,
+        placedAt: new Date(), status: 'completed', currency: 'NOK',
+        grossSales: 500, discountTotal: 0, netSales: 500,
+        shippingCharged: 0, taxTotal: 0, total: 500,
+        customerEmail: 'linked-facts@example.test',
+      },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [
+        {
+          consignmentId: `${PREFIX}C-OK`,
+          packageNumbers: [`${PREFIX}0401`],
+          recipientEmail: 'linked-facts@example.test',
+          recipientName: 'Buyer',
+          destinationCountry: 'NO',
+          weightKg: 2,
+          // Now, not a fixed past date: bookedAt is matchByEmail's upper
+          // bound on placedAt, and the order above is placed now too.
+          bookedAt: new Date(),
+        },
+      ],
+      unresolved: [],
+    })
+    await importWarehouseFile(book([`${PREFIX}0401`]), 'eod.xlsx', 'EMAIL')
+    const row = await db.shipment.findUnique({ where: { trackingNumber: `${PREFIX}0401` } })
+    expect(row?.orderId).toBe(order.id)
+    expect(row?.consignmentId).toBe(`${PREFIX}C-OK`)
+    expect(row?.destinationCountry).toBe('NO')
+    expect(row?.unlinkedReason).toBeNull()
+  })
+
+  it('stores a number Bring does not know as carrier UNKNOWN, for the poller to identify', async () => {
+    resolveConsignments.mockResolvedValue({
+      consignments: [],
+      unresolved: [{ number: '473999999000000001', reason: 'Bring has no parcel with this number' }],
+    })
+    const r = await importWarehouseFile(book(['473999999000000001']), 'eod.xlsx', 'EMAIL')
+    expect(r.unmatched[0].reason).toMatch(/not heard of this parcel yet/)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: '473999999000000001' } })
+    expect(row?.carrier).toBe('UNKNOWN')
+    expect(row?.orderId).toBeNull()
+    expect(row?.identifiedAt).toBeNull()
+    expect(row?.nextPollAt).not.toBeNull()
+  })
+
+  it('no longer retries stored numbers itself - that is the poller\'s job now', async () => {
+    await db.shipment.create({
+      data: { trackingNumber: '473999999000000002', carrier: 'UNKNOWN', nextPollAt: new Date() },
+    })
+    resolveConsignments.mockResolvedValue({ consignments: [], unresolved: [] })
+    // A real-shaped number: the reader keeps only runs of 15 or more digits.
+    await importWarehouseFile(book(['473999999000000003']), 'eod.xlsx', 'EMAIL')
+    // One call, for the file's own numbers. A second call would be the old retry stage.
+    expect(resolveConsignments).toHaveBeenCalledTimes(1)
+    expect(resolveConsignments.mock.calls[0][1]).toEqual(['473999999000000003'])
+  })
 })
 
 /**
@@ -328,59 +441,5 @@ describe('a parcel Bring does not know yet', () => {
 
     expect(await db.shipment.findUnique({ where: { trackingNumber: FOREIGN } })).toBeNull()
     expect(result.unmatched[0]?.reason).toBe('Bring has no parcel with this number')
-  })
-
-  it('gets linked to its order by the next file, once Bring knows it', async () => {
-    await db.shipment.create({ data: { trackingNumber: EARLY2, nextPollAt: new Date() } })
-    // The newer 473 series must be retried too - the nightly retry used to
-    // fetch only 373-prefixed rows, which silently excluded half the fleet.
-    await db.shipment.create({ data: { trackingNumber: EARLY3, nextPollAt: new Date() } })
-    const order = await db.order.create({
-      data: {
-        shopId, externalId: 'E-EARLY', number: `${PREFIX}9001`,
-        placedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-        status: 'completed', currency: 'NOK',
-        customerEmail: 'early.bird@example.test',
-        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
-      },
-    })
-
-    // First call is the retry batch (yesterday's strays), second is the file's
-    // own numbers. Bring knows the strays now and hands back their recipient.
-    resolveConsignments.mockImplementation(async (_creds: unknown, numbers: unknown) => {
-      const list = numbers as string[]
-      if (list.includes(EARLY2)) {
-        return {
-          consignments: [{
-            consignmentId: '373999999000000999',
-            packageNumbers: [EARLY2],
-            recipientEmail: 'early.bird@example.test',
-            recipientName: 'Early Bird',
-          }, {
-            consignmentId: '473999999000000999',
-            packageNumbers: [EARLY3],
-            recipientEmail: 'early.bird@example.test',
-            recipientName: 'Early Bird',
-          }],
-          unresolved: [],
-        }
-      }
-      return { consignments: [], unresolved: [] }
-    })
-
-    const result = await importWarehouseFile(book(['999888777666555']), 'eod.xlsx', 'EMAIL')
-
-    // BOTH shapes were in the retry batch, not just the 373 one.
-    const retryCall = resolveConsignments.mock.calls[0]?.[1] as string[]
-    expect(retryCall).toContain(EARLY2)
-    expect(retryCall).toContain(EARLY3)
-
-    const parcel = await db.shipment.findUnique({ where: { trackingNumber: EARLY2 } })
-    expect(parcel?.orderId).toBe(order.id)
-    const parcel3 = await db.shipment.findUnique({ where: { trackingNumber: EARLY3 } })
-    expect(parcel3?.orderId).toBe(order.id)
-    // The retry is housekeeping, not part of the file: tonight's file linked
-    // nothing of its own and its record must say so.
-    expect(result.linked).toBe(0)
   })
 })
