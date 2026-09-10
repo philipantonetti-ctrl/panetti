@@ -182,16 +182,25 @@ export async function applyIdentification(
       else unlinkedReason = outcome.reason
     } else {
       // DHL Freight: the export path stored the 10-digit number with its
-      // order; this piece is the same physical shipment.
+      // order; this piece is the same physical shipment. findMany, not
+      // findFirst: a consignment can carry more than one such reference, and
+      // when those references belong to two DIFFERENT orders there is no
+      // way to choose between them by machine - findFirst was picking
+      // whichever row the database happened to return first.
       const known = facts.references.length
-        ? await db.shipment.findFirst({
+        ? await db.shipment.findMany({
             where: { trackingNumber: { in: facts.references }, orderId: { not: null } },
             select: { orderId: true },
           })
-        : null
-      if (known?.orderId) link = { orderId: known.orderId, linkSource: 'DHL_REF' }
-      else
+        : []
+      const orderIds = [...new Set(known.map((k) => k.orderId).filter((id): id is string => id !== null))]
+      if (orderIds.length === 1) {
+        link = { orderId: orderIds[0], linkSource: 'DHL_REF' }
+      } else if (orderIds.length > 1) {
+        unlinkedReason = `DHL parcel to ${facts.destinationCountry ?? 'an unknown country'}: its consignment numbers belong to ${orderIds.length} different orders, so a person must choose`
+      } else {
         unlinkedReason = `DHL parcel to ${facts.destinationCountry ?? 'an unknown country'}: DHL gives no name or email, so no order could be matched by itself`
+      }
     }
   }
 

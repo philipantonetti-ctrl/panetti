@@ -45,11 +45,12 @@ const NAMES: Record<string, string> = { BRING: 'Bring', DHL: 'DHL' }
 /**
  * The carrier's name, as it appears on screen.
  *
- * Note where this DIFFERS from trackingUrl above: an unrecognised carrier
- * falls back to Bring's LINK, because a link has to point somewhere and that
- * is where such a row pointed before. It does NOT fall back to Bring's NAME -
- * labelling a PostNord parcel "Bring" would state something false to whoever
- * is chasing it. An unfamiliar name is a much smaller problem than a wrong one.
+ * Note where this DIFFERS from trackingUrl above: an unrecognised carrier's
+ * NAME falls back to a capitalised form of its own code ('POSTNORD' becomes
+ * 'Postnord'), never to Bring's - labelling a PostNord parcel "Bring" would
+ * state something false to whoever is chasing it, and an unfamiliar name is
+ * a much smaller problem than a wrong one. trackingUrl's LINK has no such
+ * fallback: a carrier this file has no page for gets no link at all.
  *
  * A blank is the exception, and not really one: the column defaults to 'BRING',
  * so an empty value is a row written before the column existed rather than an

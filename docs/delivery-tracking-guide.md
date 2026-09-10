@@ -32,8 +32,11 @@ Underneath:
   that is their door or their pickup point. It still counts against the
   on-time rate, and it is still in "Where everything is now" - there is
   simply nothing left to chase.
-- **Unlinked parcels.** Tracking numbers no order claimed. If this grows,
-  something is wrong with the warehouse file.
+- **Parcels without an order.** Parcels a warehouse file named that could not
+  be attached to an order, each with its carrier, destination, booked date,
+  weight, status and the reason. Pick the order from the candidates shown, or
+  type its order number, or mark it "Not a customer parcel". A growing list
+  means parcels waiting for a decision, not necessarily a broken file.
 - **Recent imports.** Every file read, and how many parcels it linked.
 
 

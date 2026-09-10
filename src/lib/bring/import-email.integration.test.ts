@@ -163,6 +163,61 @@ describe('importWarehouseFile', () => {
     )
   })
 
+  it('never re-points a row someone already linked by hand, even when the email finds a real order', async () => {
+    // A customer of its own, so the pre-existing manual link is unambiguous.
+    const manualOrder = await db.order.create({
+      data: {
+        shopId, externalId: 'I-MANUAL', number: `${PREFIX}9003`,
+        placedAt: new Date(), status: 'completed', currency: 'NOK',
+        grossSales: 500, discountTotal: 0, netSales: 500,
+        shippingCharged: 0, taxTotal: 0, total: 500,
+        customerEmail: 'manual-link@example.test',
+      },
+    })
+    // A person, or an earlier night's import, already attached this package
+    // number to manualOrder.
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${PREFIX}0501`,
+        carrier: 'BRING',
+        orderId: manualOrder.id,
+        linkSource: 'MANUAL',
+        destinationCountry: 'SE',
+      },
+    })
+
+    // Same consignment id as the very first test's IMIMPC1: I1 already holds
+    // a shipment from it, so I1 is a real, uncontested candidate for
+    // buyer@example.test rather than excluded as "holds another
+    // consignment's parcel". That makes this a genuine match - the LINKED
+    // branch, not the refused one - so it is the fix, not an absent match,
+    // that has to keep the row from moving.
+    resolveConsignments.mockResolvedValue({
+      consignments: [
+        {
+          consignmentId: `${PREFIX}C1`,
+          packageNumbers: [`${PREFIX}0501`],
+          recipientEmail: 'buyer@example.test',
+          recipientName: 'Buyer',
+          destinationCountry: 'DK',
+        },
+      ],
+      unresolved: [],
+    })
+
+    const result = await importWarehouseFile(book([`${PREFIX}0501`]), 'eod.xlsx', 'EMAIL')
+    // The resolver really did match somebody, proving this exercises the
+    // linked branch rather than the already-safe refused one.
+    expect(result.linked).toBe(1)
+
+    const row = await db.shipment.findUnique({ where: { trackingNumber: `${PREFIX}0501` } })
+    // The link stays exactly where the person put it...
+    expect(row?.orderId).toBe(manualOrder.id)
+    expect(row?.linkSource).toBe('MANUAL')
+    // ...but the facts a re-import legitimately learns are not thrown away.
+    expect(row?.destinationCountry).toBe('DK')
+  })
+
   it('states why a parcel did not link instead of dropping it silently', async () => {
     resolveConsignments.mockResolvedValue({
       consignments: [
@@ -384,7 +439,6 @@ describe('a parcel Bring does not know yet', () => {
   })
 
   const EARLY = '373999999000000001'
-  const EARLY2 = '373999999000000002'
   const EARLY3 = '473999999000000003' // the warehouse's newer 473 series
   const FOREIGN = '28144019968359654386' // 20 digits: another carrier's number
 

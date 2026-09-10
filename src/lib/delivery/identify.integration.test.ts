@@ -101,6 +101,34 @@ describe('applyIdentification', () => {
     expect(after).toMatchObject({ carrier: 'DHL', orderId: o.id, linkSource: 'DHL_REF', unlinkedReason: null })
   })
 
+  it('refuses to link, rather than guess, when its references belong to two different orders', async () => {
+    const o1 = await order('ID-3A', 'threeA@example.test', '2026-09-06T10:00:00Z')
+    const o2 = await order('ID-3B', 'threeB@example.test', '2026-09-06T10:00:00Z')
+    await db.shipment.create({
+      data: { trackingNumber: `${TRACK}6109278751`, carrier: 'DHL', orderId: o1.id, linkSource: 'DHL_FILE' },
+    })
+    await db.shipment.create({
+      data: { trackingNumber: `${TRACK}6109278752`, carrier: 'DHL', orderId: o2.id, linkSource: 'DHL_FILE' },
+    })
+    const row = await unknownRow(`${TRACK}3B`)
+    const r = await applyIdentification(
+      row,
+      bringFacts({
+        carrier: 'DHL', consignmentId: 'JKG-HI-0001999', destinationCountry: 'FI', weightKg: 154,
+        recipientEmail: null, recipientName: null,
+        references: [`${TRACK}6109278751`, `${TRACK}6109278752`],
+      }),
+      now,
+    )
+    expect(r.linked).toBe(false)
+    const after = await db.shipment.findUnique({ where: { id: row.id } })
+    expect(after?.carrier).toBe('DHL')
+    expect(after?.orderId).toBeNull()
+    expect(after?.unlinkedReason).toBe(
+      'DHL parcel to FI: its consignment numbers belong to 2 different orders, so a person must choose',
+    )
+  })
+
   it('says plainly why a DHL parcel with no reference cannot be matched by itself', async () => {
     const row = await unknownRow(`${TRACK}4`)
     const r = await applyIdentification(

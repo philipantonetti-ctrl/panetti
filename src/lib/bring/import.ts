@@ -333,9 +333,19 @@ export async function importWarehouseFile(
             unlinkedReason: null,
             nextPollAt: new Date(),
           },
-          // Only the link and the facts. Milestones, events and poll state are
-          // the sync's to own, and a re-import must not undo a week of tracking.
-          update: { ...facts, orderId: outcome.orderId, linkSource: 'BRING_EMAIL', unlinkedReason: null },
+          // Facts only. Milestones, events and poll state are the sync's to
+          // own, and the link is written below, never here - a re-import
+          // must never move a link a person, or an earlier night, already
+          // attached to a different order.
+          update: { ...facts },
+        })
+        // The link lands only on a row with no order yet. A row already
+        // linked - by hand, or by an earlier night's import - keeps its
+        // order no matter what today's file resolves the email to; only its
+        // facts move.
+        await db.shipment.updateMany({
+          where: { trackingNumber, orderId: null },
+          data: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL', unlinkedReason: null },
         })
       }
       // Once per CONSIGNMENT, not per package: a two-package consignment

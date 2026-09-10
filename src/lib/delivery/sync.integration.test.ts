@@ -784,6 +784,28 @@ describe('syncShipments', () => {
       expect(rows.filter((x) => x.lastError === 'Neither Bring nor DHL knows this number')).toHaveLength(DHL_CALLS_PER_RUN)
       expect(rows.every((x) => x.carrier === 'UNKNOWN')).toBe(true)
       expect(rows[DHL_CALLS_PER_RUN].nextPollAt).toEqual(new Date('2026-01-03'))
+      // The third row was not asked of Bring either: once DHL's budget is
+      // spent, the row is skipped before Bring is ever called, so the
+      // backlog does not cost one Bring call per row per run while it waits.
+      const bringCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('bring.com')).length
+      expect(bringCalls).toBe(DHL_CALLS_PER_RUN)
+    })
+
+    it('does not expire the UNKNOWN grace period on a row DHL was never asked about, when no key is configured', async () => {
+      // DHL_API_KEY is left at the suite's default of '' - not connected.
+      await db.shipment.create({ data: { trackingNumber: T1, carrier: 'UNKNOWN', nextPollAt: new Date('2026-01-01') } })
+      // Bring answers, but does not know it - the real shape captured from
+      // api.bring.com (see "records a number Bring does not know" above).
+      stubBring([{ error: { code: 404, message: 'No shipments found' } }])
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.dhlSkippedNoKey).toBe(1)
+      const row = await db.shipment.findUniqueOrThrow({ where: { trackingNumber: T1 } })
+      expect(row.carrier).toBe('UNKNOWN')
+      expect(row.terminal).toBe(false)
+      expect(row.lastError).toBe('DHL is not connected, so this number could not be identified')
+      expect(row.nextPollAt).toEqual(new Date(now.getTime() + 24 * HOUR))
     })
 
     it('flips an unlinked BRING row Bring does not know to UNKNOWN', async () => {

@@ -273,6 +273,13 @@ export async function syncShipments(
     if (s.carrier === 'UNKNOWN') {
       const idRow = { id: s.id, trackingNumber: s.trackingNumber, orderId: s.orderId, createdAt: s.createdAt }
       try {
+        // Checked before Bring, not after: once DHL's share of the run is
+        // spent, asking Bring buys nothing for the rest of this backlog - a
+        // row Bring does not know still waits for DHL regardless, and one
+        // Bring already knows is rare enough not to be worth a Bring call
+        // per row, per run, while the row simply waits its turn. It keeps
+        // its due date, exactly like a DHL parcel that missed its turn.
+        if (dhlKey && dhlCalls >= DHL_CALLS_PER_RUN) continue
         if (creds) {
           const raw = await fetchBring(creds, [s.trackingNumber], { deadline: opts.deadline })
           const facts = bringFacts(raw, s.trackingNumber)
@@ -284,12 +291,24 @@ export async function syncShipments(
           }
         }
         if (!dhlKey) {
-          // Bring does not know it and DHL cannot be asked. Tomorrow, or the
-          // grace period runs out - same as a number nobody knows.
-          await applyUnknown(idRow, now)
+          // Bring does not know it, and DHL was never asked - DHL is simply
+          // not connected. That is a different fact from "asked, and DHL
+          // does not know it either", so it must not spend down the UNKNOWN
+          // grace period: applyUnknown is not called, terminal is left
+          // alone, and the row is due again once DHL might plausibly be
+          // connected rather than expiring on a question nobody put to it.
+          dhlSkippedNoKey++
+          await db.shipment
+            .update({
+              where: { id: s.id },
+              data: {
+                lastError: 'DHL is not connected, so this number could not be identified',
+                nextPollAt: new Date(now.getTime() + DAY),
+              },
+            })
+            .catch(() => {})
           continue
         }
-        if (dhlCalls >= DHL_CALLS_PER_RUN) continue
         if (dhlCalls > 0) {
           if (opts.deadline !== undefined && Date.now() + RATE_LIMIT_GAP_MS >= opts.deadline) break
           await sleep(RATE_LIMIT_GAP_MS)
@@ -433,8 +452,9 @@ export async function syncShipments(
       })
       updated++
       // A refused Bring row, matched again under today's rules: the twin
-      // order may have received its own parcel since. Best-effort, and only
-      // while the row is young enough for the answer to change.
+      // order may have received its own parcel since. Best-effort, and it
+      // runs on every successful poll of an unlinked Bring row, with no age
+      // bound of its own, until the row goes terminal.
       if (s.orderId === null && s.carrier === 'BRING' && s.recipientEmail) {
         await rematchByEmail(
           { id: s.id, recipientEmail: s.recipientEmail, bookedAt: m.bookedAt ?? s.bookedAt, consignmentId: s.consignmentId },
