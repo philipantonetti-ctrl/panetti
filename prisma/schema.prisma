@@ -683,12 +683,42 @@ model B2bPrice {
 model Shipment {
   id             String  @id @default(cuid())
   trackingNumber String  @unique
+  /// BRING | DHL | UNKNOWN. UNKNOWN is a number from the warehouse file that
+  /// Bring did not resolve at import time. The warehouse prints one label
+  /// series for every carrier it ships with, so the number says who packed
+  /// the parcel, not who carries it; the poller asks Bring, then DHL, and the
+  /// first to answer owns the row (lib/delivery/identify.ts).
   carrier        String  @default("BRING")
   orderId        String?
-  /// Which strategy produced the link: FILE | BRING_EMAIL | NYCE | WOO | MANUAL.
+  /// Which strategy produced the link: FILE | BRING_EMAIL | NYCE | WOO |
+  /// MANUAL | DHL_FILE | DHL_REF.
   /// BRING_EMAIL is the warehouse-file path: the file gives only parcel numbers,
   /// Bring gives the recipient email, and that matches Order.customerEmail.
+  /// DHL_REF joins a DHL Freight piece to the order its 10-digit consignment
+  /// number (written by the DHL_FILE path) already belongs to.
   linkSource     String?
+
+  /// The carrier's id for the whole consignment (Bring consignmentId, DHL
+  /// shipment id). Two boxes of one order share it, and that is what lets the
+  /// email match refuse an order that already holds ANOTHER consignment's
+  /// parcel without refusing the second box of this one.
+  consignmentId      String?
+  /// ISO-2, upper case, from the carrier. Candidates are filtered by it.
+  destinationCountry String?
+  weightKg           Float?
+  /// Lower-cased. Bring only; DHL returns no recipient. Server-side only:
+  /// never sent to the browser on a parcel row.
+  recipientEmail     String?
+  recipientName      String?
+  /// Why this parcel has no order, in words fit for the Delivery page. Null
+  /// once linked.
+  unlinkedReason     String?
+  /// When a carrier first answered about this number. Null means no carrier
+  /// has been asked yet, which is a different fact from "asked, nobody knows".
+  identifiedAt       DateTime?
+  /// Set by a person who declared this is not a customer parcel (pallet
+  /// freight, inbound stock). Such rows leave the list but stay in the table.
+  dismissedAt        DateTime?
 
   /// Milestones, derived from ShipmentEvent and rewritten on every ingest.
   /// Denormalised for query speed; the events remain the source of truth.
