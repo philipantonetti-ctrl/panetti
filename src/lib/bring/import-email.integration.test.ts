@@ -191,6 +191,44 @@ describe('importWarehouseFile', () => {
     )
   })
 
+  it('never lets a null name from the carrier wipe a name already stored on the row', async () => {
+    const order = await db.order.create({
+      data: {
+        shopId, externalId: 'I-KEPT', number: `${PREFIX}9004`,
+        placedAt: new Date(), status: 'completed', currency: 'NOK',
+        grossSales: 500, discountTotal: 0, netSales: 500,
+        shippingCharged: 0, taxTotal: 0, total: 500,
+        customerEmail: 'kept-name@example.test',
+      },
+    })
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${PREFIX}0601`,
+        carrier: 'BRING',
+        recipientName: 'Kept Name',
+        destinationCountry: 'SE',
+      },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [
+        {
+          consignmentId: `${PREFIX}C-KEPT`,
+          packageNumbers: [`${PREFIX}0601`],
+          recipientEmail: 'kept-name@example.test',
+          // The carrier gave no name this time; the file (book(), no Namn
+          // column at all) gives none either.
+          recipientName: null,
+        },
+      ],
+      unresolved: [],
+    })
+    const result = await importWarehouseFile(book([`${PREFIX}0601`]), 'eod.xlsx', 'EMAIL')
+    expect(result.linked).toBe(1)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: `${PREFIX}0601` } })
+    expect(row?.orderId).toBe(order.id)
+    expect(row?.recipientName).toBe('Kept Name')
+  })
+
   it('never re-points a row someone already linked by hand, even when the email finds a real order', async () => {
     // A customer of its own, so the pre-existing manual link is unambiguous.
     const manualOrder = await db.order.create({
@@ -524,6 +562,55 @@ describe('the warehouse file names a row', () => {
     expect(result.namesRead).toBe(0)
     const record = await db.trackingImport.findFirst({ where: { filename: 'nameless.xlsx' }, orderBy: { receivedAt: 'desc' } })
     expect(record?.namesRead).toBe(0)
+  })
+
+  it('fills in the name on a dismissed row from a re-uploaded file but never links it', async () => {
+    const o = await db.order.create({
+      data: {
+        shopId, externalId: 'N3', number: 'N3', placedAt: new Date(Date.now() - 2 * 24 * 3600_000), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerName: 'Dismissed Person', customerNameKey: nameKey('Dismissed Person'), customerEmail: 'dismissed@example.test', shippingCountry: 'DE',
+      },
+    })
+    const number = '473999999000000013'
+    await db.shipment.create({
+      data: { trackingNumber: number, carrier: 'DHL', destinationCountry: 'DE', dismissedAt: new Date(), terminal: true },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [],
+      unresolved: [{ number, reason: 'Bring has no parcel with this number' }],
+    })
+    const result = await importWarehouseFile(sheet([ltasRow(number, 'Dismissed Person')]), 'named.xlsx', 'UPLOAD')
+    expect(result.linked).toBe(0)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: number } })
+    expect(row?.recipientName).toBe('Dismissed Person')
+    expect(row?.orderId).toBeNull()
+    expect(row?.orderId).not.toBe(o.id)
+    expect(row?.dismissedAt).not.toBeNull()
+  })
+
+  it('counts a re-imported number that is already linked as linked, not unmatched', async () => {
+    const o = await db.order.create({
+      data: {
+        shopId, externalId: 'N4', number: 'N4', placedAt: new Date(), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerEmail: 'already-linked@example.test',
+      },
+    })
+    const number = '473999999000000014'
+    await db.shipment.create({
+      data: { trackingNumber: number, carrier: 'BRING', orderId: o.id, linkSource: 'BRING_EMAIL' },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [],
+      unresolved: [{ number, reason: 'Bring has no parcel with this number' }],
+    })
+    const result = await importWarehouseFile(sheet([ltasRow(number, 'Some Name')]), 'named.xlsx', 'UPLOAD')
+    expect(result.linked).toBe(1)
+    expect(result.unmatched).toEqual([])
+    expect(result.parsed).toBe(result.linked + result.unaccounted)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: number } })
+    expect(row?.orderId).toBe(o.id)
   })
 
   it('a named row the rules cannot place keeps its line, with the name reason appended', async () => {

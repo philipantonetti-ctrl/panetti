@@ -308,6 +308,13 @@ export async function importWarehouseFile(
         bookedAt: c.bookedAt,
         identifiedAt: receivedAt,
       }
+      // A null name here means "the carrier and the file both gave nothing",
+      // not "erase the name". Left in `facts` it would overwrite a name an
+      // earlier file or the poller already stored, so the update side omits
+      // it entirely when it is null; `create` keeps the full `facts` since
+      // there is nothing yet on the row for a null to overwrite.
+      const { recipientName: factsName, ...factsWithoutName } = facts
+      const updateFacts = factsName === null ? factsWithoutName : facts
       let outcome: MatchOutcome = await matchByEmail(c.recipientEmail, receivedAt, {
         bookedAt: c.bookedAt,
         consignmentId: c.consignmentId,
@@ -350,7 +357,7 @@ export async function importWarehouseFile(
             },
             // Never unlinks: a row a person or an earlier night already
             // attached keeps its order, and only learns the facts.
-            update: { ...facts },
+            update: { ...updateFacts },
           })
         }
         continue
@@ -371,7 +378,7 @@ export async function importWarehouseFile(
           // own, and the link is written below, never here - a re-import
           // must never move a link a person, or an earlier night, already
           // attached to a different order.
-          update: { ...facts },
+          update: { ...updateFacts },
         })
         // The link lands only on a row with no order yet. A row already
         // linked - by hand, or by an earlier night's import - keeps its
@@ -403,6 +410,16 @@ export async function importWarehouseFile(
           // Adopt, never reset: it may already be identified, or mid-way.
           update: {},
         })
+        const existing = await db.shipment.findUnique({
+          where: { trackingNumber: u.number },
+          select: { orderId: true },
+        })
+        if (existing && existing.orderId !== null) {
+          // Already attached by an earlier import, a person, or the poller;
+          // nothing to report - a re-upload must not read as a failure.
+          linked++
+          continue
+        }
         let nameReason: string | null = null
         if (name) {
           // A row that had no name learns it; a carrier's own name, when one
