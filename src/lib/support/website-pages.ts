@@ -68,7 +68,7 @@ export const POLICY_WORDS = [
   'returns', 'retur', 'palautus', 'rücksendung', 'delivery',
 ] as const
 
-const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
 /** Pre-ticked on first listing: a page whose slug or title carries a policy word. */
 export function policyLike(page: { slug: string; title: string }): boolean {
