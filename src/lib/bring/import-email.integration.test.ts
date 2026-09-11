@@ -589,6 +589,39 @@ describe('the warehouse file names a row', () => {
     expect(row?.dismissedAt).not.toBeNull()
   })
 
+  it('a dismissed row keeps its dismissal when its number later resolves at Bring as a RESOLVED consignment', async () => {
+    await db.order.create({
+      data: {
+        shopId, externalId: 'N5', number: 'N5', placedAt: new Date(Date.now() - 2 * 24 * 3600_000), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerName: 'Dismissed Person', customerNameKey: nameKey('Dismissed Person'), customerEmail: 'dismissed@example.test', shippingCountry: 'NO',
+      },
+    })
+    const number = `${PREFIX}0042`
+    await db.shipment.create({
+      data: {
+        trackingNumber: number,
+        carrier: 'BRING',
+        dismissedAt: new Date(),
+        terminal: true,
+        unlinkedReason: 'Not a customer parcel (dismissed by someone@example.test)',
+      },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [{
+        consignmentId: `${PREFIX}C42`, packageNumbers: [number],
+        recipientEmail: 'dismissed@example.test', recipientName: 'Dismissed Person',
+        destinationCountry: 'NO', weightKg: 1, bookedAt: null,
+      }],
+      unresolved: [],
+    })
+    await importWarehouseFile(book([number]), 'eod.xlsx', 'EMAIL')
+    const row = await db.shipment.findUnique({ where: { trackingNumber: number } })
+    expect(row?.orderId).toBeNull()
+    expect(row?.dismissedAt).not.toBeNull()
+    expect(row?.unlinkedReason).toBe('Not a customer parcel (dismissed by someone@example.test)')
+  })
+
   it('counts a re-imported number that is already linked as linked, not unmatched', async () => {
     const o = await db.order.create({
       data: {

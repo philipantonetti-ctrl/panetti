@@ -383,9 +383,10 @@ export async function importWarehouseFile(
         // The link lands only on a row with no order yet. A row already
         // linked - by hand, or by an earlier night's import - keeps its
         // order no matter what today's file resolves the email to; only its
-        // facts move.
+        // facts move. A row a person dismissed keeps its dismissal too;
+        // nothing here may overrule it.
         await db.shipment.updateMany({
-          where: { trackingNumber, orderId: null },
+          where: { trackingNumber, orderId: null, dismissedAt: null },
           data: { orderId: outcome.orderId, linkSource, unlinkedReason: null },
         })
       }
