@@ -134,6 +134,36 @@ describe('refreshWebsiteKnowledge', () => {
     expect(await db.knowledgeItem.count({ where: { shopId, sourceKey: `website:${shopId}:page:14:0` } })).toBe(1)
   })
 
+  it('deletes an unticked page\'s existing rows on the next read', async () => {
+    await db.websitePage.create({ data: { shopId, externalId: 15, url: 'https://panetti.example.test/vilkar/', title: 'Vilkar', active: false } })
+    await db.knowledgeItem.create({ data: { kind: 'policy', title: `Old 15 ${TAG}`, body: 'x', shopId, source: 'website', sourceKey: `website:${shopId}:page:15:0`, readAt: new Date() } })
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await refreshWebsiteKnowledge({ shopId, siteUrl: 'https://panetti.example.test', catalog: new Map() })
+
+    expect(await db.knowledgeItem.count({ where: { shopId, sourceKey: `website:${shopId}:page:15:0` } })).toBe(0)
+  })
+
+  it('deletes a ticked page\'s rows once it has vanished from the site, while a page that still answers keeps its rows', async () => {
+    await db.websitePage.create({ data: { shopId, externalId: 16, url: 'https://panetti.example.test/gone/', title: 'Gone', active: true } })
+    await db.websitePage.create({ data: { shopId, externalId: 17, url: 'https://panetti.example.test/betingelser/', title: 'Betingelser', active: true } })
+    await db.knowledgeItem.create({ data: { kind: 'policy', title: `Old 16 ${TAG}`, body: 'x', shopId, source: 'website', sourceKey: `website:${shopId}:page:16:0`, readAt: new Date() } })
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes('include=17')
+        ? new Response(JSON.stringify([{ id: 17, link: 'https://panetti.example.test/betingelser/', title: { rendered: 'Betingelser' }, content: { rendered: '<p>Du kan angre kjøpet innen 14 dager etter at du mottok varen, uten å oppgi grunn.</p>' } }]), { status: 200 })
+        // A page WordPress no longer has answers with an empty list, not a 404.
+        : new Response('[]', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const counts = await refreshWebsiteKnowledge({ shopId, siteUrl: 'https://panetti.example.test', catalog: new Map() })
+
+    expect(counts.pages).toBe(1)
+    expect(await db.knowledgeItem.count({ where: { shopId, sourceKey: `website:${shopId}:page:16:0` } })).toBe(0)
+    const row17 = await db.knowledgeItem.findUniqueOrThrow({ where: { sourceKey: `website:${shopId}:page:17:0` } })
+    expect(row17.body).toContain('14 dager')
+  })
+
   it('records the error and keeps the old rows when the site fails', async () => {
     noPages()
     await refreshWebsiteKnowledge({ shopId, siteUrl: 'https://panetti.example.test', catalog: new Map([['24256', entry()]]) })

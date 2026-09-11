@@ -9,8 +9,13 @@ import { sectionsOf, textOf } from './website-text'
  * Products come from the catalogue sweep the Woo sync already runs, so no new
  * request goes to any shop for them; pages come from WordPress's public
  * pages API, only the ones a person ticked. Rows are upserted by a stable key
- * and deleted when their product or page is gone. A row a person turned off
- * stays off through every read, and a manual row is never touched.
+ * and deleted when their product is gone from the catalogue, their page is
+ * gone from the site, or their page has since been unticked - but only for a
+ * product or page this particular read actually looked at; one it never
+ * reached (an empty catalogue passed in, or a page the deadline cut short)
+ * keeps every row it already had. A row a person turned off (KnowledgeItem's
+ * own `active`) stays off through every read, and a manual row is never
+ * touched.
  */
 
 export const READ_AGAIN_AFTER_MS = 20 * 60 * 60 * 1000
@@ -82,10 +87,11 @@ export async function refreshWebsiteKnowledge(input: {
   const now = new Date()
   const seen = new Set<string>()
   const rows: (Row & { kind: string })[] = []
-  // Pages this call actually fetched. A page the loop broke out of before
-  // reaching (the deadline, or one after it) is NOT in here, and its rows
-  // must never be touched: nothing was checked, so nothing is known to be gone.
-  const fetchedPageIds: number[] = []
+  // Pages this call actually got an answer for, found or gone. A page the
+  // loop broke out of before reaching (the deadline, or one after it in the
+  // ticked list) is NOT in here, and its rows must never be touched: nothing
+  // was checked, so nothing is known to be gone.
+  const checkedPageIds: number[] = []
 
   let withDescriptions = 0
   for (const [externalId, entry] of input.catalog) {
@@ -100,9 +106,12 @@ export async function refreshWebsiteKnowledge(input: {
     for (const t of ticked) {
       if (input.deadline !== undefined && Date.now() >= input.deadline) break
       const page = await fetchPage(input.siteUrl, t.externalId, { deadline: input.deadline })
+      // An answer either way: the page still exists, or it is gone from the
+      // site. Both are things worth pruning on; only a page the loop never
+      // reached is not.
+      checkedPageIds.push(t.externalId)
       if (!page) continue
       pages++
-      fetchedPageIds.push(t.externalId)
       for (const row of pageRows(shopId, { externalId: t.externalId, ...page })) rows.push({ ...row, kind: 'policy' })
     }
   } catch (e) {
@@ -128,10 +137,7 @@ export async function refreshWebsiteKnowledge(input: {
   // Prune only what THIS read actually covered, never the whole shop. An empty
   // catalogue is not proof every product vanished - it is as likely a caller
   // between two real reads - so the product rows are pruned only when a
-  // catalogue was actually given; and a page's rows are pruned only when that
-  // page was itself fetched, one page at a time, so a page the loop never
-  // reached (the deadline, or one before it in the list) keeps every row it
-  // already had.
+  // catalogue was actually given.
   if (input.catalog.size > 0) {
     await db.knowledgeItem.deleteMany({
       where: {
@@ -140,7 +146,19 @@ export async function refreshWebsiteKnowledge(input: {
       },
     })
   }
-  for (const externalId of fetchedPageIds) {
+
+  // A page's rows are pruned only when this read actually covered that page:
+  // one it fetched (whether it still exists or came back gone), one at a
+  // time, so a page the loop never reached (the deadline, or one later in the
+  // ticked list) keeps every row it already had - nothing was checked, so
+  // nothing is known to be gone. A page a person has since UNTICKED is added
+  // to the same list: nothing about it is read while it is off, so none of
+  // its rows belong in the knowledge base until it is ticked again.
+  const untickedIds = (
+    await db.websitePage.findMany({ where: { shopId, active: false }, select: { externalId: true } })
+  ).map((p) => p.externalId)
+  const prunePageIds = new Set([...checkedPageIds, ...untickedIds])
+  for (const externalId of prunePageIds) {
     await db.knowledgeItem.deleteMany({
       where: {
         shopId, source: 'website',
