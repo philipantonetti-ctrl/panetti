@@ -25,10 +25,14 @@ export async function backfillNameKeys(limit = NAME_KEY_BACKFILL_PER_TICK): Prom
     if (rows.length === 0) break
     const ids = rows.map((r) => r.id)
     const keys = rows.map((r) => nameKey(r.customerName))
+    // The extra clause guards against a concurrent order sync that has
+    // written a fresh key for this row between the select above and this
+    // write: without it, a stale fold computed here could overwrite a key
+    // that is already correct and newer.
     await db.$executeRaw`
       UPDATE "Order" AS o SET "customerNameKey" = v.key
       FROM unnest(${ids}::text[], ${keys}::text[]) AS v(id, key)
-      WHERE o.id = v.id`
+      WHERE o.id = v.id AND o."customerNameKey" IS NULL`
     done += rows.length
     if (rows.length < BATCH) break
   }
