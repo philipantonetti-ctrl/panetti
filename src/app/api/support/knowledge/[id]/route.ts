@@ -35,6 +35,13 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   try {
     assertAdmin(await currentUser())
     const { id } = await params
+    const row = await db.knowledgeItem.findUnique({ where: { id }, select: { source: true } })
+    if (row?.source === 'website') {
+      return NextResponse.json(
+        { error: 'This was read from the website; turn it off instead, or untick its page' },
+        { status: 400, headers: NO_STORE },
+      )
+    }
     const removed = await db.knowledgeItem.deleteMany({ where: { id } })
     if (removed.count === 0) return NextResponse.json({ error: 'No such entry' }, { status: 404, headers: NO_STORE })
     return NextResponse.json({ ok: true }, { headers: NO_STORE })

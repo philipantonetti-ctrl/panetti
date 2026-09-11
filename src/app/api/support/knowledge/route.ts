@@ -55,6 +55,7 @@ export async function GET() {
           id: i.id, kind: i.kind, title: i.title, body: i.body, active: i.active,
           shopId: i.shopId, shopName: i.shop?.name ?? null,
           country: i.country, language: i.language, sku: i.sku,
+          source: i.source, sourceUrl: i.sourceUrl, readAt: i.readAt?.toISOString() ?? null,
         })),
         shops,
         kinds: KINDS,
