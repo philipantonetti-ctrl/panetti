@@ -92,7 +92,7 @@ it('groups the sidebar by subject, with every entry still present', () => {
   ])
   // The practice room. It was reachable only from a button on the Support
   // page, and the client looked down the sidebar for it and did not find it.
-  expect(screen.getByRole('link', { name: 'Try the assistant' }).getAttribute('href')).toBe(
+  expect(screen.getByRole('link', { name: 'Test the assistant' }).getAttribute('href')).toBe(
     '/support/sandbox',
   )
   expect(screen.getByRole('link', { name: 'Ambassadors' })).toBeDefined()

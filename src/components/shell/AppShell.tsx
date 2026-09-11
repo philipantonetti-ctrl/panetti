@@ -212,7 +212,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
         // The client's own words for what he asked for: "try it out in the
         // software first". "Sandbox" is our word, and he looked down this
         // sidebar for the thing he had asked for and did not find it.
-        label: 'Try the assistant',
+        label: 'Test the assistant',
         // A speech bubble with a spark: talking to it, and it is the machine
         // talking back. Whole coordinates, so it stays crisp at 16px.
         icon: icon(
