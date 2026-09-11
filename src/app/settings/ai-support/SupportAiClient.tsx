@@ -26,8 +26,22 @@ type Item = {
   country: string | null
   language: string | null
   sku: string | null
+  source: string
+  sourceUrl: string | null
+  readAt: string | null
 }
 type Shop = { id: string; name: string }
+type WebsitePage = { externalId: number; url: string; title: string; active: boolean }
+type WebsiteShop = {
+  id: string
+  name: string
+  siteUrl: string | null
+  readAt: string | null
+  products: number | null
+  pages: number | null
+  error: string | null
+  pageList: WebsitePage[]
+}
 type Rules = {
   mode: string
   autoCategories: string[]
@@ -71,6 +85,9 @@ export function SupportAiClient({ email }: { email: string }) {
   const [setupFor, setSetupFor] = useState<string | null>(null)
   const [savingShop, setSavingShop] = useState<string | null>(null)
   const [prefilled, setPrefilled] = useState(false)
+  const [website, setWebsite] = useState<WebsiteShop[]>([])
+  const [pagesOpen, setPagesOpen] = useState<string | null>(null)
+  const [reading, setReading] = useState<string | null>(null)
 
   const [draft, setDraft] = useState({ kind: 'faq', title: '', body: '', shopId: '', country: '', language: '', sku: '' })
 
@@ -85,7 +102,8 @@ export function SupportAiClient({ email }: { email: string }) {
         fetch('/api/support/knowledge').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/support/rules').then((r) => (r.ok ? r.json() : null)),
         fetch('/api/support/chat-settings').then((r) => (r.ok ? r.json() : null)),
-      ]).then(([k, r, c]) => {
+        fetch('/api/support/website').then((r) => (r.ok ? r.json() : null)),
+      ]).then(([k, r, c, w]) => {
         if (k) {
           setItems(k.items)
           setShops(k.shops)
@@ -108,6 +126,9 @@ export function SupportAiClient({ email }: { email: string }) {
           setChatShops(c.shops)
           setSecretConfigured(c.secretConfigured)
           setBodyTemplate(c.bodyTemplate)
+        }
+        if (w) {
+          setWebsite(w.shops)
         }
       }),
     [],
@@ -185,6 +206,31 @@ export function SupportAiClient({ email }: { email: string }) {
     await fetch(`/api/support/knowledge/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) })
     await load()
   }
+
+  async function tickPage(shopId: string, externalId: number, active: boolean) {
+    const res = await fetch('/api/support/website', { method: 'PUT', body: JSON.stringify({ shopId, externalId, active }) })
+    if (!res.ok) toast.error('Could not save')
+    await load()
+  }
+
+  async function readNow(shopId: string) {
+    setReading(shopId)
+    try {
+      const res = await fetch('/api/support/website/read', { method: 'POST', body: JSON.stringify({ shopId }) })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(body.error ?? 'Could not read the website')
+        return
+      }
+      toast.success(`Read ${body.products} products (${body.withDescriptions} with descriptions) and ${body.pages} pages into ${body.rows} entries`)
+      await load()
+    } finally {
+      setReading(null)
+    }
+  }
+
+  const host = (url: string | null) => (url ? url.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '') : 'no site')
+  const readOn = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
   const toggleCategory = (c: string) => {
     if (!rules) return
@@ -418,6 +464,49 @@ export function SupportAiClient({ email }: { email: string }) {
               the question matches. Leave a shop, country or language empty to mean everywhere.
             </p>
 
+            <div className="mb-4 rounded-[var(--radius-card)] border border-line bg-panel p-3">
+              <h3 className="text-[13px] font-semibold text-ink">From the websites</h3>
+              <p className="mb-2 text-[12px] text-muted">
+                Every product page is read by itself once a day. Tick the pages it may also read, such as
+                terms, warranty and FAQ. It never states a price or a stock level from these; it links the page.
+              </p>
+              <ul className="space-y-1.5 text-[13px]">
+                {website.map((w) => (
+                  <li key={w.id}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-ink">
+                        {host(w.siteUrl)}:{' '}
+                        {w.readAt
+                          ? `${w.products ?? 0} products, ${w.pages ?? 0} pages, read ${readOn(w.readAt)}`
+                          : 'not read yet'}
+                      </span>
+                      {w.error && <span className="text-[12px] text-loss">{w.error}</span>}
+                      <button type="button" disabled={reading === w.id} onClick={() => void readNow(w.id)} className="text-[12px] text-accent disabled:opacity-50">
+                        {reading === w.id ? 'Reading' : 'Read now'}
+                      </button>
+                      <button type="button" onClick={() => setPagesOpen((o) => (o === w.id ? null : w.id))} className="text-[12px] text-accent">
+                        Pages
+                      </button>
+                    </div>
+                    {pagesOpen === w.id && (
+                      <ul className="mt-1 space-y-0.5 pl-4 text-[12px]">
+                        {w.pageList.length === 0 && <li className="text-muted">No pages listed yet. Read now lists them.</li>}
+                        {w.pageList.map((p) => (
+                          <li key={p.externalId}>
+                            <label className="flex items-center gap-2">
+                              <input type="checkbox" aria-label={p.title} checked={p.active} onChange={(e) => void tickPage(w.id, p.externalId, e.target.checked)} />
+                              <span className="text-ink">{p.title}</span>
+                              <a href={p.url} target="_blank" rel="noopener noreferrer" className="truncate text-faint hover:underline">{p.url}</a>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
             {items === null ? (
               <div className="skeleton h-[120px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
             ) : items.length === 0 ? (
@@ -433,6 +522,9 @@ export function SupportAiClient({ email }: { email: string }) {
                       <span className="rounded-full border border-line px-1.5 text-[11px] text-muted">
                         {i.kind.replace('_', ' ')}
                       </span>{' '}
+                      {i.source === 'website' && (
+                        <span className="ml-1 rounded-full border border-line px-1.5 text-[11px] text-muted">website</span>
+                      )}
                       <span className={`font-semibold ${i.active ? 'text-ink' : 'text-faint line-through'}`}>
                         {i.title}
                       </span>
@@ -445,9 +537,11 @@ export function SupportAiClient({ email }: { email: string }) {
                       <button onClick={() => void toggleItem(i.id, !i.active)} className="text-accent">
                         {i.active ? 'Turn off' : 'Turn on'}
                       </button>
-                      <button onClick={() => void removeItem(i.id)} className="text-loss">
-                        Delete
-                      </button>
+                      {i.source !== 'website' && (
+                        <button onClick={() => void removeItem(i.id)} className="text-loss">
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
