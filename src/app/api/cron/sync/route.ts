@@ -454,10 +454,14 @@ export async function GET(req: Request) {
   // bounded, so the parcel matcher's 30-day window is keyed on the first
   // tick and history follows over the next few. No network call.
   let nameKeys = 0
+  // A caught failure here used to leave nameKeys at 0, indistinguishable from
+  // an ordinary tick with nothing left to key. This is the only place that
+  // tells the two apart.
+  let nameKeysError: string | null = null
   try {
     nameKeys = await backfillNameKeys()
-  } catch {
-    // Next tick retries; the matcher simply finds fewer names until then.
+  } catch (e) {
+    nameKeysError = e instanceof Error ? e.message : 'Name key backfill failed'
   }
 
   // Parcel tracking, last of the data pulls. Best-effort like the rest: Bring
@@ -534,6 +538,7 @@ export async function GET(req: Request) {
     txIdsErrors: txBackfill.errors,
     rematchedLines: rematch.matched,
     nameKeys,
+    nameKeysError,
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,
