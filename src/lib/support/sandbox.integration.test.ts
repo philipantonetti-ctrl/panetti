@@ -25,6 +25,7 @@ const judgement = (over = {}) => ({
 async function cleanup() {
   await db.aiConversation.deleteMany({ where: { externalTicketId: { startsWith: 'sandbox:test-' } } })
   await db.knowledgeItem.deleteMany({ where: { title: { startsWith: TAG } } })
+  await db.knowledgeItem.deleteMany({ where: { sourceKey: { startsWith: TAG } } })
   await db.order.deleteMany({ where: { shop: { name: { contains: TAG } } } })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
 }
@@ -107,5 +108,24 @@ describe('runSandboxTurn', () => {
     )
     expect(r.action).toBe('escalate')
     expect(r.reason).toMatch(/menneske/)
+  })
+
+  it('hands the judge the shop\'s own product page for a customer with no orders', async () => {
+    await db.knowledgeItem.create({
+      data: {
+        kind: 'product', title: `${TAG} Panetti ProMix - Hva følger med`, shopId, source: 'website',
+        sourceUrl: 'https://panetti.dk/promix/', sourceKey: `${TAG}:promix:1`,
+        body: 'Product: Panetti ProMix (SKU PROMIX)\nPage: https://panetti.dk/promix/\n\nBolle, eltekrok, visp og spatel følger med.',
+      },
+    })
+
+    const r = await runSandboxTurn(
+      { shopId, customerEmail: null, sessionKey: 'test-web', messages: [{ role: 'user', text: 'Hva følger med ProMix?' }] },
+      { rules },
+    )
+
+    const input = judge.mock.calls[0][0] as { knowledge: { title: string; source: string }[] }
+    expect(input.knowledge.some((k) => k.title.endsWith('Panetti ProMix - Hva følger med') && k.source === 'website')).toBe(true)
+    expect(r.knowledge.some((k) => k.source === 'website')).toBe(true)
   })
 })
