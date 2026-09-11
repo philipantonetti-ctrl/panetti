@@ -16,7 +16,10 @@ describe('storeCatalog', () => {
       data: { shopId: shop.id, externalId: '77', sku: SKU, name: 'Test' },
     })
 
-    await storeCatalog(shop.id, new Map([['77', { price: 64900, stock: 95 }]]))
+    await storeCatalog(shop.id, new Map([['77', {
+      price: 64900, stock: 95, name: '', sku: '', permalink: null,
+      shortDescription: '', description: '', published: true,
+    }]]))
 
     const after = await db.product.findUniqueOrThrow({ where: { id: product.id } })
     expect(after.catalogPrice).toBe(64900)
@@ -32,7 +35,10 @@ describe('storeCatalog', () => {
       data: { shopId: shop.id, externalId: '78', sku: SKU, name: 'Test' },
     })
 
-    await storeCatalog(shop.id, new Map([['78', { price: null, stock: null }]]))
+    await storeCatalog(shop.id, new Map([['78', {
+      price: null, stock: null, name: '', sku: '', permalink: null,
+      shortDescription: '', description: '', published: true,
+    }]]))
 
     const after = await db.product.findUniqueOrThrow({ where: { id: product.id } })
     expect(after.stockQuantity).toBeNull()
@@ -45,7 +51,10 @@ describe('storeCatalog', () => {
       data: { shopId: shop.id, externalId: '79', sku: SKU, name: 'Test', catalogPrice: 500 },
     })
 
-    await storeCatalog(shop.id, new Map([['other', { price: 1, stock: 1 }]]))
+    await storeCatalog(shop.id, new Map([['other', {
+      price: 1, stock: 1, name: '', sku: '', permalink: null,
+      shortDescription: '', description: '', published: true,
+    }]]))
 
     const after = await db.product.findUniqueOrThrow({ where: { id: product.id } })
     expect(after.catalogPrice).toBe(500)
@@ -58,7 +67,10 @@ describe('storeCatalog', () => {
       data: { shopId: shop.id, externalId: '80', sku: SKU, name: 'Test' },
     })
 
-    await storeCatalog(shop.id, new Map([['80', { price: null, stock: 2.5 }]]))
+    await storeCatalog(shop.id, new Map([['80', {
+      price: null, stock: 2.5, name: '', sku: '', permalink: null,
+      shortDescription: '', description: '', published: true,
+    }]]))
 
     const after = await db.product.findUniqueOrThrow({ where: { id: product.id } })
     expect(after.stockQuantity).toBeNull()

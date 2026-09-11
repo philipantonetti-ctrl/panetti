@@ -358,7 +358,10 @@ describe('fetchCatalog', () => {
       ]), { status: 200 }),
     )
     const catalog = await fetchCatalog(creds)
-    expect(catalog.get('1')).toEqual({ price: 64900, stock: 95 })
+    expect(catalog.get('1')).toEqual({
+      price: 64900, stock: 95, name: '', sku: '', permalink: null,
+      shortDescription: '', description: '', published: false,
+    })
     expect(spy).toHaveBeenCalledTimes(1)
     spy.mockRestore()
   })
@@ -371,7 +374,10 @@ describe('fetchCatalog', () => {
         { id: 2, price: '10.00', manage_stock: false, stock_quantity: null },
       ]), { status: 200 }),
     )
-    expect((await fetchCatalog(creds)).get('2')).toEqual({ price: 1000, stock: null })
+    expect((await fetchCatalog(creds)).get('2')).toEqual({
+      price: 1000, stock: null, name: '', sku: '', permalink: null,
+      shortDescription: '', description: '', published: false,
+    })
     spy.mockRestore()
   })
 
@@ -381,8 +387,28 @@ describe('fetchCatalog', () => {
         { id: 3, price: '', manage_stock: true, stock_quantity: 7 },
       ]), { status: 200 }),
     )
-    expect((await fetchCatalog(creds)).get('3')).toEqual({ price: null, stock: 7 })
+    expect((await fetchCatalog(creds)).get('3')).toEqual({
+      price: null, stock: 7, name: '', sku: '', permalink: null,
+      shortDescription: '', description: '', published: false,
+    })
     spy.mockRestore()
+  })
+
+  it('carries each product\'s name, sku, page and descriptions, and whether it is published', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([
+      { id: 24256, name: 'ProMix Pastarulle', sku: 'PRIMIXPROPASMAK', permalink: 'https://panetti.no/promix-pastamaker/', price: '1299', manage_stock: true, stock_quantity: 4, status: 'publish', catalog_visibility: 'visible', short_description: '<p>Nyt fersk pasta.</p>', description: '' },
+      { id: 1, name: 'Old', sku: '', price: '1', status: 'draft', catalog_visibility: 'visible', short_description: '', description: '' },
+      { id: 2, name: 'Hidden', sku: 'H', price: '1', status: 'publish', catalog_visibility: 'hidden', short_description: '', description: '' },
+    ]), { status: 200 })))
+
+    const catalog = await fetchCatalog({ url: 'https://panetti.no', key: 'k', secret: 's' })
+
+    expect(catalog.get('24256')).toEqual({
+      price: 129900, stock: 4, name: 'ProMix Pastarulle', sku: 'PRIMIXPROPASMAK',
+      permalink: 'https://panetti.no/promix-pastamaker/', shortDescription: '<p>Nyt fersk pasta.</p>', description: '', published: true,
+    })
+    expect(catalog.get('1')?.published).toBe(false)
+    expect(catalog.get('2')?.published).toBe(false)
   })
 })
 

@@ -24,7 +24,7 @@ type Result = {
   category: string
   language: string
   confidence: number
-  knowledge: { kind: string; title: string }[]
+  knowledge: { kind: string; title: string; source: string }[]
   saw: {
     customer: string | null
     orders: { number: string; shop: string; status: string; delivery: string | null; parcels: string[] }[]
@@ -195,7 +195,7 @@ export function SandboxClient({ email }: { email: string }) {
                           {Math.round(l.result.confidence * 100)}% sure · {l.result.category} · {l.result.language}
                         </div>
                         {l.result.knowledge.length > 0 && (
-                          <div>Used: {l.result.knowledge.map((k) => `${k.kind}: ${k.title}`).join('; ')}</div>
+                          <div>Used: {l.result.knowledge.map((k) => `${k.kind}: ${k.title}${k.source === 'website' ? ' (website)' : ''}`).join('; ')}</div>
                         )}
                         <div className="flex gap-2 pt-1">
                           <button

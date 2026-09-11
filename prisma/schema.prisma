@@ -59,6 +59,14 @@ model Shop {
   /// never reach a chat already in progress.
   aiChatFrom           DateTime?
 
+  /// When this shop's website was last read into the knowledge base, and what
+  /// the read found. Null = never. Read again when older than 20 hours.
+  websiteReadAt   DateTime?
+  websiteProducts Int?
+  websitePages    Int?
+  websiteError    String?
+  websitePages_   WebsitePage[]
+
   /// True = this shop's catalogue decides what the Forecast and Stock tabs show,
   /// and what "in stock" says.
   ///
@@ -1455,6 +1463,19 @@ model KnowledgeItem {
   language String? // nb | sv | da | fi | de | en
   sku      String?
 
+  /// manual (typed by a person) or website (read from the shop's own site by
+  /// lib/support/website-sync.ts). A website row is rewritten by every read
+  /// and deleted when its product or page is gone; a manual row is never
+  /// touched by a read.
+  source    String    @default("manual")
+  /// The product page or the page's link. Quoted to the customer in place of
+  /// a price or a stock level.
+  sourceUrl String?
+  /// website:<shopId>:product:<externalId>:<n> or
+  /// website:<shopId>:page:<pageId>:<n>. What a read upserts by.
+  sourceKey String?   @unique
+  readAt    DateTime?
+
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1463,6 +1484,24 @@ model KnowledgeItem {
 
   @@index([kind, active])
   @@index([shopId])
+}
+
+/// A page on a shop's WordPress site, as listed by its public pages API.
+/// `active` is the tick: only ticked pages are read into the knowledge base.
+/// Listed pages are remembered so the settings screen can show titles without
+/// asking the site again, and so a tick survives a re-listing.
+model WebsitePage {
+  id         String   @id @default(cuid())
+  shopId     String
+  externalId Int
+  url        String
+  title      String
+  active     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, externalId])
 }
 
 /// What the AI may do on its own. One row, edited in the dashboard.

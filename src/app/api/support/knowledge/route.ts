@@ -42,11 +42,17 @@ const blankToNull = (v: string | null | undefined) => (v ? v : null)
 export async function GET() {
   try {
     assertAdmin(await currentUser())
-    const [items, shops] = await Promise.all([
+    // Website rows are left out of the list: they are shown, per shop, under
+    // "From the websites" - hundreds of them here would bury the handful of
+    // rows a person actually typed, each with its full 1,500-character body.
+    // Only the count is sent, so the settings page can still say how many.
+    const [items, websiteCount, shops] = await Promise.all([
       db.knowledgeItem.findMany({
+        where: { source: { not: 'website' } },
         orderBy: [{ kind: 'asc' }, { title: 'asc' }],
         include: { shop: { select: { name: true } } },
       }),
+      db.knowledgeItem.count({ where: { source: 'website' } }),
       db.shop.findMany({ where: { active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
     ])
     return NextResponse.json(
@@ -55,9 +61,11 @@ export async function GET() {
           id: i.id, kind: i.kind, title: i.title, body: i.body, active: i.active,
           shopId: i.shopId, shopName: i.shop?.name ?? null,
           country: i.country, language: i.language, sku: i.sku,
+          source: i.source, sourceUrl: i.sourceUrl, readAt: i.readAt?.toISOString() ?? null,
         })),
         shops,
         kinds: KINDS,
+        websiteCount,
       },
       { headers: NO_STORE },
     )

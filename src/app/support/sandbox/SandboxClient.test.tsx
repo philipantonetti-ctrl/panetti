@@ -47,7 +47,7 @@ const result = (over = {}) => ({
   category: 'shipping',
   language: 'da',
   confidence: 0.95,
-  knowledge: [{ kind: 'policy', title: 'Levering' }],
+  knowledge: [{ kind: 'policy', title: 'Levering', source: 'manual' }, { kind: 'product', title: 'Panetti ProMix - Hva følger med', source: 'website' }],
   saw: {
     customer: 'Mette (mette@example.com)',
     orders: [{ number: '14689', shop: 'Panetti Denmark', status: 'completed', delivery: 'in transit', parcels: ['733253836'] }],
@@ -190,5 +190,14 @@ describe('the assistant sandbox', () => {
     expect(second.shopId).toBe('s-no')
     expect(second.sessionKey).not.toBe(first.sessionKey)
     expect(second.messages).toHaveLength(1)
+  })
+
+  it('says which rows came from the website', async () => {
+    mockFetch({ body: result() })
+    draw()
+    await waitFor(() => expect(screen.getByLabelText('Shop')).toHaveValue('s-dk'))
+    await say('Hva følger med ProMix?')
+    expect(await screen.findByText(/product: Panetti ProMix - Hva følger med \(website\)/)).toBeInTheDocument()
+    expect(screen.getByText(/policy: Levering(?! \(website\))/)).toBeInTheDocument()
   })
 })

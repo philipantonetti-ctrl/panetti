@@ -32,7 +32,7 @@ export type SandboxTurnResult = {
   category: string
   language: string
   confidence: number
-  knowledge: { kind: string; title: string }[]
+  knowledge: { kind: string; title: string; source: string }[]
   saw: {
     customer: string | null
     orders: { number: string; shop: string; status: string; delivery: string | null; parcels: string[] }[]
@@ -126,7 +126,7 @@ export async function runSandboxTurn(
     category: judgement.category,
     language: judgement.language,
     confidence: judgement.confidence,
-    knowledge: knowledge.map((k) => ({ kind: k.kind, title: k.title })),
+    knowledge: knowledge.map((k) => ({ kind: k.kind, title: k.title, source: k.source })),
     saw: {
       customer: context.customer ? `${context.customer.name || 'name unknown'} (${context.customer.email})` : null,
       orders: context.orders.map((o) => ({

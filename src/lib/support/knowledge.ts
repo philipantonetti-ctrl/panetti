@@ -49,6 +49,8 @@ export type KnowledgeRow = {
   kind: string
   title: string
   body: string
+  source: string
+  sourceUrl: string | null
 }
 
 export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise<KnowledgeRow[]> {
@@ -73,23 +75,42 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
     ],
   }
 
-  const rows = await db.knowledgeItem.findMany({
-    where: inScope,
-    select: { kind: true, title: true, body: true },
-    orderBy: { updatedAt: 'desc' },
-    // A ceiling on the read, not on the answer: the scoring below is what
-    // decides, and it cannot score a row it never loaded.
-    take: 400,
-  })
+  const select = { kind: true, title: true, body: true, source: true, sourceUrl: true } as const
+
+  // Fetched in its own query, with no ceiling: these four kinds are the house
+  // rules, sent on every single ticket regardless of what was asked, so a row
+  // in them must never be able to fall outside the window below - which the
+  // daily website reads can now fill with hundreds of product rows newer than
+  // any policy typed by hand.
+  const [always, rest] = await Promise.all([
+    db.knowledgeItem.findMany({
+      where: { ...inScope, kind: { in: ALWAYS } },
+      select,
+      orderBy: { updatedAt: 'desc' },
+    }),
+    db.knowledgeItem.findMany({
+      where: { ...inScope, kind: { notIn: ALWAYS } },
+      select,
+      orderBy: { updatedAt: 'desc' },
+      // A ceiling on the read, not on the answer: the scoring below is what
+      // decides, and it cannot score a row it never loaded.
+      take: 400,
+    }),
+  ])
 
   const words = keywordsOf(text)
-  const always = rows.filter((r) => ALWAYS.includes(r.kind))
-  const rest = rows.filter((r) => !ALWAYS.includes(r.kind))
 
+  /**
+   * A word in the TITLE weighs three, in the body one. A product's long
+   * section otherwise outranks the right product's short one by matching
+   * more words by chance, now that website rows run to 1,500 characters.
+   */
   const scored = rest
     .map((r) => {
-      const haystack = `${r.title} ${r.body}`.toLowerCase()
-      return { row: r, score: words.filter((w) => haystack.includes(w)).length }
+      const title = r.title.toLowerCase()
+      const body = r.body.toLowerCase()
+      const score = words.reduce((sum, w) => sum + (title.includes(w) ? 3 : body.includes(w) ? 1 : 0), 0)
+      return { row: r, score }
     })
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score)
@@ -99,6 +120,15 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
   return [...always, ...scored]
 }
 
+const fromHost = (url: string | null) => {
+  if (!url) return null
+  try {
+    return new URL(url).host.replace(/^www\./, '')
+  } catch {
+    return null
+  }
+}
+
 /** The knowledge as the prompt sees it. Empty when there is none, and says so. */
 export function knowledgeBlock(rows: KnowledgeRow[]): string {
   if (rows.length === 0) {
@@ -106,6 +136,9 @@ export function knowledgeBlock(rows: KnowledgeRow[]): string {
   }
   return [
     'KNOWLEDGE BASE. These are the only policies and answers you may state as ours:',
-    ...rows.map((r) => `[${r.kind}] ${r.title}\n${r.body}`),
+    ...rows.map((r) => {
+      const host = r.source === 'website' ? fromHost(r.sourceUrl) : null
+      return `[${r.kind}${host ? `, from ${host}` : ''}] ${r.title}\n${r.body}`
+    }),
   ].join('\n\n')
 }
