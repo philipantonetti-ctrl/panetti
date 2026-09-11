@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatInstructions, judgeMessages, type Turn } from './agent'
+import { chatInstructions, judgeMessages, SYSTEM, type Turn } from './agent'
 import type { CustomerContext } from '@/lib/inbox/context'
 
 /** The prompt pieces a chat turn adds, proven without a model in the room. */
@@ -47,5 +47,14 @@ describe('judgeMessages', () => {
     expect(msgs[1].content).toBe('Hej')
     expect(msgs[2].content).toBe('Hej! Jeg er Panettis assistent.')
     expect(String(msgs[3].content)).toContain('Hvor er min ordre 14689?')
+  })
+})
+
+describe('the system prompt', () => {
+  it('lets the assistant state product facts from website rows, and never a price or stock', () => {
+    expect(SYSTEM).toContain('Product facts (what a product is, does, includes, fits, how it is used) also')
+    expect(SYSTEM).toContain('rows marked "from <shop>" are the shop\'s own product pages')
+    expect(SYSTEM).toContain('Never state a price or whether something is in stock')
+    expect(SYSTEM).toContain('give the Page link from the row')
   })
 })
