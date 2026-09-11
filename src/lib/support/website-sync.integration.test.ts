@@ -100,6 +100,40 @@ describe('refreshWebsiteKnowledge', () => {
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes('include=13'))).toBe(false)
   })
 
+  it('leaves the shop\'s existing product rows in place when the catalogue passed in is empty', async () => {
+    await db.knowledgeItem.create({
+      data: {
+        kind: 'product', title: `Old product ${TAG}`, body: 'x', shopId,
+        source: 'website', sourceKey: `website:${shopId}:product:24256:0`, readAt: new Date(),
+      },
+    })
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const counts = await refreshWebsiteKnowledge({ shopId, siteUrl: 'https://panetti.example.test', catalog: new Map() })
+
+    expect(counts).toEqual({ products: 0, withDescriptions: 0, pages: 0, rows: 0 })
+    expect(await db.knowledgeItem.count({ where: { shopId, source: 'website' } })).toBe(1)
+  })
+
+  it('deletes neither ticked page\'s rows when the deadline has already passed, and reports zero pages', async () => {
+    await db.websitePage.create({ data: { shopId, externalId: 12, url: 'https://panetti.example.test/betingelser/', title: 'Betingelser', active: true } })
+    await db.websitePage.create({ data: { shopId, externalId: 14, url: 'https://panetti.example.test/vilkar/', title: 'Vilkar', active: true } })
+    await db.knowledgeItem.create({ data: { kind: 'policy', title: `Old 12 ${TAG}`, body: 'x', shopId, source: 'website', sourceKey: `website:${shopId}:page:12:0`, readAt: new Date() } })
+    await db.knowledgeItem.create({ data: { kind: 'policy', title: `Old 14 ${TAG}`, body: 'x', shopId, source: 'website', sourceKey: `website:${shopId}:page:14:0`, readAt: new Date() } })
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const counts = await refreshWebsiteKnowledge({
+      shopId, siteUrl: 'https://panetti.example.test', catalog: new Map(), deadline: Date.now() - 1,
+    })
+
+    expect(counts.pages).toBe(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await db.knowledgeItem.count({ where: { shopId, sourceKey: `website:${shopId}:page:12:0` } })).toBe(1)
+    expect(await db.knowledgeItem.count({ where: { shopId, sourceKey: `website:${shopId}:page:14:0` } })).toBe(1)
+  })
+
   it('records the error and keeps the old rows when the site fails', async () => {
     noPages()
     await refreshWebsiteKnowledge({ shopId, siteUrl: 'https://panetti.example.test', catalog: new Map([['24256', entry()]]) })

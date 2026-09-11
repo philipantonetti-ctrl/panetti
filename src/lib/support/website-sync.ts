@@ -82,6 +82,10 @@ export async function refreshWebsiteKnowledge(input: {
   const now = new Date()
   const seen = new Set<string>()
   const rows: (Row & { kind: string })[] = []
+  // Pages this call actually fetched. A page the loop broke out of before
+  // reaching (the deadline, or one after it) is NOT in here, and its rows
+  // must never be touched: nothing was checked, so nothing is known to be gone.
+  const fetchedPageIds: number[] = []
 
   let withDescriptions = 0
   for (const [externalId, entry] of input.catalog) {
@@ -98,6 +102,7 @@ export async function refreshWebsiteKnowledge(input: {
       const page = await fetchPage(input.siteUrl, t.externalId, { deadline: input.deadline })
       if (!page) continue
       pages++
+      fetchedPageIds.push(t.externalId)
       for (const row of pageRows(shopId, { externalId: t.externalId, ...page })) rows.push({ ...row, kind: 'policy' })
     }
   } catch (e) {
@@ -119,9 +124,30 @@ export async function refreshWebsiteKnowledge(input: {
       update: { kind: row.kind, title: row.title, body: row.body, sourceUrl: row.sourceUrl, readAt: now },
     })
   }
-  await db.knowledgeItem.deleteMany({
-    where: { shopId, source: 'website', sourceKey: { notIn: [...seen] } },
-  })
+
+  // Prune only what THIS read actually covered, never the whole shop. An empty
+  // catalogue is not proof every product vanished - it is as likely a caller
+  // between two real reads - so the product rows are pruned only when a
+  // catalogue was actually given; and a page's rows are pruned only when that
+  // page was itself fetched, one page at a time, so a page the loop never
+  // reached (the deadline, or one before it in the list) keeps every row it
+  // already had.
+  if (input.catalog.size > 0) {
+    await db.knowledgeItem.deleteMany({
+      where: {
+        shopId, source: 'website',
+        sourceKey: { startsWith: `website:${shopId}:product:`, notIn: [...seen] },
+      },
+    })
+  }
+  for (const externalId of fetchedPageIds) {
+    await db.knowledgeItem.deleteMany({
+      where: {
+        shopId, source: 'website',
+        sourceKey: { startsWith: `website:${shopId}:page:${externalId}:`, notIn: [...seen] },
+      },
+    })
+  }
 
   await db.shop.update({
     where: { id: shopId },

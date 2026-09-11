@@ -7,6 +7,7 @@ import { syncPageInventory } from '@/lib/support/website-sync'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 /**
  * What the assistant has read from each shop's website, and which pages it

@@ -15,11 +15,11 @@ afterAll(cleanup)
 beforeEach(cleanup)
 
 describe('the knowledge list and a website row', () => {
-  it('says where a row came from, and refuses to delete a website row', async () => {
+  it('leaves a website row out of the list, counts it instead, and refuses to delete it', async () => {
     const row = await db.knowledgeItem.create({ data: { kind: 'product', title: `Site ${TAG}`, body: 'x', source: 'website', sourceUrl: 'https://panetti.no/p/', sourceKey: `${TAG}:1`, readAt: new Date('2026-09-10T05:14:00Z') } })
     const body = await (await GET()).json()
-    const item = body.items.find((i: { id: string }) => i.id === row.id)
-    expect(item).toMatchObject({ source: 'website', sourceUrl: 'https://panetti.no/p/', readAt: '2026-09-10T05:14:00.000Z' })
+    expect(body.items.find((i: { id: string }) => i.id === row.id)).toBeUndefined()
+    expect(body.websiteCount).toBeGreaterThanOrEqual(1)
 
     const res = await DELETE(new Request('http://localhost'), { params: Promise.resolve({ id: row.id }) })
     expect(res.status).toBe(400)

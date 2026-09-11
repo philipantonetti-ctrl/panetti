@@ -709,13 +709,24 @@ export async function syncShop(
         await storeCatalog(shop.id, catalog)
         const run = opts.run
         if (run && !run.websiteRead && dueForRead(shop)) {
-          run.websiteRead = true
-          const deadline = Date.now() + WEBSITE_READ_MS
-          try {
-            await syncPageInventory(shop.id, creds.url, { deadline })
-            await refreshWebsiteKnowledge({ shopId: shop.id, siteUrl: creds.url, catalog, deadline })
-          } catch {
-            // Recorded on the shop by the read itself; tried again next run.
+          // Skipped, not spent, when there is not enough of the deadline left
+          // to even try: `run.websiteRead` stays false so another shop this
+          // run, or this same shop next run, still gets the slot.
+          const timeLeft = opts.deadline === undefined ? Infinity : opts.deadline - Date.now()
+          if (timeLeft >= WEBSITE_READ_MS) {
+            run.websiteRead = true
+            const deadline = Math.min(Date.now() + WEBSITE_READ_MS, opts.deadline ?? Infinity)
+            try {
+              await syncPageInventory(shop.id, creds.url, { deadline })
+              await refreshWebsiteKnowledge({ shopId: shop.id, siteUrl: creds.url, catalog, deadline })
+            } catch (e) {
+              // The attempt still counts as today's read: a shop whose site is
+              // down must not hold `websiteReadAt` at its old value forever,
+              // which is what would put this same broken shop first in line
+              // again on every run and starve every shop behind it.
+              const error = e instanceof Error ? e.message : 'Could not read the website'
+              await db.shop.update({ where: { id: shop.id }, data: { websiteError: error, websiteReadAt: new Date() } }).catch(() => {})
+            }
           }
         }
       } catch {

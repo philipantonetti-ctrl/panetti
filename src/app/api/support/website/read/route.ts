@@ -9,6 +9,7 @@ import { refreshWebsiteKnowledge, syncPageInventory } from '@/lib/support/websit
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 /** The "Read now" button: the same read the sync does daily, for one shop, with its own budget. */
 const READ_NOW_MS = 25_000

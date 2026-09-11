@@ -45,22 +45,9 @@ const RULES = {
   categories: ['shipping', 'returns'],
 }
 
+/** A website row never reaches this list any more: it is shown per shop under
+ * "From the websites" instead, and only its count is sent here. */
 const ITEMS = [
-  {
-    id: 'k-web',
-    kind: 'product',
-    title: 'Panetti ProMix',
-    body: 'Product: ...',
-    active: true,
-    shopId: 's-no',
-    shopName: 'Panetti Norway',
-    country: null,
-    language: null,
-    sku: null,
-    source: 'website',
-    sourceUrl: 'https://panetti.no/promix/',
-    readAt: '2026-09-10T05:14:00.000Z',
-  },
   {
     id: 'k-man',
     kind: 'policy',
@@ -109,7 +96,7 @@ function mockFetch(over: { chat?: unknown; rules?: unknown; website?: unknown } 
         if (init?.method === 'PUT') return new Response(JSON.stringify({ ok: true }), { status: 200 })
         return new Response(JSON.stringify(over.website ?? WEBSITE), { status: 200 })
       }
-      return new Response(JSON.stringify({ items: ITEMS, shops: [], kinds: ['faq'] }), { status: 200 })
+      return new Response(JSON.stringify({ items: ITEMS, shops: [], kinds: ['faq'], websiteCount: 1 }), { status: 200 })
     }),
   )
   return calls
@@ -231,13 +218,19 @@ describe('From the websites', () => {
     expect(await screen.findByText('Read 22 products (17 with descriptions) and 2 pages into 60 entries')).toBeInTheDocument()
   })
 
-  it('badges a website row and offers no Delete for it', async () => {
+  it('says how many website entries are listed elsewhere, without listing them', async () => {
     mockFetch()
     draw()
     await screen.findByRole('heading', { name: 'What it knows' })
-    const row = screen.getByText('Panetti ProMix').closest('div')!.parentElement!
-    expect(row.textContent).toContain('website')
-    expect(row.querySelector('button')?.textContent).toBe('Turn off')
-    expect([...row.querySelectorAll('button')].some((b) => b.textContent === 'Delete')).toBe(false)
+    expect(screen.getByText('(1 website entries are listed under From the websites)')).toBeInTheDocument()
+    expect(screen.queryByText('Panetti ProMix')).toBeNull()
+  })
+
+  it('offers Delete for a manually typed entry', async () => {
+    mockFetch()
+    draw()
+    await screen.findByRole('heading', { name: 'What it knows' })
+    const row = screen.getByText('Returns within 14 days').closest('div')!.parentElement!
+    expect([...row.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Turn off', 'Delete'])
   })
 })

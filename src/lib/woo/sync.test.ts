@@ -255,6 +255,29 @@ describe('syncShop', () => {
     expect((await db.shop.findUniqueOrThrow({ where: { id: shopId } })).websiteReadAt).toBeNull()
   })
 
+  it('a broken page list still stamps websiteReadAt, so a broken shop does not hold the slot forever', async () => {
+    const shop = await connectedShop('Sync website broken [sync-test]')
+    const shopId = shop.id
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown) => {
+      const u = String(url)
+      if (u.includes('/wp-json/wp/v2/pages')) return new Response('down', { status: 503 })
+      return emptyPage()
+    }))
+
+    const run = { websiteRead: false }
+    await syncShop(shopId, { run })
+    expect(run.websiteRead).toBe(true)
+    const saved = await db.shop.findUniqueOrThrow({ where: { id: shopId } })
+    expect(saved.websiteError).toContain('answered 503')
+    expect(saved.websiteReadAt).not.toBeNull()
+
+    // Today's read already happened - even though it failed - so a second run
+    // with a fresh flag does not spend another attempt on the same shop.
+    const second = { websiteRead: false }
+    await syncShop(shopId, { run: second })
+    expect(second.websiteRead).toBe(false)
+  })
+
   it('attributes the same code text to a different ambassador per store, never mixing them', async () => {
     // The client's real case: JOHN10 exists on both Norway and Sweden, meaning
     // two different people. A Norwegian order must never earn a Swedish John.

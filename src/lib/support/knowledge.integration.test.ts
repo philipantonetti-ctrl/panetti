@@ -30,6 +30,24 @@ describe('knowledgeFor', () => {
     const rows = await knowledgeFor('Er ProMix kraftig?', { shopId, skus: [] })
     expect(rows.some((r) => r.title === 'Panetti ProMix')).toBe(true)
   })
+
+  it('still returns a house rule once the 400-row window fills with website rows newer than it', async () => {
+    await db.knowledgeItem.create({
+      data: {
+        kind: 'tone', title: `House tone ${TAG}`, body: `Speak warmly and keep it short. ${TAG}`, shopId,
+        updatedAt: new Date('2020-01-01T00:00:00Z'),
+      },
+    })
+    await db.knowledgeItem.createMany({
+      data: Array.from({ length: 401 }, (_, i) => ({
+        kind: 'product', title: `Website row ${i} ${TAG}`, body: `Product row number ${i}. ${TAG}`, shopId,
+        source: 'website', sourceKey: `${TAG}:website:${i}`,
+      })),
+    })
+
+    const rows = await knowledgeFor('anything at all', { shopId })
+    expect(rows.some((r) => r.title === `House tone ${TAG}`)).toBe(true)
+  })
 })
 
 describe('knowledgeBlock', () => {

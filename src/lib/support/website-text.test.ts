@@ -17,6 +17,15 @@ describe('textOf', () => {
     expect(textOf('<p class="p1">Nyt fersk hjemmelaget pasta &amp; mer &#8211; når du &oslash;nsker.</p>\n\n<p>  Enkel.</p>'))
       .toBe('Nyt fersk hjemmelaget pasta & mer - når du ønsker. Enkel.')
   })
+
+  it('decodes degree, fraction, dash and currency entities', () => {
+    expect(textOf('180&deg;C &frac12; &ndash; &euro;')).toBe('180°C ½ - €')
+  })
+
+  it('drops a script or style block whole, rather than leaving its code as text', () => {
+    expect(textOf('<p>Before.</p><script>if (1 < 2) { alert("hi"); }</script><style>.a { color: red; }</style><p>After.</p>'))
+      .toBe('Before. After.')
+  })
 })
 
 describe('sectionsOf', () => {

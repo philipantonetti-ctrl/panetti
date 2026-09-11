@@ -39,18 +39,26 @@ const ENTITIES: Record<string, string> = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
   aring: 'å', Aring: 'Å', oslash: 'ø', Oslash: 'Ø', aelig: 'æ', AElig: 'Æ',
   auml: 'ä', Auml: 'Ä', ouml: 'ö', Ouml: 'Ö', uuml: 'ü', Uuml: 'Ü', szlig: 'ß', eacute: 'é',
+  ndash: '\u2013', mdash: '\u2014', hellip: '\u2026', rsquo: '\u2019', lsquo: '\u2018',
+  rdquo: '\u201D', ldquo: '\u201C', deg: '\u00B0', frac12: '\u00BD', frac14: '\u00BC',
+  frac34: '\u00BE', euro: '\u20AC', times: '\u00D7', middot: '\u00B7', laquo: '\u00AB', raquo: '\u00BB',
 }
 
 function decode(text: string): string {
   return text
     .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&([a-zA-Z]+);/g, (m, name) => ENTITIES[name] ?? m)
+    // Alphanumeric, not just letters: frac12, frac14 and frac34 carry digits.
+    .replace(/&([a-zA-Z0-9]+);/g, (m, name) => ENTITIES[name] ?? m)
 }
 
 /** Tags out, entities decoded, whitespace collapsed. */
 export function textOf(html: string): string {
-  return decode(html.replace(/<[^>]*>/g, ' '))
+  // Dropped whole rather than stripped of their tags: a script or style block
+  // survives tag-stripping as text, and neither is ever a word a customer
+  // should be quoted. Same regex src/lib/error-body.ts uses for the same reason.
+  const withoutScripts = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+  return decode(withoutScripts.replace(/<[^>]*>/g, ' '))
     .replace(/\u2013|\u2014/g, '-')
     .replace(/\s+/g, ' ')
     .trim()

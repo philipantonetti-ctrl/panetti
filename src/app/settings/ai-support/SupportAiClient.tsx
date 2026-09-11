@@ -76,6 +76,7 @@ export function SupportAiClient({ email }: { email: string }) {
   const [items, setItems] = useState<Item[] | null>(null)
   const [shops, setShops] = useState<Shop[]>([])
   const [kinds, setKinds] = useState<string[]>([])
+  const [websiteCount, setWebsiteCount] = useState(0)
   const [rules, setRules] = useState<Rules | null>(null)
   const [categories, setCategories] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -108,6 +109,7 @@ export function SupportAiClient({ email }: { email: string }) {
           setItems(k.items)
           setShops(k.shops)
           setKinds(k.kinds)
+          setWebsiteCount(k.websiteCount ?? 0)
         }
         if (r) {
           const empty = r.rules.escalateKeywords.length === 0
@@ -510,21 +512,18 @@ export function SupportAiClient({ email }: { email: string }) {
             {items === null ? (
               <div className="skeleton h-[120px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
             ) : items.length === 0 ? (
-              <p className="mb-4 text-[13px] text-muted">
+              <p className="mb-2 text-[13px] text-muted">
                 Nothing yet. Until something is here, the assistant has no policies to quote and will hand over
                 anything that needs one.
               </p>
             ) : (
-              <div className="mb-4 space-y-1.5">
+              <div className="mb-2 space-y-1.5">
                 {items.map((i) => (
                   <div key={i.id} className="flex items-baseline justify-between gap-3 border-b border-line pb-1.5 text-[13px] last:border-b-0">
                     <div className="min-w-0">
                       <span className="rounded-full border border-line px-1.5 text-[11px] text-muted">
                         {i.kind.replace('_', ' ')}
                       </span>{' '}
-                      {i.source === 'website' && (
-                        <span className="ml-1 rounded-full border border-line px-1.5 text-[11px] text-muted">website</span>
-                      )}
                       <span className={`font-semibold ${i.active ? 'text-ink' : 'text-faint line-through'}`}>
                         {i.title}
                       </span>
@@ -537,15 +536,18 @@ export function SupportAiClient({ email }: { email: string }) {
                       <button onClick={() => void toggleItem(i.id, !i.active)} className="text-accent">
                         {i.active ? 'Turn off' : 'Turn on'}
                       </button>
-                      {i.source !== 'website' && (
-                        <button onClick={() => void removeItem(i.id)} className="text-loss">
-                          Delete
-                        </button>
-                      )}
+                      <button onClick={() => void removeItem(i.id)} className="text-loss">
+                        Delete
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
+            )}
+            {websiteCount > 0 && (
+              <p className="mb-4 text-[11px] text-faint">
+                ({websiteCount} website entries are listed under From the websites)
+              </p>
             )}
 
             <div className="grid grid-cols-2 gap-2 text-[12px] text-muted">

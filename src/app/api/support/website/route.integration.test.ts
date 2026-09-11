@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { encryptSecret } from '@/lib/secrets'
 
 vi.mock('@/lib/auth/current-user', () => ({
   currentUser: vi.fn(async () => ({ id: 'u1', email: 'a@b.c', role: 'ADMIN' })),
@@ -50,6 +51,12 @@ describe('PUT /api/support/website', () => {
     expect(res.status).toBe(200)
     expect((await db.websitePage.findUniqueOrThrow({ where: { shopId_externalId: { shopId, externalId: 12 } } })).active).toBe(true)
   })
+
+  it('refuses a non-admin', async () => {
+    vi.mocked(currentUser).mockResolvedValueOnce({ id: 'u2', email: 'o@b.c', role: 'OPERATIONS' } as never)
+    const res = await PUT(new Request('http://localhost/api/support/website', { method: 'PUT', body: JSON.stringify({ shopId, externalId: 12, active: true }) }))
+    expect(res.status).toBe(403)
+  })
 })
 
 describe('POST /api/support/website/read', () => {
@@ -59,5 +66,50 @@ describe('POST /api/support/website/read', () => {
     // No Woo keys on this shop: the read cannot fetch its catalogue and says so.
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe('No WooCommerce credentials for this shop')
+  })
+
+  it('refuses a non-admin', async () => {
+    vi.mocked(currentUser).mockResolvedValueOnce({ id: 'u2', email: 'o@b.c', role: 'OPERATIONS' } as never)
+    const res = await POST(new Request('http://localhost/api/support/website/read', { method: 'POST', body: JSON.stringify({ shopId }) }))
+    expect(res.status).toBe(403)
+  })
+
+  it('reads one published product with a description into one website row, and reports the counts', async () => {
+    await db.shop.update({
+      where: { id: shopId },
+      data: { wooKey: encryptSecret('ck_test'), wooSecret: encryptSecret('cs_test') },
+    })
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/wp-json/wc/v3/products')) {
+        return new Response(JSON.stringify([{
+          id: 500, name: 'ProMix', sku: 'PROMIX', permalink: 'https://panetti.example.test/promix/',
+          status: 'publish', catalog_visibility: 'visible',
+          short_description: '', description: 'A'.repeat(60),
+        }]), { status: 200 })
+      }
+      return new Response('[]', { status: 200 })
+    }))
+
+    const res = await POST(new Request('http://localhost/api/support/website/read', { method: 'POST', body: JSON.stringify({ shopId }) }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ products: 1, withDescriptions: 1, pages: 0, rows: 1 })
+    expect(await db.knowledgeItem.count({ where: { shopId, source: 'website' } })).toBe(1)
+  })
+
+  it('reading shop A leaves shop B\'s website rows untouched', async () => {
+    const shopB = await db.shop.create({ data: { name: `Panetti B ${TAG}`, currency: 'NOK', wooUrl: 'https://panetti-b.example.test' } })
+    await db.knowledgeItem.create({
+      data: { kind: 'product', title: `B product ${TAG}`, body: 'x', shopId: shopB.id, source: 'website', sourceKey: `website:${shopB.id}:product:1:0` },
+    })
+    await db.shop.update({
+      where: { id: shopId },
+      data: { wooKey: encryptSecret('ck_test'), wooSecret: encryptSecret('cs_test') },
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', { status: 200 })))
+
+    const res = await POST(new Request('http://localhost/api/support/website/read', { method: 'POST', body: JSON.stringify({ shopId }) }))
+    expect(res.status).toBe(200)
+    expect(await db.knowledgeItem.count({ where: { shopId: shopB.id, source: 'website' } })).toBe(1)
   })
 })

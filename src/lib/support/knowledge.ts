@@ -75,18 +75,30 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
     ],
   }
 
-  const rows = await db.knowledgeItem.findMany({
-    where: inScope,
-    select: { kind: true, title: true, body: true, source: true, sourceUrl: true },
-    orderBy: { updatedAt: 'desc' },
-    // A ceiling on the read, not on the answer: the scoring below is what
-    // decides, and it cannot score a row it never loaded.
-    take: 400,
-  })
+  const select = { kind: true, title: true, body: true, source: true, sourceUrl: true } as const
+
+  // Fetched in its own query, with no ceiling: these four kinds are the house
+  // rules, sent on every single ticket regardless of what was asked, so a row
+  // in them must never be able to fall outside the window below - which the
+  // daily website reads can now fill with hundreds of product rows newer than
+  // any policy typed by hand.
+  const [always, rest] = await Promise.all([
+    db.knowledgeItem.findMany({
+      where: { ...inScope, kind: { in: ALWAYS } },
+      select,
+      orderBy: { updatedAt: 'desc' },
+    }),
+    db.knowledgeItem.findMany({
+      where: { ...inScope, kind: { notIn: ALWAYS } },
+      select,
+      orderBy: { updatedAt: 'desc' },
+      // A ceiling on the read, not on the answer: the scoring below is what
+      // decides, and it cannot score a row it never loaded.
+      take: 400,
+    }),
+  ])
 
   const words = keywordsOf(text)
-  const always = rows.filter((r) => ALWAYS.includes(r.kind))
-  const rest = rows.filter((r) => !ALWAYS.includes(r.kind))
 
   /**
    * A word in the TITLE weighs three, in the body one. A product's long
