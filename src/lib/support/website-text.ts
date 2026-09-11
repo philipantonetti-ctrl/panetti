@@ -51,7 +51,7 @@ function decode(text: string): string {
 /** Tags out, entities decoded, whitespace collapsed. */
 export function textOf(html: string): string {
   return decode(html.replace(/<[^>]*>/g, ' '))
-    .replace(/–|—/g, '-')
+    .replace(/\u2013|\u2014/g, '-')
     .replace(/\s+/g, ' ')
     .trim()
 }
