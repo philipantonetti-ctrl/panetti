@@ -125,8 +125,8 @@ export function SandboxClient({ email }: { email: string }) {
   return (
     <AppShell email={email}>
       <PageHeader
-        title="Try the assistant"
-        subtitle="Practice with the assistant before a customer ever sees it. Write as a customer would, then mark an answer wrong to teach it. Nothing on this page reaches a real customer or Gorgias."
+        title="Test the assistant"
+        subtitle="Test the assistant before a customer ever sees it. Write as a customer would, then mark an answer wrong to teach it. Nothing on this page reaches a real customer or Gorgias."
       />
       <PageBody>
         <div className="grid max-w-[1100px] gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
