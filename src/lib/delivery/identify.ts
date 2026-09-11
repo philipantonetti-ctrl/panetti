@@ -1,5 +1,6 @@
 import { db } from '../db'
 import { decideAttach } from './attach'
+import { fetchTracking as fetchBring, type BringCredentials } from '../bring/client'
 import { mapConsignments } from '../bring/map'
 import { mapShipments } from '../dhl/map'
 import { str, type MappedPackage } from './milestones'
@@ -256,4 +257,59 @@ export async function applyUnknown(row: IdentifyRow, now: Date): Promise<void> {
       ...(next.unlinkedReason ? { unlinkedReason: next.unlinkedReason } : {}),
     },
   })
+}
+
+/** Stray Bring rows asked about per run. Bring is unmetered; each call is about a second. */
+export const STRAY_LIMIT = 20
+
+/**
+ * Bring rows nobody ever asked Bring about.
+ *
+ * Until 2026-09-11 the importer called every warehouse number "Bring" and,
+ * on a day Bring's answer failed (the 2026-08-28 file: 64 numbers, one 403),
+ * stored the rows with no facts at all. Four of them were still unlinked on
+ * 2026-09-11 with no email, no name and no reason - Bring knew every one.
+ * The importer now stores such a number as UNKNOWN and the poller identifies
+ * it; the hourly sweep cannot help these older rows because it only tries
+ * rows that hold an email or a name. So each run asks Bring about a few:
+ * what Bring says is written and the row tries to attach, exactly as if the
+ * file had just arrived (applyIdentification). Once per row - identifiedAt
+ * marks it. A row Bring does not know is left as it is; the ordinary poll
+ * flips such a row to UNKNOWN on its next turn.
+ *
+ * Only rows older than a day: a row an import is writing this minute is
+ * that import's to finish, not this stage's.
+ */
+export async function identifyBringStrays(
+  creds: BringCredentials,
+  now: Date,
+  opts: { deadline?: number } = {},
+): Promise<{ tried: number; identified: number }> {
+  const rows = await db.shipment.findMany({
+    where: {
+      carrier: 'BRING',
+      orderId: null,
+      dismissedAt: null,
+      identifiedAt: null,
+      recipientEmail: null,
+      createdAt: { lt: new Date(now.getTime() - DAY) },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: STRAY_LIMIT,
+    select: { id: true, trackingNumber: true, orderId: true, createdAt: true, recipientName: true, dismissedAt: true },
+  })
+  let tried = 0
+  let identified = 0
+  for (const row of rows) {
+    // Checked before each call, not after: a lookup there is no time to
+    // finish takes the budget from the poll that follows.
+    if (opts.deadline !== undefined && Date.now() >= opts.deadline) break
+    tried++
+    const raw = await fetchBring(creds, [row.trackingNumber], { deadline: opts.deadline })
+    const facts = bringFacts(raw, row.trackingNumber)
+    if (!facts) continue
+    await applyIdentification(row, facts, now)
+    identified++
+  }
+  return { tried, identified }
 }

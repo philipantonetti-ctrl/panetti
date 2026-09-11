@@ -10,7 +10,7 @@ import {
 import { mapShipments } from '../dhl/map'
 import { getDeliveryConfig } from './config'
 import { deadlineFor } from './days'
-import { applyIdentification, applyUnknown, bringFacts, dhlFacts } from './identify'
+import { applyIdentification, applyUnknown, bringFacts, dhlFacts, identifyBringStrays } from './identify'
 import { sweepUnlinked } from './attach'
 import type { MappedPackage, Milestones } from './milestones'
 import { promiseOn } from './promise'
@@ -26,6 +26,9 @@ export type ShipmentSyncResult = {
   /** Unlinked rows the hourly sweep tried again this run, and how many it attached. */
   swept?: number
   sweptLinked?: number
+  /** Bring rows nobody had asked Bring about, asked this run, and how many Bring knew. */
+  straysTried?: number
+  straysIdentified?: number
   /**
    * DHL parcels that were due and went unasked for want of a key.
    *
@@ -166,6 +169,14 @@ export async function syncShipments(
   // Unlinked parcels first, before the due rows are read, so one attached
   // here polls as a linked parcel in the same run. Best-effort like the rest.
   const sweep = await sweepUnlinked(now).catch(() => ({ tried: 0, linked: 0 }))
+
+  // Then the Bring rows that hold nothing to sweep on because nobody ever
+  // asked Bring about them. Bring's answer gives them their email and name,
+  // and they attach in the same run. Best-effort, and only when Bring is
+  // connected.
+  const strays = creds
+    ? await identifyBringStrays(creds, now, { deadline: opts.deadline }).catch(() => ({ tried: 0, identified: 0 }))
+    : { tried: 0, identified: 0 }
 
   // The promise book and the workspace timezone, once for the run, never per
   // parcel. Both are tiny and change rarely.
@@ -537,7 +548,11 @@ export async function syncShipments(
     })
     .catch(() => {})
 
-  return { polled, updated, failed, dhlCalls, dhlSkippedNoKey, identified, swept: sweep.tried, sweptLinked: sweep.linked }
+  return {
+    polled, updated, failed, dhlCalls, dhlSkippedNoKey, identified,
+    swept: sweep.tried, sweptLinked: sweep.linked,
+    straysTried: strays.tried, straysIdentified: strays.identified,
+  }
 }
 
 /** The daily allowance this poller is written against. Exported for the docs. */
