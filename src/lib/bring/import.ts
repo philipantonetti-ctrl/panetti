@@ -6,9 +6,11 @@ import {
   type ResolvedConsignment,
   type UnresolvedNumber,
 } from './consignments'
-import { matchByEmail } from './match'
+import { matchByEmail, matchByName, type MatchOutcome } from './match'
+import { readLabels } from './labels'
 // Note the directory: config.ts lives under delivery/, not bring/.
 import { getDeliveryConfig } from '../delivery/config'
+import { attach, ATTACH_SELECT } from '../delivery/attach'
 import { parseDhlExport } from '../dhl/parse'
 import { linkDhlShipments } from '../dhl/link'
 
@@ -42,6 +44,12 @@ export type ImportResult = {
    * cannot, because a row we failed to read leaves nothing to describe.
    */
   unaccounted: number
+  /**
+   * Rows of the warehouse file that carried a recipient name. 0 means the
+   * file was read and had none we could find, which is the thing to look at
+   * when parcels stop attaching; null means this path does not read names.
+   */
+  namesRead: number | null
 }
 
 /**
@@ -147,7 +155,7 @@ export async function importTrackingFile(
     },
   })
 
-  return { importId: record.id, parsed: seen, linked, unmatched, unaccounted }
+  return { importId: record.id, parsed: seen, linked, unmatched, unaccounted, namesRead: null }
 }
 
 /**
@@ -219,7 +227,7 @@ export async function importWarehouseFile(
           unmatched: rows.length ? JSON.stringify(rows) : null,
         },
       })
-      return { importId: record.id, parsed, linked, unmatched: rows, unaccounted: rows.length }
+      return { importId: record.id, parsed, linked, unmatched: rows, unaccounted: rows.length, namesRead: null }
     } catch (e) {
       // Same rule as the Bring block below: a throw that escapes unrecorded is
       // the silent morning this feature exists to prevent.
@@ -241,6 +249,17 @@ export async function importWarehouseFile(
       rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error,
     })
     throw new ImportParseError(error)
+  }
+
+  // The names on the labels, keyed by every long number on their row. Null
+  // when this file gives none; the import then goes on exactly as before.
+  const labels = readLabels(buf, filename)
+  const nameFor = (candidates: (string | null)[]): string | null => {
+    for (const n of candidates) {
+      const v = n ? labels?.names.get(n) : undefined
+      if (v) return v
+    }
+    return null
   }
 
   // Everything from here on can fail mid-way - Bring timing out, a dropped
@@ -285,14 +304,36 @@ export async function importWarehouseFile(
         destinationCountry: c.destinationCountry,
         weightKg: c.weightKg,
         recipientEmail: c.recipientEmail,
-        recipientName: c.recipientName,
+        recipientName: c.recipientName ?? nameFor([...c.packageNumbers, c.consignmentId]),
         bookedAt: c.bookedAt,
         identifiedAt: receivedAt,
       }
-      const outcome = await matchByEmail(c.recipientEmail, receivedAt, {
+      // A null name here means "the carrier and the file both gave nothing",
+      // not "erase the name". Left in `facts` it would overwrite a name an
+      // earlier file or the poller already stored, so the update side omits
+      // it entirely when it is null; `create` keeps the full `facts` since
+      // there is nothing yet on the row for a null to overwrite.
+      const { recipientName: factsName, ...factsWithoutName } = facts
+      const updateFacts = factsName === null ? factsWithoutName : facts
+      let outcome: MatchOutcome = await matchByEmail(c.recipientEmail, receivedAt, {
         bookedAt: c.bookedAt,
         consignmentId: c.consignmentId,
       })
+      let linkSource: 'BRING_EMAIL' | 'FILE_NAME' = 'BRING_EMAIL'
+      if (outcome.orderId === null && facts.recipientName) {
+        // The name is the second key, and for a customer Bring holds no
+        // email for it is the only one. The email's refusal is the more
+        // useful sentence when there was an email, so it is kept then.
+        const byName = await matchByName(facts.recipientName, receivedAt, {
+          bookedAt: c.bookedAt, consignmentId: c.consignmentId, country: c.destinationCountry,
+        })
+        if (byName.orderId !== null) {
+          outcome = byName
+          linkSource = 'FILE_NAME'
+        } else if (!c.recipientEmail) {
+          outcome = byName
+        }
+      }
       if (outcome.orderId === null) {
         unmatched.push({
           orderNumber: c.recipientName ?? c.consignmentId,
@@ -316,7 +357,7 @@ export async function importWarehouseFile(
             },
             // Never unlinks: a row a person or an earlier night already
             // attached keeps its order, and only learns the facts.
-            update: { ...facts },
+            update: { ...updateFacts },
           })
         }
         continue
@@ -329,7 +370,7 @@ export async function importWarehouseFile(
             trackingNumber,
             ...facts,
             orderId: outcome.orderId,
-            linkSource: 'BRING_EMAIL',
+            linkSource,
             unlinkedReason: null,
             nextPollAt: new Date(),
           },
@@ -337,15 +378,16 @@ export async function importWarehouseFile(
           // own, and the link is written below, never here - a re-import
           // must never move a link a person, or an earlier night, already
           // attached to a different order.
-          update: { ...facts },
+          update: { ...updateFacts },
         })
         // The link lands only on a row with no order yet. A row already
         // linked - by hand, or by an earlier night's import - keeps its
         // order no matter what today's file resolves the email to; only its
-        // facts move.
+        // facts move. A row a person dismissed keeps its dismissal too;
+        // nothing here may overrule it.
         await db.shipment.updateMany({
-          where: { trackingNumber, orderId: null },
-          data: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL', unlinkedReason: null },
+          where: { trackingNumber, orderId: null, dismissedAt: null },
+          data: { orderId: outcome.orderId, linkSource, unlinkedReason: null },
         })
       }
       // Once per CONSIGNMENT, not per package: a two-package consignment
@@ -362,19 +404,51 @@ export async function importWarehouseFile(
       // UNKNOWN and due now; the poller asks Bring again, then DHL, and the
       // first to answer owns the row - see lib/delivery/identify.ts.
       if (BRING_SHAPED.test(u.number)) {
+        const name = labels?.names.get(u.number) ?? null
         await db.shipment.upsert({
           where: { trackingNumber: u.number },
-          create: { trackingNumber: u.number, carrier: 'UNKNOWN', nextPollAt: new Date() },
+          create: { trackingNumber: u.number, carrier: 'UNKNOWN', nextPollAt: new Date(), recipientName: name },
           // Adopt, never reset: it may already be identified, or mid-way.
           update: {},
         })
+        const existing = await db.shipment.findUnique({
+          where: { trackingNumber: u.number },
+          select: { orderId: true },
+        })
+        if (existing && existing.orderId !== null) {
+          // Already attached by an earlier import, a person, or the poller;
+          // nothing to report - a re-upload must not read as a failure.
+          linked++
+          continue
+        }
+        let nameReason: string | null = null
+        if (name) {
+          // A row that had no name learns it; a carrier's own name, when one
+          // exists, is never overwritten by the file's. Then the row tries to
+          // attach on the spot - this is how re-uploading an old file links
+          // the parcels that were stored before names were read.
+          await db.shipment.updateMany({
+            where: { trackingNumber: u.number, recipientName: null },
+            data: { recipientName: name },
+          })
+          const row = await db.shipment.findUnique({ where: { trackingNumber: u.number }, select: ATTACH_SELECT })
+          if (row && row.orderId === null) {
+            const r = await attach(row)
+            if (r.linked) {
+              linked++
+              continue
+            }
+            nameReason = r.reason
+          }
+        }
         unmatched.push({
-          orderNumber: '(not identified)',
+          orderNumber: name ?? '(not identified)',
           trackingNumber: u.number,
           reason:
-            u.reason === 'Bring has no parcel with this number'
+            (u.reason === 'Bring has no parcel with this number'
               ? 'Bring has not heard of this parcel yet - stored, the next check asks Bring again, then DHL'
-              : `${u.reason} - stored, it will be retried by the next check`,
+              : `${u.reason} - stored, it will be retried by the next check`) +
+            (nameReason ? ` - ${nameReason}` : ''),
         })
         continue
       }
@@ -402,10 +476,11 @@ export async function importWarehouseFile(
         rowsLinked: linked,
         rowsUnmatched: unaccounted,
         unmatched: unmatched.length ? JSON.stringify(unmatched) : null,
+        namesRead: labels ? labels.rows : 0,
       },
     })
 
-    return { importId: record.id, parsed, linked, unmatched, unaccounted }
+    return { importId: record.id, parsed, linked, unmatched, unaccounted, namesRead: labels ? labels.rows : 0 }
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Could not import this file'
     // Derived from what was parsed, NOT as `unresolved.length + unmatched.length`.

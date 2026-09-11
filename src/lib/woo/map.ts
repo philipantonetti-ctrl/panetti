@@ -1,3 +1,4 @@
+import { nameKey } from '../delivery/name-key'
 import { toMinor } from '../money'
 
 export type WooLineItem = {
@@ -62,6 +63,7 @@ export type MappedOrder = {
   // '' when the store has none on file - never null, so a synced order always
   // counts as "customer checked" and the backfill knows it is done.
   customerName: string
+  customerNameKey: string
   customerEmail: string
   // Same convention: '' = checked, the store has none on file.
   customerPhone: string
@@ -109,6 +111,8 @@ export function mapOrder(woo: WooOrder): MappedOrder {
   // Prefer the discount implied by the lines; fall back to Woo's own figure.
   const discountTotal = grossSales - netSales || num(woo.discount_total)
 
+  const customerName = [woo.billing?.first_name, woo.billing?.last_name].filter(Boolean).join(' ').trim()
+
   return {
     externalId: String(woo.id),
     number: woo.number,
@@ -122,7 +126,8 @@ export function mapOrder(woo: WooOrder): MappedOrder {
     taxTotal: num(woo.total_tax),
     total: num(woo.total),
     couponCode: woo.coupon_lines?.[0]?.code?.toUpperCase() ?? null,
-    customerName: [woo.billing?.first_name, woo.billing?.last_name].filter(Boolean).join(' ').trim(),
+    customerName,
+    customerNameKey: nameKey(customerName),
     customerEmail: woo.billing?.email?.trim() ?? '',
     customerPhone: woo.billing?.phone?.trim() ?? '',
     // The core field when the plugin set it; older plugin versions wrote

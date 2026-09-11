@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
+import { nameKey } from '@/lib/delivery/name-key'
 
 const resolveConsignments = vi.fn()
 vi.mock('./consignments', () => ({
@@ -13,7 +14,7 @@ const { encryptSecret } = await import('@/lib/secrets')
 const TAG = '[intake-import-test]'
 const PREFIX = 'IMIMP'
 const scoped = { shop: { name: { contains: TAG } } }
-const FILES = ['eod.xlsx', 'broken.docx']
+const FILES = ['eod.xlsx', 'broken.docx', 'named.xlsx', 'nameless.xlsx']
 
 let shopId: string
 
@@ -41,6 +42,33 @@ const book = (values: string[]) =>
       ),
     }),
   )
+
+// The same builder as labels.test.ts, copied here because the two files must
+// stay independent.
+const HEADERS = ['Datum', 'Antal', 'Order', 'Namn', 'KolliID', 'S\u00e4ndningsref', 'Levs\u00e4tt', 'Vikt']
+const col = (i: number) => String.fromCharCode(65 + i)
+const sheet = (rows: Partial<Record<string, string>>[], headers: string[] = HEADERS) => {
+  const strings: string[] = []
+  const idx = (v: string) => {
+    const at = strings.indexOf(v)
+    return at === -1 ? strings.push(v) - 1 : at
+  }
+  const cells = (values: string[], r: number) =>
+    values
+      .map((v, i) => (v === '' ? `<c r="${col(i)}${r}" s="1"/>` : `<c r="${col(i)}${r}" t="s"><v>${idx(v)}</v></c>`))
+      .join('')
+  const body = rows.map((row, n) => `<row r="${n + 2}">${cells(headers.map((h) => row[h] ?? ''), n + 2)}</row>`).join('')
+  const head = `<row r="1">${cells(headers, 1)}</row>`
+  return Buffer.from(
+    zipSync({
+      'xl/sharedStrings.xml': strToU8(`<sst>${strings.map((s) => `<si><t>${s}</t></si>`).join('')}</sst>`),
+      'xl/worksheets/sheet1.xml': strToU8(`<worksheet><sheetData>${head}${body}</sheetData></worksheet>`),
+    }),
+  )
+}
+const ltasRow = (kolli: string, name: string, ref = '') => ({
+  Datum: '2026-09-10 08:19:24', Antal: '1', Order: '027286', Namn: name, KolliID: kolli, 'S\u00e4ndningsref': ref, 'Levs\u00e4tt': 'BOXHD_NO', Vikt: '16.4',
+})
 
 beforeAll(async () => {
   await cleanup()
@@ -161,6 +189,44 @@ describe('importWarehouseFile', () => {
     expect(after.find((r) => r.trackingNumber === `${PREFIX}0001`)?.createdAt).toEqual(
       before?.createdAt,
     )
+  })
+
+  it('never lets a null name from the carrier wipe a name already stored on the row', async () => {
+    const order = await db.order.create({
+      data: {
+        shopId, externalId: 'I-KEPT', number: `${PREFIX}9004`,
+        placedAt: new Date(), status: 'completed', currency: 'NOK',
+        grossSales: 500, discountTotal: 0, netSales: 500,
+        shippingCharged: 0, taxTotal: 0, total: 500,
+        customerEmail: 'kept-name@example.test',
+      },
+    })
+    await db.shipment.create({
+      data: {
+        trackingNumber: `${PREFIX}0601`,
+        carrier: 'BRING',
+        recipientName: 'Kept Name',
+        destinationCountry: 'SE',
+      },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [
+        {
+          consignmentId: `${PREFIX}C-KEPT`,
+          packageNumbers: [`${PREFIX}0601`],
+          recipientEmail: 'kept-name@example.test',
+          // The carrier gave no name this time; the file (book(), no Namn
+          // column at all) gives none either.
+          recipientName: null,
+        },
+      ],
+      unresolved: [],
+    })
+    const result = await importWarehouseFile(book([`${PREFIX}0601`]), 'eod.xlsx', 'EMAIL')
+    expect(result.linked).toBe(1)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: `${PREFIX}0601` } })
+    expect(row?.orderId).toBe(order.id)
+    expect(row?.recipientName).toBe('Kept Name')
   })
 
   it('never re-points a row someone already linked by hand, even when the email finds a real order', async () => {
@@ -416,6 +482,181 @@ describe('importWarehouseFile', () => {
     // One call, for the file's own numbers. A second call would be the old retry stage.
     expect(resolveConsignments).toHaveBeenCalledTimes(1)
     expect(resolveConsignments.mock.calls[0][1]).toEqual(['473999999000000003'])
+  })
+})
+
+// The tests above leave buyer@example.test's order holding a shipment from
+// consignment IMIMPC1, and matchByEmail rightly refuses to add a SECOND
+// consignment to an order that already holds one from another - so any test
+// here that re-uses that address for a fresh consignment needs its slate
+// clean first. Nothing after this point reads the earlier tests' rows.
+describe('the warehouse file names a row', () => {
+  beforeAll(async () => {
+    await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: PREFIX } } })
+  })
+
+  it('names an already-stored UNKNOWN row from the file and links it by that name', async () => {
+    const o = await db.order.create({
+      data: {
+        shopId, externalId: 'N1', number: 'N1', placedAt: new Date(Date.now() - 2 * 24 * 3600_000), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerName: 'Martin R\u00f6thke', customerNameKey: nameKey('Martin R\u00f6thke'), customerEmail: 'martin@example.test', shippingCountry: 'DE',
+      },
+    })
+    const number = '473999999000000011'
+    await db.shipment.create({ data: { trackingNumber: number, carrier: 'DHL', destinationCountry: 'DE', unlinkedReason: 'old reason' } })
+    resolveConsignments.mockResolvedValue({
+      consignments: [],
+      unresolved: [{ number, reason: 'Bring has no parcel with this number' }],
+    })
+    const result = await importWarehouseFile(sheet([ltasRow(number, 'ROTHKE MARTIN')]), 'named.xlsx', 'UPLOAD')
+    expect(result.namesRead).toBe(1)
+    expect(result.linked).toBe(1)
+    expect(result.unaccounted).toBe(0)
+    expect(result.parsed).toBe(result.linked + result.unaccounted)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: number } })
+    expect(row?.orderId).toBe(o.id)
+    expect(row?.linkSource).toBe('FILE_NAME')
+    expect(row?.recipientName).toBe('ROTHKE MARTIN')
+    expect(row?.unlinkedReason).toBeNull()
+    expect(row?.carrier).toBe('DHL')
+    const record = await db.trackingImport.findFirst({ where: { filename: 'named.xlsx' }, orderBy: { receivedAt: 'desc' } })
+    expect(record?.namesRead).toBe(1)
+  })
+
+  it('a resolved consignment whose email matches nothing links by the name, and Bring\u2019s own name wins over the file\u2019s', async () => {
+    const o = await db.order.create({
+      data: {
+        shopId, externalId: 'N2', number: 'N2', placedAt: new Date(Date.now() - 2 * 24 * 3600_000), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerName: 'Anitta Airi', customerNameKey: nameKey('Anitta Airi'), customerEmail: 'anitta@example.test', shippingCountry: 'FI',
+      },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [{
+        consignmentId: `${PREFIX}C9`, packageNumbers: [`${PREFIX}0009`],
+        recipientEmail: 'different@example.test', recipientName: 'Anitta Airi', destinationCountry: 'FI', weightKg: 1.6, bookedAt: null,
+      }],
+      unresolved: [],
+    })
+    const result = await importWarehouseFile(sheet([ltasRow(`${PREFIX}0009`, 'Wrong Name In File')]), 'named.xlsx', 'UPLOAD')
+    expect(result.linked).toBe(1)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: `${PREFIX}0009` } })
+    expect(row?.orderId).toBe(o.id)
+    expect(row?.linkSource).toBe('FILE_NAME')
+    expect(row?.recipientName).toBe('Anitta Airi')
+  })
+
+  it('a file with no Namn column still links by email and records that no names were read', async () => {
+    resolveConsignments.mockResolvedValue({
+      consignments: [{
+        consignmentId: `${PREFIX}C10`, packageNumbers: [`${PREFIX}0010`],
+        recipientEmail: 'buyer@example.test', recipientName: 'Buyer', destinationCountry: 'NO', weightKg: 1, bookedAt: null,
+      }],
+      unresolved: [],
+    })
+    const result = await importWarehouseFile(
+      sheet([{ Datum: '2026-09-10', KolliID: `${PREFIX}0010` }], ['Datum', 'KolliID']), 'nameless.xlsx', 'UPLOAD',
+    )
+    expect(result.linked).toBe(1)
+    expect(result.namesRead).toBe(0)
+    const record = await db.trackingImport.findFirst({ where: { filename: 'nameless.xlsx' }, orderBy: { receivedAt: 'desc' } })
+    expect(record?.namesRead).toBe(0)
+  })
+
+  it('fills in the name on a dismissed row from a re-uploaded file but never links it', async () => {
+    const o = await db.order.create({
+      data: {
+        shopId, externalId: 'N3', number: 'N3', placedAt: new Date(Date.now() - 2 * 24 * 3600_000), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerName: 'Dismissed Person', customerNameKey: nameKey('Dismissed Person'), customerEmail: 'dismissed@example.test', shippingCountry: 'DE',
+      },
+    })
+    const number = '473999999000000013'
+    await db.shipment.create({
+      data: { trackingNumber: number, carrier: 'DHL', destinationCountry: 'DE', dismissedAt: new Date(), terminal: true },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [],
+      unresolved: [{ number, reason: 'Bring has no parcel with this number' }],
+    })
+    const result = await importWarehouseFile(sheet([ltasRow(number, 'Dismissed Person')]), 'named.xlsx', 'UPLOAD')
+    expect(result.linked).toBe(0)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: number } })
+    expect(row?.recipientName).toBe('Dismissed Person')
+    expect(row?.orderId).toBeNull()
+    expect(row?.orderId).not.toBe(o.id)
+    expect(row?.dismissedAt).not.toBeNull()
+  })
+
+  it('a dismissed row keeps its dismissal when its number later resolves at Bring as a RESOLVED consignment', async () => {
+    await db.order.create({
+      data: {
+        shopId, externalId: 'N5', number: 'N5', placedAt: new Date(Date.now() - 2 * 24 * 3600_000), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerName: 'Dismissed Person', customerNameKey: nameKey('Dismissed Person'), customerEmail: 'dismissed@example.test', shippingCountry: 'NO',
+      },
+    })
+    const number = `${PREFIX}0042`
+    await db.shipment.create({
+      data: {
+        trackingNumber: number,
+        carrier: 'BRING',
+        dismissedAt: new Date(),
+        terminal: true,
+        unlinkedReason: 'Not a customer parcel (dismissed by someone@example.test)',
+      },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [{
+        consignmentId: `${PREFIX}C42`, packageNumbers: [number],
+        recipientEmail: 'dismissed@example.test', recipientName: 'Dismissed Person',
+        destinationCountry: 'NO', weightKg: 1, bookedAt: null,
+      }],
+      unresolved: [],
+    })
+    await importWarehouseFile(book([number]), 'eod.xlsx', 'EMAIL')
+    const row = await db.shipment.findUnique({ where: { trackingNumber: number } })
+    expect(row?.orderId).toBeNull()
+    expect(row?.dismissedAt).not.toBeNull()
+    expect(row?.unlinkedReason).toBe('Not a customer parcel (dismissed by someone@example.test)')
+  })
+
+  it('counts a re-imported number that is already linked as linked, not unmatched', async () => {
+    const o = await db.order.create({
+      data: {
+        shopId, externalId: 'N4', number: 'N4', placedAt: new Date(), status: 'completed', currency: 'NOK',
+        grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerEmail: 'already-linked@example.test',
+      },
+    })
+    const number = '473999999000000014'
+    await db.shipment.create({
+      data: { trackingNumber: number, carrier: 'BRING', orderId: o.id, linkSource: 'BRING_EMAIL' },
+    })
+    resolveConsignments.mockResolvedValue({
+      consignments: [],
+      unresolved: [{ number, reason: 'Bring has no parcel with this number' }],
+    })
+    const result = await importWarehouseFile(sheet([ltasRow(number, 'Some Name')]), 'named.xlsx', 'UPLOAD')
+    expect(result.linked).toBe(1)
+    expect(result.unmatched).toEqual([])
+    expect(result.parsed).toBe(result.linked + result.unaccounted)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: number } })
+    expect(row?.orderId).toBe(o.id)
+  })
+
+  it('a named row the rules cannot place keeps its line, with the name reason appended', async () => {
+    const number = '473999999000000012'
+    resolveConsignments.mockResolvedValue({
+      consignments: [],
+      unresolved: [{ number, reason: 'Bring has no parcel with this number' }],
+    })
+    const result = await importWarehouseFile(sheet([ltasRow(number, 'Nobody Ordered')]), 'named.xlsx', 'UPLOAD')
+    expect(result.linked).toBe(0)
+    expect(result.unmatched).toHaveLength(1)
+    expect(result.unmatched[0].reason).toMatch(/asks Bring again, then DHL - The label says Nobody Ordered and no order/)
+    expect((await db.shipment.findUnique({ where: { trackingNumber: number } }))?.recipientName).toBe('Nobody Ordered')
   })
 })
 

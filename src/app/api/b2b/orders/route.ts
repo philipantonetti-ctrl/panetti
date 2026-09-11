@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
+import { nameKey } from '@/lib/delivery/name-key'
 import { toMinor } from '@/lib/money'
 import { utcDay } from '@/lib/dates'
 import { lineTotals, orderTotals, type B2bLine } from '@/lib/b2b/pricing'
@@ -168,6 +169,7 @@ export async function POST(req: Request) {
               // Not null: it keeps this order out of backfillCustomers()' queue
               // and lets the Orders search find the customer by name.
               customerName: w.customer.name,
+              customerNameKey: nameKey(w.customer.name),
               customerEmail: w.customer.email ?? '',
               b2bCustomerId: w.customer.id,
               fulfillmentCost: fulfillmentCostToStore(parsed.data.fulfillmentCost),

@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeEach, afterAll } from 'vitest'
 import { db } from '@/lib/db'
-import { applyIdentification, applyUnknown, rematchByEmail, type CarrierFacts } from './identify'
+import { applyIdentification, applyUnknown, type CarrierFacts } from './identify'
 import { milestonesFrom } from './milestones'
+import { nameKey } from './name-key'
 
 const TAG = '[parcel-identify-test]'
 const TRACK = 'TIDENT'
@@ -37,8 +38,17 @@ const order = (number: string, email: string, placedAt: string) =>
     },
   })
 
-const unknownRow = (trackingNumber: string, createdAt = now) =>
-  db.shipment.create({ data: { trackingNumber, carrier: 'UNKNOWN', nextPollAt: now, createdAt } })
+const named = (number: string, name: string, placedAt: string, country = 'DE') =>
+  db.order.create({
+    data: {
+      shopId, externalId: number, number, placedAt: new Date(placedAt), status: 'completed', currency: 'EUR',
+      grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      customerName: name, customerNameKey: nameKey(name), customerEmail: `${number.toLowerCase()}@example.test`, shippingCountry: country,
+    },
+  })
+
+const unknownRow = (trackingNumber: string, createdAt = now, recipientName: string | null = null) =>
+  db.shipment.create({ data: { trackingNumber, carrier: 'UNKNOWN', nextPollAt: now, createdAt, recipientName } })
 
 const events = [
   { status: 'PRE_NOTIFIED', occurredAt: new Date('2026-09-07T08:17:14Z'), description: 'Pre-notified', location: null },
@@ -139,7 +149,9 @@ describe('applyIdentification', () => {
     expect(r.linked).toBe(false)
     const after = await db.shipment.findUnique({ where: { id: row.id } })
     expect(after?.carrier).toBe('DHL')
-    expect(after?.unlinkedReason).toBe('DHL parcel to DE: DHL gives no name or email, so no order could be matched by itself')
+    expect(after?.unlinkedReason).toBe(
+      'DHL parcel to DE: DHL gives no name or email, and no warehouse file has named this parcel yet. Upload the file for its day and it will match itself.',
+    )
   })
 
   it('never touches the link of a row that already has an order', async () => {
@@ -152,6 +164,65 @@ describe('applyIdentification', () => {
     expect(after?.orderId).toBe(o.id)
     expect(after?.linkSource).toBe('MANUAL')
     expect(after?.carrier).toBe('BRING')
+  })
+
+  it('links a DHL parcel by the name the warehouse file gave, and keeps that name', async () => {
+    const o = await named('ID-N1', 'Martin R\u00f6thke', '2026-09-06T10:00:00Z')
+    const row = await unknownRow(`${TRACK}7`, now, 'ROTHKE MARTIN')
+    const facts: CarrierFacts = {
+      carrier: 'DHL', consignmentId: 'JKG-1', destinationCountry: 'DE', weightKg: 16.4,
+      recipientEmail: null, recipientName: null, references: [],
+      package: { trackingNumber: `${TRACK}7`, events, milestones: milestonesFrom(events) },
+    }
+    await expect(applyIdentification(row, facts, now)).resolves.toEqual({ linked: true })
+    const after = await db.shipment.findUnique({ where: { id: row.id } })
+    expect(after?.orderId).toBe(o.id)
+    expect(after?.linkSource).toBe('FILE_NAME')
+    expect(after?.recipientName).toBe('ROTHKE MARTIN')
+    expect(after?.carrier).toBe('DHL')
+  })
+
+  it('a DHL parcel with no name says what would make it match', async () => {
+    const row = await unknownRow(`${TRACK}8`)
+    const facts: CarrierFacts = {
+      carrier: 'DHL', consignmentId: 'JKG-2', destinationCountry: 'FI', weightKg: 154,
+      recipientEmail: null, recipientName: null, references: [], package: null,
+    }
+    await expect(applyIdentification(row, facts, now)).resolves.toEqual({ linked: false })
+    expect((await db.shipment.findUnique({ where: { id: row.id } }))?.unlinkedReason).toBe(
+      'DHL parcel to FI: DHL gives no name or email, and no warehouse file has named this parcel yet. Upload the file for its day and it will match itself.',
+    )
+  })
+
+  it('a DHL parcel whose references point at two orders still needs a person, name or not', async () => {
+    const a = await named('ID-R1', 'Lotta Sillanp\u00e4\u00e4', '2026-09-06T10:00:00Z')
+    const b = await named('ID-R2', 'Jouni Myllykangas', '2026-09-06T10:00:00Z')
+    await db.shipment.create({ data: { trackingNumber: `${TRACK}R1`, carrier: 'DHL', orderId: a.id } })
+    await db.shipment.create({ data: { trackingNumber: `${TRACK}R2`, carrier: 'DHL', orderId: b.id } })
+    const row = await unknownRow(`${TRACK}9`, now, 'Lotta Sillanp\u00e4\u00e4')
+    const facts: CarrierFacts = {
+      carrier: 'DHL', consignmentId: 'JKG-3', destinationCountry: 'FI', weightKg: 154,
+      recipientEmail: null, recipientName: null, references: [`${TRACK}R1`, `${TRACK}R2`], package: null,
+    }
+    await expect(applyIdentification(row, facts, now)).resolves.toEqual({ linked: false })
+    expect((await db.shipment.findUnique({ where: { id: row.id } }))?.unlinkedReason).toMatch(/2 different orders, so a person must choose/)
+  })
+
+  it('a Bring parcel whose email matches nothing falls through to the name', async () => {
+    const o = await named('ID-B1', 'Anitta Airi', '2026-09-06T10:00:00Z', 'FI')
+    const row = await unknownRow(`${TRACK}10`, now, 'Airi Anitta')
+    await expect(applyIdentification(row, bringFacts({ recipientEmail: 'unknown@example.test', recipientName: null, destinationCountry: 'FI' }), now)).resolves.toEqual({ linked: true })
+    const after = await db.shipment.findUnique({ where: { id: row.id } })
+    expect(after?.orderId).toBe(o.id)
+    expect(after?.linkSource).toBe('FILE_NAME')
+  })
+
+  it('a Bring parcel with neither email nor name says so', async () => {
+    const row = await unknownRow(`${TRACK}11`)
+    await expect(applyIdentification(row, bringFacts({ recipientEmail: null, recipientName: null }), now)).resolves.toEqual({ linked: false })
+    expect((await db.shipment.findUnique({ where: { id: row.id } }))?.unlinkedReason).toBe(
+      'Bring holds no email for this parcel and no warehouse file has named it',
+    )
   })
 })
 
@@ -172,31 +243,5 @@ describe('applyUnknown', () => {
     expect(after?.terminal).toBe(true)
     expect(after?.unlinkedReason).toBe('No carrier knew this number in 14 days')
     expect(after?.dismissedAt).toBeNull()
-  })
-})
-
-describe('rematchByEmail', () => {
-  it('links a refused Bring row once the rules resolve it', async () => {
-    const o = await order('ID-9', 'late@example.test', '2026-09-06T10:00:00Z')
-    const row = await db.shipment.create({
-      data: {
-        trackingNumber: `${TRACK}9`, carrier: 'BRING', recipientEmail: 'late@example.test',
-        consignmentId: 'CONS-9', bookedAt: new Date('2026-09-07T08:00:00Z'),
-        unlinkedReason: 'late@example.test matched 2 orders in the last 30 days: ID-8, ID-9', nextPollAt: now,
-      },
-    })
-    const r = await rematchByEmail(row, now)
-    expect(r.linked).toBe(true)
-    const after = await db.shipment.findUnique({ where: { id: row.id } })
-    expect(after).toMatchObject({ orderId: o.id, linkSource: 'BRING_EMAIL', unlinkedReason: null })
-  })
-
-  it('updates the reason when still refused', async () => {
-    const row = await db.shipment.create({
-      data: { trackingNumber: `${TRACK}10`, carrier: 'BRING', recipientEmail: 'gone@example.test', nextPollAt: now, unlinkedReason: 'old words' },
-    })
-    const r = await rematchByEmail(row, now)
-    expect(r.linked).toBe(false)
-    expect((await db.shipment.findUnique({ where: { id: row.id } }))?.unlinkedReason).toBe('No order for gone@example.test')
   })
 })

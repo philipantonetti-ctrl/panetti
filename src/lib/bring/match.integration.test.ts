@@ -1,12 +1,14 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { db } from '@/lib/db'
-import { matchByEmail, MATCH_WINDOW_DAYS } from './match'
+import { matchByEmail, matchByName, MATCH_WINDOW_DAYS } from './match'
+import { nameKey } from '@/lib/delivery/name-key'
 
 // Unique to THIS file - see "Test data convention" in the Global Constraints.
 const TAG = '[intake-match-test]'
 const scoped = { shop: { name: { contains: TAG } } }
 
 const RECEIVED = new Date('2026-08-11T18:00:00Z')
+const DAY = 24 * 60 * 60 * 1000
 
 let trackedShopId: string
 let untrackedShopId: string
@@ -34,6 +36,7 @@ const order = (
   })
 
 async function cleanup() {
+  await db.shipment.deleteMany({ where: { trackingNumber: { startsWith: 'TNAME-' } } })
   await db.orderItem.deleteMany({ where: { order: scoped } })
   await db.order.deleteMany({ where: scoped })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
@@ -217,5 +220,56 @@ describe('matchByEmail', () => {
     } finally {
       await db.order.deleteMany({ where: { id: { in: [early.id, late.id] } } })
     }
+  })
+})
+
+describe('matchByName', () => {
+  const named = (shopId: string, number: string, name: string, placedAt: string, extra: Record<string, unknown> = {}) =>
+    order(shopId, number, `${number.toLowerCase()}@example.test`, placedAt, {
+      customerName: name, customerNameKey: nameKey(name), shippingCountry: 'NO', ...extra,
+    })
+
+  it('links the one order whose folded name equals the label, whatever the case, accents or order', async () => {
+    const o = await named(trackedShopId, 'N-1', 'Martin R\u00f6thke', '2026-08-05T10:00:00Z')
+    await expect(matchByName('ROTHKE, MARTIN', RECEIVED)).resolves.toEqual({ orderId: o.id })
+  })
+
+  it('refuses two orders with that name, naming both, and refuses none', async () => {
+    await named(trackedShopId, 'N-2A', 'Anna Hansen', '2026-08-01T10:00:00Z')
+    await named(trackedShopId, 'N-2B', 'Anna Hansen', '2026-08-03T10:00:00Z')
+    const r = await matchByName('Anna Hansen', RECEIVED)
+    expect(r.orderId).toBeNull()
+    expect((r as { reason: string }).reason).toBe(
+      `The label says Anna Hansen and 2 orders in the last ${MATCH_WINDOW_DAYS} days have that name: N-2A, N-2B`,
+    )
+    const none = await matchByName('Nobody Here', RECEIVED)
+    expect((none as { reason: string }).reason).toBe(
+      `The label says Nobody Here and no order in the last ${MATCH_WINDOW_DAYS} days has that name`,
+    )
+    expect(await matchByName('', RECEIVED)).toEqual({ orderId: null, reason: 'The label carries no name' })
+    expect(await matchByName(null, RECEIVED)).toEqual({ orderId: null, reason: 'The label carries no name' })
+  })
+
+  it('applies the country only when given, and says so in the reason', async () => {
+    const no = await named(trackedShopId, 'N-3', 'Kari Nordmann', '2026-08-05T10:00:00Z', { shippingCountry: 'NO' })
+    await expect(matchByName('Kari Nordmann', RECEIVED, { country: 'no' })).resolves.toEqual({ orderId: no.id })
+    const r = await matchByName('Kari Nordmann', RECEIVED, { country: 'DE' })
+    expect((r as { reason: string }).reason).toBe(
+      `The label says Kari Nordmann and no order in the last ${MATCH_WINDOW_DAYS} days has that name in DE`,
+    )
+  })
+
+  it('ignores untracked shops, voided orders, orders outside the window, and orders holding another consignment', async () => {
+    await named(untrackedShopId, 'N-4U', 'Ola Nordmann', '2026-08-05T10:00:00Z')
+    await named(trackedShopId, 'N-4V', 'Ola Nordmann', '2026-08-05T10:00:00Z', { voidedAt: new Date('2026-08-06') })
+    await named(trackedShopId, 'N-4OLD', 'Ola Nordmann', new Date(RECEIVED.getTime() - (MATCH_WINDOW_DAYS + 1) * DAY).toISOString())
+    await named(trackedShopId, 'N-4AFTER', 'Ola Nordmann', new Date(RECEIVED.getTime() + DAY).toISOString())
+    const held = await named(trackedShopId, 'N-4H', 'Ola Nordmann', '2026-08-04T10:00:00Z')
+    await db.shipment.create({ data: { trackingNumber: 'TNAME-HELD-1', orderId: held.id, consignmentId: 'OTHER' } })
+    const r = await matchByName('Ola Nordmann', RECEIVED, { consignmentId: 'MINE' })
+    expect((r as { reason: string }).reason).toMatch(/no order in the last/)
+    // The second box of the SAME consignment still finds the order.
+    await expect(matchByName('Ola Nordmann', RECEIVED, { consignmentId: 'OTHER' })).resolves.toEqual({ orderId: held.id })
+    await db.shipment.deleteMany({ where: { trackingNumber: 'TNAME-HELD-1' } })
   })
 })

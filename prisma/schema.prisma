@@ -229,6 +229,10 @@ model Order {
   // Who bought, from Woo's billing details. null = synced before we stored
   // customers (backfill pending); '' = checked, the store has none on file.
   customerName      String?
+  /// customerName folded for matching: accents stripped, lower-cased, words
+  /// sorted (see lib/delivery/name-key.ts). Same tri-state as customerName:
+  /// null = not computed yet (the sync tick backfills), '' = computed, no name.
+  customerNameKey   String?
   customerEmail     String?
   /// ISO-2 destination country, from Woo's shipping address. Null = not yet
   /// checked (backfill pending); '' = checked, the store has none on file.
@@ -255,6 +259,7 @@ model Order {
   @@index([ambassadorId, placedAt])
   @@index([b2bCustomerId])
   @@index([customerEmail])
+  @@index([customerNameKey, placedAt])
   // The payout matcher joins on it; the backfill queries for null.
   @@index([shopId, transactionId])
   /// The settlement-lookup queue: never asked (null) first, then oldest answer
@@ -699,11 +704,12 @@ model Shipment {
   carrier        String  @default("BRING")
   orderId        String?
   /// Which strategy produced the link: FILE | BRING_EMAIL | NYCE | WOO |
-  /// MANUAL | DHL_FILE | DHL_REF.
+  /// MANUAL | DHL_FILE | DHL_REF | FILE_NAME.
   /// BRING_EMAIL is the warehouse-file path: the file gives only parcel numbers,
   /// Bring gives the recipient email, and that matches Order.customerEmail.
   /// DHL_REF joins a DHL Freight piece to the order its 10-digit consignment
   /// number (written by the DHL_FILE path) already belongs to.
+  /// FILE_NAME: the name on the warehouse label matched exactly one order.
   linkSource     String?
 
   /// The carrier's id for the whole consignment (Bring consignmentId, DHL
@@ -877,6 +883,10 @@ model TrackingImport {
   rowsUnmatched Int
   /// Rows we refused to link, with the reason, as JSON text.
   unmatched     String?
+  /// Rows of the warehouse file that carried a recipient name (column Namn).
+  /// 0 = the file was read but had no readable names; null = a path that does
+  /// not read names (the DHL export, the old order-number path).
+  namesRead     Int?
   error         String?
 
   @@index([receivedAt])

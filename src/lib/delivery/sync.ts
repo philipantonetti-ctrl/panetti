@@ -10,7 +10,8 @@ import {
 import { mapShipments } from '../dhl/map'
 import { getDeliveryConfig } from './config'
 import { deadlineFor } from './days'
-import { applyIdentification, applyUnknown, bringFacts, dhlFacts, rematchByEmail } from './identify'
+import { applyIdentification, applyUnknown, bringFacts, dhlFacts } from './identify'
+import { sweepUnlinked } from './attach'
 import type { MappedPackage, Milestones } from './milestones'
 import { promiseOn } from './promise'
 
@@ -22,6 +23,9 @@ export type ShipmentSyncResult = {
   dhlCalls?: number
   /** Rows that were UNKNOWN and got a carrier this run. */
   identified?: number
+  /** Unlinked rows the hourly sweep tried again this run, and how many it attached. */
+  swept?: number
+  sweptLinked?: number
   /**
    * DHL parcels that were due and went unasked for want of a key.
    *
@@ -159,6 +163,10 @@ export async function syncShipments(
     return { polled: 0, updated: 0, failed: 0, error: 'No carrier is connected.' }
   }
 
+  // Unlinked parcels first, before the due rows are read, so one attached
+  // here polls as a linked parcel in the same run. Best-effort like the rest.
+  const sweep = await sweepUnlinked(now).catch(() => ({ tried: 0, linked: 0 }))
+
   // The promise book and the workspace timezone, once for the run, never per
   // parcel. Both are tiny and change rarely.
   const promises = await db.deliveryPromise.findMany()
@@ -227,14 +235,18 @@ export async function syncShipments(
       // Which carrier to ask. Without this the poller asked Bring about every
       // parcel, which is why dhl/link.ts refused to set nextPollAt at all.
       carrier: true,
-      // Needed for identifying an UNKNOWN row and for the email re-match after
-      // an ordinary poll: recipientEmail and consignmentId are what a re-match
-      // is run against, bookedAt is the upper bound on which order it can be,
-      // and createdAt is what the UNKNOWN grace period is measured from.
+      // Needed for identifying an UNKNOWN row: recipientEmail, recipientName
+      // and consignmentId feed the attach attempt, bookedAt is the upper
+      // bound on which order it can be, and createdAt is what the UNKNOWN
+      // grace period is measured from.
       recipientEmail: true,
+      recipientName: true,
       bookedAt: true,
       consignmentId: true,
       createdAt: true,
+      // A dismissed row must never be re-attached by any path, including
+      // identification once a carrier finally answers about its number.
+      dismissedAt: true,
       // Carried so each parcel's own deadline can be computed below: a parcel
       // near or past its promise is polled on every run.
       order: {
@@ -271,7 +283,10 @@ export async function syncShipments(
      * line next run, exactly like a DHL parcel that missed its turn.
      */
     if (s.carrier === 'UNKNOWN') {
-      const idRow = { id: s.id, trackingNumber: s.trackingNumber, orderId: s.orderId, createdAt: s.createdAt }
+      const idRow = {
+        id: s.id, trackingNumber: s.trackingNumber, orderId: s.orderId, createdAt: s.createdAt,
+        recipientName: s.recipientName, dismissedAt: s.dismissedAt,
+      }
       try {
         // Checked before Bring, not after: once DHL's share of the run is
         // spent, asking Bring buys nothing for the rest of this backlog - a
@@ -451,16 +466,6 @@ export async function syncShipments(
         })
       })
       updated++
-      // A refused Bring row, matched again under today's rules: the twin
-      // order may have received its own parcel since. Best-effort, and it
-      // runs on every successful poll of an unlinked Bring row, with no age
-      // bound of its own, until the row goes terminal.
-      if (s.orderId === null && s.carrier === 'BRING' && s.recipientEmail) {
-        await rematchByEmail(
-          { id: s.id, recipientEmail: s.recipientEmail, bookedAt: m.bookedAt ?? s.bookedAt, consignmentId: s.consignmentId },
-          now,
-        ).catch(() => {})
-      }
     } catch (e) {
       // One parcel's write must not end the run. Without this, a single bad
       // row - a connection blip, or a transaction timeout on a parcel with a
@@ -532,7 +537,7 @@ export async function syncShipments(
     })
     .catch(() => {})
 
-  return { polled, updated, failed, dhlCalls, dhlSkippedNoKey, identified }
+  return { polled, updated, failed, dhlCalls, dhlSkippedNoKey, identified, swept: sweep.tried, sweptLinked: sweep.linked }
 }
 
 /** The daily allowance this poller is written against. Exported for the docs. */

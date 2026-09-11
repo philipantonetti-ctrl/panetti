@@ -28,7 +28,7 @@ async function seed() {
   await db.order.create({
     data: {
       shopId: shop.id, externalId: ORDER, number: ORDER, placedAt: new Date(Date.now() - 3 * 24 * 3600_000), status: 'completed', currency: 'EUR',
-      shippingCountry: 'DE', customerName: 'Tobias Kohlmeyer',
+      shippingCountry: 'DE', customerName: 'Tobias Kohlmeyer', customerNameKey: 'kohlmeyer tobias',
       grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
     },
   })
@@ -36,7 +36,8 @@ async function seed() {
     data: {
       trackingNumber: PARCEL, carrier: 'DHL', destinationCountry: 'DE', weightKg: 18.2,
       bookedAt: new Date(Date.now() - 2 * 24 * 3600_000), identifiedAt: new Date(),
-      unlinkedReason: 'DHL parcel to DE: DHL gives no name or email, so no order could be matched by itself',
+      recipientName: 'Tobias Kohlmeyer',
+      unlinkedReason: 'DHL parcel to DE: DHL gives no name or email, and no warehouse file has named this parcel yet. Upload the file for its day and it will match itself.',
     },
   })
 }
@@ -68,11 +69,20 @@ test('the operations manager attaches a DHL parcel to its order and both lists u
   await expect(noTracking.getByText(ORDER)).toBeVisible({ timeout: 15_000 })
 
   const section = page.locator('#unattached')
-  await section.getByRole('button', { name: /Parcels without an order/ }).click()
+  await section.getByRole('button', { name: /Parcels that need a person/ }).click()
   await expect(section.getByText(PARCEL)).toBeVisible({ timeout: 15_000 })
   await expect(section.getByText('18.2 kg')).toBeVisible()
+  await expect(section.getByText('Tobias Kohlmeyer', { exact: true })).toBeVisible()
 
-  await section.getByRole('button', { name: new RegExp(`Link to ${ORDER}`) }).click()
+  // The same-name order is the first real option, and says so.
+  const select = section.getByLabel('Order')
+  const first = select.locator('option').nth(1)
+  await expect(first).toContainText(ORDER)
+  await expect(first).toContainText('same name as the label')
+
+  const orderId = (await db.order.findFirst({ where: { number: ORDER }, select: { id: true } }))!.id
+  await select.selectOption(orderId)
+  await section.getByRole('button', { name: 'Link', exact: true }).click()
   await expect(page.getByText('Parcel linked')).toBeVisible()
 
   await expect(section.getByText(PARCEL)).toHaveCount(0, { timeout: 15_000 })

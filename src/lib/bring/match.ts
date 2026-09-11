@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { nameKey } from '../delivery/name-key'
 
 /** How far before the file's arrival an order may have been placed. */
 export const MATCH_WINDOW_DAYS = 30
@@ -20,6 +21,42 @@ export type MatchOutcome = { orderId: string } | { orderId: null; reason: string
  * not a candidate, while one holding this consignment's first box still is.
  */
 export type MatchScope = { bookedAt?: Date | null; consignmentId?: string | null }
+
+/**
+ * The clauses both matchers share: a delivery-tracked shop, placed within the
+ * window before the parcel was booked (or the file arrived), not cancelled,
+ * and not already holding a parcel from another consignment.
+ */
+function candidateWhere(upper: Date, scope: MatchScope) {
+  /**
+   * "Holds a parcel from another consignment". A held parcel with no
+   * consignment id recorded (rows written before the column existed) counts
+   * as another consignment: the rule can then only refuse, never wrongly
+   * accept, which is the side a wrong link must always land on.
+   */
+  const heldByAnother = scope.consignmentId
+    ? { OR: [{ consignmentId: null }, { consignmentId: { not: scope.consignmentId } }] }
+    : {}
+  return {
+    shop: { deliveryTrackingFrom: { not: null } },
+    placedAt: {
+      gte: new Date(upper.getTime() - MATCH_WINDOW_DAYS * DAY),
+      lte: upper,
+    },
+    voidedAt: null,
+    NOT: { shipments: { some: heldByAnother } },
+  }
+}
+
+/** "4 or more" and "and others" once the list runs past what is spelled out. */
+function describe(orders: { number: string }[]): { count: string; list: string } {
+  const overflowed = orders.length > CANDIDATES_NAMED
+  const named = orders.slice(0, CANDIDATES_NAMED).map((o) => o.number)
+  return {
+    count: overflowed ? `${CANDIDATES_NAMED} or more` : String(orders.length),
+    list: overflowed ? `${named.join(', ')} and others` : named.join(', '),
+  }
+}
 
 /**
  * Find the order a parcel belongs to, from the recipient email Bring returns.
@@ -51,27 +88,8 @@ export async function matchByEmail(
 
   const upper = scope.bookedAt ?? receivedAt
 
-  /**
-   * "Holds a parcel from another consignment". A held parcel with no
-   * consignment id recorded (rows written before the column existed) counts
-   * as another consignment: the rule can then only refuse, never wrongly
-   * accept, which is the side a wrong link must always land on.
-   */
-  const heldByAnother = scope.consignmentId
-    ? { OR: [{ consignmentId: null }, { consignmentId: { not: scope.consignmentId } }] }
-    : {}
-
   const orders = await db.order.findMany({
-    where: {
-      customerEmail: { equals: email, mode: 'insensitive' },
-      shop: { deliveryTrackingFrom: { not: null } },
-      placedAt: {
-        gte: new Date(upper.getTime() - MATCH_WINDOW_DAYS * DAY),
-        lte: upper,
-      },
-      voidedAt: null,
-      NOT: { shipments: { some: heldByAnother } },
-    },
+    where: { customerEmail: { equals: email, mode: 'insensitive' }, ...candidateWhere(upper, scope) },
     select: { id: true, number: true },
     // One is enough to link and two are enough to refuse, so the extra rows buy
     // nothing but the refusal's WORDS. They are worth the read: "matched 2
@@ -88,14 +106,58 @@ export async function matchByEmail(
     // Never claims a total it did not actually count. `take` above stops one
     // past the point we are willing to list, so a longer run is described as
     // longer rather than reported as exactly the number we happened to fetch.
-    const overflowed = orders.length > CANDIDATES_NAMED
-    const named = orders.slice(0, CANDIDATES_NAMED).map((o) => o.number)
-    const count = overflowed ? `${CANDIDATES_NAMED} or more` : String(orders.length)
-    const list = overflowed ? `${named.join(', ')} and others` : named.join(', ')
+    const { count, list } = describe(orders)
     return {
       orderId: null,
       reason: `${email} matched ${count} orders in the last ${MATCH_WINDOW_DAYS} days: ${list}`,
     }
+  }
+  return { orderId: orders[0].id }
+}
+
+export type NameScope = MatchScope & { country?: string | null }
+
+/**
+ * Find the order a parcel belongs to from the name on its label.
+ *
+ * Second choice after the email, and the only choice for DHL, which returns
+ * no recipient at all. The warehouse prints the label from the order, so the
+ * two names are the same name; nameKey folds the spelling. Measured on 90
+ * linked parcels on 2026-09-11: 90 folded equal, 90 unique in the window.
+ *
+ * Same refusal rule as the email: two candidates are refused, not resolved.
+ * The country, when the caller knows it, is one more thing that must agree;
+ * when it is unknown (a number no carrier has answered for yet) the name
+ * alone decides, which the measurement above also covered.
+ */
+export async function matchByName(
+  name: string | null,
+  receivedAt: Date,
+  scope: NameScope = {},
+): Promise<MatchOutcome> {
+  const key = nameKey(name)
+  if (!key) return { orderId: null, reason: 'The label carries no name' }
+  const label = (name ?? '').trim()
+  const upper = scope.bookedAt ?? receivedAt
+  const country = scope.country?.trim().toUpperCase() || null
+
+  const orders = await db.order.findMany({
+    where: {
+      customerNameKey: key,
+      ...(country ? { shippingCountry: { equals: country, mode: 'insensitive' } } : {}),
+      ...candidateWhere(upper, scope),
+    },
+    select: { id: true, number: true },
+    take: CANDIDATES_NAMED + 1,
+    orderBy: { placedAt: 'asc' },
+  })
+
+  const where = country ? ` in ${country}` : ''
+  if (orders.length === 0)
+    return { orderId: null, reason: `The label says ${label} and no order in the last ${MATCH_WINDOW_DAYS} days has that name${where}` }
+  if (orders.length > 1) {
+    const { count, list } = describe(orders)
+    return { orderId: null, reason: `The label says ${label} and ${count} orders in the last ${MATCH_WINDOW_DAYS} days have that name${where}: ${list}` }
   }
   return { orderId: orders[0].id }
 }

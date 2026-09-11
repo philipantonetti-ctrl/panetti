@@ -1,5 +1,5 @@
 import { db } from '../db'
-import { matchByEmail } from '../bring/match'
+import { decideAttach } from './attach'
 import { mapConsignments } from '../bring/map'
 import { mapShipments } from '../dhl/map'
 import { str, type MappedPackage } from './milestones'
@@ -134,7 +134,14 @@ export function unknownNext(
   return { terminal: false, nextPollAt: new Date(now.getTime() + DAY), lastError, unlinkedReason: null }
 }
 
-export type IdentifyRow = { id: string; trackingNumber: string; orderId: string | null; createdAt: Date }
+export type IdentifyRow = {
+  id: string
+  trackingNumber: string
+  orderId: string | null
+  createdAt: Date
+  recipientName: string | null
+  dismissedAt: Date | null
+}
 
 /**
  * A carrier answered. Write what it said, and try to attach the order.
@@ -156,7 +163,8 @@ export async function applyIdentification(
     destinationCountry: facts.destinationCountry,
     weightKg: facts.weightKg,
     recipientEmail: facts.recipientEmail,
-    recipientName: facts.recipientName,
+    // A carrier that gives no name (DHL) must not wipe the one the warehouse file gave.
+    recipientName: facts.recipientName ?? row.recipientName,
     identifiedAt: now,
     lastError: null,
     ...(m
@@ -173,20 +181,24 @@ export async function applyIdentification(
   let unlinkedReason: string | null = null
 
   if (row.orderId === null) {
+    const attachRow = {
+      id: row.id, trackingNumber: row.trackingNumber, orderId: null,
+      recipientEmail: facts.recipientEmail,
+      recipientName: facts.recipientName ?? row.recipientName,
+      bookedAt: m?.bookedAt ?? null, createdAt: row.createdAt,
+      consignmentId: facts.consignmentId, destinationCountry: facts.destinationCountry,
+      dismissedAt: row.dismissedAt,
+    }
     if (facts.carrier === 'BRING') {
-      const outcome = await matchByEmail(facts.recipientEmail, now, {
-        bookedAt: m?.bookedAt ?? null,
-        consignmentId: facts.consignmentId,
-      })
-      if (outcome.orderId !== null) link = { orderId: outcome.orderId, linkSource: 'BRING_EMAIL' }
-      else unlinkedReason = outcome.reason
+      const d = await decideAttach(attachRow)
+      if (d.orderId !== null) link = { orderId: d.orderId, linkSource: d.source }
+      else unlinkedReason = d.reason ?? 'Bring holds no email for this parcel and no warehouse file has named it'
     } else {
       // DHL Freight: the export path stored the 10-digit number with its
       // order; this piece is the same physical shipment. findMany, not
       // findFirst: a consignment can carry more than one such reference, and
       // when those references belong to two DIFFERENT orders there is no
-      // way to choose between them by machine - findFirst was picking
-      // whichever row the database happened to return first.
+      // way to choose between them by machine.
       const known = facts.references.length
         ? await db.shipment.findMany({
             where: { trackingNumber: { in: facts.references }, orderId: { not: null } },
@@ -194,12 +206,17 @@ export async function applyIdentification(
           })
         : []
       const orderIds = [...new Set(known.map((k) => k.orderId).filter((id): id is string => id !== null))]
+      const country = facts.destinationCountry ?? 'an unknown country'
       if (orderIds.length === 1) {
         link = { orderId: orderIds[0], linkSource: 'DHL_REF' }
       } else if (orderIds.length > 1) {
-        unlinkedReason = `DHL parcel to ${facts.destinationCountry ?? 'an unknown country'}: its consignment numbers belong to ${orderIds.length} different orders, so a person must choose`
+        unlinkedReason = `DHL parcel to ${country}: its consignment numbers belong to ${orderIds.length} different orders, so a person must choose`
       } else {
-        unlinkedReason = `DHL parcel to ${facts.destinationCountry ?? 'an unknown country'}: DHL gives no name or email, so no order could be matched by itself`
+        // DHL gives no email; the name, when a warehouse file gave one, is
+        // the only key left, and it is enough (lib/bring/match.ts).
+        const d = await decideAttach({ ...attachRow, recipientEmail: null })
+        if (d.orderId !== null) link = { orderId: d.orderId, linkSource: d.source }
+        else unlinkedReason = d.reason ?? `DHL parcel to ${country}: DHL gives no name or email, and no warehouse file has named this parcel yet. Upload the file for its day and it will match itself.`
       }
     }
   }
@@ -239,27 +256,4 @@ export async function applyUnknown(row: IdentifyRow, now: Date): Promise<void> {
       ...(next.unlinkedReason ? { unlinkedReason: next.unlinkedReason } : {}),
     },
   })
-}
-
-/**
- * A refused Bring row, matched again under today's rules. The twin order may
- * have received its own parcel since, which is what resolves the common case.
- */
-export async function rematchByEmail(
-  row: { id: string; recipientEmail: string | null; bookedAt: Date | null; consignmentId: string | null },
-  now: Date,
-): Promise<{ linked: boolean }> {
-  const outcome = await matchByEmail(row.recipientEmail, now, {
-    bookedAt: row.bookedAt,
-    consignmentId: row.consignmentId,
-  })
-  if (outcome.orderId !== null) {
-    await db.shipment.update({
-      where: { id: row.id },
-      data: { orderId: outcome.orderId, linkSource: 'BRING_EMAIL', unlinkedReason: null },
-    })
-    return { linked: true }
-  }
-  await db.shipment.update({ where: { id: row.id }, data: { unlinkedReason: outcome.reason } })
-  return { linked: false }
 }

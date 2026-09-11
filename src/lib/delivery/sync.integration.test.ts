@@ -1,4 +1,21 @@
 import { describe, expect, it, beforeEach, vi, afterEach, afterAll } from 'vitest'
+
+// Fix round 1: sweepUnlinked is a global, unscoped, row-mutating query -
+// every OTHER delivery test file's stale unlinked rows are fair game for it,
+// and this file's own poll-loop fixtures are fair game for THEIR sweeps in
+// return, since vitest runs test files in parallel against one shared local
+// Postgres. This file's job is the ordinary poll loop, not the sweep (that is
+// attach.integration.test.ts's job), so the sweep is mocked out here rather
+// than left to run for real and read whatever any other file's suite happens
+// to have sitting unlinked at that moment.
+const sweepUnlinked = vi.fn<(now: Date) => Promise<{ tried: number; linked: number }>>(
+  async () => ({ tried: 0, linked: 0 }),
+)
+vi.mock('./attach', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./attach')>()
+  return { ...actual, sweepUnlinked: (...args: Parameters<typeof actual.sweepUnlinked>) => sweepUnlinked(...args) }
+})
+
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/secrets'
 import { DHL_CALLS_PER_RUN, nextPollFor, syncShipments } from './sync'
@@ -61,6 +78,11 @@ afterAll(cleanup)
 
 beforeEach(async () => {
   await cleanup()
+  // Reset to the default no-op sweep before every test, so a test that
+  // overrides it (see "calls the hourly sweep once...") cannot leak its
+  // resolved value into the next one.
+  sweepUnlinked.mockReset()
+  sweepUnlinked.mockResolvedValue({ tried: 0, linked: 0 })
   // DHL off unless a test says otherwise, so whether the machine running the
   // suite happens to have a DHL key exported cannot change what these assert.
   vi.stubEnv('DHL_API_KEY', '')
@@ -404,6 +426,34 @@ describe('syncShipments', () => {
       const r = await syncShipments({ now, sleep: noSleep })
       expect(r.updated).toBe(2)
     })
+  })
+
+  // Fix round 1: this used to run the REAL sweepUnlinked against whatever
+  // fixture it created itself, which is exactly the shared-database race the
+  // review found - this file's own rows and attach.integration.test.ts's own
+  // rows are each reachable by the other file's sweep in the same run of the
+  // suite. sweepUnlinked is mocked at the top of this file (see the vi.mock
+  // block above the imports) precisely so this suite never touches a real
+  // unlinked row anywhere in the database; what is left to prove here is only
+  // that syncShipments calls it, once, with the run's own clock, before any
+  // carrier is asked about anything, and reports its counts back.
+  it('calls the hourly sweep once, before polling, and reports its counts', async () => {
+    sweepUnlinked.mockResolvedValueOnce({ tried: 3, linked: 1 })
+    await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ consignmentSet: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await syncShipments({ now })
+
+    expect(sweepUnlinked).toHaveBeenCalledTimes(1)
+    const [calledWith] = sweepUnlinked.mock.calls[0]
+    expect(calledWith).toBeInstanceOf(Date)
+    expect(calledWith).toEqual(now)
+    expect(result.swept).toBe(3)
+    expect(result.sweptLinked).toBe(1)
+    // The sweep runs before the due rows are even read, let alone polled -
+    // its call must be recorded before fetch's first call.
+    expect(sweepUnlinked.mock.invocationCallOrder[0]).toBeLessThan(fetchMock.mock.invocationCallOrder[0])
   })
 
   it('stores events and milestones for a due parcel', async () => {
@@ -833,28 +883,6 @@ describe('syncShipments', () => {
         expect(row?.lastError).toBe('BRING does not know this number yet')
       } finally {
         await db.shipment.deleteMany({ where: { trackingNumber: `${TRACK}L1` } })
-        await db.order.deleteMany({ where: { shopId: shop.id } })
-        await db.shop.delete({ where: { id: shop.id } })
-      }
-    })
-
-    it('re-matches a refused Bring row after polling it', async () => {
-      const shop = await db.shop.create({ data: { name: 'Sync rematch [sync-rematch-test]', currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') } })
-      const order = await db.order.create({
-        data: { shopId: shop.id, externalId: 'SR1', number: 'SR1', placedAt: new Date(now.getTime() - 2 * 24 * HOUR), status: 'completed', currency: 'NOK', grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0, customerEmail: 're@example.test' },
-      })
-      try {
-        await db.shipment.create({
-          data: { trackingNumber: `${TRACK}R1`, carrier: 'BRING', recipientEmail: 're@example.test', consignmentId: 'CR1', unlinkedReason: 'old', nextPollAt: new Date('2026-01-01') },
-        })
-        stubBring([consignment(`${TRACK}R1`, [{ status: 'PRE_NOTIFIED', dateIso: '2026-08-04T10:00:00Z' }])])
-        await syncShipments({ now, sleep: noSleep })
-        const row = await db.shipment.findUnique({ where: { trackingNumber: `${TRACK}R1` } })
-        expect(row?.orderId).toBe(order.id)
-        expect(row?.linkSource).toBe('BRING_EMAIL')
-        expect(row?.unlinkedReason).toBeNull()
-      } finally {
-        await db.shipment.deleteMany({ where: { trackingNumber: `${TRACK}R1` } })
         await db.order.deleteMany({ where: { shopId: shop.id } })
         await db.shop.delete({ where: { id: shop.id } })
       }

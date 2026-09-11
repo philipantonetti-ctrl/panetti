@@ -32,11 +32,18 @@ Underneath:
   that is their door or their pickup point. It still counts against the
   on-time rate, and it is still in "Where everything is now" - there is
   simply nothing left to chase.
-- **Parcels without an order.** Parcels a warehouse file named that could not
-  be attached to an order, each with its carrier, destination, booked date,
-  weight, status and the reason. Pick the order from the candidates shown, or
-  type its order number, or mark it "Not a customer parcel". A growing list
-  means parcels waiting for a decision, not necessarily a broken file.
+- **Parcels that need a person.** Parcels are attached to orders on their
+  own: by the customer's email when the carrier gives one, else by the name
+  the warehouse printed on the label. This list is what is left: each
+  parcel with its carrier, destination, booked date, weight, status, the
+  name on the label, and the reason no rule could place it. Choose the
+  order from the dropdown (orders with the same name come first), or press
+  "Other order" to type a number, or mark it "Not a customer parcel". A
+  growing list means parcels waiting for a decision, not a broken file.
+- **Re-reading old files.** Uploading a day's warehouse file again is safe.
+  It never moves a parcel that is already attached; it fills in names for
+  parcels stored before names were read, and attaches the ones that can be.
+  The "Recent imports" line shows how many names each file gave.
 - **Recent imports.** Every file read, and how many parcels it linked.
 
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import {
   ImportsList, LateList, NoTracking, Pipeline, Split, Tiles, UnattachedParcels,
@@ -388,7 +388,7 @@ describe('Pipeline', () => {
 describe('ImportsList refusals', () => {
   const row = (unmatched: unknown) => ({
     id: 'i1', filename: 'eod.xlsx', receivedAt: '2026-08-29T00:01:40.000Z',
-    rowsParsed: 64, rowsLinked: 0, rowsUnmatched: 64, error: null,
+    rowsParsed: 64, rowsLinked: 0, rowsUnmatched: 64, namesRead: null, error: null,
     source: 'EMAIL',
     unmatched: JSON.stringify(unmatched),
   })
@@ -434,6 +434,36 @@ describe('ImportsList refusals', () => {
   })
 })
 
+/**
+ * The Linked count on its own cannot tell an operator whether a file even
+ * carried names to try - task 6 added namesRead to answer that, and this
+ * covers the three shapes the cell renders it in.
+ */
+describe('ImportsList, the names a file gave', () => {
+  const row = (namesRead: number | null) => ({
+    id: 'i1', filename: 'eod.xlsx', receivedAt: '2026-08-29T00:01:40.000Z',
+    rowsParsed: 64, rowsLinked: 12, rowsUnmatched: 0, namesRead, error: null,
+    source: 'EMAIL', unmatched: null,
+  })
+
+  it('says how many names the file gave', () => {
+    render(<ImportsList items={[row(34)]} />)
+    expect(screen.getByText('34 names')).toBeInTheDocument()
+    expect(screen.queryByText('no names read from this file')).not.toBeInTheDocument()
+  })
+
+  it('warns, in the warning colour, when the file gave no names at all', () => {
+    render(<ImportsList items={[row(0)]} />)
+    expect(screen.getByText('no names read from this file')).toHaveClass('text-warn')
+  })
+
+  it('says neither thing for a file from before names were read', () => {
+    const { container } = render(<ImportsList items={[row(null)]} />)
+    expect(screen.queryByText('no names read from this file')).not.toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/\d+ names\b/)
+  })
+})
+
 const parcel = (over: Partial<UnlinkedParcel> = {}): UnlinkedParcel => ({
   trackingNumber: '473325380023179098', carrier: 'DHL',
   url: 'https://www.dhl.com/se-en/home/tracking.html?tracking-id=473325380023179098',
@@ -441,8 +471,8 @@ const parcel = (over: Partial<UnlinkedParcel> = {}): UnlinkedParcel => ({
   recipientName: null, reason: 'DHL parcel to DE: DHL gives no name or email, so no order could be matched by itself',
   identifiedAt: '2026-09-08T00:15:00.000Z', createdAt: '2026-09-07T16:00:00.000Z',
   candidates: [
-    { orderId: 'o-15864', number: '15864', shop: 'Panetti Germany', customerName: 'Tobias Kohlmeyer', placedAt: '2026-09-07T15:49:00.000Z', items: '1 x Panetti ProMix', holdsParcel: false },
-    { orderId: 'o-15865', number: '15865', shop: 'Panetti Germany', customerName: 'Martin Röthke', placedAt: '2026-09-07T16:29:00.000Z', items: '1 x Pizza oven', holdsParcel: true },
+    { orderId: 'o-15864', number: '15864', shop: 'Panetti Germany', customerName: 'Tobias Kohlmeyer', placedAt: '2026-09-07T15:49:00.000Z', items: '1 x Panetti ProMix', holdsParcel: false, sameName: true },
+    { orderId: 'o-15865', number: '15865', shop: 'Panetti Germany', customerName: 'Martin Röthke', placedAt: '2026-09-07T16:29:00.000Z', items: '1 x Pizza oven', holdsParcel: true, sameName: false },
   ],
   candidatesTotal: 2,
   ...over,
@@ -453,11 +483,11 @@ const SHOPS = [{ id: 's-de', name: 'Panetti Germany' }]
 afterEach(() => vi.unstubAllGlobals())
 
 describe('UnattachedParcels', () => {
-  it('shows the carrier, where it goes, the weight, the status and the reason', () => {
+  it('shows the carrier, where it goes, the weight, the status, the name on the label and the reason', () => {
     const { container } = render(
       <ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>,
     )
-    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
     expect(container.textContent).toContain('DHL')
     expect(container.textContent).toContain('DE')
     expect(container.textContent).toContain('18.2 kg')
@@ -465,12 +495,26 @@ describe('UnattachedParcels', () => {
     expect(container.textContent).toContain('DHL gives no name or email')
   })
 
-  it('offers each candidate as a button naming the order, the customer and what they bought, flagging one that holds a parcel', () => {
+  it('says "no name yet" when the carrier gave no recipient name', () => {
+    const { container } = render(
+      <ToastProvider><UnattachedParcels items={[parcel({ recipientName: null })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
+    expect(container.textContent).toContain('no name yet')
+  })
+
+  it('offers each candidate as an option naming the order, the customer and what they bought, flagging a same-name match and one that already holds a parcel', () => {
     render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
-    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
-    expect(screen.getByRole('button', { name: /Link to 15864/ }).textContent).toContain('Tobias Kohlmeyer')
-    expect(screen.getByRole('button', { name: /Link to 15864/ }).textContent).toContain('1 x Panetti ProMix')
-    expect(screen.getByRole('button', { name: /Link to 15865/ }).textContent).toContain('(has a parcel)')
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
+    const select = screen.getByLabelText('Order')
+    const options = within(select).getAllByRole('option')
+    const first = options.find((o) => o.textContent?.includes('15864'))
+    const second = options.find((o) => o.textContent?.includes('15865'))
+    expect(first?.textContent).toContain('Tobias Kohlmeyer')
+    expect(first?.textContent).toContain('1 x Panetti ProMix')
+    expect(first?.textContent).toContain('same name as the label')
+    expect(second?.textContent).toContain('already has a parcel')
+    expect(second?.textContent).not.toContain('same name as the label')
   })
 
   it('sends the chosen order to the parcel route and asks the page to reload', async () => {
@@ -478,9 +522,10 @@ describe('UnattachedParcels', () => {
     vi.stubGlobal('fetch', fetchMock)
     const onChanged = vi.fn()
     render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={onChanged} /></ToastProvider>)
-    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
 
-    fireEvent.click(screen.getByRole('button', { name: /Link to 15864/ }))
+    fireEvent.change(screen.getByLabelText('Order'), { target: { value: 'o-15864' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
 
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
@@ -489,11 +534,20 @@ describe('UnattachedParcels', () => {
     expect(JSON.parse(init.body as string)).toEqual({ orderId: 'o-15864' })
   })
 
+  it('leaves Link disabled until an order is chosen from the dropdown', () => {
+    render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
+    expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Order'), { target: { value: 'o-15864' } })
+    expect(screen.getByRole('button', { name: 'Link' })).toBeEnabled()
+  })
+
   it('shows the route\'s own words when a link is refused', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'This parcel is already linked to an order' }), { status: 400 })))
     render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
-    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Link to 15864/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
+    fireEvent.change(screen.getByLabelText('Order'), { target: { value: 'o-15864' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
     expect(await screen.findByText('This parcel is already linked to an order')).toBeInTheDocument()
   })
 
@@ -502,28 +556,29 @@ describe('UnattachedParcels', () => {
     vi.stubGlobal('fetch', fetchMock)
     const onChanged = vi.fn()
     render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={onChanged} /></ToastProvider>)
-    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Not a customer parcel' }))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
     expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ dismiss: true })
   })
 
-  it('links by typed order number and shop when no candidate fits', async () => {
+  it('links by typed order number and shop when no candidate fits, via "Other order"', async () => {
     const fetchMock = vi.fn(async (url: string) =>
       url.includes('/api/orders/lookup')
         ? new Response(JSON.stringify({ orderId: 'o-typed' }), { status: 200 })
         : new Response(JSON.stringify({ ok: true }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     render(<ToastProvider><UnattachedParcels items={[parcel({ candidates: [], candidatesTotal: 0 })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
-    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Other order' }))
     fireEvent.change(screen.getByLabelText('Order number'), { target: { value: '15866' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Link this number' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe('/api/orders/lookup?shop=s-de&number=15866')
     expect(JSON.parse((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as string)).toEqual({ orderId: 'o-typed' })
   })
 
-  it('disables Link while the typed-number lookup is pending, so a fast double click cannot send it twice', async () => {
+  it('disables "Link this number" while the typed-number lookup is pending, so a fast double click cannot send it twice', async () => {
     let resolveLookup: (res: Response) => void = () => {}
     const lookupPromise = new Promise<Response>((resolve) => { resolveLookup = resolve })
     const fetchMock = vi.fn((url: string) =>
@@ -532,13 +587,14 @@ describe('UnattachedParcels', () => {
         : Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 })))
     vi.stubGlobal('fetch', fetchMock)
     render(<ToastProvider><UnattachedParcels items={[parcel({ candidates: [], candidatesTotal: 0 })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>)
-    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Other order' }))
     fireEvent.change(screen.getByLabelText('Order number'), { target: { value: '15866' } })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
-    expect(screen.getByRole('button', { name: 'Link' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Link this number' }))
+    expect(screen.getByRole('button', { name: 'Link this number' })).toBeDisabled()
     // A second, fast click while the lookup is still pending must not fire again.
-    fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Link this number' }))
 
     resolveLookup(new Response(JSON.stringify({ orderId: 'o-typed' }), { status: 200 }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
@@ -552,7 +608,7 @@ describe('UnattachedParcels', () => {
     const { container } = render(
       <ToastProvider><UnattachedParcels items={[parcel({ carrier: 'Unknown', url: null, reason: null, identifiedAt: null, candidates: [], candidatesTotal: 0 })]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>,
     )
-    fireEvent.click(screen.getByRole('button', { name: /Parcels without an order/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Parcels that need a person/ }))
     expect(container.textContent).toContain('Not identified yet - the next check asks Bring, then DHL')
     expect(container.querySelector('a[href]')).toBeNull()
   })

@@ -67,6 +67,12 @@ vi.mock('@/lib/bring/invoice-sync', () => ({
 const syncKlaviyo = vi.fn(async () => ({ configured: false, ok: true, campaigns: 0, error: null }))
 vi.mock('@/lib/klaviyo/sync', () => ({ syncKlaviyo: () => syncKlaviyo() }))
 
+// Nor the name-key backfill. Mocked here so its own failure path can be
+// tested without an ORM-level trick, and so it does not read whatever
+// Order rows another test file left in the shared database.
+const backfillNameKeys = vi.fn(async () => 0)
+vi.mock('@/lib/delivery/name-key-backfill', () => ({ backfillNameKeys: () => backfillNameKeys() }))
+
 // Nor Dintero, for the same reason as Klaviyo: a connection row left behind
 // by another test file in the shared database would send this test to the
 // real payment API with fake credentials.
@@ -118,6 +124,8 @@ const call = (auth?: string) =>
 const REAL = process.env.CRON_SECRET
 
 beforeEach(() => {
+  backfillNameKeys.mockClear()
+  backfillNameKeys.mockResolvedValue(0)
   syncKlaviyo.mockClear()
   postWooTrackingNotes.mockClear()
   resolveUnpaidOrders.mockClear()
@@ -173,6 +181,30 @@ describe('the scheduled sync endpoint', () => {
     expect(body.klaviyoConfigured).toBe(false)
     expect(body.klaviyoCampaigns).toBe(0)
     expect(body.klaviyoError).toBeNull()
+  })
+
+  /**
+   * A caught failure here used to leave nameKeys at 0, indistinguishable from
+   * an ordinary tick with nothing left to key - so a broken backfill could
+   * run silently forever with the response looking healthy.
+   */
+  it('reports when the name-key backfill fails, without failing the run', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    backfillNameKeys.mockRejectedValueOnce(new Error('db timeout'))
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(body.ok).toBe(true)
+    expect(body.nameKeys).toBe(0)
+    expect(body.nameKeysError).toBe('db timeout')
+  })
+
+  it('reports no name-key error on an ordinary run', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    backfillNameKeys.mockResolvedValueOnce(37)
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(body.nameKeys).toBe(37)
+    expect(body.nameKeysError).toBeNull()
   })
 
   /**
