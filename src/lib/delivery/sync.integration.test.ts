@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, vi, afterEach, afterAll } from 'vites
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/secrets'
 import { DHL_CALLS_PER_RUN, nextPollFor, syncShipments } from './sync'
+import { nameKey } from './name-key'
 import type { Milestones } from './milestones'
 
 const NONE: Milestones = {
@@ -838,20 +839,37 @@ describe('syncShipments', () => {
       }
     })
 
-    it('re-matches a refused Bring row after polling it', async () => {
+    // DEVIATION FROM BRIEF: the brief's own sketch for the sweep test is the
+    // rewrite of this test - the per-poll re-match this test used to prove no
+    // longer exists (rematchByEmail is deleted; Task 4 moved that job to the
+    // hourly sweep, run once at the start of a poll rather than after every
+    // successful poll of an unlinked Bring row). Kept in this same spot and
+    // renamed rather than added alongside a since-removed behaviour's test.
+    it('the sweep at the start of a run attaches an unlinked row the rules can now place', async () => {
+      // This row carries a name, no order, and was last touched two hours
+      // ago - old enough for the sweep, and terminal so the ordinary poll
+      // loop below never touches it: only the sweep can be what links it.
       const shop = await db.shop.create({ data: { name: 'Sync rematch [sync-rematch-test]', currency: 'NOK', deliveryTrackingFrom: new Date('2026-01-01') } })
       const order = await db.order.create({
-        data: { shopId: shop.id, externalId: 'SR1', number: 'SR1', placedAt: new Date(now.getTime() - 2 * 24 * HOUR), status: 'completed', currency: 'NOK', grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0, customerEmail: 're@example.test' },
+        data: {
+          shopId: shop.id, externalId: 'SR1', number: 'SR1', placedAt: new Date(now.getTime() - 2 * 24 * HOUR), status: 'completed', currency: 'NOK',
+          grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+          customerName: 'Petri Niskanen', customerNameKey: nameKey('Petri Niskanen'),
+        },
       })
       try {
         await db.shipment.create({
-          data: { trackingNumber: `${TRACK}R1`, carrier: 'BRING', recipientEmail: 're@example.test', consignmentId: 'CR1', unlinkedReason: 'old', nextPollAt: new Date('2026-01-01') },
+          data: {
+            trackingNumber: `${TRACK}R1`, carrier: 'DHL', terminal: true, recipientName: 'Petri Niskanen',
+            createdAt: now, updatedAt: new Date(now.getTime() - 2 * HOUR),
+          },
         })
-        stubBring([consignment(`${TRACK}R1`, [{ status: 'PRE_NOTIFIED', dateIso: '2026-08-04T10:00:00Z' }])])
-        await syncShipments({ now, sleep: noSleep })
+        const result = await syncShipments({ now, sleep: noSleep })
+        expect(result.swept).toBeGreaterThanOrEqual(1)
+        expect(result.sweptLinked).toBe(1)
         const row = await db.shipment.findUnique({ where: { trackingNumber: `${TRACK}R1` } })
         expect(row?.orderId).toBe(order.id)
-        expect(row?.linkSource).toBe('BRING_EMAIL')
+        expect(row?.linkSource).toBe('FILE_NAME')
         expect(row?.unlinkedReason).toBeNull()
       } finally {
         await db.shipment.deleteMany({ where: { trackingNumber: `${TRACK}R1` } })
