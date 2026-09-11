@@ -9,7 +9,7 @@ import { nameKey } from '../delivery/name-key'
  * reader keeps that promise as far as it can: the ONE heading it depends on
  * is `Namn`, found by its folded spelling, and the numbers on a row are
  * taken from every cell rather than from a named column. The KolliID (18
- * digits) and the S00e4ndningsref (17 digits) both map to the row's name, so
+ * digits) and the Sandningsref (17 digits) both map to the row's name, so
  * whichever number Bring or DHL later answers to finds it.
  *
  * Null means "this file gives no names": a csv, a sheet with no such column,
