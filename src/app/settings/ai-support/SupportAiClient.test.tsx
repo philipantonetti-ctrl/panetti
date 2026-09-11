@@ -162,6 +162,8 @@ describe('live chat, per shop', () => {
     await screen.findByRole('heading', { name: 'Live chat, per shop' })
 
     expect(screen.getByText(/GORGIAS_WEBHOOK_SECRET is not set/)).toBeInTheDocument()
+    // The variable added after the last deployment is the case that looks identical to a missing one.
+    expect(screen.getByText(/only hands variables to the app on a new deployment/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show setup' }))
     expect(screen.getByText(/not available until the secret is set/)).toBeInTheDocument()
   })

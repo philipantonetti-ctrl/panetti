@@ -372,7 +372,9 @@ export function SupportAiClient({ email }: { email: string }) {
             </p>
             {!secretConfigured && (
               <p className="mb-3 rounded-[var(--radius-control)] border border-warn px-3 py-2 text-[12px] text-warn">
-                GORGIAS_WEBHOOK_SECRET is not set on the server, so there is no URL to paste yet.
+                GORGIAS_WEBHOOK_SECRET is not set on the server, so there is no URL to paste yet. Check that it is on
+                the Production environment in Vercel under exactly that name. Vercel only hands variables to the app
+                on a new deployment, so a variable added after the last deployment looks missing until a redeploy.
               </p>
             )}
             <table className="w-full text-[13px]">
