@@ -434,6 +434,36 @@ describe('ImportsList refusals', () => {
   })
 })
 
+/**
+ * The Linked count on its own cannot tell an operator whether a file even
+ * carried names to try - task 6 added namesRead to answer that, and this
+ * covers the three shapes the cell renders it in.
+ */
+describe('ImportsList, the names a file gave', () => {
+  const row = (namesRead: number | null) => ({
+    id: 'i1', filename: 'eod.xlsx', receivedAt: '2026-08-29T00:01:40.000Z',
+    rowsParsed: 64, rowsLinked: 12, rowsUnmatched: 0, namesRead, error: null,
+    source: 'EMAIL', unmatched: null,
+  })
+
+  it('says how many names the file gave', () => {
+    render(<ImportsList items={[row(34)]} />)
+    expect(screen.getByText('34 names')).toBeInTheDocument()
+    expect(screen.queryByText('no names read from this file')).not.toBeInTheDocument()
+  })
+
+  it('warns, in the warning colour, when the file gave no names at all', () => {
+    render(<ImportsList items={[row(0)]} />)
+    expect(screen.getByText('no names read from this file')).toHaveClass('text-warn')
+  })
+
+  it('says neither thing for a file from before names were read', () => {
+    const { container } = render(<ImportsList items={[row(null)]} />)
+    expect(screen.queryByText('no names read from this file')).not.toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/\d+ names\b/)
+  })
+})
+
 const parcel = (over: Partial<UnlinkedParcel> = {}): UnlinkedParcel => ({
   trackingNumber: '473325380023179098', carrier: 'DHL',
   url: 'https://www.dhl.com/se-en/home/tracking.html?tracking-id=473325380023179098',
