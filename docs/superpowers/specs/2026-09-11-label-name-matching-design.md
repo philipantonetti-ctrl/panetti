@@ -136,16 +136,24 @@ export type AttachRow = {
   recipientEmail: string | null; recipientName: string | null
   bookedAt: Date | null; createdAt: Date
   consignmentId: string | null; destinationCountry: string | null
+  dismissedAt: Date | null
 }
-export async function attach(row: AttachRow, now: Date): Promise<{ linked: boolean; source: 'BRING_EMAIL' | 'FILE_NAME' | null }>
+export async function decideAttach(row: AttachRow): Promise<AttachDecision>
+export async function attach(row: AttachRow): Promise<AttachResult>
 export async function sweepUnlinked(now: Date): Promise<{ tried: number; linked: number }>
 ```
 
-`attach` does nothing when `row.orderId` is not null. Otherwise email match
-(when `recipientEmail`), then name match (when `recipientName`), country from
-the row; on success writes `orderId`, `linkSource` (`BRING_EMAIL` or
-`FILE_NAME`) and `unlinkedReason: null`; on failure writes the reason chosen
-by rule 3, but never overwrites an existing reason with `null`.
+Where `AttachResult` is `{ linked: true; source } | { linked: false; source:
+null; reason: string | null }`.
+
+`attach` does nothing when `row.orderId` is not null or `row.dismissedAt` is
+not null: a dismissed row is never attached by any path, whatever the
+matching rules would otherwise decide. Otherwise email match (when
+`recipientEmail`), then name match (when `recipientName`), country from the
+row, with the upper bound taken from `row.bookedAt ?? row.createdAt`; on
+success writes `orderId`, `linkSource` (`BRING_EMAIL` or `FILE_NAME`) and
+`unlinkedReason: null`; on failure writes the reason chosen by rule 3, but
+never overwrites an existing reason with `null`.
 
 `sweepUnlinked`: up to 50 rows with `orderId null`, `dismissedAt null`,
 `recipientEmail` or `recipientName` not null, `updatedAt` older than one hour,
