@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { ShopFilter, NO_SHOPS, type Shop } from '@/components/filters/ShopFilter'
 import { DateFilter } from '@/components/filters/DateFilter'
-import { UploadBox } from './UploadBox'
+import { DELIVERY_TABS, PageTabs } from '@/components/shell/PageTabs'
 import { useLiveTick } from '@/lib/use-live-tick'
 import type { Preset } from '@/lib/dates'
 import { trackingUrl } from '@/lib/delivery/tracking-url'
@@ -88,7 +88,7 @@ export type UnlinkedParcel = {
   candidatesTotal: number
 }
 
-type ImportRow = {
+export type ImportRow = {
   id: string
   filename: string
   receivedAt: string
@@ -825,9 +825,9 @@ export function NoTracking({
                       <span className="mt-0.5 block text-[12px] font-normal text-warn">
                         A parcel for this customer was in the file of {orderedOn(r.refusedParcel.createdAt.slice(0, 10))} but
                         was not attached: {r.refusedParcel.reason}{' '}
-                        <a href="#unattached" className="num text-accent hover:underline">
+                        <Link href="/delivery/unmatched" className="num text-accent hover:underline">
                           {r.refusedParcel.trackingNumber}
-                        </a>
+                        </Link>
                       </span>
                     )}
                   </td>
@@ -1016,21 +1016,24 @@ export function LateList({
 /**
  * Every parcel we hold that belongs to no order, with the facts a person
  * needs to attach it and the buttons to do so. The machine refuses whenever
- * two orders could be right; this is where a person decides. Collapsed by
- * default, but the count in the heading is always the true total.
+ * two orders could be right; this is where a person decides. On its own tab
+ * it opens at once; the count in the heading is the true total either way.
  */
 export function UnattachedParcels({
   items,
   total,
   shops,
   onChanged,
+  defaultOpen = false,
 }: {
   items: UnlinkedParcel[]
   total: number
   shops: { id: string; name: string }[]
   onChanged: () => void
+  /** Open on first paint, for the tab whose whole content this list is. */
+  defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [busy, setBusy] = useState<string | null>(null)
   const toast = useToast()
   const capped = total > items.length
@@ -1463,8 +1466,8 @@ export function ImportsList({ items }: { items: ImportRow[] }) {
 /**
  * How long orders take to reach the customer, and what we cannot account for.
  * Follows ProductsClient's fetch-and-filter shape: shop and date filters live
- * in the header, a plain effect refetches on any change, and `reload` gives
- * UploadBox a way to trigger the same refetch after an import.
+ * in the header and a plain effect refetches on any change. The parcels a
+ * person has to place and the warehouse files are the other two tabs.
  */
 export function DeliveryClient({
   email,
@@ -1485,9 +1488,6 @@ export function DeliveryClient({
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  // Bumped by `reload()` below to force the same effect to refetch outside of
-  // a filter change or the live tick - the only other two things that do.
-  const [reloadKey, setReloadKey] = useState(0)
   /**
    * Owned here rather than inside the section, because the NO TRACKING tile
    * opens it from the top of the page. Pressing the tile opens the list AND
@@ -1566,12 +1566,7 @@ export function DeliveryClient({
       })
       .finally(() => setLoading(false))
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
-  }, [preset, from, to, selected, tick, reloadKey])
-
-  function reload() {
-    setLoading(true)
-    setReloadKey((k) => k + 1)
-  }
+  }, [preset, from, to, selected, tick])
 
   return (
     <AppShell email={email} role={role}>
@@ -1599,6 +1594,7 @@ export function DeliveryClient({
           }}
         />
       </PageHeader>
+      <PageTabs tabs={DELIVERY_TABS} />
 
       <PageBody>
         {selected.includes(NO_SHOPS) ? (
@@ -1648,16 +1644,6 @@ export function DeliveryClient({
                     open={noTrackingOpen}
                     onToggle={() => setNoTrackingOpen((o) => !o)}
                   />
-                  <UnattachedParcels
-                    items={data.unlinked}
-                    total={data.unlinkedTotal}
-                    shops={data.shops}
-                    onChanged={reload}
-                  />
-                  <div className="space-y-3">
-                    <UploadBox onImported={reload} />
-                    <ImportsList items={data.imports} />
-                  </div>
                 </div>
               )
             ) : null}

@@ -208,6 +208,12 @@ test('he can open Delivery and Inventory, which is the job', async ({ page }) =>
   await expect(page).toHaveURL(/\/delivery/)
   await expect(page.getByRole('heading', { name: 'Delivery' })).toBeVisible()
 
+  // The two chores beside the figures are his as well: one tab each.
+  for (const path of ['/delivery/unmatched', '/delivery/imports']) {
+    await page.goto(path)
+    await expect(page, path).toHaveURL(new RegExp(path))
+  }
+
   await page.goto('/inventory')
   await expect(page).toHaveURL(/\/inventory/)
   await expect(page.getByRole('heading', { name: 'Inventory and forecasting' })).toBeVisible()

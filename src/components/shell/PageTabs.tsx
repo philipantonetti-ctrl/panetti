@@ -61,3 +61,15 @@ export const FINANCE_TABS: Tab[] = [
   { href: '/finance', label: 'Receivables' },
   { href: '/finance/payouts', label: 'Payouts' },
 ]
+
+/**
+ * Delivery's three screens: the figures, the parcels a person has to place,
+ * and the warehouse files. The last two are the daily chores, and they sat
+ * as two sections under a long page of figures; a tab each puts them one
+ * click from the sidebar. Neither depends on the shop and date filters.
+ */
+export const DELIVERY_TABS: Tab[] = [
+  { href: '/delivery', label: 'Delivery' },
+  { href: '/delivery/unmatched', label: 'Unmatched parcels' },
+  { href: '/delivery/imports', label: 'Recent imports' },
+]

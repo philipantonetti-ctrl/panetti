@@ -68,8 +68,11 @@ test('the operations manager attaches a DHL parcel to its order and both lists u
   await page.getByRole('button', { name: /Show these orders/i }).click()
   await expect(noTracking.getByText(ORDER)).toBeVisible({ timeout: 15_000 })
 
+  // The parcel lives on its own tab, open on arrival: no button to press.
+  const tabs = page.getByRole('navigation', { name: 'Section' })
+  await tabs.getByRole('link', { name: 'Unmatched parcels' }).click()
+  await expect(page).toHaveURL(/\/delivery\/unmatched/)
   const section = page.locator('#unattached')
-  await section.getByRole('button', { name: /Parcels that need a person/ }).click()
   await expect(section.getByText(PARCEL)).toBeVisible({ timeout: 15_000 })
   await expect(section.getByText('18.2 kg')).toBeVisible()
   await expect(section.getByText('Tobias Kohlmeyer', { exact: true })).toBeVisible()
@@ -86,6 +89,21 @@ test('the operations manager attaches a DHL parcel to its order and both lists u
   await expect(page.getByText('Parcel linked')).toBeVisible()
 
   await expect(section.getByText(PARCEL)).toHaveCount(0, { timeout: 15_000 })
+
+  // Back on the figures, the order has left "No tracking yet" as well. The
+  // tab is a fresh page, so the range is chosen again, and the figures must
+  // have finished loading for that range before an absence means anything:
+  // aria-busy is "false" only once a fetch has landed with nothing pending.
+  await tabs.getByRole('link', { name: 'Delivery' }).click()
+  await expect(page).toHaveURL(/\/delivery$/)
+  await page.getByRole('button', { name: 'Date range' }).click()
+  await page.getByRole('button', { name: 'Last 12 months', exact: true }).click()
+  await expect(page.locator('[aria-busy="false"]')).toHaveCount(1, { timeout: 15_000 })
+  // The section is not drawn at all when no order lacks a parcel, which is
+  // the strongest form of "it left". If other orders keep it on the page,
+  // open it and make sure ours is not among them.
+  const show = page.getByRole('button', { name: /Show these orders/i })
+  if (await show.count()) await show.click()
   await expect(noTracking.getByText(ORDER)).toHaveCount(0, { timeout: 15_000 })
 
   const row = await db.shipment.findUnique({ where: { trackingNumber: PARCEL } })
