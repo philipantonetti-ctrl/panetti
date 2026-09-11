@@ -1,5 +1,5 @@
 import { db } from '../db'
-import { MATCH_WINDOW_DAYS } from '../bring/match'
+import { DEAD_STATUSES, LONG_WINDOW_DAYS, MATCH_WINDOW_DAYS } from '../bring/match'
 import { nameKey } from './name-key'
 
 /**
@@ -9,6 +9,12 @@ import { nameKey } from './name-key'
  * when the carrier gave one (Bring), else by destination country (DHL gives
  * no name and no email), else nothing and the person types an order number.
  * The items are what lets a person tell a 154 kg chair from a 1.6 kg whisk.
+ *
+ * The same two windows as the matcher (lib/bring/match.ts): the last 30 days
+ * before the booking, and only when those hold nothing, the last 120. What
+ * the machine could not choose between is what the person sees, and an order
+ * the machine would never pick (cancelled, or beyond the long window) is not
+ * offered either.
  */
 
 export type Candidate = {
@@ -46,38 +52,49 @@ export async function candidatesFor(row: CandidateRow): Promise<{ candidates: Ca
   if (!key && !row.recipientEmail && !row.destinationCountry) return { candidates: [], total: 0 }
 
   const upper = row.bookedAt ?? row.createdAt
-  const window = { gte: new Date(upper.getTime() - MATCH_WINDOW_DAYS * DAY), lte: upper }
-  const base = { shop: { deliveryTrackingFrom: { not: null } }, placedAt: window, voidedAt: null }
   const select = {
     id: true, number: true, placedAt: true, customerName: true,
     shop: { select: { name: true } },
     items: { select: { name: true, quantity: true } },
     shipments: { select: { consignmentId: true } },
   }
+  type Found = { id: string; number: string; placedAt: Date; customerName: string | null; shop: { name: string }; items: { name: string; quantity: number }[]; shipments: { consignmentId: string | null }[] }
 
-  // The label's name first, any country: the country a carrier reports and
-  // the one the customer typed at checkout disagree often enough (a gift, a
-  // holiday address) that a same-name order elsewhere is worth showing.
-  const byName = key
-    ? await db.order.findMany({ where: { ...base, customerNameKey: key }, orderBy: { placedAt: 'desc' }, take: READ_CEILING, select })
-    : []
-  const rest =
-    row.recipientEmail || row.destinationCountry
-      ? await db.order.findMany({
-          where: {
-            ...base,
-            ...(row.recipientEmail
-              ? { customerEmail: { equals: row.recipientEmail, mode: 'insensitive' } }
-              : { shippingCountry: { equals: row.destinationCountry!, mode: 'insensitive' }, shipments: { none: {} } }),
-            id: { notIn: byName.map((o) => o.id) },
-          },
-          orderBy: { placedAt: 'desc' },
-          take: READ_CEILING,
-          select,
-        })
+  const read = async (windowDays: number): Promise<{ byName: Found[]; rest: Found[] }> => {
+    const base = {
+      shop: { deliveryTrackingFrom: { not: null } },
+      placedAt: { gte: new Date(upper.getTime() - windowDays * DAY), lte: upper },
+      voidedAt: null,
+      status: { notIn: DEAD_STATUSES },
+    }
+    // The label's name first, any country: the country a carrier reports and
+    // the one the customer typed at checkout disagree often enough (a gift, a
+    // holiday address) that a same-name order elsewhere is worth showing.
+    const byName = key
+      ? await db.order.findMany({ where: { ...base, customerNameKey: key }, orderBy: { placedAt: 'desc' }, take: READ_CEILING, select })
       : []
+    const rest =
+      row.recipientEmail || row.destinationCountry
+        ? await db.order.findMany({
+            where: {
+              ...base,
+              ...(row.recipientEmail
+                ? { customerEmail: { equals: row.recipientEmail, mode: 'insensitive' } }
+                : { shippingCountry: { equals: row.destinationCountry!, mode: 'insensitive' }, shipments: { none: {} } }),
+              id: { notIn: byName.map((o) => o.id) },
+            },
+            orderBy: { placedAt: 'desc' },
+            take: READ_CEILING,
+            select,
+          })
+        : []
+    return { byName, rest }
+  }
 
-  const toCandidate = (o: (typeof byName)[number], sameName: boolean): Candidate => ({
+  let found = await read(MATCH_WINDOW_DAYS)
+  if (found.byName.length === 0 && found.rest.length === 0) found = await read(LONG_WINDOW_DAYS)
+
+  const toCandidate = (o: Found, sameName: boolean): Candidate => ({
     orderId: o.id,
     number: o.number,
     shop: o.shop.name,
@@ -87,6 +104,6 @@ export async function candidatesFor(row: CandidateRow): Promise<{ candidates: Ca
     holdsParcel: o.shipments.some((s) => s.consignmentId === null || s.consignmentId !== row.consignmentId),
     sameName,
   })
-  const all = [...byName.map((o) => toCandidate(o, true)), ...rest.map((o) => toCandidate(o, false))]
+  const all = [...found.byName.map((o) => toCandidate(o, true)), ...found.rest.map((o) => toCandidate(o, false))]
   return { candidates: all.slice(0, CANDIDATE_LIMIT), total: all.length }
 }

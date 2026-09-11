@@ -99,3 +99,25 @@ describe('candidatesFor', () => {
     expect(CANDIDATE_LIMIT).toBe(30)
   })
 })
+
+describe('candidatesFor, the long window', () => {
+  it('offers the orders of the last 120 days when nothing sits in the last 30, and never a cancelled one', async () => {
+    const chair = await order(trackedId, 'C-CHAIR', { customerEmail: 'patient@example.test', placedAt: new Date(booked.getTime() - 70 * DAY) })
+    await order(trackedId, 'C-DEAD', { customerEmail: 'patient@example.test', placedAt: new Date(booked.getTime() - 60 * DAY), status: 'cancelled' })
+    await order(trackedId, 'C-ANCIENT', { customerEmail: 'patient@example.test', placedAt: new Date(booked.getTime() - 130 * DAY) })
+
+    const r = await candidatesFor({ recipientEmail: 'patient@example.test', recipientName: null, destinationCountry: 'NO', bookedAt: booked, createdAt: booked, consignmentId: 'THIS' })
+
+    expect(r.candidates.map((c) => c.number)).toEqual(['C-CHAIR'])
+    expect(r.candidates[0].orderId).toBe(chair.id)
+  })
+
+  it('stays with the short window when it holds anything at all', async () => {
+    await order(trackedId, 'C-OLD', { customerEmail: 'recent@example.test', placedAt: new Date(booked.getTime() - 60 * DAY) })
+    const recent = await order(trackedId, 'C-NEW', { customerEmail: 'recent@example.test', placedAt: new Date(booked.getTime() - 3 * DAY) })
+
+    const r = await candidatesFor({ recipientEmail: 'recent@example.test', recipientName: null, destinationCountry: 'NO', bookedAt: booked, createdAt: booked, consignmentId: 'THIS' })
+
+    expect(r.candidates.map((c) => c.orderId)).toEqual([recent.id])
+  })
+})
