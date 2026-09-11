@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterAll } from 'vitest'
 import { db } from '@/lib/db'
 import { candidatesFor, CANDIDATE_LIMIT } from './candidates'
+import { nameKey } from './name-key'
 
 const TAG = '[parcel-candidates-test]'
 const TRACK = 'TCAND'
@@ -49,7 +50,7 @@ describe('candidatesFor', () => {
     const open = await order(trackedId, 'C-OPEN', { customerEmail: 'same@example.test', placedAt: new Date(booked.getTime() - DAY) }, [{ name: 'Panetti ProMix', quantity: 1 }])
     await db.shipment.create({ data: { trackingNumber: `${TRACK}1`, orderId: held.id, consignmentId: 'OTHER' } })
 
-    const r = await candidatesFor({ recipientEmail: 'same@example.test', destinationCountry: 'DE', bookedAt: booked, createdAt: booked, consignmentId: 'THIS' })
+    const r = await candidatesFor({ recipientEmail: 'same@example.test', recipientName: null, destinationCountry: 'DE', bookedAt: booked, createdAt: booked, consignmentId: 'THIS' })
 
     expect(r.total).toBe(2)
     expect(r.candidates.map((c) => c.number)).toEqual(['C-OPEN', 'C-HELD']) // newest first
@@ -66,7 +67,7 @@ describe('candidatesFor', () => {
     await order(trackedId, 'C-AFTER', { placedAt: new Date(booked.getTime() + DAY) })
     await order(trackedId, 'C-OLD', { placedAt: new Date(booked.getTime() - 40 * DAY) })
 
-    const r = await candidatesFor({ recipientEmail: null, destinationCountry: 'de', bookedAt: booked, createdAt: booked, consignmentId: null })
+    const r = await candidatesFor({ recipientEmail: null, recipientName: null, destinationCountry: 'de', bookedAt: booked, createdAt: booked, consignmentId: null })
 
     expect(r.total).toBe(1)
     expect(r.candidates[0]).toMatchObject({ orderId: free.id, items: '1 x Pizza oven, 2 x Peel' })
@@ -74,14 +75,27 @@ describe('candidatesFor', () => {
 
   it('caps the list and reports the true total', async () => {
     for (let i = 0; i < CANDIDATE_LIMIT + 3; i++) await order(trackedId, `C-MANY${i}`, { placedAt: new Date(booked.getTime() - i * 60_000) })
-    const r = await candidatesFor({ recipientEmail: null, destinationCountry: 'DE', bookedAt: booked, createdAt: booked, consignmentId: null })
+    const r = await candidatesFor({ recipientEmail: null, recipientName: null, destinationCountry: 'DE', bookedAt: booked, createdAt: booked, consignmentId: null })
     expect(r.candidates).toHaveLength(CANDIDATE_LIMIT)
     expect(r.total).toBe(CANDIDATE_LIMIT + 3)
   })
 
   it('offers nothing when it knows neither email nor country', async () => {
     await order(trackedId, 'C-ANY')
-    const r = await candidatesFor({ recipientEmail: null, destinationCountry: null, bookedAt: null, createdAt: booked, consignmentId: null })
+    const r = await candidatesFor({ recipientEmail: null, recipientName: null, destinationCountry: null, bookedAt: null, createdAt: booked, consignmentId: null })
     expect(r).toEqual({ candidates: [], total: 0 })
+  })
+
+  it('lists orders with the label\u2019s name first, flagged, then the country set, without repeating one', async () => {
+    const same = await order(trackedId, 'C-SAME', { customerName: 'Tobias Kohlmeyer', customerNameKey: nameKey('Tobias Kohlmeyer'), shippingCountry: 'DE' })
+    const sameElsewhere = await order(trackedId, 'C-SAME-FI', { customerName: 'Tobias Kohlmeyer', customerNameKey: nameKey('Tobias Kohlmeyer'), shippingCountry: 'FI' })
+    const other = await order(trackedId, 'C-OTHER', { customerName: 'Someone Else', customerNameKey: nameKey('Someone Else'), shippingCountry: 'DE' })
+    const r = await candidatesFor({ recipientEmail: null, recipientName: 'KOHLMEYER, Tobias', destinationCountry: 'DE', bookedAt: booked, createdAt: booked, consignmentId: null })
+    expect(r.candidates.slice(0, 2).map((c) => c.sameName)).toEqual([true, true])
+    expect(r.candidates.slice(0, 2).map((c) => c.orderId).sort()).toEqual([same.id, sameElsewhere.id].sort())
+    expect(r.candidates[2]).toMatchObject({ number: 'C-OTHER', sameName: false })
+    expect(r.candidates.filter((c) => c.orderId === other.id)).toHaveLength(1)
+    expect(r.total).toBe(3)
+    expect(CANDIDATE_LIMIT).toBe(30)
   })
 })
