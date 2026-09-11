@@ -11,6 +11,7 @@ import {
 } from './client'
 import { mapOrder, type WooOrder } from './map'
 import { ensureWebhooks } from './webhooks'
+import { dueForRead, refreshWebsiteKnowledge, syncPageInventory } from '../support/website-sync'
 
 export type SyncResult = {
   shopId: string
@@ -81,6 +82,9 @@ const UNREADABLE_STAMP =
 
 /** How many customer-less legacy orders one sync fills in (5 id-batches). */
 const CUSTOMER_BACKFILL_BATCH = 500
+
+/** The daily website read's share of a sync tick. */
+const WEBSITE_READ_MS = 15_000
 
 /**
  * How far back a completed sync re-reads the store, and how many pages that is
@@ -520,7 +524,7 @@ export async function syncShop(
    * the same seam for the other half of the function, and the only way a test
    * can produce a partial incremental pull without fetching 5,000 orders.
    */
-  opts: { backfillPages?: number; maxPages?: number; deadline?: number } = {},
+  opts: { backfillPages?: number; maxPages?: number; deadline?: number; run?: { websiteRead: boolean } } = {},
 ): Promise<SyncResult> {
   const shop = await db.shop.findUniqueOrThrow({ where: { id: shopId } })
   const base = { shopId: shop.id, shopName: shop.name }
@@ -696,8 +700,24 @@ export async function syncShop(
       // Best-effort on a COMPLETED sync only: refresh each known product's own
       // listed price and its stock. A failure here never fails the sync - order
       // data is the priority, and the next completed sync simply retries.
+      //
+      // The same sweep carries the words on each product page. Once a day per
+      // shop, and one shop per run so no tick spends more than its share, they
+      // are read into the knowledge base beside the pages a person ticked.
       try {
-        await storeCatalog(shop.id, await fetchCatalog(creds))
+        const catalog = await fetchCatalog(creds)
+        await storeCatalog(shop.id, catalog)
+        const run = opts.run
+        if (run && !run.websiteRead && dueForRead(shop)) {
+          run.websiteRead = true
+          const deadline = Date.now() + WEBSITE_READ_MS
+          try {
+            await syncPageInventory(shop.id, creds.url, { deadline })
+            await refreshWebsiteKnowledge({ shopId: shop.id, siteUrl: creds.url, catalog, deadline })
+          } catch {
+            // Recorded on the shop by the read itself; tried again next run.
+          }
+        }
       } catch {
         // Retried on the next completed sync.
       }
@@ -769,11 +789,12 @@ export async function syncAllShops(opts: { deadline?: number } = {}): Promise<Sy
     select: { id: true },
   })
   const results: SyncResult[] = []
+  const run = { websiteRead: false }
   for (const shop of shops) {
     // Checked before the store, not after: starting one we cannot finish takes
     // the budget from a store that is already further behind.
     if (opts.deadline !== undefined && Date.now() >= opts.deadline) break
-    results.push(await syncShop(shop.id, opts))
+    results.push(await syncShop(shop.id, { ...opts, run }))
   }
   return results
 }

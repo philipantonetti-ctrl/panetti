@@ -4,6 +4,8 @@ import { encryptSecret } from '../secrets'
 import { db } from '../db'
 
 async function cleanup() {
+  await db.knowledgeItem.deleteMany({ where: { shop: { name: { contains: '[sync-test]' } } } })
+  await db.websitePage.deleteMany({ where: { shop: { name: { contains: '[sync-test]' } } } })
   await db.shop.deleteMany({ where: { name: { contains: '[sync-test]' } } })
   await db.ambassador.deleteMany({ where: { email: { contains: '[sync-test]' } } })
 }
@@ -210,6 +212,47 @@ describe('syncShop', () => {
       String(url).includes('/products') ? new Response('boom', { status: 500 }) : emptyPage(),
     ))
     expect((await syncShop(shop.id)).ok).toBe(true)
+  })
+
+  it('reads the website into the knowledge base after a completed sync, once a day, one shop per run', async () => {
+    const shop = await connectedShop('Sync website [sync-test]')
+    const shopId = shop.id
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown) => {
+      const u = String(url)
+      if (u.includes('/wp-json/wp/v2/pages')) return emptyPage()
+      if (u.includes('/products')) {
+        return jsonPage([{
+          id: 900001,
+          name: 'Massager',
+          sku: 'SKU-1',
+          permalink: 'https://shop.example/product/massager',
+          status: 'publish',
+          catalog_visibility: 'visible',
+          description: 'A description with more than forty characters describing the product in full detail.',
+        }])
+      }
+      return emptyPage()
+    }))
+
+    const run = { websiteRead: false }
+    await syncShop(shopId, { run })
+    expect(run.websiteRead).toBe(true)
+    expect(await db.knowledgeItem.count({ where: { shopId, source: 'website' } })).toBeGreaterThan(0)
+    const saved = await db.shop.findUniqueOrThrow({ where: { id: shopId } })
+    expect(saved.websiteReadAt).not.toBeNull()
+
+    // Read this morning: not again.
+    const before = await db.knowledgeItem.count({ where: { shopId, source: 'website' } })
+    const second = { websiteRead: false }
+    await syncShop(shopId, { run: second })
+    expect(second.websiteRead).toBe(false)
+    expect(await db.knowledgeItem.count({ where: { shopId, source: 'website' } })).toBe(before)
+
+    // Another shop already read this run: wait for the next run.
+    await db.shop.update({ where: { id: shopId }, data: { websiteReadAt: null } })
+    const spent = { websiteRead: true }
+    await syncShop(shopId, { run: spent })
+    expect((await db.shop.findUniqueOrThrow({ where: { id: shopId } })).websiteReadAt).toBeNull()
   })
 
   it('attributes the same code text to a different ambassador per store, never mixing them', async () => {
