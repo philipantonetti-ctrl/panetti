@@ -24,6 +24,7 @@ export type AttachRow = {
   createdAt: Date
   consignmentId: string | null
   destinationCountry: string | null
+  dismissedAt: Date | null
 }
 
 export type AttachDecision =
@@ -36,7 +37,8 @@ export type AttachResult =
 
 /** Reads only. The upper bound is the booking time, else when the row was first stored. */
 export async function decideAttach(row: AttachRow): Promise<AttachDecision> {
-  if (row.orderId !== null) return { orderId: null, reason: null }
+  // A person said this is not a customer parcel; no rule may overrule that.
+  if (row.orderId !== null || row.dismissedAt !== null) return { orderId: null, reason: null }
   const scope = { bookedAt: row.bookedAt, consignmentId: row.consignmentId }
   let emailReason: string | null = null
   if (row.recipientEmail) {
@@ -68,6 +70,11 @@ export async function attach(row: AttachRow): Promise<AttachResult> {
   // A real reason replaces the old one; nothing to say leaves the old one.
   if (d.reason !== null) {
     await db.shipment.update({ where: { id: row.id }, data: { unlinkedReason: d.reason } })
+  } else {
+    // The sweep uses updatedAt as its retry clock: a row must always move
+    // when tried, or a row with nothing to write sits at the head of the
+    // queue forever instead of being retried an hour later like everything else.
+    await db.shipment.update({ where: { id: row.id }, data: { updatedAt: new Date() } })
   }
   return { linked: false, source: null, reason: d.reason }
 }
@@ -77,7 +84,7 @@ const HOUR = 60 * 60 * 1000
 
 export const ATTACH_SELECT = {
   id: true, trackingNumber: true, orderId: true, recipientEmail: true, recipientName: true,
-  bookedAt: true, createdAt: true, consignmentId: true, destinationCountry: true,
+  bookedAt: true, createdAt: true, consignmentId: true, destinationCountry: true, dismissedAt: true,
 } as const
 
 /**
@@ -95,7 +102,14 @@ export async function sweepUnlinked(now: Date): Promise<{ tried: number; linked:
       orderId: null,
       dismissedAt: null,
       updatedAt: { lt: new Date(now.getTime() - HOUR) },
-      OR: [{ recipientEmail: { not: null } }, { recipientName: { not: null } }],
+      // Truthy, not merely non-null: decideAttach tests recipientEmail and
+      // recipientName for truthiness, so a row holding '' in one has nothing
+      // to try, produces no write, and would otherwise sit at the head of
+      // the queue forever without ever advancing its retry clock.
+      OR: [
+        { AND: [{ recipientEmail: { not: null } }, { recipientEmail: { not: '' } }] },
+        { AND: [{ recipientName: { not: null } }, { recipientName: { not: '' } }] },
+      ],
     },
     orderBy: { updatedAt: 'asc' },
     take: SWEEP_LIMIT,

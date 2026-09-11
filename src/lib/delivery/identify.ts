@@ -134,7 +134,14 @@ export function unknownNext(
   return { terminal: false, nextPollAt: new Date(now.getTime() + DAY), lastError, unlinkedReason: null }
 }
 
-export type IdentifyRow = { id: string; trackingNumber: string; orderId: string | null; createdAt: Date; recipientName: string | null }
+export type IdentifyRow = {
+  id: string
+  trackingNumber: string
+  orderId: string | null
+  createdAt: Date
+  recipientName: string | null
+  dismissedAt: Date | null
+}
 
 /**
  * A carrier answered. Write what it said, and try to attach the order.
@@ -180,6 +187,7 @@ export async function applyIdentification(
       recipientName: facts.recipientName ?? row.recipientName,
       bookedAt: m?.bookedAt ?? null, createdAt: row.createdAt,
       consignmentId: facts.consignmentId, destinationCountry: facts.destinationCountry,
+      dismissedAt: row.dismissedAt,
     }
     if (facts.carrier === 'BRING') {
       const d = await decideAttach(attachRow)

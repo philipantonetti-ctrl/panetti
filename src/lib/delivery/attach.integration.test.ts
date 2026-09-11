@@ -33,7 +33,7 @@ const order = (number: string, name: string, email: string, placedAt = '2026-09-
 const row = (n: string, over: Record<string, unknown> = {}) =>
   db.shipment.create({
     data: { trackingNumber: `${TRACK}${n}`, carrier: 'DHL', createdAt: now, ...over },
-    select: { id: true, trackingNumber: true, orderId: true, recipientEmail: true, recipientName: true, bookedAt: true, createdAt: true, consignmentId: true, destinationCountry: true, updatedAt: true },
+    select: { id: true, trackingNumber: true, orderId: true, recipientEmail: true, recipientName: true, bookedAt: true, createdAt: true, consignmentId: true, destinationCountry: true, dismissedAt: true, updatedAt: true },
   })
 
 describe('decideAttach and attach', () => {
@@ -82,6 +82,15 @@ describe('decideAttach and attach', () => {
     expect(d.orderId).toBeNull()
     expect(late.placedAt.getTime()).toBeGreaterThan(r.createdAt.getTime())
   })
+
+  it('never attaches a dismissed row, even when the name on it matches exactly one order', async () => {
+    await order('A-5', 'Dismissed Match', 'dismissed@example.test')
+    const r = await row('8', { recipientName: 'Dismissed Match', destinationCountry: 'DE', dismissedAt: now })
+    await expect(decideAttach(r)).resolves.toEqual({ orderId: null, reason: null })
+    await expect(attach(r)).resolves.toEqual({ linked: false, source: null, reason: null })
+    const after = await db.shipment.findUnique({ where: { id: r.id } })
+    expect(after?.orderId).toBeNull()
+  })
 })
 
 describe('sweepUnlinked', () => {
@@ -114,8 +123,13 @@ describe('sweepUnlinked', () => {
     await row('S3', { recipientName: 'Attach Sweep Tester', updatedAt: real })
     await row('S4', { updatedAt: old })
     await row('S5', { recipientName: 'Attach Sweep Tester', dismissedAt: now, updatedAt: old })
+    // A row holding '' rather than null: decideAttach tests truthiness, so
+    // this row has nothing to try. It must not be selected, or it would sit
+    // at the head of the queue forever with no write ever moving updatedAt.
+    const s6 = await row('S6', { recipientName: '', updatedAt: old })
     const r = await sweepUnlinked(real)
     expect(r).toEqual({ tried: 2, linked: 1 })
+    expect(r.tried).toBeLessThanOrEqual(SWEEP_LIMIT)
     const rows = await db.shipment.findMany({ where: { trackingNumber: { startsWith: `${TRACK}S` } }, orderBy: { trackingNumber: 'asc' } })
     expect(rows[0].orderId).toBe(o.id)
     expect(rows[1].orderId).toBeNull()
@@ -123,5 +137,8 @@ describe('sweepUnlinked', () => {
     expect(rows[2].orderId).toBeNull()
     expect(rows[2].unlinkedReason).toBeNull()
     expect(SWEEP_LIMIT).toBe(50)
+    // Never touched: it was not among the rows the sweep tried.
+    const s6After = await db.shipment.findUnique({ where: { id: s6.id } })
+    expect(s6After?.updatedAt).toEqual(old)
   })
 })

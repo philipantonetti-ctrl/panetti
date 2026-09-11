@@ -244,6 +244,9 @@ export async function syncShipments(
       bookedAt: true,
       consignmentId: true,
       createdAt: true,
+      // A dismissed row must never be re-attached by any path, including
+      // identification once a carrier finally answers about its number.
+      dismissedAt: true,
       // Carried so each parcel's own deadline can be computed below: a parcel
       // near or past its promise is polled on every run.
       order: {
@@ -280,7 +283,10 @@ export async function syncShipments(
      * line next run, exactly like a DHL parcel that missed its turn.
      */
     if (s.carrier === 'UNKNOWN') {
-      const idRow = { id: s.id, trackingNumber: s.trackingNumber, orderId: s.orderId, createdAt: s.createdAt, recipientName: s.recipientName }
+      const idRow = {
+        id: s.id, trackingNumber: s.trackingNumber, orderId: s.orderId, createdAt: s.createdAt,
+        recipientName: s.recipientName, dismissedAt: s.dismissedAt,
+      }
       try {
         // Checked before Bring, not after: once DHL's share of the run is
         // spent, asking Bring buys nothing for the rest of this backlog - a
