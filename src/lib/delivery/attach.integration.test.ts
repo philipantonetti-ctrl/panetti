@@ -85,14 +85,21 @@ describe('decideAttach and attach', () => {
 })
 
 describe('sweepUnlinked', () => {
+  // Fix round 1: sweepUnlinked reads every stale unlinked row in the WHOLE
+  // database, not just this file's own - vitest runs test files in parallel
+  // against one shared local Postgres, so a name any other suite also
+  // happens to use would be fair game for this sweep, and this file's own
+  // rows would be fair game for THEIRS. 'Attach Sweep Tester' is used nowhere
+  // else in the codebase (grepped to confirm), so this sweep can only ever
+  // find and act on the rows this test itself creates.
   it('retries only unlinked, undismissed rows older than an hour that carry an email or a name, at most SWEEP_LIMIT', async () => {
-    const o = await order('S-1', 'Petri Niskanen', 'petri@example.test')
+    const o = await order('S-1', 'Attach Sweep Tester', 'petri@example.test')
     const old = new Date(now.getTime() - 2 * HOUR)
-    await row('S1', { recipientName: 'Petri Niskanen', updatedAt: old })
+    await row('S1', { recipientName: 'Attach Sweep Tester', updatedAt: old })
     await row('S2', { recipientName: 'Nobody Known', updatedAt: old })
-    await row('S3', { recipientName: 'Petri Niskanen', updatedAt: now })
+    await row('S3', { recipientName: 'Attach Sweep Tester', updatedAt: now })
     await row('S4', { updatedAt: old })
-    await row('S5', { recipientName: 'Petri Niskanen', dismissedAt: now, updatedAt: old })
+    await row('S5', { recipientName: 'Attach Sweep Tester', dismissedAt: now, updatedAt: old })
     const r = await sweepUnlinked(now)
     expect(r).toEqual({ tried: 2, linked: 1 })
     const rows = await db.shipment.findMany({ where: { trackingNumber: { startsWith: `${TRACK}S` } }, orderBy: { trackingNumber: 'asc' } })
