@@ -299,13 +299,13 @@ export async function syncShipments(
         recipientName: s.recipientName, dismissedAt: s.dismissedAt,
       }
       try {
-        // Checked before Bring, not after: once DHL's share of the run is
-        // spent, asking Bring buys nothing for the rest of this backlog - a
-        // row Bring does not know still waits for DHL regardless, and one
-        // Bring already knows is rare enough not to be worth a Bring call
-        // per row, per run, while the row simply waits its turn. It keeps
-        // its due date, exactly like a DHL parcel that missed its turn.
-        if (dhlKey && dhlCalls >= DHL_CALLS_PER_RUN) continue
+        // Bring first, and whatever DHL's share of the run: Bring is
+        // unmetered, and a row Bring knows is the ordinary case, not the
+        // rare one. This gate used to sit BEFORE the Bring call, on the
+        // premise that a Bring-known row was rare; on 2026-09-11, 71 of the
+        // 82 numbers recovered from old refusal lists were Bring's, and two
+        // DHL rows a run were enough to stall the whole backlog to three
+        // identifications a tick.
         if (creds) {
           const raw = await fetchBring(creds, [s.trackingNumber], { deadline: opts.deadline })
           const facts = bringFacts(raw, s.trackingNumber)
@@ -316,6 +316,10 @@ export async function syncShipments(
             continue
           }
         }
+        // Bring does not know it. Only the DHL half waits for its share of
+        // the run: once spent, the row keeps its due date and is first in
+        // line next run, exactly like a DHL parcel that missed its turn.
+        if (dhlKey && dhlCalls >= DHL_CALLS_PER_RUN) continue
         if (!dhlKey) {
           // Bring does not know it, and DHL was never asked - DHL is simply
           // not connected. That is a different fact from "asked, and DHL
