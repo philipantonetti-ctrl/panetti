@@ -888,6 +888,19 @@ model TrackingImport {
   /// not read names (the DHL export, the old order-number path).
   namesRead     Int?
   error         String?
+  /// The file exactly as it arrived, so a rule that did not exist on the day
+  /// can still be applied to it later without anyone re-sending anything. A
+  /// weekday's file is about 10 KB; the 42 parcels stuck on 2026-09-11 were
+  /// stuck only because the files they came in were not kept.
+  file          Bytes?
+  /// The version of the reading rules this file was last read with (see
+  /// RULES_VERSION in lib/bring/reread.ts). Older than the current version, or
+  /// null, and the cron reads the stored file again.
+  fileRules     Int?
+  /// When the stored file was last read again, and how many parcels that
+  /// second reading attached.
+  rereadAt      DateTime?
+  rereadLinked  Int?
 
   @@index([receivedAt])
 }

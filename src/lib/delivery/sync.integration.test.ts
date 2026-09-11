@@ -16,6 +16,21 @@ vi.mock('./attach', async (importOriginal) => {
   return { ...actual, sweepUnlinked: (...args: Parameters<typeof actual.sweepUnlinked>) => sweepUnlinked(...args) }
 })
 
+// The stray-row identification is mocked for the same reason: it is a global,
+// unscoped query over every Bring row without facts - which, with BRING the
+// schema default, is most fixtures in every delivery suite. Its own behaviour
+// is proven in identify.integration.test.ts; here only the wiring is.
+const identifyBringStrays = vi.fn<(...args: unknown[]) => Promise<{ tried: number; identified: number }>>(
+  async () => ({ tried: 0, identified: 0 }),
+)
+vi.mock('./identify', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./identify')>()
+  return {
+    ...actual,
+    identifyBringStrays: (...args: Parameters<typeof actual.identifyBringStrays>) => identifyBringStrays(...args),
+  }
+})
+
 import { db } from '@/lib/db'
 import { encryptSecret } from '@/lib/secrets'
 import { DHL_CALLS_PER_RUN, nextPollFor, syncShipments } from './sync'
@@ -83,6 +98,8 @@ beforeEach(async () => {
   // resolved value into the next one.
   sweepUnlinked.mockReset()
   sweepUnlinked.mockResolvedValue({ tried: 0, linked: 0 })
+  identifyBringStrays.mockReset()
+  identifyBringStrays.mockResolvedValue({ tried: 0, identified: 0 })
   // DHL off unless a test says otherwise, so whether the machine running the
   // suite happens to have a DHL key exported cannot change what these assert.
   vi.stubEnv('DHL_API_KEY', '')
@@ -454,6 +471,24 @@ describe('syncShipments', () => {
     // The sweep runs before the due rows are even read, let alone polled -
     // its call must be recorded before fetch's first call.
     expect(sweepUnlinked.mock.invocationCallOrder[0]).toBeLessThan(fetchMock.mock.invocationCallOrder[0])
+  })
+
+  it('asks Bring about stray Bring rows once per run, between the sweep and the poll, and reports the counts', async () => {
+    identifyBringStrays.mockResolvedValueOnce({ tried: 2, identified: 1 })
+    await db.shipment.create({ data: { trackingNumber: T1, nextPollAt: new Date('2026-01-01') } })
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ consignmentSet: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await syncShipments({ now })
+
+    expect(identifyBringStrays).toHaveBeenCalledTimes(1)
+    const [creds, calledWith] = identifyBringStrays.mock.calls[0]
+    expect(creds).toMatchObject({ uid: 'ops@example.com', key: 'k' })
+    expect(calledWith).toEqual(now)
+    expect(result.straysTried).toBe(2)
+    expect(result.straysIdentified).toBe(1)
+    expect(sweepUnlinked.mock.invocationCallOrder[0]).toBeLessThan(identifyBringStrays.mock.invocationCallOrder[0])
+    expect(identifyBringStrays.mock.invocationCallOrder[0]).toBeLessThan(fetchMock.mock.invocationCallOrder[0])
   })
 
   it('stores events and milestones for a due parcel', async () => {

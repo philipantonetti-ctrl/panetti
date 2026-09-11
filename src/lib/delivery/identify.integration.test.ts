@@ -1,6 +1,6 @@
-import { describe, expect, it, beforeEach, afterAll } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, afterAll, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { applyIdentification, applyUnknown, type CarrierFacts } from './identify'
+import { applyIdentification, applyUnknown, identifyBringStrays, type CarrierFacts } from './identify'
 import { milestonesFrom } from './milestones'
 import { nameKey } from './name-key'
 
@@ -243,5 +243,82 @@ describe('applyUnknown', () => {
     expect(after?.terminal).toBe(true)
     expect(after?.unlinkedReason).toBe('No carrier knew this number in 14 days')
     expect(after?.dismissedAt).toBeNull()
+  })
+})
+
+describe('identifyBringStrays', () => {
+  // The wall clock, not the suite's fixed `now`: the stage only looks at rows
+  // older than a day, measured from the clock it is handed, and these rows
+  // are created with real timestamps.
+  const real = new Date()
+  const daysAgo = (n: number) => new Date(real.getTime() - n * DAY)
+  const creds = { uid: 'ops@example.test', key: 'k', clientUrl: 'https://example.test' }
+  const stray = (trackingNumber: string, over: Record<string, unknown> = {}) =>
+    db.shipment.create({
+      data: { trackingNumber, carrier: 'BRING', createdAt: daysAgo(12), terminal: true, lastStatus: 'DELIVERED', ...over },
+    })
+  const bringAnswer = (n: string, email: string) =>
+    JSON.stringify({
+      consignmentSet: [{
+        consignmentId: `C-${n}`, recipientName: 'Stray Person',
+        packageSet: [{
+          packageNumber: n, recipientEmailAddress: email, recipientAddress: { countryCode: 'NO' },
+          eventSet: [{ status: 'DELIVERED', dateIso: daysAgo(10).toISOString() }],
+        }],
+      }],
+    })
+  const notFound = JSON.stringify({ consignmentSet: [{ error: { code: 404, message: 'No shipments found' } }] })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('asks Bring about an old Bring row nobody ever identified, stores the answer, and links it by email', async () => {
+    const o = await order('S1', 'stray@example.test', daysAgo(14).toISOString())
+    await stray(`${TRACK}S1`)
+    const fetchMock = vi.fn(async (url: string) =>
+      new Response(String(url).includes(`${TRACK}S1`) ? bringAnswer(`${TRACK}S1`, 'stray@example.test') : notFound, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const r = await identifyBringStrays(creds, real)
+
+    expect(r.identified).toBe(1)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: `${TRACK}S1` } })
+    expect(row?.carrier).toBe('BRING')
+    expect(row?.recipientEmail).toBe('stray@example.test')
+    expect(row?.recipientName).toBe('Stray Person')
+    expect(row?.identifiedAt).toEqual(real)
+    expect(row?.orderId).toBe(o.id)
+    expect(row?.linkSource).toBe('BRING_EMAIL')
+  })
+
+  it('leaves a row Bring does not know as it is, and never asks about a dismissed, linked or fresh row', async () => {
+    const o = await order('S2', 'linked@example.test', daysAgo(14).toISOString())
+    await stray(`${TRACK}S2`)
+    await stray(`${TRACK}S3`, { dismissedAt: real })
+    await stray(`${TRACK}S4`, { orderId: o.id })
+    await stray(`${TRACK}S5`, { createdAt: real })
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () => new Response(notFound, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const r = await identifyBringStrays(creds, real)
+
+    expect(r.identified).toBe(0)
+    const asked = fetchMock.mock.calls.map(([u]) => String(u))
+    expect(asked.some((u) => u.includes(`${TRACK}S2`))).toBe(true)
+    for (const n of ['S3', 'S4', 'S5']) expect(asked.some((u) => u.includes(`${TRACK}${n}`))).toBe(false)
+    const row = await db.shipment.findUnique({ where: { trackingNumber: `${TRACK}S2` } })
+    expect(row?.carrier).toBe('BRING')
+    expect(row?.identifiedAt).toBeNull()
+    expect(row?.orderId).toBeNull()
+  })
+
+  it('stops at the deadline', async () => {
+    await stray(`${TRACK}S6`)
+    const fetchMock = vi.fn(async () => new Response(notFound, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const r = await identifyBringStrays(creds, real, { deadline: Date.now() - 1 })
+
+    expect(r).toEqual({ tried: 0, identified: 0 })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
