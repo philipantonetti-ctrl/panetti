@@ -869,11 +869,41 @@ describe('syncShipments', () => {
       expect(rows.filter((x) => x.lastError === 'Neither Bring nor DHL knows this number')).toHaveLength(DHL_CALLS_PER_RUN)
       expect(rows.every((x) => x.carrier === 'UNKNOWN')).toBe(true)
       expect(rows[DHL_CALLS_PER_RUN].nextPollAt).toEqual(new Date('2026-01-03'))
-      // The third row was not asked of Bring either: once DHL's budget is
-      // spent, the row is skipped before Bring is ever called, so the
-      // backlog does not cost one Bring call per row per run while it waits.
+      // The third row WAS asked of Bring (unmetered) and only its DHL half
+      // waits: on 2026-09-11, 71 of 82 recovered numbers were Bring's, and
+      // gating Bring behind DHL's budget let two DHL rows stall the whole
+      // backlog to three identifications a run.
       const bringCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('bring.com')).length
-      expect(bringCalls).toBe(DHL_CALLS_PER_RUN)
+      expect(bringCalls).toBe(DHL_CALLS_PER_RUN + 1)
+    })
+
+    it('identifies every Bring-known UNKNOWN row in the run even after the DHL share is spent', async () => {
+      // Two rows DHL must be asked about, then three Bring knows - in that order.
+      for (let i = 0; i < DHL_CALLS_PER_RUN; i++) {
+        await db.shipment.create({ data: { trackingNumber: `${TRACK}D${i}`, carrier: 'UNKNOWN', nextPollAt: new Date(`2026-01-0${i + 1}`) } })
+      }
+      for (let i = 0; i < 3; i++) {
+        await db.shipment.create({ data: { trackingNumber: `${TRACK}K${i}`, carrier: 'UNKNOWN', nextPollAt: new Date(`2026-01-0${DHL_CALLS_PER_RUN + i + 1}`) } })
+      }
+      const fetchMock = vi.fn(async (url: string) => {
+        const u = String(url)
+        if (u.includes('bring.com')) {
+          const m = u.match(/q=(TSYNCK\d)/)
+          return new Response(JSON.stringify(m
+            ? { consignmentSet: [{ consignmentId: `C-${m[1]}`, packageSet: [{ packageNumber: m[1], recipientEmailAddress: `${m[1].toLowerCase()}@example.test`, eventSet: [{ status: 'PRE_NOTIFIED', dateIso: '2026-08-04T10:00:00Z' }] }] }] }
+            : { consignmentSet: [] }), { status: 200 })
+        }
+        return new Response(JSON.stringify({ shipments: [] }), { status: 200 })
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      vi.stubEnv('DHL_API_KEY', 'k')
+
+      const r = await syncShipments({ now, sleep: noSleep })
+
+      expect(r.dhlCalls).toBe(DHL_CALLS_PER_RUN)
+      expect(r.identified).toBe(3)
+      const known = await db.shipment.findMany({ where: { trackingNumber: { startsWith: `${TRACK}K` } } })
+      expect(known.every((x) => x.carrier === 'BRING' && x.identifiedAt !== null)).toBe(true)
     })
 
     it('does not expire the UNKNOWN grace period on a row DHL was never asked about, when no key is configured', async () => {
