@@ -8,6 +8,7 @@ import { rematchOpenPayoutLines, syncDinteroPayouts, type DinteroSyncResult } fr
 import { resolveUnpaidOrders, type ResolveResult } from '@/lib/dintero/resolve'
 import { runVismaProbe, type VismaProbeResult } from '@/lib/visma/probe'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
+import { backfillNameKeys } from '@/lib/delivery/name-key-backfill'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
 import { ensureRates } from '@/lib/fx/rates'
@@ -449,6 +450,16 @@ export async function GET(req: Request) {
     // away from a failed sync.
   }
 
+  // Name keys for orders synced before the key existed. Newest first and
+  // bounded, so the parcel matcher's 30-day window is keyed on the first
+  // tick and history follows over the next few. No network call.
+  let nameKeys = 0
+  try {
+    nameKeys = await backfillNameKeys()
+  } catch {
+    // Next tick retries; the matcher simply finds fewer names until then.
+  }
+
   // Parcel tracking, last of the data pulls. Best-effort like the rest: Bring
   // being down must never fail the shop sync, and every parcel keeps its own
   // lastError.
@@ -522,6 +533,7 @@ export async function GET(req: Request) {
     txIdsFilled: txBackfill.filled,
     txIdsErrors: txBackfill.errors,
     rematchedLines: rematch.matched,
+    nameKeys,
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,

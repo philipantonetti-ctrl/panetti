@@ -83,6 +83,7 @@ describe('mapOrder', () => {
       billing: { first_name: 'Tino', last_name: 'Skaarup', email: 'tino@example.dk' },
     })
     expect(o.customerName).toBe('Tino Skaarup')
+    expect(o.customerNameKey).toBe('skaarup tino')
     expect(o.customerEmail).toBe('tino@example.dk')
   })
 
@@ -91,12 +92,14 @@ describe('mapOrder', () => {
     // that difference to know when it is finished.
     const o = mapOrder(woo)
     expect(o.customerName).toBe('')
+    expect(o.customerNameKey).toBe('')
     expect(o.customerEmail).toBe('')
   })
 
   it('survives partial billing: an email-only guest still shows who bought', () => {
     const o = mapOrder({ ...woo, billing: { email: 'guest@example.no' } })
     expect(o.customerName).toBe('')
+    expect(o.customerNameKey).toBe('')
     expect(o.customerEmail).toBe('guest@example.no')
   })
 

@@ -1,4 +1,5 @@
 import { db } from '../db'
+import { nameKey } from '../delivery/name-key'
 import { VOIDED_STATUSES } from '../metrics/types'
 import { decryptSecret } from '../secrets'
 import {
@@ -204,6 +205,7 @@ export async function storeOrder(shopId: string, raw: WooOrder, byCode: CodeBook
     total: o.total,
     couponCode: o.couponCode,
     customerName: o.customerName,
+    customerNameKey: o.customerNameKey,
     customerEmail: o.customerEmail,
     customerPhone: o.customerPhone,
     shippingCountry: o.shippingCountry,
@@ -363,14 +365,16 @@ export async function backfillCustomers(shopId: string, creds: WooCredentials): 
   for (const m of missing) {
     const raw = fetched.get(m.externalId)
     const o = raw ? mapOrder(raw) : null
+    // What Woo says wins; what we already hold survives a store that no
+    // longer has the order (a Visma or B2B row queued only for its null
+    // phone must not have its real name wiped to ''); only then comes
+    // '' - checked, nothing there.
+    const customerName = o?.customerName ?? m.customerName ?? ''
     await db.order.update({
       where: { id: m.id },
       data: {
-        // What Woo says wins; what we already hold survives a store that no
-        // longer has the order (a Visma or B2B row queued only for its null
-        // phone must not have its real name wiped to ''); only then comes
-        // '' - checked, nothing there.
-        customerName: o?.customerName ?? m.customerName ?? '',
+        customerName,
+        customerNameKey: nameKey(customerName),
         customerEmail: o?.customerEmail ?? m.customerEmail ?? '',
         customerPhone: o?.customerPhone ?? m.customerPhone ?? '',
       },

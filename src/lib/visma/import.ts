@@ -1,6 +1,7 @@
 import { orderTotals } from '../b2b/pricing'
 import { toMinor } from '../money'
 import { writeCarrierCosts } from '../delivery/cost-writer'
+import { nameKey } from '../delivery/name-key'
 import { db } from '../db'
 import { normaliseSku } from '../inventory/sku'
 import {
@@ -446,6 +447,7 @@ async function storeB2bSale(
     // this order out of backfillCustomers()' queue, which would otherwise ask
     // WooCommerce over and over about an order it has never heard of.
     customerName: customer.name,
+    customerNameKey: nameKey(customer.name),
     customerEmail: customer.email ?? '',
     b2bCustomerId: order.b2bCustomerId,
   }

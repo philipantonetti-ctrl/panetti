@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
+import { nameKey } from '@/lib/delivery/name-key'
 import { VOIDED_STATUSES } from '@/lib/metrics/types'
 import { VISMA_EXTERNAL_ID_PREFIX } from '@/lib/visma/b2b-sales'
 import {
@@ -165,6 +166,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
           taxTotal: w.totals.taxTotal,
           total: w.totals.total,
           customerName: w.customer.name,
+          customerNameKey: nameKey(w.customer.name),
           customerEmail: w.customer.email ?? '',
           b2bCustomerId: w.customer.id,
           fulfillmentCost: fulfillmentCostToStore(parsed.data.fulfillmentCost),
