@@ -96,6 +96,9 @@ type ImportRow = {
   rowsLinked: number
   rowsUnmatched: number
   namesRead: number | null
+  /** Set when the kept file was read again with newer rules; how many parcels that attached. */
+  rereadAt?: string | null
+  rereadLinked?: number | null
   error: string | null
   /** 'UPLOAD' or 'EMAIL' today; typed loosely because it is a plain column. */
   source: string
@@ -1382,6 +1385,11 @@ export function ImportsList({ items }: { items: ImportRow[] }) {
                         )}
                         {i.namesRead === 0 && (
                           <span className="ml-1 text-[11px] font-normal text-warn">no names read from this file</span>
+                        )}
+                        {i.rereadAt && (
+                          <span className="ml-1 text-[11px] font-normal text-muted">
+                            read again {new Date(i.rereadAt).toLocaleDateString()}, {i.rereadLinked ?? 0} more linked
+                          </span>
                         )}
                       </td>
                       <td className={`num px-4 py-2.5 text-right ${i.rowsUnmatched > 0 ? 'text-warn' : 'text-ink'}`}>

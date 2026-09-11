@@ -40,10 +40,17 @@ Underneath:
   order from the dropdown (orders with the same name come first), or press
   "Other order" to type a number, or mark it "Not a customer parcel". A
   growing list means parcels waiting for a decision, not a broken file.
-- **Re-reading old files.** Uploading a day's warehouse file again is safe.
-  It never moves a parcel that is already attached; it fills in names for
-  parcels stored before names were read, and attaches the ones that can be.
-  The "Recent imports" line shows how many names each file gave.
+- **Files are kept.** Every warehouse file is stored with its import row,
+  exactly as it arrived. When the reading rules improve, the sync reads
+  every kept file again by itself, a few per tick, and attaches what the
+  new rule can. Nobody has to find or re-send a file. The "Recent imports"
+  line then says "read again <date>, N more linked". Files that arrived
+  before 2026-09-11 were not kept, so those days can only be read again by
+  sending the file once more.
+- **Re-reading old files by hand.** Uploading a day's warehouse file again
+  is also safe. It never moves a parcel that is already attached; it fills in
+  names for parcels stored before names were read, and attaches the ones
+  that can be. The "Recent imports" line shows how many names each file gave.
 - **Recent imports.** Every file read, and how many parcels it linked.
 
 

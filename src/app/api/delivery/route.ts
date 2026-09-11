@@ -173,6 +173,9 @@ export async function GET(req: Request) {
         select: {
           id: true, filename: true, receivedAt: true,
           rowsParsed: true, rowsLinked: true, rowsUnmatched: true, namesRead: true, error: true,
+          // When the stored file was read again with newer rules, and what
+          // that attached. Never `file` itself: the bytes stay on the server.
+          rereadAt: true, rereadLinked: true,
           // Both were written and neither was ever read. `unmatched` is the JSON
           // list of refusals with their stated reasons - without it the page
           // says "27 parsed, 25 linked, 2 unmatched" and gives an operator no

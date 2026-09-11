@@ -9,6 +9,7 @@ vi.mock('./consignments', () => ({
 
 const { db } = await import('@/lib/db')
 const { importWarehouseFile } = await import('./import')
+const { RULES_VERSION } = await import('./reread')
 const { encryptSecret } = await import('@/lib/secrets')
 
 const TAG = '[intake-import-test]'
@@ -509,7 +510,8 @@ describe('the warehouse file names a row', () => {
       consignments: [],
       unresolved: [{ number, reason: 'Bring has no parcel with this number' }],
     })
-    const result = await importWarehouseFile(sheet([ltasRow(number, 'ROTHKE MARTIN')]), 'named.xlsx', 'UPLOAD')
+    const file = sheet([ltasRow(number, 'ROTHKE MARTIN')])
+    const result = await importWarehouseFile(file, 'named.xlsx', 'UPLOAD')
     expect(result.namesRead).toBe(1)
     expect(result.linked).toBe(1)
     expect(result.unaccounted).toBe(0)
@@ -522,6 +524,10 @@ describe('the warehouse file names a row', () => {
     expect(row?.carrier).toBe('DHL')
     const record = await db.trackingImport.findFirst({ where: { filename: 'named.xlsx' }, orderBy: { receivedAt: 'desc' } })
     expect(record?.namesRead).toBe(1)
+    // The file itself is kept on the row, stamped with the rules it was read
+    // with, so a later rule can be applied to it without anyone re-sending it.
+    expect(record?.file && Buffer.from(record.file).equals(file)).toBe(true)
+    expect(record?.fileRules).toBe(RULES_VERSION)
   })
 
   it('a resolved consignment whose email matches nothing links by the name, and Bring\u2019s own name wins over the file\u2019s', async () => {

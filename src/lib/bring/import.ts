@@ -8,11 +8,15 @@ import {
 } from './consignments'
 import { matchByEmail, matchByName, type MatchOutcome } from './match'
 import { readLabels } from './labels'
+import { RULES_VERSION } from './reread'
 // Note the directory: config.ts lives under delivery/, not bring/.
 import { getDeliveryConfig } from '../delivery/config'
 import { attach, ATTACH_SELECT } from '../delivery/attach'
 import { parseDhlExport } from '../dhl/parse'
 import { linkDhlShipments } from '../dhl/link'
+
+/** Prisma stores Bytes as a plain Uint8Array; a Node Buffer is copied into one. */
+const bytes = (b: Buffer): Uint8Array<ArrayBuffer> => new Uint8Array(b)
 
 export type ImportResult = {
   importId: string
@@ -73,9 +77,14 @@ export class ImportParseError extends Error {
 function recordFailedAttempt(
   filename: string,
   source: 'UPLOAD' | 'EMAIL',
+  file: Buffer,
   fields: { rowsParsed: number; rowsLinked: number; rowsUnmatched: number; error: string },
 ) {
-  return db.trackingImport.create({ data: { filename, source, ...fields } }).catch(() => {})
+  // The file is kept even when reading it failed: a reader fixed next week
+  // can then read it again by itself (lib/bring/reread.ts).
+  return db.trackingImport
+    .create({ data: { filename, source, file: bytes(file), fileRules: RULES_VERSION, ...fields } })
+    .catch(() => {})
 }
 
 /**
@@ -100,7 +109,7 @@ export async function importTrackingFile(
     known = await knownOrderNumbers()
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Could not read this file'
-    await recordFailedAttempt(filename, source, { rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error })
+    await recordFailedAttempt(filename, source, buf, { rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error })
     throw e
   }
 
@@ -117,7 +126,7 @@ export async function importTrackingFile(
     ;({ rows, seen } = await parseTrackingFile(buf, filename, known))
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Could not read this file'
-    await recordFailedAttempt(filename, source, { rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error })
+    await recordFailedAttempt(filename, source, buf, { rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error })
     throw new ImportParseError(error)
   }
 
@@ -131,7 +140,7 @@ export async function importTrackingFile(
     // knownOrderNumbers failure above, so the route treats it as unsafe to
     // show verbatim.
     const error = e instanceof Error ? e.message : 'Could not link this file'
-    await recordFailedAttempt(filename, source, {
+    await recordFailedAttempt(filename, source, buf, {
       rowsParsed: seen, rowsLinked: 0, rowsUnmatched: seen, error,
     })
     throw e
@@ -148,6 +157,8 @@ export async function importTrackingFile(
     data: {
       filename,
       source,
+      file: bytes(buf),
+      fileRules: RULES_VERSION,
       rowsParsed: seen,
       rowsLinked: linked,
       rowsUnmatched: unaccounted,
@@ -221,6 +232,8 @@ export async function importWarehouseFile(
         data: {
           filename,
           source,
+          file: bytes(buf),
+          fileRules: RULES_VERSION,
           rowsParsed: parsed,
           rowsLinked: linked,
           rowsUnmatched: rows.length,
@@ -233,7 +246,7 @@ export async function importWarehouseFile(
       // the silent morning this feature exists to prevent.
       const error = e instanceof Error ? e.message : 'Could not import this file'
       const parsed = dhl.shipments.length + dhl.skipped.length
-      await recordFailedAttempt(filename, source, {
+      await recordFailedAttempt(filename, source, buf, {
         rowsParsed: parsed, rowsLinked: 0, rowsUnmatched: parsed, error,
       })
       throw e
@@ -245,7 +258,7 @@ export async function importWarehouseFile(
     numbers = await parseTrackingNumbers(buf, filename)
   } catch (e) {
     const error = e instanceof Error ? e.message : 'Could not read this file'
-    await recordFailedAttempt(filename, source, {
+    await recordFailedAttempt(filename, source, buf, {
       rowsParsed: 0, rowsLinked: 0, rowsUnmatched: 0, error,
     })
     throw new ImportParseError(error)
@@ -472,6 +485,10 @@ export async function importWarehouseFile(
       data: {
         filename,
         source,
+        // Kept whole, so a rule added later is applied to this file by the
+        // cron on its own - see lib/bring/reread.ts.
+        file: bytes(buf),
+        fileRules: RULES_VERSION,
         rowsParsed: parsed,
         rowsLinked: linked,
         rowsUnmatched: unaccounted,
@@ -490,7 +507,7 @@ export async function importWarehouseFile(
     // parcels - against the promise ImportResult makes, that parsed is always
     // linked + unaccounted. Same shape as importTrackingFile's `unaccounted`.
     const parsed = consignments.length + unresolved.length
-    await recordFailedAttempt(filename, source, {
+    await recordFailedAttempt(filename, source, buf, {
       rowsParsed: parsed,
       rowsLinked: linked,
       rowsUnmatched: Math.max(0, parsed - linked),

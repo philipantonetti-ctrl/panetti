@@ -9,6 +9,7 @@ import { resolveUnpaidOrders, type ResolveResult } from '@/lib/dintero/resolve'
 import { runVismaProbe, type VismaProbeResult } from '@/lib/visma/probe'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { backfillNameKeys } from '@/lib/delivery/name-key-backfill'
+import { rereadStoredFiles, type RereadResult } from '@/lib/bring/reread'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
 import { ensureRates } from '@/lib/fx/rates'
@@ -464,6 +465,19 @@ export async function GET(req: Request) {
     nameKeysError = e instanceof Error ? e.message : 'Name key backfill failed'
   }
 
+  // Warehouse files stored before the current reading rules, read again with
+  // them. A few files a tick, database only, so a rule added today reaches
+  // every kept file over the next ticks without anyone re-sending a thing.
+  // Before the parcel poll on purpose: a parcel named here attaches in the
+  // same run.
+  let reread: RereadResult = { files: 0, linked: 0 }
+  let rereadError: string | null = null
+  try {
+    reread = await rereadStoredFiles({ deadline: runStartedAt + SHIPMENTS_DEADLINE_MS })
+  } catch (e) {
+    rereadError = e instanceof Error ? e.message : 'Re-reading stored files failed'
+  }
+
   // Parcel tracking, last of the data pulls. Best-effort like the rest: Bring
   // being down must never fail the shop sync, and every parcel keeps its own
   // lastError.
@@ -539,6 +553,10 @@ export async function GET(req: Request) {
     rematchedLines: rematch.matched,
     nameKeys,
     nameKeysError,
+    /** Stored warehouse files read again with the current rules this tick, and parcels that attached. */
+    filesReread: reread.files,
+    filesRereadLinked: reread.linked,
+    rereadError,
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,

@@ -73,6 +73,12 @@ vi.mock('@/lib/klaviyo/sync', () => ({ syncKlaviyo: () => syncKlaviyo() }))
 const backfillNameKeys = vi.fn(async () => 0)
 vi.mock('@/lib/delivery/name-key-backfill', () => ({ backfillNameKeys: () => backfillNameKeys() }))
 
+// Nor the stored-file re-read, for the same two reasons: its failure path is
+// tested here, and it would otherwise read whatever TrackingImport rows
+// another test file left in the shared database.
+const rereadStoredFiles = vi.fn(async () => ({ files: 0, linked: 0 }))
+vi.mock('@/lib/bring/reread', () => ({ rereadStoredFiles: () => rereadStoredFiles() }))
+
 // Nor Dintero, for the same reason as Klaviyo: a connection row left behind
 // by another test file in the shared database would send this test to the
 // real payment API with fake credentials.
@@ -126,6 +132,8 @@ const REAL = process.env.CRON_SECRET
 beforeEach(() => {
   backfillNameKeys.mockClear()
   backfillNameKeys.mockResolvedValue(0)
+  rereadStoredFiles.mockClear()
+  rereadStoredFiles.mockResolvedValue({ files: 0, linked: 0 })
   syncKlaviyo.mockClear()
   postWooTrackingNotes.mockClear()
   resolveUnpaidOrders.mockClear()
@@ -205,6 +213,31 @@ describe('the scheduled sync endpoint', () => {
 
     expect(body.nameKeys).toBe(37)
     expect(body.nameKeysError).toBeNull()
+  })
+
+  /**
+   * Same shape as the backfill: a stored warehouse file that cannot be read
+   * again must be visible in the response, not swallowed, and must never
+   * fail the run that reads the shops.
+   */
+  it('reports when re-reading stored warehouse files fails, without failing the run', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    rereadStoredFiles.mockRejectedValueOnce(new Error('bad zip'))
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(body.ok).toBe(true)
+    expect(body.filesReread).toBe(0)
+    expect(body.rereadError).toBe('bad zip')
+  })
+
+  it('reports how many stored files were read again and how many parcels that attached', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    rereadStoredFiles.mockResolvedValueOnce({ files: 3, linked: 2 })
+    const body = await (await call('Bearer right-secret')).json()
+
+    expect(body.filesReread).toBe(3)
+    expect(body.filesRereadLinked).toBe(2)
+    expect(body.rereadError).toBeNull()
   })
 
   /**

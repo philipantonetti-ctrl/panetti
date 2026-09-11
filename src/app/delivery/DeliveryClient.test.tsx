@@ -462,6 +462,16 @@ describe('ImportsList, the names a file gave', () => {
     expect(screen.queryByText('no names read from this file')).not.toBeInTheDocument()
     expect(container.textContent).not.toMatch(/\d+ names\b/)
   })
+
+  it('says when the kept file was read again with newer rules, and what that attached', () => {
+    render(<ImportsList items={[{ ...row(34), rereadAt: '2026-09-12T00:15:00.000Z', rereadLinked: 3 }]} />)
+    expect(screen.getByText(/^read again .*, 3 more linked$/)).toBeInTheDocument()
+  })
+
+  it('says nothing about a second reading for a file that had none', () => {
+    const { container } = render(<ImportsList items={[{ ...row(34), rereadAt: null, rereadLinked: null }]} />)
+    expect(container.textContent).not.toMatch(/read again/)
+  })
 })
 
 const parcel = (over: Partial<UnlinkedParcel> = {}): UnlinkedParcel => ({
