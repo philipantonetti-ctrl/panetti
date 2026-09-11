@@ -69,6 +69,7 @@ export type Candidate = {
   placedAt: string
   items: string
   holdsParcel: boolean
+  sameName: boolean
 }
 
 export type UnlinkedParcel = {
@@ -94,6 +95,7 @@ type ImportRow = {
   rowsParsed: number
   rowsLinked: number
   rowsUnmatched: number
+  namesRead: number | null
   error: string | null
   /** 'UPLOAD' or 'EMAIL' today; typed loosely because it is a plain column. */
   source: string
@@ -1083,14 +1085,14 @@ export function UnattachedParcels({
       >
         <span>
           <span className="text-[13px] font-semibold text-ink">
-            Parcels without an order{' '}
+            Parcels that need a person{' '}
             <span className="num font-normal text-muted">
               ({capped ? `${items.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}` : items.length.toLocaleString('en-US')})
             </span>
           </span>
           <span className="mt-0.5 block text-[12px] text-muted">
-            Parcels a warehouse file named that we could not attach to an order, with the reason. Pick the
-            order, or type its number. Nothing here is guessed.
+            Parcels are matched to orders by the customer&apos;s email or by the name on the label, automatically.
+            These are the ones no rule could place, each with the reason.
           </span>
         </span>
         <span aria-hidden="true" className="text-faint">{open ? '▾' : '▸'}</span>
@@ -1099,7 +1101,7 @@ export function UnattachedParcels({
       {open &&
         (items.length === 0 ? (
           <p className="border-t border-line px-5 py-4 text-[13px] text-muted">
-            None right now - every parcel the carriers have told us about is linked to an order.
+            None right now - every parcel a warehouse file or a carrier has named is attached to an order.
           </p>
         ) : (
           <div className="overflow-x-auto border-t border-line">
@@ -1112,6 +1114,7 @@ export function UnattachedParcels({
                   <th className="px-3 py-2 text-left">Booked</th>
                   <th className="px-3 py-2 text-right">Weight</th>
                   <th className="px-3 py-2 text-left">Last status</th>
+                  <th className="px-3 py-2 text-left">Name on label</th>
                   <th className="px-5 py-2 text-left">Why</th>
                 </tr>
               </thead>
@@ -1145,10 +1148,17 @@ function ParcelRow({
   onLink: (trackingNumber: string, body: { orderId: string } | { dismiss: true }) => Promise<void>
   onLinkTyped: (trackingNumber: string, shopId: string, number: string) => Promise<void>
 }) {
+  const [chosen, setChosen] = useState('')
+  const [other, setOther] = useState(false)
   const [shopId, setShopId] = useState(shops[0]?.id ?? '')
   const [number, setNumber] = useState('')
   const why = p.reason ?? (p.identifiedAt ? DASH : 'Not identified yet - the next check asks Bring, then DHL')
   const more = p.candidatesTotal - p.candidates.length
+  const option = (c: Candidate) =>
+    `${c.number} · ${c.customerName || 'name unknown'} · ${orderedOn(c.placedAt.slice(0, 10))}` +
+    (c.items ? ` · ${c.items}` : '') +
+    (c.sameName ? ' · same name as the label' : '') +
+    (c.holdsParcel ? ' · already has a parcel' : '')
 
   return (
     <>
@@ -1159,48 +1169,61 @@ function ParcelRow({
           ) : (
             <span className="num text-ink">{p.trackingNumber}</span>
           )}
-          {p.recipientName && <span className="block text-[12px] text-muted">{p.recipientName}</span>}
         </td>
         <td className="px-3 py-2.5 text-muted">{p.carrier}</td>
         <td className="px-3 py-2.5 text-ink">{p.destinationCountry ?? DASH}</td>
         <td className="px-3 py-2.5 text-ink">{bookedOn(p.bookedAt)}</td>
         <td className="num px-3 py-2.5 text-right text-ink">{p.weightKg !== null ? `${p.weightKg} kg` : DASH}</td>
         <td className="px-3 py-2.5 text-ink">{p.lastStatus ?? DASH}</td>
+        <td className="px-3 py-2.5 text-ink">{p.recipientName ?? <span className="text-muted">no name yet</span>}</td>
         <td className="max-w-[320px] px-5 py-2.5 text-[12px] text-warn">{why}</td>
       </tr>
       <tr className="border-b border-line last:border-b-0">
-        <td colSpan={7} className="px-5 pb-3 pt-0">
+        <td colSpan={8} className="px-5 pb-3 pt-0">
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
-            {p.candidates.map((c) => (
-              <button
-                key={c.orderId}
-                type="button"
-                disabled={busy}
-                onClick={() => void onLink(p.trackingNumber, { orderId: c.orderId })}
-                className="rounded-[var(--radius-control)] border border-line px-2 py-1 text-accent hover:bg-panel disabled:opacity-50"
-              >
-                Link to {c.number} · {c.customerName || 'name unknown'} · {orderedOn(c.placedAt.slice(0, 10))}
-                {c.items ? ` · ${c.items}` : ''}
-                {c.holdsParcel ? ' (has a parcel)' : ''}
-              </button>
-            ))}
-            {more > 0 && <span className="text-muted">and {more} more</span>}
-            <label className="ml-auto flex items-center gap-1 text-muted">
-              Shop
-              <select aria-label="Shop" value={shopId} onChange={(e) => setShopId(e.target.value)} className="rounded-[var(--radius-control)] border border-line bg-surface px-1.5 py-1 text-ink">
-                {shops.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-muted">
-              Order number
-              <input aria-label="Order number" value={number} onChange={(e) => setNumber(e.target.value)} className="w-24 rounded-[var(--radius-control)] border border-line bg-surface px-1.5 py-1 text-ink" />
-            </label>
-            <button type="button" disabled={busy} onClick={() => void onLinkTyped(p.trackingNumber, shopId, number)} className="rounded-[var(--radius-control)] border border-line px-2 py-1 text-accent hover:bg-panel disabled:opacity-50">
+            <select
+              aria-label="Order"
+              value={chosen}
+              onChange={(e) => setChosen(e.target.value)}
+              className="max-w-[560px] rounded-[var(--radius-control)] border border-line bg-surface px-1.5 py-1 text-ink"
+            >
+              <option value="">Choose the order</option>
+              {p.candidates.map((c) => (
+                <option key={c.orderId} value={c.orderId}>{option(c)}</option>
+              ))}
+              {more > 0 && <option value="" disabled>{more} more, use Other order</option>}
+            </select>
+            <button
+              type="button"
+              disabled={busy || !chosen}
+              onClick={() => void onLink(p.trackingNumber, { orderId: chosen })}
+              className="rounded-[var(--radius-control)] border border-line px-2 py-1 text-accent hover:bg-panel disabled:opacity-50"
+            >
               Link
             </button>
             <button type="button" disabled={busy} onClick={() => void onLink(p.trackingNumber, { dismiss: true })} className="rounded-[var(--radius-control)] border border-line px-2 py-1 text-muted hover:bg-panel disabled:opacity-50">
               Not a customer parcel
             </button>
+            <button type="button" onClick={() => setOther((o) => !o)} aria-expanded={other} className="text-muted underline-offset-2 hover:underline">
+              Other order
+            </button>
+            {other && (
+              <>
+                <label className="flex items-center gap-1 text-muted">
+                  Shop
+                  <select aria-label="Shop" value={shopId} onChange={(e) => setShopId(e.target.value)} className="rounded-[var(--radius-control)] border border-line bg-surface px-1.5 py-1 text-ink">
+                    {shops.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </label>
+                <label className="flex items-center gap-1 text-muted">
+                  Order number
+                  <input aria-label="Order number" value={number} onChange={(e) => setNumber(e.target.value)} className="w-24 rounded-[var(--radius-control)] border border-line bg-surface px-1.5 py-1 text-ink" />
+                </label>
+                <button type="button" disabled={busy} onClick={() => void onLinkTyped(p.trackingNumber, shopId, number)} className="rounded-[var(--radius-control)] border border-line px-2 py-1 text-accent hover:bg-panel disabled:opacity-50">
+                  Link this number
+                </button>
+              </>
+            )}
           </div>
         </td>
       </tr>
@@ -1352,7 +1375,15 @@ export function ImportsList({ items }: { items: ImportRow[] }) {
                       <td className="px-4 py-2.5 text-muted">{SOURCE_LABEL[i.source] ?? i.source}</td>
                       <td className="px-4 py-2.5 text-muted">{new Date(i.receivedAt).toLocaleString()}</td>
                       <td className="num px-4 py-2.5 text-right text-ink">{i.rowsParsed}</td>
-                      <td className="num px-4 py-2.5 text-right text-ink">{i.rowsLinked}</td>
+                      <td className="num px-4 py-2.5 text-right text-ink">
+                        {i.rowsLinked}
+                        {i.namesRead !== null && i.namesRead > 0 && (
+                          <span className="ml-1 text-[11px] font-normal text-muted">{i.namesRead} names</span>
+                        )}
+                        {i.namesRead === 0 && (
+                          <span className="ml-1 text-[11px] font-normal text-warn">no names read from this file</span>
+                        )}
+                      </td>
                       <td className={`num px-4 py-2.5 text-right ${i.rowsUnmatched > 0 ? 'text-warn' : 'text-ink'}`}>
                         {i.rowsUnmatched}
                       </td>
