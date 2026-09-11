@@ -5,7 +5,10 @@ Three new screens. Here is what each one shows you.
 
 ## 1. Delivery page
 
-In the left menu under Analytics. Use the shop and date filters as usual.
+In the left menu under Analytics. Three tabs at the top: **Delivery** is the
+figures below, with the shop and date filters as usual; **Unmatched parcels**
+and **Recent imports** are the two daily chores, one tab each, and the
+filters do not apply to them.
 
 Four numbers at the top:
 
@@ -32,7 +35,7 @@ Underneath:
   that is their door or their pickup point. It still counts against the
   on-time rate, and it is still in "Where everything is now" - there is
   simply nothing left to chase.
-- **Parcels that need a person.** Parcels are attached to orders on their
+- **Unmatched parcels tab.** "Parcels that need a person": parcels are attached to orders on their
   own: by the customer's email when the carrier gives one, else by the name
   the warehouse printed on the label. This list is what is left: each
   parcel with its carrier, destination, booked date, weight, status, the
@@ -61,7 +64,8 @@ Underneath:
   is also safe. It never moves a parcel that is already attached; it fills in
   names for parcels stored before names were read, and attaches the ones
   that can be. The "Recent imports" line shows how many names each file gave.
-- **Recent imports.** Every file read, and how many parcels it linked.
+- **Recent imports tab.** The box to send a warehouse file by hand, and
+  every file read with how many parcels it linked.
 
 
 ## 2. Delivery column on Orders

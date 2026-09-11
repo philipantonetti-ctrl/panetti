@@ -493,6 +493,11 @@ const SHOPS = [{ id: 's-de', name: 'Panetti Germany' }]
 afterEach(() => vi.unstubAllGlobals())
 
 describe('UnattachedParcels', () => {
+  it('opens at once when told to, for the tab that is nothing but this list', () => {
+    render(<ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} defaultOpen /></ToastProvider>)
+    expect(screen.getByText('18.2 kg')).toBeInTheDocument()
+  })
+
   it('shows the carrier, where it goes, the weight, the status, the name on the label and the reason', () => {
     const { container } = render(
       <ToastProvider><UnattachedParcels items={[parcel()]} total={1} shops={SHOPS} onChanged={() => {}} /></ToastProvider>,
@@ -625,7 +630,7 @@ describe('UnattachedParcels', () => {
 })
 
 describe('NoTracking, when a parcel was refused for that customer', () => {
-  it('says so on the row, with the reason and a link down to the parcel', () => {
+  it('says so on the row, with the reason and a link to the Unmatched parcels tab', () => {
     const { container } = render(
       <NoTracking
         rows={[order({ state: 'NO_TRACKING', refusedParcel: { trackingNumber: '373325386490923366', reason: 'a@b.c matched 2 orders in the last 30 days: 14582, 14692', createdAt: '2026-09-07T16:00:00.000Z' } })]}
@@ -633,7 +638,7 @@ describe('NoTracking, when a parcel was refused for that customer', () => {
       />,
     )
     expect(container.textContent).toContain('A parcel for this customer was in the file of 7 Sept 2026 but was not attached: a@b.c matched 2 orders in the last 30 days: 14582, 14692')
-    expect(container.querySelector('a[href="#unattached"]')?.textContent).toBe('373325386490923366')
+    expect(container.querySelector('a[href="/delivery/unmatched"]')?.textContent).toBe('373325386490923366')
     expect(container.textContent).toContain('Where the warehouse file named a parcel we could not attach')
   })
 })
