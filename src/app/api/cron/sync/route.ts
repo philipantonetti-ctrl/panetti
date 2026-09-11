@@ -10,6 +10,7 @@ import { runVismaProbe, type VismaProbeResult } from '@/lib/visma/probe'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { backfillNameKeys } from '@/lib/delivery/name-key-backfill'
 import { rereadStoredFiles, type RereadResult } from '@/lib/bring/reread'
+import { recoverDroppedRefusals, type RecoverResult } from '@/lib/bring/recover'
 import { syncBringInvoices, type BringInvoiceSyncResult } from '@/lib/bring/invoice-sync'
 import { syncSupport, type SupportSyncResult } from '@/lib/support/sync'
 import { ensureRates } from '@/lib/fx/rates'
@@ -478,6 +479,17 @@ export async function GET(req: Request) {
     rereadError = e instanceof Error ? e.message : 'Re-reading stored files failed'
   }
 
+  // Refusals older imports wrote down but never stored as rows, stored now as
+  // UNKNOWN so the parcel poll below identifies and attaches them under
+  // today's rules. A few imports a tick, database only, each read once.
+  let recover: RecoverResult = { imports: 0, recovered: 0 }
+  let recoverError: string | null = null
+  try {
+    recover = await recoverDroppedRefusals()
+  } catch (e) {
+    recoverError = e instanceof Error ? e.message : 'Recovering dropped refusals failed'
+  }
+
   // Parcel tracking, last of the data pulls. Best-effort like the rest: Bring
   // being down must never fail the shop sync, and every parcel keeps its own
   // lastError.
@@ -557,6 +569,9 @@ export async function GET(req: Request) {
     filesReread: reread.files,
     filesRereadLinked: reread.linked,
     rereadError,
+    /** Refusals from older imports stored as rows this tick, for the poll to identify. */
+    refusalsRecovered: recover.recovered,
+    recoverError,
     shipmentsPolled: shipments.polled,
     shipmentsUpdated: shipments.updated,
     shipmentsFailed: shipments.failed,

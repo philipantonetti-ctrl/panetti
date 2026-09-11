@@ -79,6 +79,10 @@ vi.mock('@/lib/delivery/name-key-backfill', () => ({ backfillNameKeys: () => bac
 const rereadStoredFiles = vi.fn(async () => ({ files: 0, linked: 0 }))
 vi.mock('@/lib/bring/reread', () => ({ rereadStoredFiles: () => rereadStoredFiles() }))
 
+// Nor the refusal recovery, for the same reasons.
+const recoverDroppedRefusals = vi.fn(async () => ({ imports: 0, recovered: 0 }))
+vi.mock('@/lib/bring/recover', () => ({ recoverDroppedRefusals: () => recoverDroppedRefusals() }))
+
 // Nor Dintero, for the same reason as Klaviyo: a connection row left behind
 // by another test file in the shared database would send this test to the
 // real payment API with fake credentials.
@@ -134,6 +138,8 @@ beforeEach(() => {
   backfillNameKeys.mockResolvedValue(0)
   rereadStoredFiles.mockClear()
   rereadStoredFiles.mockResolvedValue({ files: 0, linked: 0 })
+  recoverDroppedRefusals.mockClear()
+  recoverDroppedRefusals.mockResolvedValue({ imports: 0, recovered: 0 })
   syncKlaviyo.mockClear()
   postWooTrackingNotes.mockClear()
   resolveUnpaidOrders.mockClear()
@@ -238,6 +244,20 @@ describe('the scheduled sync endpoint', () => {
     expect(body.filesReread).toBe(3)
     expect(body.filesRereadLinked).toBe(2)
     expect(body.rereadError).toBeNull()
+  })
+
+  it('reports refusals recovered from older imports, and a failure there without failing the run', async () => {
+    process.env.CRON_SECRET = 'right-secret'
+    recoverDroppedRefusals.mockResolvedValueOnce({ imports: 2, recovered: 7 })
+    let body = await (await call('Bearer right-secret')).json()
+    expect(body.refusalsRecovered).toBe(7)
+    expect(body.recoverError).toBeNull()
+
+    recoverDroppedRefusals.mockRejectedValueOnce(new Error('db down'))
+    body = await (await call('Bearer right-secret')).json()
+    expect(body.ok).toBe(true)
+    expect(body.refusalsRecovered).toBe(0)
+    expect(body.recoverError).toBe('db down')
   })
 
   /**

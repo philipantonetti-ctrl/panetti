@@ -901,6 +901,9 @@ model TrackingImport {
   /// second reading attached.
   rereadAt      DateTime?
   rereadLinked  Int?
+  /// When the refusal list (`unmatched`) was read back into Shipment rows -
+  /// see lib/bring/recover.ts. Refusals before 2026-09-11 existed only there.
+  recoveredAt   DateTime?
 
   @@index([receivedAt])
 }

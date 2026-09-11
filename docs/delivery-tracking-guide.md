@@ -47,6 +47,16 @@ Underneath:
   line then says "read again <date>, N more linked". Files that arrived
   before 2026-09-11 were not kept, so those days can only be read again by
   sending the file once more.
+- **Which order gets the parcel.** The customer's email first, then the name
+  on the label. An order counts only if it was placed in the 30 days before
+  the parcel was booked, is not cancelled, and does not already hold another
+  parcel. When nothing fits in 30 days, the same test is run over 120 days
+  (chairs are often ordered months before they ship). In both cases exactly
+  one order must fit; two or more are refused and listed for a person.
+- **Refusals from before 11 Sept 2026.** Older imports wrote refused parcels
+  down only as a line in the import list. The sync now stores those numbers
+  as parcels, a few imports a tick, and the ordinary check identifies and
+  attaches them under today's rules. Nothing needs to be sent again.
 - **Re-reading old files by hand.** Uploading a day's warehouse file again
   is also safe. It never moves a parcel that is already attached; it fills in
   names for parcels stored before names were read, and attaches the ones
