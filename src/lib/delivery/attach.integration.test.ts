@@ -92,15 +92,29 @@ describe('sweepUnlinked', () => {
   // rows would be fair game for THEIRS. 'Attach Sweep Tester' is used nowhere
   // else in the codebase (grepped to confirm), so this sweep can only ever
   // find and act on the rows this test itself creates.
+  //
+  // Fix round 2: the "older than an hour" clock this test hands to
+  // sweepUnlinked must never be ahead of the real wall clock. The fixture
+  // `now` (2026-09-11T12:00:00Z) is a FUTURE date relative to whenever this
+  // suite actually runs, so calling sweepUnlinked(now) made "an hour before
+  // now" look like the recent past to Postgres's real timestamps - any row
+  // ANY other parallel file had just created, with an ordinary real-time
+  // default updatedAt, was already "older" than that fixture's cutoff and so
+  // fair game for this sweep, regardless of name. `real` is the actual wall
+  // clock, so "older than an hour" means what it says: only rows this test
+  // itself back-dates by hand. `createdAt` stays on the fixture `now` - the
+  // matching window is measured from createdAt, and the order placed on
+  // 2026-09-08 must stay inside that 30-day window.
   it('retries only unlinked, undismissed rows older than an hour that carry an email or a name, at most SWEEP_LIMIT', async () => {
     const o = await order('S-1', 'Attach Sweep Tester', 'petri@example.test')
-    const old = new Date(now.getTime() - 2 * HOUR)
+    const real = new Date()
+    const old = new Date(real.getTime() - 2 * HOUR)
     await row('S1', { recipientName: 'Attach Sweep Tester', updatedAt: old })
     await row('S2', { recipientName: 'Nobody Known', updatedAt: old })
-    await row('S3', { recipientName: 'Attach Sweep Tester', updatedAt: now })
+    await row('S3', { recipientName: 'Attach Sweep Tester', updatedAt: real })
     await row('S4', { updatedAt: old })
     await row('S5', { recipientName: 'Attach Sweep Tester', dismissedAt: now, updatedAt: old })
-    const r = await sweepUnlinked(now)
+    const r = await sweepUnlinked(real)
     expect(r).toEqual({ tried: 2, linked: 1 })
     const rows = await db.shipment.findMany({ where: { trackingNumber: { startsWith: `${TRACK}S` } }, orderBy: { trackingNumber: 'asc' } })
     expect(rows[0].orderId).toBe(o.id)
