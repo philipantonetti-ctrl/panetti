@@ -424,7 +424,7 @@ export async function fetchCoupons(creds: WooCredentials): Promise<string[]> {
 }
 
 export type CatalogEntry = {
-  /** The store's own listed price, minor units, incl VAT. Null if unpriced. */
+  /** The store's own listed price, minor units, or null when unreadable. */
   price: number | null
   /**
    * Units on hand, or null when the store does not manage stock for this item.
@@ -432,14 +432,22 @@ export type CatalogEntry = {
    * "we do not know" does not.
    */
   stock: number | null
+  name: string
+  sku: string
+  permalink: string | null
+  /** HTML as the store holds it; lib/support/website-text.ts cleans it. */
+  shortDescription: string
+  description: string
+  /** status === 'publish' and not hidden from the catalogue. Only these reach the knowledge base. */
+  published: boolean
 }
 
 /**
- * Each product's listed price AND its stock, keyed by WooCommerce product id.
+ * One sweep, three uses: price and stock for the products table, and the words
+ * on the page for the knowledge base (lib/support/website-sync.ts).
  *
- * One sweep, two facts. Both already live on the same `/products` response, so
- * asking twice would double the request count of every completed sync to learn
- * nothing new.
+ * All of it already lives on the same `/products` response, so asking twice
+ * would double the request count of every completed sync to learn nothing new.
  */
 export async function fetchCatalog(creds: WooCredentials): Promise<Map<string, CatalogEntry>> {
   const catalog = new Map<string, CatalogEntry>()
@@ -454,13 +462,23 @@ export async function fetchCatalog(creds: WooCredentials): Promise<Map<string, C
     if (!res.ok) throw await wooError(res)
 
     const batch = await readJson<
-      { id: number; price?: string; manage_stock?: boolean; stock_quantity?: number | null }[]
+      {
+        id: number; price?: string; manage_stock?: boolean; stock_quantity?: number | null
+        name?: string; sku?: string; permalink?: string; status?: string; catalog_visibility?: string
+        short_description?: string; description?: string
+      }[]
     >(res, 'the product catalogue')
     for (const p of batch) {
       const value = p.price ? parseFloat(p.price) : NaN
       catalog.set(String(p.id), {
         price: Number.isNaN(value) ? null : toMinor(value),
         stock: p.manage_stock === true && typeof p.stock_quantity === 'number' ? p.stock_quantity : null,
+        name: p.name ?? '',
+        sku: p.sku ?? '',
+        permalink: p.permalink ?? null,
+        shortDescription: p.short_description ?? '',
+        description: p.description ?? '',
+        published: p.status === 'publish' && p.catalog_visibility !== 'hidden',
       })
     }
     if (batch.length < 100) break
