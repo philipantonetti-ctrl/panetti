@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { db } from '@/lib/db'
-import { matchByEmail, matchByName, MATCH_WINDOW_DAYS } from './match'
+import { matchByEmail, matchByName, MATCH_WINDOW_DAYS, LONG_WINDOW_DAYS } from './match'
 import { nameKey } from '@/lib/delivery/name-key'
 
 // Unique to THIS file - see "Test data convention" in the Global Constraints.
@@ -127,10 +127,30 @@ describe('matchByEmail', () => {
     expect(out.orderId).toBeNull()
   })
 
-  it('ignores an order older than the window', async () => {
-    await order(trackedShopId, 'M6', 'ancient@example.test', '2026-05-01T09:00:00Z')
+  it('ignores an order older than the long window', async () => {
+    await order(trackedShopId, 'M6', 'ancient@example.test', new Date(RECEIVED.getTime() - (LONG_WINDOW_DAYS + 1) * DAY).toISOString())
     const out = await matchByEmail('ancient@example.test', RECEIVED)
     expect(out.orderId).toBeNull()
+    expect((out as { reason: string }).reason).toBe('No order for ancient@example.test')
+  })
+
+  it('reaches into the long window only when the short one is empty, and still wants exactly one order there', async () => {
+    // A chair ordered ten weeks before it shipped: the customer's only order.
+    const chair = await order(trackedShopId, 'M6b', 'patient@example.test', new Date(RECEIVED.getTime() - 70 * DAY).toISOString())
+    await expect(matchByEmail('patient@example.test', RECEIVED)).resolves.toEqual({ orderId: chair.id })
+
+    // Two old orders and nothing recent: refused, and the reason names the long window.
+    await order(trackedShopId, 'M6c', 'twoold@example.test', new Date(RECEIVED.getTime() - 60 * DAY).toISOString())
+    await order(trackedShopId, 'M6d', 'twoold@example.test', new Date(RECEIVED.getTime() - 50 * DAY).toISOString())
+    const out = await matchByEmail('twoold@example.test', RECEIVED)
+    expect(out.orderId).toBeNull()
+    expect((out as { reason: string }).reason).toBe(`twoold@example.test matched 2 orders in the last ${LONG_WINDOW_DAYS} days: M6c, M6d`)
+  })
+
+  it('the short window wins: a recent order is linked even when an older one sits inside the long window', async () => {
+    await order(trackedShopId, 'M6e', 'again@example.test', new Date(RECEIVED.getTime() - 60 * DAY).toISOString())
+    const recent = await order(trackedShopId, 'M6f', 'again@example.test', new Date(RECEIVED.getTime() - 3 * DAY).toISOString())
+    await expect(matchByEmail('again@example.test', RECEIVED)).resolves.toEqual({ orderId: recent.id })
   })
 
   it('ignores a voided order, so a repeat customer is not ambiguous because of one', async () => {
@@ -155,11 +175,24 @@ describe('matchByEmail', () => {
     await expect(matchByEmail('boundary-lower@example.test', RECEIVED)).resolves.toEqual({ orderId: o.id })
   })
 
-  it('does not match an order placed 1ms before the lower bound', async () => {
+  it('an order placed 1ms before the short lower bound is found by the long window when it is the only one', async () => {
     const tooEarlyDate = new Date(RECEIVED.getTime() - MATCH_WINDOW_DAYS * 24 * 60 * 60 * 1000 - 1)
-    await order(trackedShopId, 'B3', 'boundary-too-early@example.test', tooEarlyDate.toISOString())
-    const out = await matchByEmail('boundary-too-early@example.test', RECEIVED)
+    const o = await order(trackedShopId, 'B3', 'boundary-too-early@example.test', tooEarlyDate.toISOString())
+    await expect(matchByEmail('boundary-too-early@example.test', RECEIVED)).resolves.toEqual({ orderId: o.id })
+  })
+
+  it('does not match an order placed 1ms before the long lower bound', async () => {
+    const tooEarlyDate = new Date(RECEIVED.getTime() - LONG_WINDOW_DAYS * 24 * 60 * 60 * 1000 - 1)
+    await order(trackedShopId, 'B4', 'boundary-way-too-early@example.test', tooEarlyDate.toISOString())
+    const out = await matchByEmail('boundary-way-too-early@example.test', RECEIVED)
     expect(out.orderId).toBeNull()
+  })
+
+  it('ignores a cancelled order that was never voided, so a cancelled duplicate does not block the real one', async () => {
+    await order(trackedShopId, 'M8a', 'dup@example.test', '2026-08-08T09:00:00Z', { status: 'cancelled' })
+    await order(trackedShopId, 'M8b', 'dup@example.test', '2026-08-08T09:05:00Z', { status: 'trash' })
+    const live = await order(trackedShopId, 'M8c', 'dup@example.test', '2026-08-08T09:10:00Z')
+    await expect(matchByEmail('dup@example.test', RECEIVED)).resolves.toEqual({ orderId: live.id })
   })
 
   it('does not offer an order that already holds another consignment\'s parcel', async () => {
@@ -244,7 +277,7 @@ describe('matchByName', () => {
     )
     const none = await matchByName('Nobody Here', RECEIVED)
     expect((none as { reason: string }).reason).toBe(
-      `The label says Nobody Here and no order in the last ${MATCH_WINDOW_DAYS} days has that name`,
+      `The label says Nobody Here and no order in the last ${LONG_WINDOW_DAYS} days has that name`,
     )
     expect(await matchByName('', RECEIVED)).toEqual({ orderId: null, reason: 'The label carries no name' })
     expect(await matchByName(null, RECEIVED)).toEqual({ orderId: null, reason: 'The label carries no name' })
@@ -255,14 +288,14 @@ describe('matchByName', () => {
     await expect(matchByName('Kari Nordmann', RECEIVED, { country: 'no' })).resolves.toEqual({ orderId: no.id })
     const r = await matchByName('Kari Nordmann', RECEIVED, { country: 'DE' })
     expect((r as { reason: string }).reason).toBe(
-      `The label says Kari Nordmann and no order in the last ${MATCH_WINDOW_DAYS} days has that name in DE`,
+      `The label says Kari Nordmann and no order in the last ${LONG_WINDOW_DAYS} days has that name in DE`,
     )
   })
 
   it('ignores untracked shops, voided orders, orders outside the window, and orders holding another consignment', async () => {
     await named(untrackedShopId, 'N-4U', 'Ola Nordmann', '2026-08-05T10:00:00Z')
     await named(trackedShopId, 'N-4V', 'Ola Nordmann', '2026-08-05T10:00:00Z', { voidedAt: new Date('2026-08-06') })
-    await named(trackedShopId, 'N-4OLD', 'Ola Nordmann', new Date(RECEIVED.getTime() - (MATCH_WINDOW_DAYS + 1) * DAY).toISOString())
+    await named(trackedShopId, 'N-4OLD', 'Ola Nordmann', new Date(RECEIVED.getTime() - (LONG_WINDOW_DAYS + 1) * DAY).toISOString())
     await named(trackedShopId, 'N-4AFTER', 'Ola Nordmann', new Date(RECEIVED.getTime() + DAY).toISOString())
     const held = await named(trackedShopId, 'N-4H', 'Ola Nordmann', '2026-08-04T10:00:00Z')
     await db.shipment.create({ data: { trackingNumber: 'TNAME-HELD-1', orderId: held.id, consignmentId: 'OTHER' } })
