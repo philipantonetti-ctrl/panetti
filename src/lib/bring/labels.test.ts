@@ -7,7 +7,7 @@ import { readLabels } from './labels'
  * every value is invented. Long numbers are stored as shared strings, which
  * is how Excel keeps an 18-digit id intact.
  */
-const HEADERS = ['Datum', 'Antal', 'Order', 'Namn', 'KolliID', 'Sändningsref', 'Levsätt', 'Vikt']
+const HEADERS = ['Datum', 'Antal', 'Order', 'Namn', 'KolliID', 'S00e4ndningsref', 'Levs00e4tt', 'Vikt']
 type Row = Partial<Record<string, string>>
 const col = (i: number) => String.fromCharCode(65 + i)
 
@@ -34,17 +34,17 @@ const book = (rows: Row[], headers: string[] = HEADERS) => {
 }
 
 const row = (over: Row = {}): Row => ({
-  Datum: '2026-09-10 08:19:24', Antal: '1', Order: '027286', Namn: 'Martin Röthke',
-  KolliID: '473325380030453648', 'Sändningsref': '73325380030453641', 'Levsätt': 'BOXHD_NO', Vikt: '16.4',
+  Datum: '2026-09-10 08:19:24', Antal: '1', Order: '027286', Namn: 'Martin R00f6thke',
+  KolliID: '473325380030453648', 'S00e4ndningsref': '73325380030453641', 'Levs00e4tt': 'BOXHD_NO', Vikt: '16.4',
   ...over,
 })
 
 describe('readLabels', () => {
-  it('maps the KolliID and the Sändningsref of a row to its name', () => {
+  it('maps the KolliID and the S00e4ndningsref of a row to its name', () => {
     const r = readLabels(book([row()]), 'LTAS_EoD_Exp_Report_20260910_18-00.xlsx')
     expect(r?.rows).toBe(1)
-    expect(r?.names.get('473325380030453648')).toBe('Martin Röthke')
-    expect(r?.names.get('73325380030453641')).toBe('Martin Röthke')
+    expect(r?.names.get('473325380030453648')).toBe('Martin R00f6thke')
+    expect(r?.names.get('73325380030453641')).toBe('Martin R00f6thke')
     expect(r?.names.size).toBe(2)
   })
 
@@ -54,9 +54,9 @@ describe('readLabels', () => {
       book(
         [
           row({ NAMN: 'Anitta Airi', Namn: undefined }),
-          row({ NAMN: '', Namn: undefined, KolliID: '473325380030453655', 'Sändningsref': '' }),
-          row({ NAMN: 'No Number', Namn: undefined, KolliID: '', 'Sändningsref': '' }),
-          row({ NAMN: '---', Namn: undefined, KolliID: '473325380030453662', 'Sändningsref': '' }),
+          row({ NAMN: '', Namn: undefined, KolliID: '473325380030453655', 'S00e4ndningsref': '' }),
+          row({ NAMN: 'No Number', Namn: undefined, KolliID: '', 'S00e4ndningsref': '' }),
+          row({ NAMN: '---', Namn: undefined, KolliID: '473325380030453662', 'S00e4ndningsref': '' }),
         ],
         headers,
       ),
