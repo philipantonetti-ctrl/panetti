@@ -22,17 +22,29 @@ test('an admin records a product, and the ambassador sees it', async ({ page }) 
   const proX = page.getByTestId('product-overview-row').filter({ hasText: 'MPX-001' })
   await expect(proX).toContainText('3')
 
-  // Emma's row carries her chips.
+  // Emma's row carries her chips. The roster is the second tab, reached the
+  // way the admin reaches it: by pressing it.
+  await page
+    .getByRole('navigation', { name: 'Section' })
+    .getByRole('link', { name: 'Add an ambassador' })
+    .click()
+  await expect(page).toHaveURL(/\/ambassadors\/add/)
   const emma = page.getByTestId('ambassador-row').filter({ hasText: 'Emma Nilsen' })
   await expect(emma).toContainText('Massasjepistol Pro X')
 })
 
 test('an admin adds a product and it lands on the roster', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
-  await page.goto('/ambassadors')
+  await page.goto('/ambassadors/add')
 
   const johan = page.getByTestId('ambassador-row').filter({ hasText: 'Johan Berg' })
-  await johan.getByRole('button', { name: 'Edit' }).click()
+  // The row's verbs sit behind one menu (since 64b0fde), so Edit is a menu
+  // item behind the row's "Actions for …" button, not a button on the row.
+  const openEdit = async () => {
+    await johan.getByRole('button', { name: /^Actions for / }).click()
+    await page.getByRole('menuitem', { name: 'Edit' }).click()
+  }
+  await openEdit()
 
   // exact: true matters. Playwright's getByRole name matching is SUBSTRING by
   // default, so a bare 'Product' also matches the 'Add product' submit button
@@ -69,7 +81,7 @@ test('an admin adds a product and it lands on the roster', async ({ page }) => {
   // shared table by one row on every run forever - not re-runnable in any
   // real sense. This also gives DELETE /api/ambassador-products/[id] its only
   // end-to-end coverage; it otherwise has unit tests but no browser-level proof.
-  await johan.getByRole('button', { name: 'Edit' }).click()
+  await openEdit()
   const receivedToday = new Date().toISOString().slice(0, 10)
   await page
     .getByRole('button', {
@@ -92,12 +104,14 @@ test('an admin ticks products while creating the ambassador', async ({ page }) =
   async function removeIfPresent() {
     const row = page.getByTestId('ambassador-row').filter({ hasText: NAME })
     if ((await row.count()) === 0) return
-    await row.first().getByRole('button', { name: 'Delete' }).click()
+    // Delete is a menu item behind the row's "Actions for …" button.
+    await row.first().getByRole('button', { name: /^Actions for / }).click()
+    await page.getByRole('menuitem', { name: 'Delete' }).click()
     await expect(page.getByTestId('ambassador-row').filter({ hasText: NAME })).toHaveCount(0)
   }
 
   await signIn(page, 'admin@ecom.test')
-  await page.goto('/ambassadors')
+  await page.goto('/ambassadors/add')
 
   // A run that died before its cleanup would otherwise leave a 409 behind and
   // this spec would never pass again.
@@ -137,7 +151,7 @@ test('an admin ticks products while creating the ambassador', async ({ page }) =
 
 test('the product list follows the store that was chosen', async ({ page }) => {
   await signIn(page, 'admin@ecom.test')
-  await page.goto('/ambassadors')
+  await page.goto('/ambassadors/add')
 
   const form = page.getByTestId('add-ambassador')
   const ticks = page.getByTestId('product-ticks')

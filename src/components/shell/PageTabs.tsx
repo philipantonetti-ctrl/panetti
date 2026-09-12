@@ -73,3 +73,13 @@ export const DELIVERY_TABS: Tab[] = [
   { href: '/delivery/unmatched', label: 'Unmatched parcels' },
   { href: '/delivery/imports', label: 'Recent imports' },
 ]
+
+/**
+ * Ambassadors' two screens: who sold what, and the roster where one is added,
+ * handed an invite link and given their codes. The roster is a chore, not a
+ * figure, and it sat under the statistics on one page - Delivery's trade.
+ */
+export const AMBASSADOR_TABS: Tab[] = [
+  { href: '/ambassadors', label: 'Ambassadors' },
+  { href: '/ambassadors/add', label: 'Add an ambassador' },
+]
