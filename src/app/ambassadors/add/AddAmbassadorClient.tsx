@@ -372,7 +372,7 @@ export function AddAmbassadorClient({
     <AppShell email={email} role={role}>
       <PageHeader
         title="Ambassadors"
-        subtitle="Add an ambassador, send their invite link, set what they earn."
+        subtitle="Add an ambassador, and edit the ones you have: their commission, codes, products and invite links."
       />
 
       <PageTabs tabs={AMBASSADOR_TABS} />

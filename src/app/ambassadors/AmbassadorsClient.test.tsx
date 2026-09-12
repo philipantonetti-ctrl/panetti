@@ -21,12 +21,12 @@ afterEach(() => vi.unstubAllGlobals())
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
 
-function renderPage(role: 'ADMIN' | 'MARKETING' = 'ADMIN') {
+function renderPage(role: 'ADMIN' | 'MARKETING' = 'ADMIN', overview: unknown[] | null = null) {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown) => {
     const u = String(url)
     if (u.includes('/api/ambassador-products'))
       return json({
-        overview: [{ sku: 'MPX-001', name: 'Pro X', ambassadors: 3, units: 3 }],
+        overview: overview ?? [{ sku: 'MPX-001', name: 'Pro X', ambassadors: 3, units: 3 }],
         catalogue: [{ sku: 'MPX-001', name: 'Pro X', shopIds: ['s1', 's2'] }],
       })
     if (u.includes('/api/ambassadors/stats'))
@@ -58,10 +58,23 @@ describe('the Ambassadors tab', () => {
     expect(screen.getByLabelText('Period')).toBeTruthy()
   })
 
-  it('shows how far each product has spread, under the statistics', async () => {
+  it('shows which products have gone out, under the statistics, and says the filters do not apply to it', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('Products with ambassadors')).toBeTruthy())
     expect(within(screen.getByTestId('product-overview-row')).getByText('Pro X')).toBeTruthy()
+    // The Shops and Period selects above drive Top ambassadors only; this
+    // table counts every product ever handed out, and must say so where the
+    // eye compares the two.
+    expect(screen.getByText('1 product, all shops, all time')).toBeTruthy()
+  })
+
+  it('sends an empty products table to the tab where products are handed out', async () => {
+    renderPage('ADMIN', [])
+    const cell = await screen.findByText(/Nothing handed out yet/)
+    // The Edit menu this sentence used to point at moved to the other tab with
+    // the roster, so the sentence now carries the way there.
+    expect(within(cell).getByRole('link', { name: 'Add an ambassador' }).getAttribute('href')).toBe('/ambassadors/add')
+    expect(cell.textContent).toMatch(/press Edit on the ambassador/)
   })
 
   it('is the first of two tabs, and leaves the form and the roster to the second', async () => {

@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 export type ProductSummaryRow = {
   sku: string
   name: string
@@ -8,16 +10,23 @@ export type ProductSummaryRow = {
 }
 
 /**
- * How far each product has spread: how many ambassadors hold it, and how many
- * units went out. One row per real product, because the ledger keys on SKU and
- * not on a shop's own listing of it.
+ * Which products have gone out to ambassadors: how many hold each, and how
+ * many units went out. One row per real product, because the ledger keys on
+ * SKU and not on a shop's own listing of it.
+ *
+ * It sits under Top ambassadors, whose Shops and Period filters do not reach
+ * it: this counts every product ever handed out. The label says so, where the
+ * eye compares the two tables. Products are handed out on the other tab, in
+ * an ambassador's Edit, so the empty state carries the way there.
  */
 export function ProductOverview({ rows }: { rows: ProductSummaryRow[] }) {
   return (
     <section className="mt-4 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
       <div className="flex items-center justify-between px-5 py-3.5">
         <h2 className="text-[13px] font-semibold text-ink">Products with ambassadors</h2>
-        <p className="text-[12px] text-muted">{rows.length} products</p>
+        <p className="text-[12px] text-muted">
+          {rows.length} {rows.length === 1 ? 'product' : 'products'}, all shops, all time
+        </p>
       </div>
 
       <table className="w-full text-xs">
@@ -33,7 +42,11 @@ export function ProductOverview({ rows }: { rows: ProductSummaryRow[] }) {
           {rows.length === 0 ? (
             <tr>
               <td colSpan={4} className="px-3 py-8 text-center text-faint">
-                Nothing handed out yet. Open an ambassador’s Edit and add what they were sent.
+                Nothing handed out yet. Open{' '}
+                <Link href="/ambassadors/add" className="text-accent hover:underline">
+                  Add an ambassador
+                </Link>
+                , press Edit on the ambassador and add what they were sent.
               </td>
             </tr>
           ) : (

@@ -72,7 +72,7 @@ export function AmbassadorsClient({
     <AppShell email={email} role={role}>
       <PageHeader
         title="Ambassadors"
-        subtitle="Who sold what, by shop and period, and how far each product has spread."
+        subtitle="Who sold what, by shop and period, and which products have gone out to ambassadors."
       >
         <select
           aria-label="Shops"
