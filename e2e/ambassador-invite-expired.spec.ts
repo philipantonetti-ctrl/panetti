@@ -66,7 +66,8 @@ async function signIn(page: Page, email: string, password: string) {
 
 /** Creates one through the admin's own form and returns the invite URL it hands out. */
 async function createAmbassador(page: Page, who: typeof USED): Promise<string> {
-  await page.goto('/settings/ambassadors')
+  // The form and the roster are the second tab of Ambassadors.
+  await page.goto('/ambassadors/add')
   const form = page.getByTestId('add-ambassador')
   await form.getByPlaceholder('Name').fill(who.name)
   await form.getByPlaceholder('Email').fill(who.email)

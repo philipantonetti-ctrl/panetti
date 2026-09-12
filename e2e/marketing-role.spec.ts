@@ -13,6 +13,13 @@ test('marketing lands on the ambassadors page and sees the statistics', async ({
 
   await expect(page).toHaveURL(/\/ambassadors/)
   await expect(page.getByText('Top ambassadors')).toBeVisible()
+
+  // The roster is the second tab, and it is theirs to open.
+  await page
+    .getByRole('navigation', { name: 'Section' })
+    .getByRole('link', { name: 'Add an ambassador' })
+    .click()
+  await expect(page).toHaveURL(/\/ambassadors\/add/)
   await expect(page.getByRole('heading', { name: 'Add an ambassador' })).toBeVisible()
 
   // Their nav knows nothing of money pages.

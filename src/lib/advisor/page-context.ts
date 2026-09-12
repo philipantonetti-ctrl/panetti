@@ -21,6 +21,7 @@ const PAGES: Record<string, string> = {
   '/inventory': 'Inventory and forecasting: stock, run-out dates and what to order',
   '/b2b': 'B2B: business customers and their invoiced orders',
   '/ambassadors': 'Ambassadors: their sales and commission',
+  '/ambassadors/add': 'the Ambassadors roster: adding an ambassador, their discount codes and invite links',
 }
 
 export function pageContext(path: string | null | undefined): string | null {

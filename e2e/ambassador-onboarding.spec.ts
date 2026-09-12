@@ -30,7 +30,8 @@ test('an admin creates an ambassador, who claims a login and sees only their own
 }) => {
   // --- Admin creates the ambassador ---
   await signIn(page, 'admin@ecom.test')
-  await page.goto('/settings/ambassadors')
+  // The form and the roster are the second tab of Ambassadors.
+  await page.goto('/ambassadors/add')
 
   const form = page.getByTestId('add-ambassador')
   await form.getByPlaceholder('Name').fill(NAME)
@@ -94,7 +95,7 @@ test('an admin creates an ambassador, who claims a login and sees only their own
   // --- Back on the admin screen, they now read as onboarded ---
   await context.clearCookies()
   await signIn(page, 'admin@ecom.test')
-  await page.goto('/settings/ambassadors')
+  await page.goto('/ambassadors/add')
   const after = page.getByTestId('ambassador-row').filter({ hasText: EMAIL })
   await expect(after).toContainText('Active')
   // No invite link is ever minted for someone who already has a login.

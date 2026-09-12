@@ -14,6 +14,17 @@ describe('pageContext', () => {
   })
 
   /**
+   * The two Ambassadors tabs show different things: the first their sales, the
+   * second the roster where one is added. "That" on the second tab is a code or
+   * an invite link, never a commission figure.
+   */
+  it('tells the Ambassadors tabs apart', () => {
+    expect(pageContext('/ambassadors')).toMatch(/sales and commission/)
+    expect(pageContext('/ambassadors/add')).toMatch(/roster/)
+    expect(pageContext('/ambassadors/add')).not.toMatch(/sales and commission/)
+  })
+
+  /**
    * Silence beats invention: handed a path it does not know, the model would
    * otherwise be told the name of a screen nobody described to it.
    */
