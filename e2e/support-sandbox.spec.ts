@@ -42,8 +42,8 @@ test('an admin reaches "Test the assistant" from the sidebar and sees an answer 
         language: 'da',
         confidence: 0.93,
         knowledge: [
-          { kind: 'product', title: 'Panetti Pizzetta Pro - Elektrisk pizzaovn - Roterende Pizzastein', source: 'website' },
-          { kind: 'tone', title: 'Voice', source: 'manual' },
+          { kind: 'product', title: 'Panetti Pizzetta Pro - Elektrisk pizzaovn', source: 'website', sections: 14 },
+          { kind: 'tone', title: 'Voice', source: 'manual', sections: 1 },
         ],
         saw: { customer: null, orders: [] },
       },
@@ -55,7 +55,9 @@ test('an admin reaches "Test the assistant" from the sidebar and sees an answer 
   await page.getByRole('button', { name: 'Send' }).click()
 
   await expect(page.getByText('Pizzetta Pro har en 13 tommers åbning og en roterende pizzasten.')).toBeVisible()
-  await expect(page.getByText(/Used: product: Panetti Pizzetta Pro - Elektrisk pizzaovn - Roterende Pizzastein \(website\)/)).toBeVisible()
+  await expect(page.getByText('Read for this answer:')).toBeVisible()
+  await expect(page.getByText('Panetti Pizzetta Pro - Elektrisk pizzaovn (product page, 14 sections)')).toBeVisible()
+  await expect(page.getByText('Voice (tone)')).toBeVisible()
   await expect(page.getByText('93% sure · product · da')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'What it saw' })).toBeVisible()
 

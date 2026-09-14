@@ -153,7 +153,8 @@ describe('runSandboxTurn, what retrieval reads', () => {
       { rules },
     )
 
-    expect(r.knowledge.map((k) => k.title)).toContain(`${TAG} Panetti Pizzetta Pro`)
+    // Shown as the page, once, not as its section titles.
+    expect(r.knowledge).toContainEqual({ kind: 'product', title: 'Panetti Pizzetta Pro', source: 'website', sections: 1 })
     // The question on the review row is still only what was just written.
     const row = await db.aiConversation.findUniqueOrThrow({ where: { id: r.conversationId } })
     expect(row.question).toBe('Hvor mange grader blir den?')

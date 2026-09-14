@@ -24,7 +24,7 @@ type Result = {
   category: string
   language: string
   confidence: number
-  knowledge: { kind: string; title: string; source: string }[]
+  knowledge: { kind: string; title: string; source: string; sections: number }[]
   saw: {
     customer: string | null
     orders: { number: string; shop: string; status: string; delivery: string | null; parcels: string[] }[]
@@ -40,6 +40,17 @@ const ACTION: Record<Result['action'], string> = {
 }
 
 const newKey = () => Math.random().toString(36).slice(2, 12)
+
+/**
+ * One page the assistant read, in words: what it is, how much of it went in.
+ * A product page with one section is a loose match on that section, not the
+ * page; a policy page is "the terms", a manual row is the kind a person gave it.
+ */
+function usedLine(k: { kind: string; title: string; source: string; sections: number }): string {
+  const what = k.source !== 'website' ? k.kind : k.kind === 'product' ? 'product page' : 'page from the website'
+  const much = k.sections > 1 ? `, ${k.sections} sections` : ''
+  return `${k.title} (${what}${much})`
+}
 
 export function SandboxClient({ email }: { email: string }) {
   const toast = useToast()
@@ -195,7 +206,14 @@ export function SandboxClient({ email }: { email: string }) {
                           {Math.round(l.result.confidence * 100)}% sure · {l.result.category} · {l.result.language}
                         </div>
                         {l.result.knowledge.length > 0 && (
-                          <div>Used: {l.result.knowledge.map((k) => `${k.kind}: ${k.title}${k.source === 'website' ? ' (website)' : ''}`).join('; ')}</div>
+                          <div>
+                            <div>Read for this answer:</div>
+                            <ul className="list-disc pl-4">
+                              {l.result.knowledge.map((k, i) => (
+                                <li key={i}>{usedLine(k)}</li>
+                              ))}
+                            </ul>
+                          </div>
                         )}
                         <div className="flex gap-2 pt-1">
                           <button

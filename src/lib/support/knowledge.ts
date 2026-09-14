@@ -289,3 +289,37 @@ export function knowledgeBlock(rows: KnowledgeRow[]): string {
     }),
   ].join('\n\n')
 }
+
+/** A website row's key, and the part of it that names its page, product or policy alike. */
+const CHUNK_KEY = /^(website:[^:]+:(?:product|page):[^:]+):\d+$/
+
+export type KnowledgeSummary = { kind: string; title: string; source: string; sections: number }
+
+/**
+ * What the assistant read, as a person can read it: one line per page with
+ * the number of its sections that went in, in the order they went in. A
+ * product page is named by its product line without the SKU; a policy page
+ * by its title before the section heading; a manual row stands alone.
+ */
+export function summariseKnowledge(rows: KnowledgeRow[]): KnowledgeSummary[] {
+  const out: KnowledgeSummary[] = []
+  const byPage = new Map<string, KnowledgeSummary>()
+  for (const row of rows) {
+    const page = row.sourceKey?.match(CHUNK_KEY)?.[1]
+    if (!page) {
+      out.push({ kind: row.kind, title: row.title, source: row.source, sections: 1 })
+      continue
+    }
+    const seen = byPage.get(page)
+    if (seen) {
+      seen.sections++
+      continue
+    }
+    const product = row.body.match(/^Product: (.*)$/m)?.[1].replace(/\s*\(SKU [^)]*\)\s*$/, '')
+    const title = product ?? row.title.split(' - ')[0]
+    const entry = { kind: row.kind, title, source: row.source, sections: 1 }
+    byPage.set(page, entry)
+    out.push(entry)
+  }
+  return out
+}

@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { judge, NoApiKey, pickProducts, type ChatMode, type SupportJudgement, type Turn } from './agent'
 import { getCustomerContext } from './channel'
 import { askedSoFar } from './chat-turn'
-import { knowledgeFor } from './knowledge'
+import { knowledgeFor, summariseKnowledge, type KnowledgeSummary } from './knowledge'
 import { decide, DEFAULT_RULES, type RulesConfig } from './rules'
 
 /**
@@ -33,7 +33,8 @@ export type SandboxTurnResult = {
   category: string
   language: string
   confidence: number
-  knowledge: { kind: string; title: string; source: string }[]
+  /** What it read, one line per page, for the practice page to show. */
+  knowledge: KnowledgeSummary[]
   saw: {
     customer: string | null
     orders: { number: string; shop: string; status: string; delivery: string | null; parcels: string[] }[]
@@ -127,7 +128,7 @@ export async function runSandboxTurn(
     category: judgement.category,
     language: judgement.language,
     confidence: judgement.confidence,
-    knowledge: knowledge.map((k) => ({ kind: k.kind, title: k.title, source: k.source })),
+    knowledge: summariseKnowledge(knowledge),
     saw: {
       customer: context.customer ? `${context.customer.name || 'name unknown'} (${context.customer.email})` : null,
       orders: context.orders.map((o) => ({
