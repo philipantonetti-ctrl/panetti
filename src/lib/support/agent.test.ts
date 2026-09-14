@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { chatInstructions, judgeMessages, SYSTEM, type Turn } from './agent'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const create = vi.fn()
+vi.mock('@anthropic-ai/sdk', () => ({
+  default: class {
+    messages = { create }
+  },
+}))
+
+const { chatInstructions, judgeMessages, pickProducts, SYSTEM } = await import('./agent')
+type Turn = import('./agent').Turn
 import type { CustomerContext } from '@/lib/inbox/context'
 
 /** The prompt pieces a chat turn adds, proven without a model in the room. */
@@ -56,5 +65,52 @@ describe('the system prompt', () => {
     expect(SYSTEM).toContain('rows marked "from <shop>" are the shop\'s own product pages')
     expect(SYSTEM).toContain('Never state a price or whether something is in stock')
     expect(SYSTEM).toContain('give the Page link from the row')
+  })
+})
+
+/**
+ * Which product the customer means, asked of the model when the words do
+ * not say. What is proven here is the contract: it reads the tool call,
+ * keeps only keys it was given, and never throws into a live chat.
+ */
+describe('pickProducts', () => {
+  const products = [
+    { key: 'website:s:product:1', name: 'Panetti Pizzetta Pro - Elektrisk pizzaovn (SKU PANPIZPRO)' },
+    { key: 'website:s:product:2', name: 'Panetti PrimoChef - Smart køkkenassistent (SKU PANPRICHE)' },
+  ]
+  afterEach(() => { create.mockReset(); vi.unstubAllEnvs() })
+
+  it('shows the model the question and the list, and returns the keys it picked, only ones it was given', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-test')
+    create.mockResolvedValue({ stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'products', input: { keys: ['website:s:product:1', 'made-up'] } }] })
+
+    const keys = await pickProducts('Hvor mange grader kan ovnen komme opp til?', products)
+
+    expect(keys).toEqual(['website:s:product:1'])
+    const req = create.mock.calls[0][0]
+    expect(req.model).toBe('claude-haiku-4-5-20251001')
+    expect(req.tool_choice).toEqual({ type: 'tool', name: 'products' })
+    const text = JSON.stringify(req.messages)
+    expect(text).toContain('Hvor mange grader kan ovnen komme opp til?')
+    expect(text).toContain('website:s:product:1: Panetti Pizzetta Pro - Elektrisk pizzaovn (SKU PANPIZPRO)')
+    expect(JSON.stringify(req.system)).toMatch(/the oven, the machine, the chair/)
+  })
+
+  it('picks nothing when there is no key, when the model fails, or when it answers with no tool call', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '')
+    expect(await pickProducts('Hvor er ovnen?', products)).toEqual([])
+    expect(create).not.toHaveBeenCalled()
+
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-test')
+    create.mockRejectedValue(new Error('timeout'))
+    expect(await pickProducts('Hvor er ovnen?', products)).toEqual([])
+    create.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'none' }] })
+    expect(await pickProducts('Hvor er ovnen?', products)).toEqual([])
+  })
+
+  it('asks nothing when the shop has no product pages', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-test')
+    expect(await pickProducts('Hvor er ovnen?', [])).toEqual([])
+    expect(create).not.toHaveBeenCalled()
   })
 })

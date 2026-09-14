@@ -12,13 +12,16 @@ describe('keywordsOf', () => {
     expect(keywordsOf('Hvor mange grader kan pizzaovnen gå opp til?')).toEqual(['hvor', 'mange', 'grad', 'pizzaovn'])
   })
 
-  it('never cuts a word below four letters', () => {
-    // "ovnen" minus "en" is three letters, too short to mean anything, so only the "n" goes.
-    expect(keywordsOf('Blir ovnen varm?')).toEqual(['blir', 'ovne', 'varm'])
+  it('cuts "the oven" down to the three letters that sit inside "pizzaovn"', () => {
+    // The customer says ovnen, ugnen, uunin; the product is a pizzaovn, a
+    // pizzaugn, a pizzauuni. The head noun is three letters in two of those
+    // languages, so a stem may be three letters; a whole word still needs four.
+    expect(keywordsOf('Blir ovnen varm?')).toEqual(['blir', 'ovn', 'varm'])
+    expect(keywordsOf('Hur varm blir ugnen?')).toEqual(['varm', 'blir', 'ugn'])
   })
 
   it('cuts one ending only, and the longest that fits', () => {
-    expect(keywordsOf('pizzaovnene ugnarna Pizzaöfen')).toEqual(['pizzaovn', 'ugnar', 'pizzaöf'])
+    expect(keywordsOf('pizzaovnene ugnarna Pizzaöfen')).toEqual(['pizzaovn', 'ugn', 'pizzaöf'])
   })
 
   it('still drops the stop words and repeats', () => {

@@ -42,8 +42,13 @@ const STOP = new Set([
   'lite', 'litt', 'lidt',
 ])
 
-/** A keyword is at least this long, and so is what is left of one after its ending is cut. */
-const KEYWORD_MIN = 4
+/**
+ * What is left of a word after its ending is cut must be at least this long.
+ * Three, because the head noun of a Nordic compound is often three letters:
+ * the customer says ovnen or ugnen, the product is a pizzaovn or a pizzaugn.
+ * A whole word still needs four letters to count at all.
+ */
+const STEM_MIN = 3
 
 /**
  * The endings a noun takes in the shops' languages: the definite and plural
@@ -65,7 +70,7 @@ const ENDINGS = [
  */
 export function stemOf(word: string): string {
   for (const end of ENDINGS) {
-    if (word.length - end.length >= KEYWORD_MIN && word.endsWith(end)) return word.slice(0, -end.length)
+    if (word.length - end.length >= STEM_MIN && word.endsWith(end)) return word.slice(0, -end.length)
   }
   return word
 }
@@ -108,55 +113,68 @@ const productNameOf = (body: string) =>
 /** The part of a product chunk's key that names its page. */
 const pageOf = (sourceKey: string | null | undefined) => sourceKey?.match(PRODUCT_KEY)?.[1] ?? null
 
-/**
- * The whole page of every product the question names, in page order.
- *
- * A page is stored as a dozen chunks and the answer is in one of them, which
- * rarely shares a word with the question: "hvor mange grader" against a chunk
- * that says "450 \u00b0C". Chunk-by-chunk matching cannot find that; a word
- * naming the product can, and then the page goes whole, so the model reads
- * what the customer would have read. `named` is every page a word named,
- * whether or not the budget let all of it through, so the loose stage can
- * leave those pages alone: a page is read from the top and cut once, not
- * topped up from the bottom.
- */
-function pagesNamedBy(words: string[], rows: KnowledgeRow[]): { rows: KnowledgeRow[]; named: Set<string> } {
-  const pages = new Map<string, { name: string; chunks: { n: number; row: KnowledgeRow }[] }>()
+/** How a shop's product pages sit in memory: one entry per page, its chunks in any order. */
+type Page = { label: string; name: string; chunks: { n: number; row: KnowledgeRow }[] }
+
+function pagesOf(rows: KnowledgeRow[]): Map<string, Page> {
+  const pages = new Map<string, Page>()
   for (const row of rows) {
     const m = row.sourceKey?.match(PRODUCT_KEY)
     if (!m) continue
-    const page = pages.get(m[1]) ?? { name: productNameOf(row.body), chunks: [] }
+    const label = row.body.match(/^Product: (.*)$/m)?.[1] ?? ''
+    const page = pages.get(m[1]) ?? { label, name: productNameOf(row.body), chunks: [] }
     page.chunks.push({ n: Number(m[2]), row })
     pages.set(m[1], page)
   }
+  return pages
+}
 
-  // A word in more than a third of the shop's product names is the brand, or
-  // the kind of thing the shop sells, not a product: it names none of them.
+/**
+ * The pages a word of the question names, most hits first.
+ *
+ * A word in more than a third of the shop's product names is the brand, or
+ * the kind of thing the shop sells, not a product: it names none of them.
+ */
+function namedByWords(words: string[], pages: Map<string, Page>): string[] {
   const all = [...pages.entries()]
   const tooMany = Math.max(1, all.length / 3)
   const naming = words.filter((w) => {
     const hits = all.filter(([, p]) => p.name.includes(w)).length
     return hits > 0 && hits <= tooMany
   })
-  const named = all
-    .map(([key, p]) => ({ key, ...p, hits: naming.filter((w) => p.name.includes(w)).length }))
+  return all
+    .map(([key, p]) => ({ key, hits: naming.filter((w) => p.name.includes(w)).length }))
     .filter((p) => p.hits > 0)
     .sort((a, b) => b.hits - a.hits)
+    .map((p) => p.key)
+}
 
+/**
+ * The named pages, whole and in page order, inside the budget. A page is
+ * read from the top and cut once where the budget ends, so what is kept
+ * reads from the top.
+ */
+function pageRows(keys: string[], pages: Map<string, Page>): KnowledgeRow[] {
   const out: KnowledgeRow[] = []
   let chars = 0
-  for (const page of named) {
-    for (const { row } of page.chunks.sort((a, b) => a.n - b.n)) {
-      // The page is cut where the budget ends, so what is kept reads from the top.
+  for (const key of keys) {
+    for (const { row } of pages.get(key)!.chunks.sort((a, b) => a.n - b.n)) {
       if (chars + row.body.length > PAGE_CHARS) break
       chars += row.body.length
       out.push(row)
     }
   }
-  return { rows: out, named: new Set(named.map((p) => p.key)) }
+  return out
 }
 
-export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise<KnowledgeRow[]> {
+/**
+ * Asked which of the shop's products the customer means: "hvor mange grader
+ * kan den komme opp til?". Given the question and every page's key and
+ * label; answers with the keys.
+ */
+export type PagePicker = (question: string, products: { key: string; name: string }[]) => Promise<string[]>
+
+export async function knowledgeFor(text: string, scope: KnowledgeScope, deps: { pickPages?: PagePicker } = {}): Promise<KnowledgeRow[]> {
   // Null scope means "everywhere", so each filter admits rows that named this
   // shop/country/language AND rows that named none.
   //
@@ -205,7 +223,7 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
     // would read half a page with nothing to say so.
     scope.shopId
       ? db.knowledgeItem.findMany({
-          where: { ...inScope, source: 'website', sourceKey: { startsWith: `website:${scope.shopId}:product:` } },
+          where: { ...inScope, shopId: scope.shopId, source: 'website', sourceKey: { contains: ':product:' } },
           select,
         })
       : Promise.resolve([]),
@@ -213,8 +231,19 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
 
   const words = keywordsOf(text)
 
-  // The pages of the products the question names go whole, first.
-  const pages = pagesNamedBy(words, products)
+  // The pages of the products the question is about go whole, first. The
+  // picker is asked every time there are pages to pick from, because a
+  // customer says "the oven", "it" or "kjøkkenmaskinen" on a Danish shop far
+  // more often than "Pizzetta Pro", in any of six languages, and no word
+  // list covers that. What it picks comes first; a word of the question can
+  // still name a page on its own, which also carries a picker that failed.
+  const pages = pagesOf(products)
+  const picked = pages.size > 0 && deps.pickPages
+    ? (await deps.pickPages(text, [...pages].map(([key, p]) => ({ key, name: p.label })))).filter((k) => pages.has(k))
+    : []
+  const keys = [...new Set([...picked, ...namedByWords(words, pages)])]
+  const named = new Set(keys)
+  const wholePages = pageRows(keys, pages)
 
   /**
    * Then the loose matches, from rows on no named page. A word in the TITLE
@@ -223,7 +252,7 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
    * chance, now that website rows run to 1,500 characters.
    */
   const scored = rest
-    .filter((r) => !pages.named.has(pageOf(r.sourceKey) ?? ''))
+    .filter((r) => !named.has(pageOf(r.sourceKey) ?? ''))
     .map((r) => {
       const title = r.title.toLowerCase()
       const body = r.body.toLowerCase()
@@ -235,7 +264,7 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
     .slice(0, MAX_MATCHED)
     .map((s) => s.row)
 
-  return [...always, ...pages.rows, ...scored]
+  return [...always, ...wholePages, ...scored]
 }
 
 const fromHost = (url: string | null) => {

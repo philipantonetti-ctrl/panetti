@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { judge, NoApiKey, type SupportJudgement } from './agent'
+import { judge, NoApiKey, pickProducts, type SupportJudgement } from './agent'
 import { escalateToHuman, getCustomerContext, type Channel } from './channel'
 import {
   askedSoFar, BURST_WAIT_MS, handoverLine, HANDOVER_LINES, humanTookOver, normalise, OWN_TEXT_WINDOW_MS,
@@ -189,7 +189,7 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     country: context.customer?.country ?? null,
     language: session.language,
     skus: context.orders.flatMap((o) => o.products.map((p) => p.name)).slice(0, 20),
-  })
+  }, { pickPages: pickProducts })
 
   let judgement: SupportJudgement
   try {

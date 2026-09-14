@@ -267,3 +267,49 @@ export async function judge(input: {
     reply: typeof out.reply === 'string' && out.reply.trim() ? out.reply : null,
   }
 }
+
+/** The model that picks a product: the question is small and the list is short, so the fast tier. */
+const PICKER_MODEL = 'claude-haiku-4-5-20251001'
+
+const PICKER_SYSTEM = `You match a customer's message to an online shop's product list.
+The customer may write in any language, and may name the product or only say what it is:
+the oven, the machine, the chair, "it". Pick every product the message is about. When the
+message is about no particular product, pick none. Answer with the tool.`
+
+/**
+ * Which of the shop's products the customer means, when their words do not
+ * say. Never throws: a picker that fails is a question answered from the
+ * loose matches alone, as before, not a chat left waiting.
+ */
+export async function pickProducts(question: string, products: { key: string; name: string }[]): Promise<string[]> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey || products.length === 0) return []
+  try {
+    const client = new Anthropic({ apiKey, timeout: 8_000, maxRetries: 0 })
+    const res = await client.messages.create({
+      model: PICKER_MODEL,
+      max_tokens: 300,
+      system: PICKER_SYSTEM,
+      tools: [
+        {
+          name: 'products',
+          description: 'The keys of the products the message is about. Empty when it is about none.',
+          input_schema: { type: 'object', properties: { keys: { type: 'array', items: { type: 'string' } } }, required: ['keys'] },
+        },
+      ],
+      tool_choice: { type: 'tool', name: 'products' },
+      messages: [
+        {
+          role: 'user',
+          content: ['PRODUCTS:', ...products.map((p) => `${p.key}: ${p.name}`), '', 'CUSTOMER:', question].join('\n'),
+        },
+      ],
+    })
+    const call = res.content.find((b) => b.type === 'tool_use')
+    const keys = (call?.input as { keys?: unknown } | undefined)?.keys
+    const known = new Set(products.map((p) => p.key))
+    return Array.isArray(keys) ? keys.filter((k): k is string => typeof k === 'string' && known.has(k)) : []
+  } catch {
+    return []
+  }
+}

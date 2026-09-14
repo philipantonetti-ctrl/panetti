@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { judge, NoApiKey, type ChatMode, type SupportJudgement, type Turn } from './agent'
+import { judge, NoApiKey, pickProducts, type ChatMode, type SupportJudgement, type Turn } from './agent'
 import { getCustomerContext } from './channel'
 import { askedSoFar } from './chat-turn'
 import { knowledgeFor } from './knowledge'
@@ -77,7 +77,7 @@ export async function runSandboxTurn(
     shopId: input.shopId,
     country: context.customer?.country ?? null,
     skus: context.orders.flatMap((o) => o.products.map((p) => p.name)).slice(0, 20),
-  })
+  }, { pickPages: pickProducts })
 
   const chat: ChatMode = {
     firstReply: !history.some((t) => t.role === 'assistant'),
