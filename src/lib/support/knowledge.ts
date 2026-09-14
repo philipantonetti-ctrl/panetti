@@ -42,8 +42,13 @@ const STOP = new Set([
   'lite', 'litt', 'lidt',
 ])
 
-/** A keyword is at least this long, and so is what is left of one after its ending is cut. */
-const KEYWORD_MIN = 4
+/**
+ * What is left of a word after its ending is cut must be at least this long.
+ * Three, because the head noun of a Nordic compound is often three letters:
+ * the customer says ovnen or ugnen, the product is a pizzaovn or a pizzaugn.
+ * A whole word still needs four letters to count at all.
+ */
+const STEM_MIN = 3
 
 /**
  * The endings a noun takes in the shops' languages: the definite and plural
@@ -65,7 +70,7 @@ const ENDINGS = [
  */
 export function stemOf(word: string): string {
   for (const end of ENDINGS) {
-    if (word.length - end.length >= KEYWORD_MIN && word.endsWith(end)) return word.slice(0, -end.length)
+    if (word.length - end.length >= STEM_MIN && word.endsWith(end)) return word.slice(0, -end.length)
   }
   return word
 }

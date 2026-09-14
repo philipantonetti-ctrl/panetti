@@ -96,6 +96,19 @@ describe('knowledgeFor, when the customer names a product', () => {
     expect(pizzetta[7].body).toContain('450 °C')
   })
 
+  it('names the page by the head noun alone: "ovnen" is the "pizzaovn"', async () => {
+    // Philip's second try, 2026-09-14 08:40: no product name, just "the oven".
+    const chunks = Array.from({ length: 14 }, (_, n) => `Om ovnen, del ${n}.`)
+    chunks[7] = 'Med kraftig og effektiv varme når Panetti Pizzetta Pro op til 450 °C på kun 15 minutter.'
+    await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', chunks)
+    await product('10101', 'Panetti PrimoChef - Smart køkkenassistent', ['Del nul.', 'Del en.'])
+
+    const rows = mine(await knowledgeFor('Hvor mange grader kan ovnen komme opp til?', { shopId }))
+
+    expect(rows.slice(0, 14).map(section)).toEqual(['Panetti Pizzetta Pro - Elektrisk pizzaovn', ...Array.from({ length: 13 }, (_, n) => String(n + 1))])
+    expect(rows[7].body).toContain('450 °C')
+  })
+
   it('keeps the loose word matches after the named page', async () => {
     await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', ['Del null.', 'Del en.'])
     await db.knowledgeItem.create({ data: { kind: 'faq', title: `Garanti ${TAG}`, body: `Garantien gjelder 2 år, også ved høye grader. ${TAG}`, shopId } })
