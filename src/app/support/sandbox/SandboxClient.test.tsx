@@ -47,7 +47,7 @@ const result = (over = {}) => ({
   category: 'shipping',
   language: 'da',
   confidence: 0.95,
-  knowledge: [{ kind: 'policy', title: 'Levering', source: 'manual' }, { kind: 'product', title: 'Panetti ProMix - Hva følger med', source: 'website' }],
+  knowledge: [{ kind: 'policy', title: 'Levering', source: 'manual', sections: 1 }, { kind: 'product', title: 'Panetti ProMix', source: 'website', sections: 3 }],
   saw: {
     customer: 'Mette (mette@example.com)',
     orders: [{ number: '14689', shop: 'Panetti Denmark', status: 'completed', delivery: 'in transit', parcels: ['733253836'] }],
@@ -119,7 +119,7 @@ describe('the assistant sandbox', () => {
 
     expect(await screen.findByText('Would send this')).toBeInTheDocument()
     expect(screen.getByText(/95% sure/)).toBeInTheDocument()
-    expect(screen.getByText(/policy: Levering/)).toBeInTheDocument()
+    expect(screen.getByText('Levering (policy)')).toBeInTheDocument()
     // The right-hand panel: the facts it had in front of it.
     expect(screen.getByText(/Mette \(mette@example.com\)/)).toBeInTheDocument()
     expect(screen.getByText(/14689/)).toBeInTheDocument()
@@ -197,7 +197,9 @@ describe('the assistant sandbox', () => {
     draw()
     await waitFor(() => expect(screen.getByLabelText('Shop')).toHaveValue('s-dk'))
     await say('Hva følger med ProMix?')
-    expect(await screen.findByText(/product: Panetti ProMix - Hva følger med \(website\)/)).toBeInTheDocument()
-    expect(screen.getByText(/policy: Levering(?! \(website\))/)).toBeInTheDocument()
+    // One line per page, with how much of it went in; a manual row by its kind.
+    expect(await screen.findByText('Read for this answer:')).toBeInTheDocument()
+    expect(screen.getByText('Panetti ProMix (product page, 3 sections)')).toBeInTheDocument()
+    expect(screen.getByText('Levering (policy)')).toBeInTheDocument()
   })
 })
