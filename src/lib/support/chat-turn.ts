@@ -88,3 +88,17 @@ export function splitForJudge(turns: Turn[], fallback: string): { history: Turn[
   if (last && last.role === 'user') return { history: turns.slice(0, -1), message: last.text }
   return { history: turns, message: fallback }
 }
+
+/** How many of the customer's earlier turns retrieval reads. A chat is short; a "den" reaches about this far back. */
+export const ASKED_TURNS = 3
+
+/**
+ * What retrieval looks for: the customer's earlier turns and then the new
+ * message. "Hvor mange grader blir den?" names no product, but the message
+ * before it did, and the model is shown that message anyway; the knowledge
+ * base has to be searched for it too, or the follow-up is a hand-over.
+ */
+export function askedSoFar(history: Turn[], message: string): string {
+  const earlier = history.filter((t) => t.role === 'user').slice(-ASKED_TURNS).map((t) => t.text)
+  return [...earlier, message].join('\n')
+}

@@ -37,12 +37,43 @@ const STOP = new Set([
   'the', 'and', 'for', 'with', 'you', 'your', 'are', 'was', 'has', 'have', 'not', 'this', 'that',
   'jeg', 'har', 'ikke', 'min', 'mitt', 'och', 'att', 'det', 'som', 'der', 'die', 'und', 'ich',
   'ist', 'nicht', 'mein', 'hei', 'hej', 'hallo', 'hello', 'takk', 'tack', 'danke', 'thanks',
+  // "A little" in Swedish, Norwegian and Danish. Also a massage chair model
+  // ("Lite Comfort"), which a chat about "lite grejer" must not pull in.
+  'lite', 'litt', 'lidt',
 ])
 
-/** The words worth matching on: long enough to mean something, not stop words. */
+/** A keyword is at least this long, and so is what is left of one after its ending is cut. */
+const KEYWORD_MIN = 4
+
+/**
+ * The endings a noun takes in the shops' languages: the definite and plural
+ * forms of Norwegian, Danish and Swedish (pizzaovnen, pizzaovnene, ugnarna),
+ * the common Finnish cases (uunin, uunissa), the German and English plural
+ * and genitive. Longest first; the first that leaves a keyword is the one cut.
+ */
+const ENDINGS = [
+  'erne', 'arna', 'orna', 'erna',
+  'ene', 'ane', 'ssa', 'ssä', 'sta', 'stä', 'lla', 'llä', 'lle', 'ksi',
+  'en', 'et', 'er', 'ar', 'or', 'na', 'ne', 'es',
+  's', 'n',
+]
+
+/**
+ * The part of a word that survives inflection. "grader" becomes "grad" and
+ * "pizzaovnen" becomes "pizzaovn", so a customer's form of a word finds the
+ * page's form; the stem is a prefix of the word, so it can only find more.
+ */
+export function stemOf(word: string): string {
+  for (const end of ENDINGS) {
+    if (word.length - end.length >= KEYWORD_MIN && word.endsWith(end)) return word.slice(0, -end.length)
+  }
+  return word
+}
+
+/** The words worth matching on: long enough to mean something, not stop words, cut to their stems. */
 export function keywordsOf(text: string): string[] {
   const words = text.toLowerCase().match(/[a-zæøåäöüß0-9-]{4,}/g) ?? []
-  return [...new Set(words.filter((w) => !STOP.has(w)))]
+  return [...new Set(words.filter((w) => !STOP.has(w)).map(stemOf))]
 }
 
 export type KnowledgeRow = {
@@ -51,6 +82,78 @@ export type KnowledgeRow = {
   body: string
   source: string
   sourceUrl: string | null
+  /** Set on a website row: how its chunks are told apart and grouped into a page. */
+  sourceKey?: string | null
+}
+
+/**
+ * The most the pages of the products a question names may add to the prompt,
+ * in characters. Every product page read so far fits inside it (the longest,
+ * a massage chair, is 26,000), and two pages of the same chair in two colours
+ * do not need to: the copy is the same.
+ */
+const PAGE_CHARS = 30_000
+
+/** A website product row's key, and the part of it that names the page. */
+const PRODUCT_KEY = /^(website:[^:]+:product:[^:]+):(\d+)$/
+
+/**
+ * The product's name as productRows() writes it on the first line of every
+ * chunk, without a colour or size in brackets: "(Beige)" tells two listings
+ * of one chair apart, it does not name a product a customer would ask for.
+ */
+const productNameOf = (body: string) =>
+  body.match(/^Product: (.*)$/m)?.[1].replace(/\s*\([^)]*\)/g, '').toLowerCase() ?? ''
+
+/** The part of a product chunk's key that names its page. */
+const pageOf = (sourceKey: string | null | undefined) => sourceKey?.match(PRODUCT_KEY)?.[1] ?? null
+
+/**
+ * The whole page of every product the question names, in page order.
+ *
+ * A page is stored as a dozen chunks and the answer is in one of them, which
+ * rarely shares a word with the question: "hvor mange grader" against a chunk
+ * that says "450 \u00b0C". Chunk-by-chunk matching cannot find that; a word
+ * naming the product can, and then the page goes whole, so the model reads
+ * what the customer would have read. `named` is every page a word named,
+ * whether or not the budget let all of it through, so the loose stage can
+ * leave those pages alone: a page is read from the top and cut once, not
+ * topped up from the bottom.
+ */
+function pagesNamedBy(words: string[], rows: KnowledgeRow[]): { rows: KnowledgeRow[]; named: Set<string> } {
+  const pages = new Map<string, { name: string; chunks: { n: number; row: KnowledgeRow }[] }>()
+  for (const row of rows) {
+    const m = row.sourceKey?.match(PRODUCT_KEY)
+    if (!m) continue
+    const page = pages.get(m[1]) ?? { name: productNameOf(row.body), chunks: [] }
+    page.chunks.push({ n: Number(m[2]), row })
+    pages.set(m[1], page)
+  }
+
+  // A word in more than a third of the shop's product names is the brand, or
+  // the kind of thing the shop sells, not a product: it names none of them.
+  const all = [...pages.entries()]
+  const tooMany = Math.max(1, all.length / 3)
+  const naming = words.filter((w) => {
+    const hits = all.filter(([, p]) => p.name.includes(w)).length
+    return hits > 0 && hits <= tooMany
+  })
+  const named = all
+    .map(([key, p]) => ({ key, ...p, hits: naming.filter((w) => p.name.includes(w)).length }))
+    .filter((p) => p.hits > 0)
+    .sort((a, b) => b.hits - a.hits)
+
+  const out: KnowledgeRow[] = []
+  let chars = 0
+  for (const page of named) {
+    for (const { row } of page.chunks.sort((a, b) => a.n - b.n)) {
+      // The page is cut where the budget ends, so what is kept reads from the top.
+      if (chars + row.body.length > PAGE_CHARS) break
+      chars += row.body.length
+      out.push(row)
+    }
+  }
+  return { rows: out, named: new Set(named.map((p) => p.key)) }
 }
 
 export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise<KnowledgeRow[]> {
@@ -75,14 +178,14 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
     ],
   }
 
-  const select = { kind: true, title: true, body: true, source: true, sourceUrl: true } as const
+  const select = { kind: true, title: true, body: true, source: true, sourceUrl: true, sourceKey: true } as const
 
   // Fetched in its own query, with no ceiling: these four kinds are the house
   // rules, sent on every single ticket regardless of what was asked, so a row
   // in them must never be able to fall outside the window below - which the
   // daily website reads can now fill with hundreds of product rows newer than
   // any policy typed by hand.
-  const [always, rest] = await Promise.all([
+  const [always, rest, products] = await Promise.all([
     db.knowledgeItem.findMany({
       where: { ...inScope, kind: { in: ALWAYS } },
       select,
@@ -96,16 +199,31 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
       // decides, and it cannot score a row it never loaded.
       take: 400,
     }),
+    // The shop's product pages, in their own query with no ceiling, like the
+    // house rules. The window above is written in sync order, so once a shop
+    // has more than 400 rows it would cut a page in the middle and the model
+    // would read half a page with nothing to say so.
+    scope.shopId
+      ? db.knowledgeItem.findMany({
+          where: { ...inScope, source: 'website', sourceKey: { startsWith: `website:${scope.shopId}:product:` } },
+          select,
+        })
+      : Promise.resolve([]),
   ])
 
   const words = keywordsOf(text)
 
+  // The pages of the products the question names go whole, first.
+  const pages = pagesNamedBy(words, products)
+
   /**
-   * A word in the TITLE weighs three, in the body one. A product's long
-   * section otherwise outranks the right product's short one by matching
-   * more words by chance, now that website rows run to 1,500 characters.
+   * Then the loose matches, from rows on no named page. A word in the TITLE
+   * weighs three, in the body one. A product's long section otherwise
+   * outranks the right product's short one by matching more words by
+   * chance, now that website rows run to 1,500 characters.
    */
   const scored = rest
+    .filter((r) => !pages.named.has(pageOf(r.sourceKey) ?? ''))
     .map((r) => {
       const title = r.title.toLowerCase()
       const body = r.body.toLowerCase()
@@ -117,7 +235,7 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
     .slice(0, MAX_MATCHED)
     .map((s) => s.row)
 
-  return [...always, ...scored]
+  return [...always, ...pages.rows, ...scored]
 }
 
 const fromHost = (url: string | null) => {

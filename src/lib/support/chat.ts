@@ -2,8 +2,8 @@ import { db } from '@/lib/db'
 import { judge, NoApiKey, type SupportJudgement } from './agent'
 import { escalateToHuman, getCustomerContext, type Channel } from './channel'
 import {
-  BURST_WAIT_MS, handoverLine, HANDOVER_LINES, humanTookOver, normalise, OWN_TEXT_WINDOW_MS, REPLY_CAP,
-  splitForJudge, superseded, turnsOf,
+  askedSoFar, BURST_WAIT_MS, handoverLine, HANDOVER_LINES, humanTookOver, normalise, OWN_TEXT_WINDOW_MS,
+  REPLY_CAP, splitForJudge, superseded, turnsOf,
 } from './chat-turn'
 import { knowledgeFor } from './knowledge'
 import { decide, DEFAULT_RULES, type RulesConfig } from './rules'
@@ -184,7 +184,7 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   const context = incoming.customerEmail
     ? await getCustomerContext(incoming.customerEmail)
     : { customer: null, orders: [], previousTickets: [] }
-  const knowledge = await knowledgeFor(message, {
+  const knowledge = await knowledgeFor(askedSoFar(history, message), {
     shopId: incoming.shopId,
     country: context.customer?.country ?? null,
     language: session.language,
