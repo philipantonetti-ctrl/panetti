@@ -60,3 +60,75 @@ describe('knowledgeBlock', () => {
     expect(text).toContain('[faq] Frakt')
   })
 })
+
+/**
+ * The product page as a whole. A page is stored as a dozen chunks and the
+ * customer's question rarely shares a word with the one chunk that holds the
+ * answer: "hvor mange grader" against a chunk that says "450 °C". When a
+ * word of the question names a product, the whole page goes, in page order.
+ */
+describe('knowledgeFor, when the customer names a product', () => {
+  const product = (ext: string, name: string, chunks: string[], updatedAt?: Date) =>
+    db.knowledgeItem.createMany({
+      data: chunks.map((text, n) => ({
+        kind: 'product', title: n === 0 ? name : `${name} - Section ${n}`, body: `Product: ${name} (SKU X${ext})\nPage: https://panetti.dk/p/\n\n${text} ${TAG}`,
+        shopId, source: 'website', sourceKey: `website:${shopId}:product:${ext}:${n}`, sourceUrl: 'https://panetti.dk/p/',
+        ...(updatedAt ? { updatedAt } : {}),
+      })),
+    })
+
+  it('sends the whole page when a word of the question names the product, the answering chunk included', async () => {
+    // The practice question of 2026-09-14, on the Danish shop's real chunking.
+    const chunks = Array.from({ length: 14 }, (_, n) => `Om ovnen, del ${n}.`)
+    chunks[7] = 'Med kraftig og effektiv varme når Panetti Pizzetta Pro op til 450 °C på kun 15 minutter.'
+    await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', chunks)
+    await product('10101', 'Panetti PrimoChef - Smart køkkenassistent', ['Hvor mange retter kan du lave? Mange.', 'Del to.'])
+
+    const rows = await knowledgeFor('Hei! Hvor mange grader kan pizzaovnen gå opp til?', { shopId })
+
+    const pizzetta = rows.filter((r) => r.title.startsWith('Panetti Pizzetta Pro'))
+    expect(pizzetta.map((r) => r.title.replace(/^.* - Section /, ''))).toEqual([
+      'Panetti Pizzetta Pro - Elektrisk pizzaovn', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13',
+    ])
+    expect(pizzetta[7].body).toContain('450 °C')
+  })
+
+  it('keeps the loose word matches after the named page', async () => {
+    await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', ['Del null.', 'Del en.'])
+    await db.knowledgeItem.create({ data: { kind: 'faq', title: `Garanti ${TAG}`, body: `Garantien gjelder 2 år, også ved høye grader. ${TAG}`, shopId } })
+
+    const rows = await knowledgeFor('Hvor mange grader tåler pizzaovnen?', { shopId })
+
+    expect(rows.map((r) => r.title)).toEqual(['Panetti Pizzetta Pro - Elektrisk pizzaovn', 'Panetti Pizzetta Pro - Elektrisk pizzaovn - Section 1', `Garanti ${TAG}`])
+  })
+
+  it('cuts a named page at the character budget, first chunks first', async () => {
+    // Forty chunks of 1,500: twice the budget. Every page read so far is under it.
+    await product('900', 'Mazzetti Lite Comfort - Massagestol', Array.from({ length: 40 }, (_, n) => `Chunk ${n} `.padEnd(1400, 'x')))
+
+    const rows = await knowledgeFor('Hvor tung er massagestolen?', { shopId })
+
+    // The page, in order, from the top, until the budget ends. What the cut
+    // left out may still arrive behind it as a loose match on its title, but
+    // that stage has its own ceiling of twelve rows.
+    const page = rows.filter((r) => r.title.startsWith('Mazzetti Lite Comfort'))
+    expect(page.length).toBeLessThan(40)
+    expect(page.reduce((sum, r) => sum + r.body.length, 0)).toBeLessThanOrEqual(30_000 + 12 * 1_500)
+    let inOrder = 0
+    while (inOrder < page.length && page[inOrder].body.includes(`Chunk ${inOrder} `)) inOrder++
+    expect(inOrder).toBeGreaterThan(12)
+  })
+
+  it('a word that most product names share names none of them', async () => {
+    // "panetti" is in half the Danish shop's product names. The brand is not a product.
+    for (const [ext, name] of [['1', 'Panetti PrimoChef'], ['2', 'Panetti ProMix'], ['3', 'Panetti Pizzetta Pro']]) {
+      await product(ext, name, Array.from({ length: 6 }, (_, n) => `Om produktet, del ${n}.`))
+    }
+    await product('4', 'Pizzasten', ['En stein til ovnen.'])
+
+    const rows = await knowledgeFor('Hei Panetti, har dere åpent i dag?', { shopId })
+
+    // Nothing named, so only the loose matches: at most twelve of the eighteen chunks.
+    expect(rows.length).toBeLessThanOrEqual(12)
+  })
+})

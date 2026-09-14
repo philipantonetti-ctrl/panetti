@@ -39,10 +39,38 @@ const STOP = new Set([
   'ist', 'nicht', 'mein', 'hei', 'hej', 'hallo', 'hello', 'takk', 'tack', 'danke', 'thanks',
 ])
 
-/** The words worth matching on: long enough to mean something, not stop words. */
+/** A keyword is at least this long, and so is what is left of one after its ending is cut. */
+const KEYWORD_MIN = 4
+
+/**
+ * The endings a noun takes in the shops' languages: the definite and plural
+ * forms of Norwegian, Danish and Swedish (pizzaovnen, pizzaovnene, ugnarna),
+ * the common Finnish cases (uunin, uunissa), the German and English plural
+ * and genitive. Longest first; the first that leaves a keyword is the one cut.
+ */
+const ENDINGS = [
+  'erne', 'arna', 'orna', 'erna',
+  'ene', 'ane', 'ssa', 'ssä', 'sta', 'stä', 'lla', 'llä', 'lle', 'ksi',
+  'en', 'et', 'er', 'ar', 'or', 'na', 'ne', 'es',
+  's', 'n',
+]
+
+/**
+ * The part of a word that survives inflection. "grader" becomes "grad" and
+ * "pizzaovnen" becomes "pizzaovn", so a customer's form of a word finds the
+ * page's form; the stem is a prefix of the word, so it can only find more.
+ */
+export function stemOf(word: string): string {
+  for (const end of ENDINGS) {
+    if (word.length - end.length >= KEYWORD_MIN && word.endsWith(end)) return word.slice(0, -end.length)
+  }
+  return word
+}
+
+/** The words worth matching on: long enough to mean something, not stop words, cut to their stems. */
 export function keywordsOf(text: string): string[] {
   const words = text.toLowerCase().match(/[a-zæøåäöüß0-9-]{4,}/g) ?? []
-  return [...new Set(words.filter((w) => !STOP.has(w)))]
+  return [...new Set(words.filter((w) => !STOP.has(w)).map(stemOf))]
 }
 
 export type KnowledgeRow = {
@@ -51,6 +79,67 @@ export type KnowledgeRow = {
   body: string
   source: string
   sourceUrl: string | null
+  /** Set on a website row: how its chunks are told apart and grouped into a page. */
+  sourceKey?: string | null
+}
+
+/**
+ * The most the pages of the products a question names may add to the prompt,
+ * in characters. Every product page read so far fits inside it (the longest,
+ * a massage chair, is 26,000), and two pages of the same chair in two colours
+ * do not need to: the copy is the same.
+ */
+const PAGE_CHARS = 30_000
+
+/** A website product row's key, and the part of it that names the page. */
+const PRODUCT_KEY = /^(website:[^:]+:product:[^:]+):(\d+)$/
+
+/** The product's name as productRows() writes it on the first line of every chunk. */
+const productNameOf = (body: string) => body.match(/^Product: (.*)$/m)?.[1].toLowerCase() ?? ''
+
+/**
+ * The whole page of every product the question names, in page order.
+ *
+ * A page is stored as a dozen chunks and the answer is in one of them, which
+ * rarely shares a word with the question: "hvor mange grader" against a chunk
+ * that says "450 °C". Chunk-by-chunk matching cannot find that; a word
+ * naming the product can, and then the page goes whole, so the model reads
+ * what the customer would have read.
+ */
+function pagesNamedBy(words: string[], rows: (KnowledgeRow & { sourceKey: string | null })[]): KnowledgeRow[] {
+  const pages = new Map<string, { name: string; chunks: { n: number; row: KnowledgeRow }[] }>()
+  for (const row of rows) {
+    const m = row.sourceKey?.match(PRODUCT_KEY)
+    if (!m) continue
+    const page = pages.get(m[1]) ?? { name: productNameOf(row.body), chunks: [] }
+    page.chunks.push({ n: Number(m[2]), row })
+    pages.set(m[1], page)
+  }
+
+  // A word in more than a third of the shop's product names is the brand, or
+  // the kind of thing the shop sells, not a product: it names none of them.
+  const all = [...pages.values()]
+  const tooMany = Math.max(1, all.length / 3)
+  const naming = words.filter((w) => {
+    const hits = all.filter((p) => p.name.includes(w)).length
+    return hits > 0 && hits <= tooMany
+  })
+  const named = all
+    .map((p) => ({ ...p, hits: naming.filter((w) => p.name.includes(w)).length }))
+    .filter((p) => p.hits > 0)
+    .sort((a, b) => b.hits - a.hits)
+
+  const out: KnowledgeRow[] = []
+  let chars = 0
+  for (const page of named) {
+    for (const { row } of page.chunks.sort((a, b) => a.n - b.n)) {
+      // The page is cut where the budget ends, so what is kept reads from the top.
+      if (chars + row.body.length > PAGE_CHARS) break
+      chars += row.body.length
+      out.push(row)
+    }
+  }
+  return out
 }
 
 export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise<KnowledgeRow[]> {
@@ -75,7 +164,7 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
     ],
   }
 
-  const select = { kind: true, title: true, body: true, source: true, sourceUrl: true } as const
+  const select = { kind: true, title: true, body: true, source: true, sourceUrl: true, sourceKey: true } as const
 
   // Fetched in its own query, with no ceiling: these four kinds are the house
   // rules, sent on every single ticket regardless of what was asked, so a row
@@ -100,12 +189,18 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
 
   const words = keywordsOf(text)
 
+  // The pages of the products the question names go whole, first.
+  const pages = pagesNamedBy(words, rest)
+  const onAPage = new Set(pages)
+
   /**
-   * A word in the TITLE weighs three, in the body one. A product's long
-   * section otherwise outranks the right product's short one by matching
-   * more words by chance, now that website rows run to 1,500 characters.
+   * Then the loose matches. A word in the TITLE weighs three, in the body
+   * one. A product's long section otherwise outranks the right product's
+   * short one by matching more words by chance, now that website rows run
+   * to 1,500 characters.
    */
   const scored = rest
+    .filter((r) => !onAPage.has(r))
     .map((r) => {
       const title = r.title.toLowerCase()
       const body = r.body.toLowerCase()
@@ -117,7 +212,7 @@ export async function knowledgeFor(text: string, scope: KnowledgeScope): Promise
     .slice(0, MAX_MATCHED)
     .map((s) => s.row)
 
-  return [...always, ...scored]
+  return [...always, ...pages, ...scored]
 }
 
 const fromHost = (url: string | null) => {
