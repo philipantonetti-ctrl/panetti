@@ -207,5 +207,8 @@ describe('what retrieval reads on a chat', () => {
     const second = judge.mock.calls[1][0]
     expect(second.message).toBe('Hvor mange grader bliver den?')
     expect(second.knowledge.map((k: { title: string }) => k.title)).toContain(`${TAG} Panetti Pizzetta Pro`)
+    // The review row still shows what was just written, not the joined search text.
+    const rows = await db.aiConversation.findMany({ where: { externalTicketId: 'C-1' }, orderBy: { createdAt: 'asc' } })
+    expect(rows.map((r) => r.question)).toEqual(['Jeg har en Pizzetta Pro', 'Hvor mange grader bliver den?'])
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  handoverLine, humanTookOver, normalise, REPLY_CAP, splitForJudge, superseded, turnsOf,
+  askedSoFar, handoverLine, humanTookOver, normalise, REPLY_CAP, splitForJudge, superseded, turnsOf,
 } from './chat-turn'
 import type { TranscriptMessage } from './channel'
 
@@ -77,4 +77,15 @@ describe('handoverLine', () => {
 describe('constants', () => {
   it('caps a chat at eight replies', () => expect(REPLY_CAP).toBe(8))
   it('normalises whitespace and case', () => expect(normalise('  Hej   du ')).toBe('hej du'))
+})
+
+describe('askedSoFar', () => {
+  it("joins the customer's last three earlier turns and the new message, and never the assistant's", () => {
+    const history = [
+      { role: 'user' as const, text: 'one' }, { role: 'assistant' as const, text: 'Pizzetta Pro is great' },
+      { role: 'user' as const, text: 'two' }, { role: 'user' as const, text: 'three' }, { role: 'user' as const, text: 'four' },
+    ]
+    expect(askedSoFar(history, 'five')).toBe('two\nthree\nfour\nfive')
+    expect(askedSoFar([], 'five')).toBe('five')
+  })
 })

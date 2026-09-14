@@ -5,6 +5,9 @@ import { knowledgeBlock, knowledgeFor } from './knowledge'
 const TAG = '[knowledge-rank-test]'
 let shopId = ''
 
+/** This suite's own rows. Another suite's global house rule (shopId null) is in scope here too while it lives. */
+const mine = (rows: { title: string; body: string }[]) => rows.filter((r) => r.body.includes(TAG))
+
 async function cleanup() {
   await db.knowledgeItem.deleteMany({ where: { body: { contains: TAG } } })
   await db.shop.deleteMany({ where: { name: { contains: TAG } } })
@@ -20,7 +23,7 @@ describe('knowledgeFor', () => {
     await db.knowledgeItem.create({ data: { kind: 'product', title: 'Panetti ProMix - Hva følger med', body: `Product: Panetti ProMix\n\nBolle, eltekrok, visp. ${TAG}`, shopId, source: 'website', sourceUrl: 'https://panetti.no/promix/', sourceKey: `${TAG}:1` } })
     await db.knowledgeItem.create({ data: { kind: 'product', title: 'Pizzaovn - Bruk', body: `ProMix ProMix ProMix ProMix ovn ovn ovn ovn ${TAG}`, shopId, source: 'website', sourceKey: `${TAG}:2` } })
 
-    const rows = await knowledgeFor('Hva følger med ProMix?', { shopId })
+    const rows = mine(await knowledgeFor('Hva følger med ProMix?', { shopId }))
     expect(rows[0].title).toBe('Panetti ProMix - Hva følger med')
     expect(rows[0]).toMatchObject({ source: 'website', sourceUrl: 'https://panetti.no/promix/' })
   })
@@ -68,14 +71,14 @@ describe('knowledgeBlock', () => {
  * word of the question names a product, the whole page goes, in page order.
  */
 describe('knowledgeFor, when the customer names a product', () => {
-  const product = (ext: string, name: string, chunks: string[], updatedAt?: Date) =>
+  const product = (ext: string, name: string, chunks: string[]) =>
     db.knowledgeItem.createMany({
       data: chunks.map((text, n) => ({
         kind: 'product', title: n === 0 ? name : `${name} - Section ${n}`, body: `Product: ${name} (SKU X${ext})\nPage: https://panetti.dk/p/\n\n${text} ${TAG}`,
         shopId, source: 'website', sourceKey: `website:${shopId}:product:${ext}:${n}`, sourceUrl: 'https://panetti.dk/p/',
-        ...(updatedAt ? { updatedAt } : {}),
       })),
     })
+  const section = (r: { title: string }) => r.title.replace(/^.* - Section /, '')
 
   it('sends the whole page when a word of the question names the product, the answering chunk included', async () => {
     // The practice question of 2026-09-14, on the Danish shop's real chunking.
@@ -84,10 +87,10 @@ describe('knowledgeFor, when the customer names a product', () => {
     await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', chunks)
     await product('10101', 'Panetti PrimoChef - Smart køkkenassistent', ['Hvor mange retter kan du lave? Mange.', 'Del to.'])
 
-    const rows = await knowledgeFor('Hei! Hvor mange grader kan pizzaovnen gå opp til?', { shopId })
+    const rows = mine(await knowledgeFor('Hei! Hvor mange grader kan pizzaovnen gå opp til?', { shopId }))
 
     const pizzetta = rows.filter((r) => r.title.startsWith('Panetti Pizzetta Pro'))
-    expect(pizzetta.map((r) => r.title.replace(/^.* - Section /, ''))).toEqual([
+    expect(pizzetta.map(section)).toEqual([
       'Panetti Pizzetta Pro - Elektrisk pizzaovn', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13',
     ])
     expect(pizzetta[7].body).toContain('450 °C')
@@ -97,38 +100,72 @@ describe('knowledgeFor, when the customer names a product', () => {
     await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', ['Del null.', 'Del en.'])
     await db.knowledgeItem.create({ data: { kind: 'faq', title: `Garanti ${TAG}`, body: `Garantien gjelder 2 år, også ved høye grader. ${TAG}`, shopId } })
 
-    const rows = await knowledgeFor('Hvor mange grader tåler pizzaovnen?', { shopId })
+    const rows = mine(await knowledgeFor('Hvor mange grader tåler pizzaovnen?', { shopId }))
 
     expect(rows.map((r) => r.title)).toEqual(['Panetti Pizzetta Pro - Elektrisk pizzaovn', 'Panetti Pizzetta Pro - Elektrisk pizzaovn - Section 1', `Garanti ${TAG}`])
   })
 
-  it('cuts a named page at the character budget, first chunks first', async () => {
-    // Forty chunks of 1,500: twice the budget. Every page read so far is under it.
+  it('cuts a named page at the 30,000-character budget, from the top, and does not top it up from the bottom', async () => {
+    // Forty chunks of about 1,500: twice the budget. Every page read so far is under it.
     await product('900', 'Mazzetti Lite Comfort - Massagestol', Array.from({ length: 40 }, (_, n) => `Chunk ${n} `.padEnd(1400, 'x')))
 
-    const rows = await knowledgeFor('Hvor tung er massagestolen?', { shopId })
+    const rows = mine(await knowledgeFor('Hvor tung er massagestolen?', { shopId }))
 
-    // The page, in order, from the top, until the budget ends. What the cut
-    // left out may still arrive behind it as a loose match on its title, but
-    // that stage has its own ceiling of twelve rows.
+    // Exactly the prefix that fits: one chunk more would cross the budget,
+    // and the rest of the page does not come back through the loose stage,
+    // where every chunk's title would match, in reverse order.
     const page = rows.filter((r) => r.title.startsWith('Mazzetti Lite Comfort'))
-    expect(page.length).toBeLessThan(40)
-    expect(page.reduce((sum, r) => sum + r.body.length, 0)).toBeLessThanOrEqual(30_000 + 12 * 1_500)
-    let inOrder = 0
-    while (inOrder < page.length && page[inOrder].body.includes(`Chunk ${inOrder} `)) inOrder++
-    expect(inOrder).toBeGreaterThan(12)
+    expect(rows).toEqual(page)
+    expect(page.every((r, i) => r.body.includes(`Chunk ${i} `))).toBe(true)
+    const total = page.reduce((sum, r) => sum + r.body.length, 0)
+    expect(total).toBeLessThanOrEqual(30_000)
+    expect(total + page[0].body.length).toBeGreaterThan(30_000)
   })
 
-  it('a word that most product names share names none of them', async () => {
-    // "panetti" is in half the Danish shop's product names. The brand is not a product.
-    for (const [ext, name] of [['1', 'Panetti PrimoChef'], ['2', 'Panetti ProMix'], ['3', 'Panetti Pizzetta Pro']]) {
-      await product(ext, name, Array.from({ length: 6 }, (_, n) => `Om produktet, del ${n}.`))
-    }
+  it('a word in a third of the product names still names them; a word in half of them names none', async () => {
+    // Six products of five chunks. "pizzetta" is in two names, "panetti" in three: the brand is not a product.
+    const five = (what: string) => Array.from({ length: 5 }, (_, n) => `Om ${what}, del ${n}.`)
+    await product('1', 'Panetti Pizzetta Pro', five('ovnen'))
+    await product('2', 'Panetti Pizzetta Mini', five('den lille ovnen'))
+    await product('3', 'Panetti ProMix', five('maskinen'))
     await product('4', 'Pizzasten', ['En stein til ovnen.'])
+    await product('5', 'Pizzaspade', ['En spade.'])
+    await product('6', 'Ovnbørste', ['En børste.'])
 
-    const rows = await knowledgeFor('Hei Panetti, har dere åpent i dag?', { shopId })
+    const named = mine(await knowledgeFor('Hvilken Pizzetta skal jeg velge?', { shopId }))
+    // Both Pizzetta pages first, each whole and in order.
+    const first = named.slice(0, 10)
+    expect(first.every((r) => r.title.includes('Pizzetta'))).toBe(true)
+    expect(first.filter((r) => r.title.startsWith('Panetti Pizzetta Pro')).map(section)).toEqual(['Panetti Pizzetta Pro', '1', '2', '3', '4'])
+    expect(first.filter((r) => r.title.startsWith('Panetti Pizzetta Mini')).map(section)).toEqual(['Panetti Pizzetta Mini', '1', '2', '3', '4'])
 
-    // Nothing named, so only the loose matches: at most twelve of the eighteen chunks.
-    expect(rows.length).toBeLessThanOrEqual(12)
+    const brand = mine(await knowledgeFor('Hei Panetti, har dere åpent i dag?', { shopId }))
+    // No page: only the loose stage, whose ceiling of twelve is below the
+    // fifteen chunks three named pages would have sent. (Every row's Page
+    // line says panetti.dk, so the three others match loosely too.)
+    expect(brand).toHaveLength(12)
+  })
+
+  it('names a product by its name alone, not by the colour in brackets', async () => {
+    await product('7', 'Mazzetti Advanced Comfort - Massagestol (Beige)', ['Beige, del 0.'])
+    await product('8', 'Mazzetti Advanced Comfort - Massagestol (Sort)', ['Sort, del 0.'])
+    await product('9', 'Mazzetti Lite Comfort - Massagestol (Beige)', ['Lite, del 0.'])
+
+    const rows = mine(await knowledgeFor('Har dere den i beige?', { shopId }))
+    expect(rows.every((r) => r.title.includes('Beige'))).toBe(true)
+    expect(rows.slice(0, 1).map(section)).not.toEqual(['Mazzetti Advanced Comfort - Massagestol (Beige)'])
+  })
+
+  it('finds a page the 400-row window has already pushed out', async () => {
+    // Thirty products of fourteen chunks, the named one written first, so it
+    // is the oldest of 420 rows and outside the window the loose stage reads.
+    await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', Array.from({ length: 14 }, (_, n) => `Om ovnen, del ${n}.`))
+    for (let i = 1; i < 30; i++) {
+      await product(`x${i}`, `Panetti Vare ${i}`, Array.from({ length: 14 }, (_, n) => `Om vare ${i}, del ${n}.`))
+    }
+
+    const rows = mine(await knowledgeFor('Hvor mange grader kan pizzaovnen gå opp til?', { shopId }))
+
+    expect(rows.slice(0, 14).map(section)).toEqual(['Panetti Pizzetta Pro - Elektrisk pizzaovn', ...Array.from({ length: 13 }, (_, n) => String(n + 1))])
   })
 })
