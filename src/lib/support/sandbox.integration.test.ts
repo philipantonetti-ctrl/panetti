@@ -129,3 +129,32 @@ describe('runSandboxTurn', () => {
     expect(r.knowledge.some((k) => k.source === 'website')).toBe(true)
   })
 })
+
+describe('runSandboxTurn, what retrieval reads', () => {
+  it('reads the customer\'s earlier turns too, so a follow-up that names nothing still finds the product', async () => {
+    await db.knowledgeItem.create({
+      data: {
+        kind: 'product', title: `${TAG} Panetti Pizzetta Pro`, shopId, source: 'website',
+        body: 'Product: Panetti Pizzetta Pro (SKU PANPIZPRO)\nPage: https://panetti.dk/p/\n\nOp til 450 °C på 15 minutter.',
+        sourceKey: `website:${shopId}:product:11173:0`, sourceUrl: 'https://panetti.dk/p/',
+      },
+    })
+
+    const r = await runSandboxTurn(
+      {
+        shopId, customerEmail: null, sessionKey: 'test-3',
+        messages: [
+          { role: 'user', text: 'Hei, jeg har kjøpt en Pizzetta Pro' },
+          { role: 'assistant', text: 'Hei! Jeg er Panettis assistent.' },
+          { role: 'user', text: 'Hvor mange grader blir den?' },
+        ],
+      },
+      { rules },
+    )
+
+    expect(r.knowledge.map((k) => k.title)).toContain(`${TAG} Panetti Pizzetta Pro`)
+    // The question on the review row is still only what was just written.
+    const row = await db.aiConversation.findUniqueOrThrow({ where: { id: r.conversationId } })
+    expect(row.question).toBe('Hvor mange grader blir den?')
+  })
+})

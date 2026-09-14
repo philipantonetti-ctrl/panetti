@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { judge, NoApiKey, type ChatMode, type SupportJudgement, type Turn } from './agent'
 import { getCustomerContext } from './channel'
+import { askedSoFar } from './chat-turn'
 import { knowledgeFor } from './knowledge'
 import { decide, DEFAULT_RULES, type RulesConfig } from './rules'
 
@@ -72,7 +73,7 @@ export async function runSandboxTurn(
     ? await getCustomerContext(input.customerEmail)
     : { customer: null, orders: [], previousTickets: [] }
 
-  const knowledge = await knowledgeFor(message, {
+  const knowledge = await knowledgeFor(askedSoFar(history, message), {
     shopId: input.shopId,
     country: context.customer?.country ?? null,
     skus: context.orders.flatMap((o) => o.products.map((p) => p.name)).slice(0, 20),

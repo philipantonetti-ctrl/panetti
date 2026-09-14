@@ -50,6 +50,7 @@ const incoming = (over: Partial<Parameters<typeof handleChatMessage>[0]> = {}) =
 })
 
 async function cleanup() {
+  await db.knowledgeItem.deleteMany({ where: { title: { startsWith: TAG } } })
   await db.aiConversation.deleteMany({ where: { externalTicketId: { startsWith: 'C-' } } })
   await db.aiChatSession.deleteMany({ where: { externalTicketId: { startsWith: 'C-' } } })
   await db.order.deleteMany({ where: { shop: { name: { contains: TAG } } } })
@@ -182,5 +183,29 @@ describe('handleChatMessage', () => {
     expect(notes[0].text).toMatch(/could not be reached/i)
     // No judgement means no detected language yet, so the line is the English one.
     expect(sent).toEqual([{ to: 'C-1', text: 'I am getting a colleague to help you. One moment.' }])
+  })
+})
+
+describe('what retrieval reads on a chat', () => {
+  it("reads the customer's earlier turns too, so a follow-up that names nothing still finds the product", async () => {
+    await db.knowledgeItem.create({
+      data: {
+        kind: 'product', title: `${TAG} Panetti Pizzetta Pro`, shopId, source: 'website',
+        body: 'Product: Panetti Pizzetta Pro (SKU PANPIZPRO)\nPage: https://panetti.dk/p/\n\nOp til 450 °C på 15 minutter.',
+        sourceKey: `website:${shopId}:product:11173:0`, sourceUrl: 'https://panetti.dk/p/',
+      },
+    })
+    judge.mockResolvedValue(judgement({ category: 'shipping', reply: 'Fin ovn!' }))
+    transcript = [m(1, false, 'Jeg har en Pizzetta Pro')]
+    await handleChatMessage(incoming({ messageId: '1', text: 'Jeg har en Pizzetta Pro' }), deps())
+    expect(sent.map((s) => s.text)).toEqual(['Fin ovn!'])
+
+    transcript = [...transcript, m(2, true, 'Fin ovn!'), m(3, false, 'Hvor mange grader bliver den?')]
+    await handleChatMessage(incoming({ messageId: '3', text: 'Hvor mange grader bliver den?' }), deps())
+
+    expect(judge).toHaveBeenCalledTimes(2)
+    const second = judge.mock.calls[1][0]
+    expect(second.message).toBe('Hvor mange grader bliver den?')
+    expect(second.knowledge.map((k: { title: string }) => k.title)).toContain(`${TAG} Panetti Pizzetta Pro`)
   })
 })
