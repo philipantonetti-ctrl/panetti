@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { knowledgeBlock, knowledgeFor } from './knowledge'
 
@@ -169,6 +169,24 @@ describe('knowledgeFor, when the customer names a product', () => {
     expect(rows.slice(0, 1).map(section)).not.toEqual(['Mazzetti Advanced Comfort - Massagestol (Beige)'])
   })
 
+  it("finds the shop's pages by the shop column, whatever id the key was written with", async () => {
+    // A row copied from another database keeps its old key; the shop it belongs to is the column.
+    await db.knowledgeItem.createMany({
+      data: ['Del 0.', 'Op til 450 °C.'].map((text, n) => ({
+        kind: 'product', title: n === 0 ? 'Panetti Pizzetta Pro' : `Panetti Pizzetta Pro - Section ${n}`,
+        body: `Product: Panetti Pizzetta Pro - Elektrisk pizzaovn (SKU X)
+Page: https://panetti.dk/p/
+
+${text} ${TAG}`,
+        shopId, source: 'website', sourceKey: `website:someotherid:product:11173:${n}`, sourceUrl: 'https://panetti.dk/p/',
+      })),
+    })
+
+    const rows = mine(await knowledgeFor('Hvor varm blir ovnen?', { shopId }))
+
+    expect(rows.map(section)).toEqual(['Panetti Pizzetta Pro', '1'])
+  })
+
   it('finds a page the 400-row window has already pushed out', async () => {
     // Thirty products of fourteen chunks, the named one written first, so it
     // is the oldest of 420 rows and outside the window the loose stage reads.
@@ -180,5 +198,49 @@ describe('knowledgeFor, when the customer names a product', () => {
     const rows = mine(await knowledgeFor('Hvor mange grader kan pizzaovnen gå opp til?', { shopId }))
 
     expect(rows.slice(0, 14).map(section)).toEqual(['Panetti Pizzetta Pro - Elektrisk pizzaovn', ...Array.from({ length: 13 }, (_, n) => String(n + 1))])
+  })
+
+  describe('the picker', () => {
+    const oven = ['Om ovnen, del 0.', 'Op til 450 °C.', 'Del 2.']
+
+    it("sends the page the picker chose, whole and in order, and shows the picker the shop's products", async () => {
+      await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', oven)
+      await product('10101', 'Panetti PrimoChef - Smart køkkenassistent', ['Del nul.'])
+      const pickPages = vi.fn().mockImplementation(async (_q: string, products: { key: string; name: string }[]) =>
+        products.filter((p) => p.name.includes('Pizzetta')).map((p) => p.key))
+
+      const rows = mine(await knowledgeFor('Hvor mange grader kan den komme opp til?', { shopId }, { pickPages }))
+
+      expect(pickPages).toHaveBeenCalledTimes(1)
+      const [question, products] = pickPages.mock.calls[0]
+      expect(question).toBe('Hvor mange grader kan den komme opp til?')
+      expect(products.map((p: { name: string }) => p.name).sort()).toEqual([
+        'Panetti Pizzetta Pro - Elektrisk pizzaovn (SKU X11173)', 'Panetti PrimoChef - Smart køkkenassistent (SKU X10101)',
+      ])
+      expect(rows.slice(0, 3).map(section)).toEqual(['Panetti Pizzetta Pro - Elektrisk pizzaovn', '1', '2'])
+      expect(rows[1].body).toContain('450 °C')
+    })
+
+    it('is asked even when a word names a product, and what it picks comes first', async () => {
+      // Turn three of a chat: the earlier turns named the oven, the new one
+      // asks about the kitchen machine in Norwegian on a Danish shop.
+      await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', oven)
+      await product('12645', 'Panetti PrimoMix Køkkenmaskine', ['Om maskinen.', 'Den veier 8 kg.'])
+      const pickPages = vi.fn().mockImplementation(async (_q: string, products: { key: string; name: string }[]) =>
+        products.filter((p) => p.name.includes('PrimoMix')).map((p) => p.key))
+
+      const rows = mine(await knowledgeFor('Hvor varm blir ovnen?\nHvor tung er kjøkkenmaskinen?', { shopId }, { pickPages }))
+
+      expect(pickPages).toHaveBeenCalledTimes(1)
+      expect(rows.slice(0, 5).map(section)).toEqual(['Panetti PrimoMix Køkkenmaskine', '1', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', '1', '2'])
+    })
+
+    it('ignores a key the picker made up, and sends nothing when it picks nothing', async () => {
+      await product('11173', 'Panetti Pizzetta Pro - Elektrisk pizzaovn', oven)
+      const madeUp = mine(await knowledgeFor('Har dere åpent i dag?', { shopId }, { pickPages: async () => ['website:x:product:1:0', 'nonsense'] }))
+      expect(madeUp).toEqual([])
+      const nothing = mine(await knowledgeFor('Har dere åpent i dag?', { shopId }, { pickPages: async () => [] }))
+      expect(nothing).toEqual([])
+    })
   })
 })

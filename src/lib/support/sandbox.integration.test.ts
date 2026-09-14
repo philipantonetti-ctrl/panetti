@@ -9,7 +9,8 @@ import { db } from '@/lib/db'
 const judge = vi.fn()
 vi.mock('./agent', async () => {
   const actual = await vi.importActual<typeof import('./agent')>('./agent')
-  return { ...actual, judge: (...args: unknown[]) => judge(...args) }
+  // The picker is a second model call; in here it picks nothing, so no test spends credits or waits on the network.
+  return { ...actual, judge: (...args: unknown[]) => judge(...args), pickProducts: async () => [] }
 })
 
 const { runSandboxTurn } = await import('./sandbox')
