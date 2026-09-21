@@ -1,8 +1,9 @@
 import { timingSafeEqual } from 'crypto'
 import { NextResponse } from 'next/server'
+import { db } from '@/lib/db'
 import { handleChatMessage } from '@/lib/support/chat'
 import { fetchTicketMessages, gorgiasCredentials } from '@/lib/support/client'
-import { gorgiasChannel } from '@/lib/support/gorgias-channel'
+import { gorgiasChannel, isAutomaticMessage } from '@/lib/support/gorgias-channel'
 import { handleMessage } from '@/lib/support/handle'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
@@ -66,9 +67,18 @@ export async function POST(req: Request) {
   }
 
   /**
-   * A chat, on a shop named in the URL: the chat turn owns it, agent messages
-   * included, because telling its own replies from a person's is its job.
-   * Without a shop the body is handled the old way, as an email-style ticket.
+   * A chat: the chat turn owns it, agent messages included, because telling
+   * its own replies from a person's is its job.
+   *
+   * WHICH SHOP is read from the chat itself. One Gorgias account serves every
+   * shop, an HTTP integration fires for all ten of its chat widgets, and
+   * Gorgias has no rule action that triggers one (their rule glossary lists
+   * twenty-one actions; none calls an integration). So a shop in the URL would
+   * answer a Norwegian chat from the Danish shop's pages. The customer's
+   * chat messages carry the widget's id as `integration_id` - measured on live
+   * tickets - and the shop is the one that widget was linked to on the
+   * settings page. A `shop` in the URL is honoured
+   * only as a second lock: it must name the same shop.
    *
    * The MESSAGE is read from the API rather than taken from the body. Gorgias
    * documents no `message` template scope for an HTTP integration - their
@@ -78,9 +88,9 @@ export async function POST(req: Request) {
    * facts about the message come from the TicketMessage object, which it
    * also documents.
    */
-  const shopId = new URL(req.url).searchParams.get('shop')?.trim() || null
+  const urlShop = new URL(req.url).searchParams.get('shop')?.trim() || null
   const isChat = body.channel === 'chat' || body.via === 'gorgias_chat' || body.via === 'offline_capture'
-  if (shopId && isChat) {
+  if (isChat) {
     const creds = gorgiasCredentials()
     if (!creds) {
       return NextResponse.json(
@@ -92,7 +102,14 @@ export async function POST(req: Request) {
       // Oldest first, so the newest is the one that woke us. A message that
       // arrived while we were being called is newer still, and answering that
       // one is right: `superseded` in the chat turn settles the ordering.
-      const messages = await fetchTicketMessages(creds, ticketId)
+      // What Gorgias wrote by itself is passed over: the widget's "back in 9
+      // minutes" lands a millisecond after the customer's first message, and
+      // taking it for the newest message would answer nobody. An internal
+      // note is passed over too: the assistant's own draft note comes back
+      // through this trigger, and the customer never saw it.
+      const messages = (await fetchTicketMessages(creds, ticketId)).filter(
+        (m) => m.public !== false && !isAutomaticMessage(m),
+      )
       const newest = messages[messages.length - 1]
       if (!newest) {
         return NextResponse.json(
@@ -100,6 +117,27 @@ export async function POST(req: Request) {
           { headers: NO_STORE },
         )
       }
+      // The widget is the one the CUSTOMER wrote through. An agent's reply
+      // to a chat left overnight goes out by email and carries the email
+      // integration's id instead (live ticket 240772034, 2026-09-21).
+      const widget =
+        messages.find((m) => m.from_agent !== true && m.channel === 'chat' && m.integration_id != null)?.integration_id ??
+        messages.find((m) => m.channel === 'chat' && m.integration_id != null)?.integration_id ??
+        null
+      const shop = widget === null ? null : await db.shop.findFirst({ where: { gorgiasChatId: String(widget) }, select: { id: true } })
+      if (!shop) {
+        return NextResponse.json(
+          { ok: true, decision: 'skipped', reason: 'This chat widget is not linked to a shop.' },
+          { headers: NO_STORE },
+        )
+      }
+      if (urlShop && urlShop !== shop.id) {
+        return NextResponse.json(
+          { ok: true, decision: 'skipped', reason: 'This chat belongs to another shop than the URL names.' },
+          { headers: NO_STORE },
+        )
+      }
+      const shopId = shop.id
       const via = newest.via ?? body.via ?? 'chat'
       const channel = gorgiasChannel(via)
       if (!channel) {

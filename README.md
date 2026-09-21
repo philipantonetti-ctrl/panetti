@@ -114,19 +114,30 @@ Switching a shop on, once:
 
 1. Set `GORGIAS_WEBHOOK_SECRET` in Vercel (any long random string) and
    redeploy.
-2. Open Settings -> Support assistant, press Show setup beside the shop, and
-   create the HTTP integration in Gorgias with exactly the URL and body shown
-   (trigger: Ticket message created, method POST).
-3. Add a Gorgias rule so that integration fires only for that shop's chat.
+2. Open Settings -> Support assistant, press Show the Gorgias setup, and
+   create ONE HTTP integration in Gorgias with exactly the URL and body shown
+   (trigger: Ticket message created, method POST). It serves every shop.
+3. On the same page, choose the shop's chat widget in Gorgias.
 4. Practise first at Support -> Try the assistant (its own sidebar entry):
    a wrong answer plus a correction becomes an example it uses from the next
    turn.
 5. Set the shop's date. Start in draft mode and read the notes on real chats;
    switch the mode to auto when the drafts are right.
 
-The webhook is `/api/gorgias/webhook?token=<secret>&shop=<shop id>`. Gorgias
-does not retry a failed delivery, so the route answers 200 to everything it
-has taken responsibility for and records the problem on the conversation.
+The webhook is `/api/gorgias/webhook?token=<secret>`, and it names no shop on
+purpose. One Gorgias account serves every shop, an HTTP integration fires for
+all of its chat widgets, and Gorgias has no rule action that triggers one, so
+there is no way to aim an integration at one shop's chat. The customer's chat
+messages carry their widget's id (`integration_id`), and the shop is the one
+linked to that widget (`Shop.gorgiasChatId`); a widget linked to no shop is a
+chat the assistant leaves alone. What Gorgias writes by itself - the widget's
+"back in 9 minutes", a rule's auto-reply, both `from_agent` via `gorgias_chat`
+or `rule` - is nobody: it neither silences the assistant nor is answered.
+People always write via `helpdesk` (99 of 99 on 2026-09-21).
+
+Gorgias does not retry a failed delivery, so the route answers 200 to
+everything it has taken responsibility for and records the problem on the
+conversation.
 
 The body that page prints carries only TICKET facts, and deliberately nothing
 about the message. Gorgias documents template variables for the ticket

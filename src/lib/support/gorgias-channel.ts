@@ -49,6 +49,20 @@ export function replyChannelFor(via: string | null): string {
 }
 
 /**
+ * The routes only Gorgias itself writes on. Measured on 42 live chats,
+ * 2026-09-21: all 99 agent messages written by a person arrived via
+ * `helpdesk`; all 29 written by "Gorgias Bot" arrived via `gorgias_chat` (the
+ * widget's "we are back in 9 minutes") or `rule` (a rule's auto-reply). An
+ * agent does not type through the customer's widget, so an agent message that
+ * came that way has no person behind it.
+ */
+const AUTOMATIC_VIAS = new Set(['gorgias_chat', 'rule'])
+
+export function isAutomaticMessage(m: { from_agent: boolean | null; via: string | null }): boolean {
+  return m.from_agent === true && AUTOMATIC_VIAS.has(m.via ?? '')
+}
+
+/**
  * @param via what the customer wrote in on. The reply goes back the same way,
  * so an Instagram message is not answered by email.
  */
@@ -94,6 +108,7 @@ export function gorgiasChannel(via: string | null = 'email'): Channel | null {
           fromAgent: m.from_agent === true,
           text: m.body_text ?? '',
           at: m.created_datetime ?? '',
+          automatic: isAutomaticMessage(m),
         }))
     },
 

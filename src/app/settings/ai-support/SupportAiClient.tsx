@@ -69,7 +69,8 @@ const MODE_HELP: Record<string, string> = {
   auto: 'It may answer by itself, but only the categories ticked below and only when sure enough.',
 }
 
-type ChatShop = { id: string; name: string; aiChatFrom: string | null; webhookUrl: string | null }
+type ChatShop = { id: string; name: string; aiChatFrom: string | null; gorgiasChatId: string | null }
+type ChatWidget = { id: string; label: string }
 
 export function SupportAiClient({ email }: { email: string }) {
   const toast = useToast()
@@ -83,7 +84,10 @@ export function SupportAiClient({ email }: { email: string }) {
   const [chatShops, setChatShops] = useState<ChatShop[]>([])
   const [secretConfigured, setSecretConfigured] = useState(true)
   const [bodyTemplate, setBodyTemplate] = useState('')
-  const [setupFor, setSetupFor] = useState<string | null>(null)
+  const [showSetup, setShowSetup] = useState(false)
+  const [webhookUrl, setWebhookUrl] = useState<string | null>(null)
+  const [widgets, setWidgets] = useState<ChatWidget[]>([])
+  const [widgetsError, setWidgetsError] = useState<string | null>(null)
   const [savingShop, setSavingShop] = useState<string | null>(null)
   const [prefilled, setPrefilled] = useState(false)
   const [website, setWebsite] = useState<WebsiteShop[]>([])
@@ -128,6 +132,9 @@ export function SupportAiClient({ email }: { email: string }) {
           setChatShops(c.shops)
           setSecretConfigured(c.secretConfigured)
           setBodyTemplate(c.bodyTemplate)
+          setWebhookUrl(c.webhookUrl ?? null)
+          setWidgets(c.widgets ?? [])
+          setWidgetsError(c.widgetsError ?? null)
         }
         if (w) {
           setWebsite(w.shops)
@@ -139,6 +146,29 @@ export function SupportAiClient({ email }: { email: string }) {
   useEffect(() => {
     void load()
   }, [load])
+
+  async function setChatWidget(shop: ChatShop, widgetId: string) {
+    setSavingShop(shop.id)
+    try {
+      const res = await fetch('/api/support/chat-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: shop.id, widgetId: widgetId || null }),
+      })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save')
+        return
+      }
+      const label = widgets.find((w) => w.id === widgetId)?.label
+      toast.success(label ? `${shop.name}: its chat widget is ${label}` : `${shop.name}: no chat widget, so no chats are answered`)
+      // Unlinking switches the chat off on the server too.
+      setChatShops((s) =>
+        s.map((x) => (x.id === shop.id ? { ...x, gorgiasChatId: widgetId || null, aiChatFrom: widgetId ? x.aiChatFrom : null } : x)),
+      )
+    } finally {
+      setSavingShop(null)
+    }
+  }
 
   async function setChatDate(shop: ChatShop, date: string) {
     setSavingShop(shop.id)
@@ -366,9 +396,12 @@ export function SupportAiClient({ email }: { email: string }) {
           <section className="rounded-[var(--radius-card)] border border-line bg-surface p-4">
             <h2 className="mb-1 text-[15px] font-semibold text-ink">Live chat, per shop</h2>
             <p className="mb-3 text-[12px] text-muted">
-              Set a date and the assistant answers that shop&apos;s Gorgias chats started from that day, under the
-              rules above. Leave it empty and it answers none. Each shop also needs one HTTP integration in Gorgias:
-              press Show setup for the exact values.
+              Choose each shop&apos;s chat widget, then set a date: the assistant answers that shop&apos;s Gorgias
+              chats started from that day, under the rules above. Leave the date empty and it answers none. Gorgias
+              also needs one HTTP integration, made once for every shop.{' '}
+              <button onClick={() => setShowSetup((v) => !v)} className="text-accent">
+                {showSetup ? 'Hide the Gorgias setup' : 'Show the Gorgias setup'}
+              </button>
             </p>
             {!secretConfigured && (
               <p className="mb-3 rounded-[var(--radius-control)] border border-warn px-3 py-2 text-[12px] text-warn">
@@ -377,12 +410,51 @@ export function SupportAiClient({ email }: { email: string }) {
                 on a new deployment, so a variable added after the last deployment looks missing until a redeploy.
               </p>
             )}
+            {widgetsError && (
+              <p className="mb-3 rounded-[var(--radius-control)] border border-warn px-3 py-2 text-[12px] text-warn">{widgetsError}</p>
+            )}
+            {showSetup && (
+              <div className="mb-3 space-y-2 rounded-[var(--radius-control)] border border-line bg-panel p-3 text-[12px] text-muted">
+                <p className="text-ink">
+                  In Gorgias: Settings, Integrations, HTTP integration, Add. Fill in exactly this. One integration serves
+                  every shop: the assistant reads which shop a chat belongs to from its chat widget, chosen below.
+                </p>
+                <ol className="list-decimal space-y-1 pl-4">
+                  <li>Name: Panetti assistant</li>
+                  <li>Trigger: Ticket message created</li>
+                  <li>Method: POST</li>
+                  <li>
+                    URL:{' '}
+                    {webhookUrl ? (
+                      <>
+                        <code className="break-all text-ink">{webhookUrl}</code>{' '}
+                        <button onClick={() => void copy(webhookUrl)} className="text-accent">
+                          Copy
+                        </button>
+                      </>
+                    ) : (
+                      'not available until the secret is set'
+                    )}
+                  </li>
+                  <li>Headers: Content-Type: application/json</li>
+                  <li>
+                    Body:{' '}
+                    <button onClick={() => void copy(bodyTemplate)} className="text-accent">
+                      Copy
+                    </button>
+                    <pre className="mt-1 overflow-x-auto rounded-[var(--radius-control)] border border-line bg-surface p-2 text-[11px] text-ink">
+                      {bodyTemplate}
+                    </pre>
+                  </li>
+                </ol>
+              </div>
+            )}
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-line text-left text-[12px] text-muted">
                   <th className="py-2 pr-4">Shop</th>
+                  <th className="py-2 pr-4">Chat widget in Gorgias</th>
                   <th className="py-2 pr-4">Assistant answers chats from</th>
-                  <th className="py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -390,12 +462,34 @@ export function SupportAiClient({ email }: { email: string }) {
                   <tr key={s.id} className="border-b border-line align-top last:border-b-0">
                     <td className="py-2.5 pr-4 font-medium text-ink">{s.name}</td>
                     <td className="py-2.5 pr-4">
+                      <select
+                        aria-label={`Chat widget in Gorgias for ${s.name}`}
+                        value={s.gorgiasChatId ?? ''}
+                        onChange={(e) => void setChatWidget(s, e.target.value)}
+                        disabled={savingShop === s.id}
+                        className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1.5 text-xs text-ink disabled:opacity-60"
+                      >
+                        <option value="">Not chosen</option>
+                        {/* A widget Gorgias no longer lists stays visible, so a saved link never looks empty. */}
+                        {s.gorgiasChatId && !widgets.some((w) => w.id === s.gorgiasChatId) && (
+                          <option value={s.gorgiasChatId}>Widget {s.gorgiasChatId}</option>
+                        )}
+                        {widgets.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-2.5 pr-4">
                       <input
                         type="date"
                         aria-label={`Assistant answers chats for ${s.name} from`}
+                        key={s.aiChatFrom ?? 'none'}
                         defaultValue={s.aiChatFrom ?? ''}
                         onChange={(e) => void setChatDate(s, e.target.value)}
-                        disabled={savingShop === s.id}
+                        disabled={savingShop === s.id || !s.gorgiasChatId}
+                        title={s.gorgiasChatId ? undefined : 'Choose the chat widget first'}
                         className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1.5 text-xs text-ink disabled:opacity-60"
                       />
                       {s.aiChatFrom && (
@@ -408,57 +502,10 @@ export function SupportAiClient({ email }: { email: string }) {
                         </button>
                       )}
                     </td>
-                    <td className="py-2.5 text-right">
-                      <button onClick={() => setSetupFor(setupFor === s.id ? null : s.id)} className="text-xs text-accent">
-                        {setupFor === s.id ? 'Hide setup' : 'Show setup'}
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {setupFor &&
-              (() => {
-                const s = chatShops.find((x) => x.id === setupFor)
-                if (!s) return null
-                return (
-                  <div className="mt-3 space-y-2 rounded-[var(--radius-control)] border border-line bg-panel p-3 text-[12px] text-muted">
-                    <p className="text-ink">In Gorgias: Settings, Integrations, HTTP integration, Add. Fill in exactly this for {s.name}.</p>
-                    <ol className="list-decimal space-y-1 pl-4">
-                      <li>Name: Panetti assistant, {s.name}</li>
-                      <li>Trigger: Ticket message created</li>
-                      <li>Method: POST</li>
-                      <li>
-                        URL:{' '}
-                        {s.webhookUrl ? (
-                          <>
-                            <code className="break-all text-ink">{s.webhookUrl}</code>{' '}
-                            <button onClick={() => void copy(s.webhookUrl!)} className="text-accent">
-                              Copy
-                            </button>
-                          </>
-                        ) : (
-                          'not available until the secret is set'
-                        )}
-                      </li>
-                      <li>Headers: Content-Type: application/json</li>
-                      <li>
-                        Body:{' '}
-                        <button onClick={() => void copy(bodyTemplate)} className="text-accent">
-                          Copy
-                        </button>
-                        <pre className="mt-1 overflow-x-auto rounded-[var(--radius-control)] border border-line bg-surface p-2 text-[11px] text-ink">
-                          {bodyTemplate}
-                        </pre>
-                      </li>
-                      <li>
-                        Then add a Gorgias rule so it only fires for this shop&apos;s chat: when a ticket message is created,
-                        if channel is chat and integration is the {s.name} chat, trigger this HTTP integration.
-                      </li>
-                    </ol>
-                  </div>
-                )
-              })()}
           </section>
 
           <section className="rounded-[var(--radius-card)] border border-line bg-surface p-4">

@@ -53,22 +53,27 @@ export function superseded(transcript: TranscriptMessage[], messageId: string): 
   return transcript.some((m) => !m.fromAgent && Number(m.id) > mine)
 }
 
-/** True when a customer-visible agent message is not one the assistant wrote. */
+/**
+ * True when a customer-visible agent message is not one the assistant wrote.
+ * What the channel wrote by itself is nobody: on 2026-09-21 the widget's
+ * "back in 9 minutes" line sat in 28 of 42 live chats, one millisecond after
+ * the customer's first message, and would have silenced every one of them.
+ */
 export function humanTookOver(transcript: TranscriptMessage[], ownTexts: string[]): boolean {
   const own = new Set(ownTexts.map(normalise))
-  return transcript.some((m) => m.fromAgent && !own.has(normalise(m.text)))
+  return transcript.some((m) => m.fromAgent && !m.automatic && !own.has(normalise(m.text)))
 }
 
 /**
  * The transcript as turns: customer messages are user turns, agent messages
- * are assistant turns, consecutive same-role messages joined, empty ones
- * dropped, and only the last `limit` turns kept.
+ * are assistant turns, consecutive same-role messages joined, empty ones and
+ * the channel's automatic lines dropped, and only the last `limit` turns kept.
  */
 export function turnsOf(transcript: TranscriptMessage[], limit = 20): Turn[] {
   const turns: Turn[] = []
   for (const m of transcript) {
     const text = m.text.trim()
-    if (!text) continue
+    if (!text || m.automatic) continue
     const role: Turn['role'] = m.fromAgent ? 'assistant' : 'user'
     const last = turns[turns.length - 1]
     if (last && last.role === role) last.text = `${last.text}\n${text}`

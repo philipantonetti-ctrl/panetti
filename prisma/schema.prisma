@@ -59,6 +59,12 @@ model Shop {
   /// never reach a chat already in progress.
   aiChatFrom           DateTime?
 
+  /// The id of this shop's chat widget in Gorgias. One Gorgias account serves
+  /// every shop and its HTTP integration fires for all ten widgets, so this is
+  /// what says a chat is this shop's. Null = no chat of any widget is answered
+  /// for this shop, whatever aiChatFrom says.
+  gorgiasChatId        String?
+
   /// When this shop's website was last read into the knowledge base, and what
   /// the read found. Null = never. Read again when older than 20 hours.
   websiteReadAt   DateTime?

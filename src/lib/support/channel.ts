@@ -34,6 +34,12 @@ export type TranscriptMessage = {
   text: string
   /** ISO timestamp as the channel reports it. */
   at: string
+  /**
+   * True when the channel wrote it by itself: a widget's "we are back in nine
+   * minutes", a rule's auto-reply. It counts as an agent message and it is
+   * nobody, so it neither silences the assistant nor enters the conversation.
+   */
+  automatic?: boolean
 }
 
 export type Channel = {
