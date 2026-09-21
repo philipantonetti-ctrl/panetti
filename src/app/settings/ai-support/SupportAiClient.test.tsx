@@ -34,9 +34,15 @@ const TEMPLATE = `{
 const CHAT = {
   secretConfigured: true,
   bodyTemplate: TEMPLATE,
+  webhookUrl: 'https://panetti.vercel.app/api/gorgias/webhook?token=s3cret',
+  widgets: [
+    { id: '104368', label: 'Panetti, Danish' },
+    { id: '100585', label: 'Panetti, Norwegian' },
+  ],
+  widgetsError: null,
   shops: [
-    { id: 's-dk', name: 'Panetti Denmark', aiChatFrom: null, webhookUrl: 'https://panetti.vercel.app/api/gorgias/webhook?token=s3cret&shop=s-dk' },
-    { id: 's-no', name: 'Panetti Norway', aiChatFrom: '2026-09-10', webhookUrl: 'https://panetti.vercel.app/api/gorgias/webhook?token=s3cret&shop=s-no' },
+    { id: 's-dk', name: 'Panetti Denmark', aiChatFrom: null, gorgiasChatId: null },
+    { id: 's-no', name: 'Panetti Norway', aiChatFrom: '2026-09-10', gorgiasChatId: '100585' },
   ],
 }
 
@@ -114,18 +120,56 @@ describe('live chat, per shop', () => {
     expect(screen.getByLabelText('Assistant answers chats for Panetti Norway from')).toHaveValue('2026-09-10')
   })
 
+  /**
+   * One Gorgias account serves every shop, so the page asks which of its chat
+   * widgets is this shop's. Without that the webhook cannot tell a Danish chat
+   * from a Norwegian one.
+   */
+  it('links a shop to its chat widget in Gorgias', async () => {
+    const calls = mockFetch()
+    draw()
+    await screen.findByRole('heading', { name: 'Live chat, per shop' })
+
+    expect(screen.getByLabelText('Chat widget in Gorgias for Panetti Norway')).toHaveValue('100585')
+    fireEvent.change(screen.getByLabelText('Chat widget in Gorgias for Panetti Denmark'), { target: { value: '104368' } })
+
+    await waitFor(() => expect(calls.some((c) => c.init?.method === 'PUT')).toBe(true))
+    expect(JSON.parse(calls.find((c) => c.init?.method === 'PUT')!.init!.body as string)).toEqual({
+      shopId: 's-dk',
+      widgetId: '104368',
+    })
+    // Now that it has a widget, its date can be set.
+    await waitFor(() => expect(screen.getByLabelText('Assistant answers chats for Panetti Denmark from')).toBeEnabled())
+  })
+
+  it('takes no date for a shop until its chat widget is chosen', async () => {
+    mockFetch()
+    draw()
+    await screen.findByRole('heading', { name: 'Live chat, per shop' })
+
+    expect(screen.getByLabelText('Assistant answers chats for Panetti Denmark from')).toBeDisabled()
+    expect(screen.getByLabelText('Assistant answers chats for Panetti Norway from')).toBeEnabled()
+  })
+
+  it('says so when Gorgias could not list the widgets', async () => {
+    mockFetch({ chat: { ...CHAT, widgets: [], widgetsError: 'Gorgias did not answer, so its chat widgets cannot be listed. Reload to try again.' } })
+    draw()
+    await screen.findByRole('heading', { name: 'Live chat, per shop' })
+    expect(screen.getByText(/Gorgias did not answer/)).toBeInTheDocument()
+  })
+
   it('saves a date against the shop it belongs to', async () => {
     const calls = mockFetch()
     draw()
     await screen.findByRole('heading', { name: 'Live chat, per shop' })
 
-    fireEvent.change(screen.getByLabelText('Assistant answers chats for Panetti Denmark from'), {
+    fireEvent.change(screen.getByLabelText('Assistant answers chats for Panetti Norway from'), {
       target: { value: '2026-09-11' },
     })
 
     await waitFor(() => expect(calls.some((c) => c.init?.method === 'PUT')).toBe(true))
     const put = calls.find((c) => c.init?.method === 'PUT')!
-    expect(JSON.parse(put.init!.body as string)).toEqual({ shopId: 's-dk', date: '2026-09-11' })
+    expect(JSON.parse(put.init!.body as string)).toEqual({ shopId: 's-no', date: '2026-09-11' })
   })
 
   it('clears the switch back to answering nothing', async () => {
@@ -143,28 +187,31 @@ describe('live chat, per shop', () => {
     })
   })
 
-  it('shows the exact URL and body to paste into Gorgias, per shop', async () => {
+  /** Once, for the whole account: Gorgias cannot aim an HTTP integration at one shop. */
+  it('shows the one URL and body to paste into Gorgias, and asks for no rule Gorgias cannot make', async () => {
     mockFetch()
     draw()
     await screen.findByRole('heading', { name: 'Live chat, per shop' })
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Show setup' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Show the Gorgias setup' }))
 
-    expect(screen.getByText('https://panetti.vercel.app/api/gorgias/webhook?token=s3cret&shop=s-dk')).toBeInTheDocument()
+    expect(screen.getByText('https://panetti.vercel.app/api/gorgias/webhook?token=s3cret')).toBeInTheDocument()
     expect(screen.getByText(/"ticketId": "\{\{ticket\.id\}\}"/)).toBeInTheDocument()
     expect(screen.getByText(/Trigger: Ticket message created/)).toBeInTheDocument()
+    expect(screen.getByText(/One integration serves every shop/)).toBeInTheDocument()
+    expect(screen.queryByText(/add a Gorgias rule/i)).not.toBeInTheDocument()
   })
 
   /** A URL built without the secret would be refused the first time it fired. */
   it('offers no URL at all when the server has no secret', async () => {
-    mockFetch({ chat: { ...CHAT, secretConfigured: false, shops: [{ ...CHAT.shops[0], webhookUrl: null }] } })
+    mockFetch({ chat: { ...CHAT, secretConfigured: false, webhookUrl: null } })
     draw()
     await screen.findByRole('heading', { name: 'Live chat, per shop' })
 
     expect(screen.getByText(/GORGIAS_WEBHOOK_SECRET is not set/)).toBeInTheDocument()
     // The variable added after the last deployment is the case that looks identical to a missing one.
     expect(screen.getByText(/only hands variables to the app on a new deployment/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Show setup' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show the Gorgias setup' }))
     expect(screen.getByText(/not available until the secret is set/)).toBeInTheDocument()
   })
 })

@@ -29,12 +29,25 @@ describe('humanTookOver', () => {
   it('is true the moment an agent message is not one of ours', () => {
     expect(humanTookOver([m(1, false, 'Hej'), m(2, true, 'Hej, Selena her. Hvad kan jeg hjælpe med?')], own)).toBe(true)
   })
+  // Measured on 42 live chats, 2026-09-21: "Gorgias Bot" posts "Takk for at du tar kontakt! Vi er
+  // tilbake om ca. 9 minutter." one millisecond after the customer's first message. Nobody is there.
+  it("is false for the channel's own automatic line, which is nobody", () => {
+    const bot = { ...m(2, true, 'Takk for at du tar kontakt! Vi er tilbake om ca. 9 minutter.'), automatic: true }
+    expect(humanTookOver([m(1, false, 'Hei'), bot], own)).toBe(false)
+    expect(humanTookOver([m(1, false, 'Hei'), bot, m(3, true, 'Hei, Selena her.')], own)).toBe(true)
+  })
   it('is false with no agent message at all', () => {
     expect(humanTookOver([m(1, false, 'Hej')], own)).toBe(false)
   })
 })
 
 describe('turnsOf', () => {
+  it("leaves the channel's automatic line out, so the model never thinks it promised nine minutes", () => {
+    const bot = { ...m(2, true, 'Vi er tilbake om ca. 9 minutter.'), automatic: true }
+    expect(turnsOf([m(1, false, 'Hei'), bot, m(3, false, 'Hvor varm blir ovnen?')])).toEqual([
+      { role: 'user', text: 'Hei\nHvor varm blir ovnen?' },
+    ])
+  })
   it('joins consecutive customer messages into one turn and keeps the order', () => {
     expect(turnsOf([m(1, false, 'hi'), m(2, false, 'where is my order'), m(3, true, 'One moment'), m(4, false, '14689')])).toEqual([
       { role: 'user', text: 'hi\nwhere is my order' },

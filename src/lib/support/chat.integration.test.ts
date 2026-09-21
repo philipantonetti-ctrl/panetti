@@ -118,6 +118,27 @@ describe('handleChatMessage', () => {
     expect(sent).toHaveLength(0)
   })
 
+  /**
+   * Measured 2026-09-21: the Norwegian widget posts "Vi er tilbake om ca. 9
+   * minutter." a millisecond after the customer's first message, in 25 of its
+   * 26 newest chats. Read as a person, it silenced the assistant before its
+   * first word.
+   */
+  it("answers past the widget's automatic line, and keeps that line out of the conversation", async () => {
+    transcript = [
+      m(1, false, 'Hej'),
+      { ...m(2, true, 'Tak fordi du skriver! Vi er tilbage om ca. 9 minutter.'), automatic: true },
+      m(3, false, 'Hvor er min pakke?'),
+    ]
+    const r = await handleChatMessage(incoming({ messageId: '3' }), deps())
+
+    expect(r.decision).toBe('sent')
+    expect(judge.mock.calls[0][0].message).toBe('Hej\nHvor er min pakke?')
+    expect(judge.mock.calls[0][0].history).toEqual([])
+    const session = await db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })
+    expect(session.status).toBe('ai')
+  })
+
   it('flips the latch on an agent message that is not its own, and ignores its own', async () => {
     await handleChatMessage(incoming(), deps())
     const own = await handleChatMessage(incoming({ messageId: '3', fromAgent: true, text: 'Din pakke er på vej.' }), deps())

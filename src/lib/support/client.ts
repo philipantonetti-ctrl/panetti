@@ -131,6 +131,40 @@ export type GorgiasTicketMessage = {
   body_text: string | null
   created_datetime: string | null
   sender: { id?: number | null; name?: string | null; email?: string | null } | null
+  /** The integration it travelled through. In a chat, every message carries the widget's id. */
+  integration_id?: number | null
+}
+
+/** One chat widget of the account, as the settings page offers it. */
+export type GorgiasChatWidget = { id: string; name: string; language: string | null }
+
+type GorgiasIntegration = {
+  id: number
+  type: string | null
+  name: string | null
+  deactivated_datetime: string | null
+  meta: { language?: string | null } | null
+}
+
+/**
+ * The account's live chat widgets. One Gorgias account serves every shop, so
+ * "Panetti" exists five times over and only the language tells them apart.
+ */
+export async function fetchChatWidgets(creds: GorgiasCredentials, deadline?: number): Promise<GorgiasChatWidget[]> {
+  const out: GorgiasChatWidget[] = []
+  let cursor: string | null = null
+  for (let page = 0; page < 5; page++) {
+    const params: Record<string, string> = { limit: '100', ...(cursor ? { cursor } : {}) }
+    const { data, nextCursor }: { data: GorgiasIntegration[]; nextCursor: string | null } =
+      await get<GorgiasIntegration>(creds, 'integrations', params, deadline)
+    for (const i of data) {
+      if (i.type !== 'gorgias_chat' || i.deactivated_datetime) continue
+      out.push({ id: String(i.id), name: i.name ?? 'Chat', language: i.meta?.language ?? null })
+    }
+    if (!nextCursor) break
+    cursor = nextCursor
+  }
+  return out
 }
 
 /** Pages a chat can run to. Three hundred messages is a very long chat. */

@@ -26,15 +26,21 @@ vi.mock('@/lib/support/chat', () => ({
  * message, so the webhook reads the message from the API. That call is what
  * this stub answers.
  */
-type Msg = { id: number; from_agent: boolean; public: boolean; channel: string; via: string; body_text: string; created_datetime: string; sender: null }
+type Msg = { id: number; from_agent: boolean; public: boolean; channel: string; via: string; body_text: string; created_datetime: string; sender: null; integration_id: number | null }
 const fetchTicketMessages = vi.fn<(creds: unknown, ticketId: string) => Promise<Msg[]>>(async () => [
-  { id: 90209, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Hej', created_datetime: '2026-09-09T09:59:00Z', sender: null },
-  { id: 90210, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Hvor er min pakke?', created_datetime: '2026-09-09T10:00:00Z', sender: null },
+  { id: 90209, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Hej', created_datetime: '2026-09-09T09:59:00Z', sender: null, integration_id: 104368 },
+  { id: 90210, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Hvor er min pakke?', created_datetime: '2026-09-09T10:00:00Z', sender: null, integration_id: 104368 },
 ])
 vi.mock('@/lib/support/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/support/client')>('@/lib/support/client')
   return { ...actual, fetchTicketMessages: (creds: never, ticketId: never) => fetchTicketMessages(creds, ticketId) }
 })
+
+/** The one shop that has a chat widget: Panetti Denmark, widget 104368. */
+const findShop = vi.fn<(args: { where: { gorgiasChatId: string } }) => Promise<{ id: string } | null>>(
+  async ({ where }) => (where.gorgiasChatId === '104368' ? { id: 'shop_dk' } : null),
+)
+vi.mock('@/lib/db', () => ({ db: { shop: { findFirst: (args: never) => findShop(args) } } }))
 
 const { POST } = await import('./route')
 
@@ -42,6 +48,7 @@ beforeEach(() => {
   handleMessage.mockClear()
   handleChatMessage.mockClear()
   fetchTicketMessages.mockClear()
+  findShop.mockClear()
   vi.stubEnv('GORGIAS_WEBHOOK_SECRET', 's3cret')
   vi.stubEnv('GORGIAS_DOMAIN', 'test-account')
   vi.stubEnv('GORGIAS_EMAIL', 'admin@example.invalid')
@@ -148,13 +155,13 @@ const chat = {
  * `message` template scope and a guess there would be an assistant answering
  * its own messages in a live chat window.
  */
-describe('a chat message with a shop', () => {
-  const postChat = (body: unknown, qs = 'token=s3cret&shop=shop_dk') =>
+describe('a chat message', () => {
+  const postChat = (body: unknown, qs = 'token=s3cret') =>
     POST(new Request(`http://localhost/api/gorgias/webhook?${qs}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }))
 
-  it('goes to the chat turn with the shop, the start time, and the newest message from the API', async () => {
+  it('goes to the chat turn with the shop its widget belongs to, the start time, and the newest message from the API', async () => {
     const res = await postChat(chat)
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ ok: true, decision: 'sent' })
@@ -175,7 +182,7 @@ describe('a chat message with a shop', () => {
 
   it('passes an agent message through, so the chat turn can tell its own from a person', async () => {
     fetchTicketMessages.mockResolvedValueOnce([
-      { id: 90211, from_agent: true, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Selena here.', created_datetime: '2026-09-09T10:01:00Z', sender: null },
+      { id: 90211, from_agent: true, public: true, channel: 'chat', via: 'helpdesk', body_text: 'Selena here.', created_datetime: '2026-09-09T10:01:00Z', sender: null, integration_id: 104368 },
     ])
     await postChat(chat)
     expect(handleChatMessage.mock.calls[0][0]).toMatchObject({ fromAgent: true, text: 'Selena here.' })
@@ -189,10 +196,77 @@ describe('a chat message with a shop', () => {
     expect(handleChatMessage).not.toHaveBeenCalled()
   })
 
-  it('treats a chat without a shop as it always did, an email-style ticket', async () => {
-    await postChat(chat, 'token=s3cret')
+  /**
+   * One Gorgias account holds ten chat widgets, and an HTTP integration fires
+   * for all of them: Gorgias has no rule action that triggers one. So the
+   * widget the chat came through decides the shop, and a widget nobody linked
+   * is a chat the assistant leaves alone.
+   */
+  it('leaves a chat alone when its widget belongs to no shop', async () => {
+    fetchTicketMessages.mockResolvedValueOnce([
+      { id: 90300, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Hei', created_datetime: '2026-09-09T10:00:00Z', sender: null, integration_id: 100585 },
+    ])
+    const res = await postChat(chat)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ decision: 'skipped', reason: 'This chat widget is not linked to a shop.' })
     expect(handleChatMessage).not.toHaveBeenCalled()
-    expect(handleMessage).toHaveBeenCalledTimes(1)
+    expect(handleMessage).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Live ticket 240772034, 2026-09-21: a chat left overnight was answered the
+   * next morning BY EMAIL, so the newest message carried the email
+   * integration's id, not the widget's. The widget is the one the customer
+   * wrote through.
+   */
+  it("finds the shop by the customer's chat message, not by an agent's emailed reply", async () => {
+    fetchTicketMessages.mockResolvedValueOnce([
+      { id: 90500, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Hej', created_datetime: '2026-09-20T12:47:11Z', sender: null, integration_id: 104368 },
+      { id: 90501, from_agent: true, public: true, channel: 'email', via: 'helpdesk', body_text: 'Hej, Selena her.', created_datetime: '2026-09-21T05:44:22Z', sender: null, integration_id: 136594 },
+    ])
+    await postChat(chat)
+    expect(findShop.mock.calls[0][0].where.gorgiasChatId).toBe('104368')
+    expect(handleChatMessage.mock.calls[0][0]).toMatchObject({ shopId: 'shop_dk', fromAgent: true })
+  })
+
+  /**
+   * A draft is left as an internal note, and the note comes back through the
+   * same trigger. Taken for the newest message it reads as a person writing,
+   * and the assistant would go quiet on a chat it was told to keep drafting.
+   */
+  it('reads past an internal note, which the customer never sees', async () => {
+    fetchTicketMessages.mockResolvedValueOnce([
+      { id: 90600, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Hvor er min pakke?', created_datetime: '2026-09-21T10:00:00Z', sender: null, integration_id: 104368 },
+      { id: 90601, from_agent: true, public: false, channel: 'internal-note', via: 'api', body_text: 'Suggested reply: ...', created_datetime: '2026-09-21T10:00:09Z', sender: null, integration_id: null },
+    ])
+    await postChat(chat)
+    expect(handleChatMessage.mock.calls[0][0]).toMatchObject({ messageId: '90600', fromAgent: false })
+  })
+
+  it('leaves a chat alone when the URL names another shop than its widget does', async () => {
+    const res = await postChat(chat, 'token=s3cret&shop=shop_no')
+    expect((await res.json()).decision).toBe('skipped')
+    expect(handleChatMessage).not.toHaveBeenCalled()
+  })
+
+  it('still answers when the URL names the same shop', async () => {
+    await postChat(chat, 'token=s3cret&shop=shop_dk')
+    expect(handleChatMessage.mock.calls[0][0]).toMatchObject({ shopId: 'shop_dk', messageId: '90210' })
+  })
+
+  /**
+   * Measured 2026-09-21: "Gorgias Bot" answers the customer's first message one
+   * millisecond later, from_agent true, via gorgias_chat. It is the newest
+   * message when we are called, and it is nobody: the customer's message is
+   * the one to answer.
+   */
+  it("reads past the widget's automatic line to the customer's message", async () => {
+    fetchTicketMessages.mockResolvedValueOnce([
+      { id: 90400, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Hei! Hvor varm blir ovnen?', created_datetime: '2026-09-21T10:43:00.431Z', sender: null, integration_id: 104368 },
+      { id: 90401, from_agent: true, public: true, channel: 'chat', via: 'gorgias_chat', body_text: 'Takk for at du tar kontakt! Vi er tilbake om ca. 9 minutter.', created_datetime: '2026-09-21T10:43:00.432Z', sender: null, integration_id: 104368 },
+    ])
+    await postChat(chat)
+    expect(handleChatMessage.mock.calls[0][0]).toMatchObject({ messageId: '90400', fromAgent: false, text: 'Hei! Hvor varm blir ovnen?', via: 'gorgias_chat' })
   })
 
   it('answers 200 when the chat turn fails, because Gorgias never retries', async () => {
