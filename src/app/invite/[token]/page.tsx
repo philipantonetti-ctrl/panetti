@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { inspectInvite } from '@/lib/auth/invite'
 import { db } from '@/lib/db'
 import { InviteClient } from './InviteClient'
+import { BrandMark } from '@/components/brand/BrandMark'
 
 /**
  * The door an ambassador walks through exactly once - and, in practice, knocks on for
@@ -93,9 +94,7 @@ function InviteDead({ reason }: { reason: 'invalid' | 'expired' | 'used' | 'has-
     <main className="flex min-h-screen items-center justify-center bg-canvas p-6">
       <div className="w-full max-w-[380px]">
         <div className="mb-5 flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-ink text-[12px] font-bold text-white">
-            p
-          </span>
+          <BrandMark size={28} />
           <span className="text-[15px] font-semibold tracking-tight text-ink">panetti-analytics</span>
         </div>
 

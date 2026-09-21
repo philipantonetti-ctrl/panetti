@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { ToastContext } from '@/components/toast/useToast'
 import { FreshBuild } from './FreshBuild'
 import { Assistant } from '@/components/assistant/Assistant'
+import { BrandMark } from '@/components/brand/BrandMark'
 
 /**
  * The app shell.
@@ -395,9 +396,7 @@ const OPERATIONS_NAV: { section: string; items: NavItem[] }[] = [
 function Wordmark({ home }: { home: string }) {
   return (
     <Link href={home} className="flex items-center gap-2 px-2.5 py-1">
-      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-ink text-[11px] font-bold text-white">
-        p
-      </span>
+      <BrandMark size={24} />
       <span className="text-[13px] font-semibold tracking-tight text-ink">panetti-analytics</span>
     </Link>
   )
