@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PasswordField } from '@/components/PasswordField'
 import { MIN_PASSWORD_LENGTH } from '@/lib/auth/account-rules'
+import { BrandMark } from '@/components/brand/BrandMark'
 
 /**
  * Where a reset link is spent.
@@ -76,9 +77,7 @@ export function ResetClient({ token }: { token: string }) {
     <main className="flex min-h-screen items-center justify-center bg-canvas p-6">
       <div className="w-full max-w-[380px]">
         <div className="mb-5 flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-ink text-[12px] font-bold text-white">
-            p
-          </span>
+          <BrandMark size={28} />
           <span className="text-[15px] font-semibold tracking-tight text-ink">panetti-analytics</span>
         </div>
 
