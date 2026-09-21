@@ -19,7 +19,7 @@ const appUrl = () => process.env.APP_URL ?? 'https://panetti.vercel.app'
 
 function message(link: string): string {
   return [
-    'Someone asked to reset the password for your panetti-analytics login.',
+    'Someone asked to reset the password for your Panetti-analytics login.',
     '',
     'Open this link to choose a new password:',
     link,
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     const token = await signReset(user.id, user.passwordHash)
     await sendEmail(
       user.email,
-      'Reset your panetti-analytics password',
+      'Reset your Panetti-analytics password',
       message(`${appUrl()}/reset/${token}`),
     )
   } catch (e) {

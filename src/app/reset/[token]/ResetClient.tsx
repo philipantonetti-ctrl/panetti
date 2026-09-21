@@ -78,7 +78,7 @@ export function ResetClient({ token }: { token: string }) {
       <div className="w-full max-w-[380px]">
         <div className="mb-5 flex items-center gap-2.5">
           <BrandMark size={28} />
-          <span className="text-[15px] font-semibold tracking-tight text-ink">panetti-analytics</span>
+          <span className="text-[15px] font-semibold tracking-tight text-ink">Panetti-analytics</span>
         </div>
 
         <div className="rounded-[var(--radius-card)] border border-line bg-surface p-6">
