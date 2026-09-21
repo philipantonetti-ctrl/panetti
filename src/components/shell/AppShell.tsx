@@ -397,7 +397,7 @@ function Wordmark({ home }: { home: string }) {
   return (
     <Link href={home} className="flex items-center gap-2 px-2.5 py-1">
       <BrandMark size={24} />
-      <span className="text-[13px] font-semibold tracking-tight text-ink">panetti-analytics</span>
+      <span className="text-[13px] font-semibold tracking-tight text-ink">Panetti-analytics</span>
     </Link>
   )
 }

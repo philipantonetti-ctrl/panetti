@@ -208,7 +208,7 @@ describe('the operations sidebar', () => {
 
   it('points its wordmark at the dashboard, which is where he lands', () => {
     render(<ToastProvider><AppShell email="ops@test.local" role="OPERATIONS"><p>page</p></AppShell></ToastProvider>)
-    expect(screen.getByRole('link', { name: /panetti-analytics/ }).getAttribute('href')).toBe('/dashboard')
+    expect(screen.getByRole('link', { name: /Panetti-analytics/ }).getAttribute('href')).toBe('/dashboard')
   })
 
   /**
