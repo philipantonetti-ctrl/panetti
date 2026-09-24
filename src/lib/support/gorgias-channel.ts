@@ -87,6 +87,11 @@ export function gorgiasChannel(via: string | null = 'email'): Channel | null {
       return post(creds, `tickets/${conversationId}/messages`, {
         channel,
         from_agent: true,
+        // Required. Measured against the live API on 2026-09-24: without it
+        // Gorgias answers 400 `{"sender": ["Missing data for required
+        // field."]}` and the customer gets nothing. The address is the
+        // account the API key belongs to, which Gorgias resolves to its user.
+        sender: { email: creds.email },
         // Omitting sent_datetime is what asks Gorgias to deliver it rather
         // than merely record it.
         public: true,
@@ -100,6 +105,9 @@ export function gorgiasChannel(via: string | null = 'email'): Channel | null {
         channel: 'internal-note',
         from_agent: true,
         public: false,
+        // A note is refused without a sender exactly as a reply is, so every
+        // handover note failed too until this was measured.
+        sender: { email: creds.email },
         body_text: text,
       })
     },

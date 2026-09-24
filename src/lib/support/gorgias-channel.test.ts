@@ -33,6 +33,37 @@ describe('the Gorgias channel for a chat', () => {
     expect(calls[0].body).toMatchObject({ channel: 'chat', source: { type: 'chat' }, public: true, from_agent: true, body_text: 'Hej!' })
   })
 
+  /**
+   * Measured against the live API on 2026-09-24: WITHOUT a sender, Gorgias
+   * answers 400 `{"sender": ["Missing data for required field."]}` - for a
+   * chat reply and for an internal note alike. The first real customer
+   * question was judged correctly at 94% and then never reached the chat
+   * window because of it. With `sender: { email }` Gorgias answers 201 and
+   * resolves the address to the account's own user.
+   */
+  it('names who is writing, because Gorgias refuses a message without a sender', async () => {
+    const calls: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_url: string | URL, init: RequestInit = {}) => {
+      calls.push(init.body ? JSON.parse(String(init.body)) : null)
+      return new Response(JSON.stringify({ id: 626243177 }), { status: 201 })
+    }))
+    const channel = gorgiasChannel('gorgias_chat')!
+    await channel.sendMessage('7', 'Hej!')
+    await channel.addInternalNote('7', 'A note for the agents.')
+    expect(calls[0]).toMatchObject({ sender: { email: 'admin@example.invalid' } })
+    expect(calls[1]).toMatchObject({ channel: 'internal-note', public: false, sender: { email: 'admin@example.invalid' } })
+  })
+
+  it('hands back the id Gorgias gave the reply, so the assistant can know its own message', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 626243177 }), { status: 201 })))
+    expect(await gorgiasChannel('gorgias_chat')!.sendMessage('7', 'Hej!')).toBe('626243177')
+  })
+
+  it('does not fail a reply that Gorgias accepted but answered without a body', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 201 })))
+    expect(await gorgiasChannel('gorgias_chat')!.sendMessage('7', 'Hej!')).toBeNull()
+  })
+
   it('reads the transcript as public messages only, oldest first', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response(JSON.stringify({
