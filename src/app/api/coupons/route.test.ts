@@ -13,12 +13,12 @@ const fetchCouponsMock = vi.fn()
 vi.mock('@/lib/woo/client', () => ({ fetchCoupons: (...args: unknown[]) => fetchCouponsMock(...args) }))
 
 const { GET } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 const { encryptSecret } = await import('@/lib/secrets')
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'test-admin', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null,
   })
 }

@@ -71,7 +71,7 @@ export async function POST(req: Request) {
       email: user.email,
       role: 'AMBASSADOR',
       ambassadorId: ambassador.id,
-    })
+    }, user.passwordHash)
 
     const res = NextResponse.json({ ok: true, redirectTo: '/portal' })
     res.cookies.set(SESSION_COOKIE, token, {

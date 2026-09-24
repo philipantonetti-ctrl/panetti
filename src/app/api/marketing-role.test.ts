@@ -11,7 +11,7 @@ const { GET: listAmbassadors, POST: createAmbassador } = await import('./ambassa
 const { GET: metrics } = await import('./metrics/route')
 const { GET: orders } = await import('./orders/route')
 const { GET: settings } = await import('./settings/route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const MARK = '[mkt-role-test]'
@@ -24,7 +24,7 @@ async function wipe() {
 
 beforeEach(async () => {
   await wipe()
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'mkt-1', email: 'mkt@test.local', role: 'MARKETING', ambassadorId: null,
   })
 })

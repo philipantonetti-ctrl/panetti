@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { GET } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const EMAIL = 'plan-currency-amb@example.local'
@@ -49,7 +49,7 @@ beforeEach(async () => {
     },
   })
 
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'u-cur', email: EMAIL, role: 'AMBASSADOR', ambassadorId: amb.id,
   })
 })

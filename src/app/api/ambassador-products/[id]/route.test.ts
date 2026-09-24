@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { DELETE } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const EMAIL = 'plan-giftdel-amb@example.local'
@@ -16,7 +16,7 @@ let ambassadorId = ''
 let giftId = ''
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'test-admin', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null,
   })
 }
@@ -65,7 +65,7 @@ describe('DELETE /api/ambassador-products/[id]', () => {
   })
 
   it('answers an ambassador with 403', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'test-amb', email: EMAIL, role: 'AMBASSADOR', ambassadorId,
     })
     expect((await call(giftId)).status).toBe(403)

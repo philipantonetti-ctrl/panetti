@@ -44,7 +44,7 @@ describe('password-reset tokens', () => {
     const { signSession } = await import('./session')
     const session = await signSession({
       userId: 'user-1', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'amb-1',
-    })
+    }, '$2b$10$whatever')
     expect(await verifyReset(session)).toBeNull()
   })
 

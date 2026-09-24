@@ -42,7 +42,7 @@ describe('invite tokens', () => {
     const { signSession } = await import('./session')
     const session = await signSession({
       userId: 'u1', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'amb-123',
-    })
+    }, '$2b$10$whatever')
     expect(await verifyInvite(session)).toBeNull()
   })
 })
@@ -94,7 +94,7 @@ describe('inspecting an invite whose expiry has passed', () => {
     const { signSession } = await import('./session')
     const session = await signSession({
       userId: 'u1', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'amb-123',
-    })
+    }, '$2b$10$whatever')
     expect(await inspectInvite(session)).toBeNull()
   })
 

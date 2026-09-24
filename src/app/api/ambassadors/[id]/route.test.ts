@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { PATCH, DELETE } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const EMAIL = 'plan-patch-amb@example.local'
@@ -16,7 +16,7 @@ const DEL_USER_EMAIL = 'plan-del-user@example.local'
 let id = ''
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'test-admin', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null,
   })
 }
@@ -60,7 +60,7 @@ describe('PATCH /api/ambassadors/[id]', () => {
   })
 
   it('refuses an ambassador', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'u', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'x',
     })
     expect((await patch({ name: 'Hacked' })).status).toBe(403)
@@ -149,7 +149,7 @@ describe('DELETE /api/ambassadors/[id]', () => {
   })
 
   it('refuses an ambassador', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'u', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'x',
     })
     expect((await del()).status).toBe(403)

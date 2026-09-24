@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { GET } = await import('./stats/route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const SELLER = 'plan-stats-seller@example.local'
@@ -38,7 +38,7 @@ beforeEach(async () => {
       shippingCharged: 0, taxTotal: 0, total: 50000, ambassadorId: seller.id,
     },
   })
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'mkt-stats', email: 'mkt@test.local', role: 'MARKETING', ambassadorId: null,
   })
 })
@@ -68,7 +68,7 @@ describe('ambassador statistics for staff', () => {
   })
 
   it('answers an ambassador with 403', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'amb-x', email: 'amb@test.local', role: 'AMBASSADOR', ambassadorId: 'a-x',
     })
     expect((await stats()).status).toBe(403)

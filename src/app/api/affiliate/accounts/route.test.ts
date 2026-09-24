@@ -9,7 +9,7 @@ vi.mock('next/headers', () => ({
 
 const { GET, POST } = await import('./route')
 const { PATCH, DELETE } = await import('./[id]/route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 const { decryptSecret } = await import('@/lib/secrets')
 
@@ -19,7 +19,7 @@ const TOKEN = 'addrevenue-live-token-0123456789'
 const ADVERTISER = '9868510001'
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'test-admin',
     email: 'admin@test.local',
     role: 'ADMIN',

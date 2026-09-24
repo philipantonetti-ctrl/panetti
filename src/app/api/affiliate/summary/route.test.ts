@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { GET } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 const { loadMetricsInput } = await import('@/lib/data/load')
 const { computeMetrics } = await import('@/lib/metrics/engine')
@@ -20,7 +20,7 @@ const MARK = '[affiliate-summary-test]'
 const RANGE = 'from=2026-04-01&to=2026-04-30'
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'test-admin',
     email: 'admin@test.local',
     role: 'ADMIN',

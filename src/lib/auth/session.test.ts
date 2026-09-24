@@ -1,18 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { signSession, verifySession, type SessionUser } from './session'
+import { fingerprint } from './reset'
 import { hashPassword, checkPassword } from './password'
 
 const admin: SessionUser = { userId: 'u1', email: 'a@b.c', role: 'ADMIN', ambassadorId: null }
+const HASH = '$2b$10$abcdefghijklmnopqrstuv'
 
 describe('session', () => {
   it('round-trips a signed session', async () => {
-    const token = await signSession(admin)
+    const token = await signSession(admin, HASH)
     const back = await verifySession(token)
-    expect(back).toEqual(admin)
+    expect(back).toEqual({ ...admin, fp: fingerprint(HASH) })
   })
 
   it('rejects a tampered token', async () => {
-    const token = await signSession(admin)
+    const token = await signSession(admin, HASH)
     // Flip the role in the payload - the signature must no longer verify.
     const tampered = token.slice(0, -4) + 'aaaa'
     expect(await verifySession(tampered)).toBeNull()
@@ -40,5 +42,15 @@ describe('password', () => {
   it('rejects the wrong password', async () => {
     const hash = await hashPassword('correct horse')
     expect(await checkPassword('wrong horse', hash)).toBe(false)
+  })
+})
+
+describe('the password a session belongs to', () => {
+  it('carries a fingerprint of it, so a changed password can be told from the one signed for', async () => {
+    const mine = await verifySession(await signSession(admin, HASH))
+    expect(mine?.fp).toBe(fingerprint(HASH))
+    // A different hash, even for the same password, fingerprints differently:
+    // bcrypt salts every one, which is what makes a change detectable.
+    expect(fingerprint('$2b$10$a-different-hash-entirely')).not.toBe(mine?.fp)
   })
 })

@@ -9,7 +9,7 @@ vi.mock('next/headers', () => ({
 
 const { GET: getAmbassadors } = await import('@/app/api/ambassadors/route')
 const { GET: getPortal } = await import('@/app/api/portal/route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const MINE = 'plan-reads-mine@example.local'
@@ -53,7 +53,7 @@ afterEach(async () => {
 
 describe('GET /api/ambassadors', () => {
   it('carries each ambassador their products', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'test-admin', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null,
     })
 
@@ -71,7 +71,7 @@ describe('GET /api/portal', () => {
   const portal = () => getPortal(new Request('http://localhost/api/portal?preset=this_month'))
 
   it('shows an ambassador their own products and nobody else’s', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'test-amb', email: MINE, role: 'AMBASSADOR', ambassadorId: mineId,
     })
 
@@ -83,7 +83,7 @@ describe('GET /api/portal', () => {
   })
 
   it('never sends the internal note to the ambassador', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'test-amb', email: MINE, role: 'AMBASSADOR', ambassadorId: mineId,
     })
 

@@ -69,10 +69,11 @@ export async function POST(req: Request) {
       )
     }
 
-    await db.user.update({
-      where: { id: user.id },
-      data: { passwordHash: await hashPassword(parsed.data.password) },
-    })
+    // Kept, because the session minted below is bound to it: the new password
+    // must be what this session answers to, or setting a password would end
+    // the very session it just started.
+    const hash = await hashPassword(parsed.data.password)
+    await db.user.update({ where: { id: user.id }, data: { passwordHash: hash } })
 
     // Signed in on the spot. They have just proved they hold the mailbox and
     // chosen a password; making them type it again immediately would be
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
       email: user.email,
       role,
       ambassadorId: user.ambassadorId,
-    })
+    }, hash)
 
     const res = NextResponse.json({ ok: true, redirectTo: landing(role) })
     res.cookies.set(SESSION_COOKIE, token, {

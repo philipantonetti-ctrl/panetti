@@ -20,7 +20,7 @@ vi.mock('@/lib/ads/platform-app', () => ({
 }))
 
 const { POST } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 const { decryptSecret } = await import('@/lib/secrets')
 const { platformApp } = await import('@/lib/ads/platform-app')
@@ -35,7 +35,7 @@ async function wipe() {
 }
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: myId,
     email: ME,
     role: 'ADMIN',
@@ -152,9 +152,11 @@ describe('POST /api/ads/connections/meta', () => {
 
   it('is admin only', async () => {
     stubHappyMeta()
-    cookieValue.current = await signSession({
-      userId: myId,
-      email: ME,
+    // A different login on purpose: the role now comes from the database, so
+    // an ADMIN row cannot be borrowed to stand in for a marketing user.
+    cookieValue.current = await testSession({
+      userId: 'meta-marketing',
+      email: `marketing.${ME}`,
       role: 'MARKETING',
       ambassadorId: null,
     })
