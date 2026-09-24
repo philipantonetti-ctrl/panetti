@@ -16,7 +16,7 @@ const { GET: startRoute } = await import('./oauth/[provider]/start/route')
 const { GET: callbackRoute } = await import('./oauth/[provider]/callback/route')
 const { GET: accountsRoute } = await import('./connections/[id]/accounts/route')
 const { POST: bulkRoute } = await import('../ad-accounts/bulk/route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const MARK = '[oauth-test]'
@@ -25,7 +25,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
 const asAdmin = async () => {
-  cookieJar.session = await signSession({
+  cookieJar.session = await testSession({
     userId: 'test-admin',
     email: 'admin@test.local',
     role: 'ADMIN',

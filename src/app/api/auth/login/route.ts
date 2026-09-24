@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     email: user.email,
     role: user.role as Role,
     ambassadorId: user.ambassadorId,
-  })
+  }, user.passwordHash)
 
   // Where to land. An ambassador only has a portal; marketing has the
   // ambassadors page. An admin normally gets the dashboard - but if they came

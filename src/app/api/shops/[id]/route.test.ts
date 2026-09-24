@@ -8,12 +8,12 @@ vi.mock('next/headers', () => ({
 }))
 
 const { PATCH, DELETE } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { decryptSecret } = await import('@/lib/secrets')
 const { db } = await import('@/lib/db')
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'test-admin', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null,
   })
 }
@@ -80,7 +80,7 @@ describe('PATCH /api/shops/[id]', () => {
   })
 
   it('refuses an ambassador, not just an anonymous caller', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'u', email: 'amb@test.local', role: 'AMBASSADOR', ambassadorId: 'x',
     })
     const shop = await db.shop.create({ data: { name: 'Patch [patch-test]', currency: 'NOK' } })

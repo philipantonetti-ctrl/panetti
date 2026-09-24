@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { middleware } from './middleware'
-import { SESSION_COOKIE, signSession } from '@/lib/auth/session'
+import { SESSION_COOKIE } from '@/lib/auth/session'
+import { testSession } from '@/lib/auth/test-session'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -11,10 +12,10 @@ const production = () => {
 }
 
 const asAmbassador = async () =>
-  signSession({ userId: 'u1', email: 'amb@test.local', role: 'AMBASSADOR', ambassadorId: 'a1' })
+  testSession({ userId: 'u1', email: 'amb@test.local', role: 'AMBASSADOR', ambassadorId: 'a1' })
 
 const asMarketing = async () =>
-  signSession({ userId: 'u5', email: 'mkt@test.local', role: 'MARKETING', ambassadorId: null })
+  testSession({ userId: 'u5', email: 'mkt@test.local', role: 'MARKETING', ambassadorId: null })
 
 describe('one live host', () => {
   it('walks a stray production host to the canonical domain, path and query intact', async () => {
@@ -161,10 +162,10 @@ describe('the session gate, unchanged behind the host check', () => {
 })
 
 const asOperations = async () =>
-  signSession({ userId: 'u6', email: 'ops@test.local', role: 'OPERATIONS', ambassadorId: null })
+  testSession({ userId: 'u6', email: 'ops@test.local', role: 'OPERATIONS', ambassadorId: null })
 
 const asAdmin = async () =>
-  signSession({ userId: 'u7', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null })
+  testSession({ userId: 'u7', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null })
 
 const go = async (path: string, cookie?: string) =>
   middleware(

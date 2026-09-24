@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { POST, DELETE } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const EMAIL = 'plan-codes-amb@example.local'
@@ -18,7 +18,7 @@ let shopId = ''
 let otherShopId = ''
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'test-admin', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null,
   })
 }
@@ -60,7 +60,7 @@ describe('POST - add a code', () => {
   })
 
   it('refuses an ambassador', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'u', email: 'a@b.c', role: 'AMBASSADOR', ambassadorId: 'x',
     })
     expect((await call(POST, { code: 'HACK10', shopId })).status).toBe(403)

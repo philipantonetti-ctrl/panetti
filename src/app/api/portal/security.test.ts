@@ -10,7 +10,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { GET } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 /**
@@ -84,7 +84,7 @@ describe('a B2B order through the real portal route', () => {
   afterEach(cleanup)
 
   const asAmbassador = async (qs = '') => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'sec-amb', email: AMB_EMAIL, role: 'AMBASSADOR', ambassadorId,
     })
     return GET(new Request(`http://localhost/api/portal${qs}`))

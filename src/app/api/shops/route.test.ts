@@ -8,11 +8,11 @@ vi.mock('next/headers', () => ({
 }))
 
 const { POST } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const asAdmin = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'test-admin', email: 'admin@test.local', role: 'ADMIN', ambassadorId: null,
   })
 }
@@ -37,7 +37,7 @@ describe('POST /api/shops', () => {
   })
 
   it('refuses an ambassador', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'u', email: 'amb@test.local', role: 'AMBASSADOR', ambassadorId: 'x',
     })
     expect((await post({ name: 'Nope [post-test]', currency: 'NOK' })).status).toBe(403)

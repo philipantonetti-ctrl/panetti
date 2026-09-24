@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { GET } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const EMAIL = 'plan-empty-amb@example.local'
@@ -46,7 +46,7 @@ beforeEach(async () => {
     },
   })
 
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: 'u-empty', email: EMAIL, role: 'AMBASSADOR', ambassadorId: amb.id,
   })
 })
@@ -74,7 +74,7 @@ describe('a period with no sales', () => {
         codes: { create: { code: 'BRANDNEW500', shopId } },
       },
     })
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'u-quiet', email: QUIET, role: 'AMBASSADOR', ambassadorId: quiet.id,
     })
 

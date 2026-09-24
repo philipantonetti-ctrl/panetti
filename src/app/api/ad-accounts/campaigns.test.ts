@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { GET, PATCH } = await import('@/app/api/ad-accounts/[id]/campaigns/route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const TAG = 'campaigns-api-test'
@@ -23,7 +23,7 @@ async function wipe() {
 beforeEach(async () => {
   await wipe()
   const me = await db.user.create({ data: { email: ME, passwordHash: 'x', role: 'ADMIN' } })
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: me.id,
     email: ME,
     role: 'ADMIN',

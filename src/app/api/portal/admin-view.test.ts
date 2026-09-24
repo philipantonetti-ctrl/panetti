@@ -8,7 +8,7 @@ vi.mock('next/headers', () => ({
 }))
 
 const { GET } = await import('./route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const ADMIN_EMAIL = 'plan-adminportal@example.local'
@@ -46,7 +46,7 @@ beforeEach(async () => {
 afterEach(wipe)
 
 const portalAs = async (role: 'ADMIN' | 'AMBASSADOR', email: string, ambassadorId: string | null) => {
-  cookieValue.current = await signSession({ userId: 'u', email, role, ambassadorId })
+  cookieValue.current = await testSession({ userId: 'u', email, role, ambassadorId })
   return GET(new Request('http://localhost/api/portal?preset=this_month'))
 }
 

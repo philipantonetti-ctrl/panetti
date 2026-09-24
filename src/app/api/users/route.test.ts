@@ -9,7 +9,7 @@ vi.mock('next/headers', () => ({
 
 const { GET, POST } = await import('./route')
 const { DELETE } = await import('./[id]/route')
-const { signSession } = await import('@/lib/auth/session')
+const { testSession } = await import('@/lib/auth/test-session')
 const { db } = await import('@/lib/db')
 
 const ME = 'plan-users-me@example.local'
@@ -22,7 +22,7 @@ async function wipe() {
 }
 
 const asMe = async () => {
-  cookieValue.current = await signSession({
+  cookieValue.current = await testSession({
     userId: myId, email: ME, role: 'ADMIN', ambassadorId: null,
   })
 }
@@ -95,7 +95,7 @@ describe('staff logins', () => {
   })
 
   it('is closed to marketing - minting logins is the admin chair', async () => {
-    cookieValue.current = await signSession({
+    cookieValue.current = await testSession({
       userId: 'mkt-users', email: 'mkt@test.local', role: 'MARKETING', ambassadorId: null,
     })
     expect((await GET()).status).toBe(403)

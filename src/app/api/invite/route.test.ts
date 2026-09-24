@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { POST } from './route'
 import { signInvite } from '@/lib/auth/invite'
-import { signSession } from '@/lib/auth/session'
+import { testSession } from '@/lib/auth/test-session'
 import { checkPassword } from '@/lib/auth/password'
 import { db } from '@/lib/db'
 
@@ -41,7 +41,7 @@ describe('guard 1 - the token itself', () => {
 
   // Sessions and invites are both signed with AUTH_SECRET. Only the audience claim separates them.
   it('rejects a SESSION token passed off as an invite', async () => {
-    const session = await signSession({ userId: 'u', email: 'x@y.z', role: 'AMBASSADOR', ambassadorId: ambA })
+    const session = await testSession({ userId: 'u', email: 'x@y.z', role: 'AMBASSADOR', ambassadorId: ambA })
     expect((await redeem({ token: session, password: 'longenough1' })).status).toBe(400)
     expect(await db.user.findUnique({ where: { email: EMAIL_A } })).toBeNull()
   })
