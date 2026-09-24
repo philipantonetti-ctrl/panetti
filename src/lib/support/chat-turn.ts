@@ -45,35 +45,66 @@ export function normalise(text: string): string {
  * this one stops. When the transcript does not yet hold our message (Gorgias
  * can lag its own webhook), ids are compared as numbers: they only go up.
  */
-export function superseded(transcript: TranscriptMessage[], messageId: string): boolean {
+export function supersededBy(transcript: TranscriptMessage[], messageId: string): string | null {
   const ours = transcript.findIndex((m) => m.id === messageId)
-  if (ours >= 0) return transcript.slice(ours + 1).some((m) => !m.fromAgent)
+  if (ours >= 0) return transcript.slice(ours + 1).find((m) => !m.fromAgent)?.id ?? null
   const mine = Number(messageId)
-  if (!Number.isFinite(mine)) return false
-  return transcript.some((m) => !m.fromAgent && Number(m.id) > mine)
+  if (!Number.isFinite(mine)) return null
+  return transcript.find((m) => !m.fromAgent && Number(m.id) > mine)?.id ?? null
+}
+
+export function superseded(transcript: TranscriptMessage[], messageId: string): boolean {
+  return supersededBy(transcript, messageId) !== null
+}
+
+/**
+ * The agent messages on a chat that the assistant itself put there.
+ *
+ * `ids` is what the channel called each message we sent, and it is the real
+ * answer: an id is exact, it never expires, and nobody else can write one.
+ * `texts` is the fallback for a channel that numbers nothing, and it is
+ * dangerous alone - a suggested reply is a text a PERSON may paste - so only
+ * text the assistant actually SENT may go in it.
+ */
+export type OwnMessages = { ids: Set<string>; texts: Set<string> }
+
+export const NO_OWN: OwnMessages = { ids: new Set(), texts: new Set() }
+
+/** True when this agent message is one the assistant put there. */
+export function isOurs(m: TranscriptMessage, own: OwnMessages): boolean {
+  return own.ids.has(m.id) || own.texts.has(normalise(m.text))
 }
 
 /**
  * True when a customer-visible agent message is not one the assistant wrote.
- * What the channel wrote by itself is nobody: on 2026-09-21 the widget's
- * "back in 9 minutes" line sat in 28 of 42 live chats, one millisecond after
- * the customer's first message, and would have silenced every one of them.
+ *
+ * Three kinds of agent message are not a person. Ours, known by the id the
+ * channel gave it. What the channel wrote by itself: on 2026-09-21 the
+ * widget's "back in 9 minutes" line sat in 28 of 42 live chats, one
+ * millisecond after the customer's first message, and would have silenced
+ * every one of them. And, only where ids are unavailable, text we just sent.
+ *
+ * Everything else is a person, and a person ends the assistant's turn for good.
  */
-export function humanTookOver(transcript: TranscriptMessage[], ownTexts: string[]): boolean {
-  const own = new Set(ownTexts.map(normalise))
-  return transcript.some((m) => m.fromAgent && !m.automatic && !own.has(normalise(m.text)))
+export function humanTookOver(transcript: TranscriptMessage[], own: OwnMessages): boolean {
+  return transcript.some((m) => m.fromAgent && !m.automatic && !isOurs(m, own))
 }
 
 /**
  * The transcript as turns: customer messages are user turns, agent messages
  * are assistant turns, consecutive same-role messages joined, empty ones and
  * the channel's automatic lines dropped, and only the last `limit` turns kept.
+ *
+ * An automatic line that is OURS stays. Some channels stamp a message the
+ * assistant created through the API with the same `via` as their own
+ * auto-replies; dropping it would hide the assistant's previous answers from
+ * itself, and it would re-answer the question it just answered.
  */
-export function turnsOf(transcript: TranscriptMessage[], limit = 20): Turn[] {
+export function turnsOf(transcript: TranscriptMessage[], own: OwnMessages = NO_OWN, limit = 20): Turn[] {
   const turns: Turn[] = []
   for (const m of transcript) {
     const text = m.text.trim()
-    if (!text || m.automatic) continue
+    if (!text || (m.automatic && !isOurs(m, own))) continue
     const role: Turn['role'] = m.fromAgent ? 'assistant' : 'user'
     const last = turns[turns.length - 1]
     if (last && last.role === role) last.text = `${last.text}\n${text}`

@@ -47,13 +47,27 @@ export const DEFAULT_RULES: RulesConfig = {
  */
 export const DEFAULT_ESCALATE_WORDS = ['menneske', 'person', 'medarbejder', 'kundeservice', 'human', 'agent']
 
+/**
+ * A whole word, not a word inside another word.
+ *
+ * The list holds the bare word "person", and Danish, Norwegian, Swedish and
+ * German all make that "personer"/"Personen" - which is how a customer asks
+ * how many people an oven or a chair is for. Matched as a substring, the one
+ * category the assistant is allowed to answer would escalate instead. The
+ * boundary is "not a letter or a digit" rather than a word break, so the word ends at a
+ * space or a full stop but a Danish or German letter still counts as part of
+ * it. The keyword is escaped: it is typed by a person, and "(" must not throw.
+ */
+const wholeWord = (word: string) =>
+  new RegExp(`(^|[^\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\p{L}\\p{N}]|$)`, 'iu')
+
 export function decide(judgement: Judgement, text: string, rules: RulesConfig): Verdict {
   // A word the CUSTOMER used, checked before anything the model concluded: a
   // legal threat read as a friendly question must still reach a person.
   const hit = rules.escalateKeywords
     .map((k) => k.trim().toLowerCase())
     .filter(Boolean)
-    .find((k) => text.toLowerCase().includes(k))
+    .find((k) => wholeWord(k).test(text))
   if (hit) return { action: 'escalate', reason: `The customer wrote "${hit}", which always goes to a person.` }
 
   if (judgement.wantsHuman) {

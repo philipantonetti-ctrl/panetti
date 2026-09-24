@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  askedSoFar, handoverLine, humanTookOver, normalise, REPLY_CAP, splitForJudge, superseded, turnsOf,
+  askedSoFar, handoverLine, humanTookOver, normalise, NO_OWN, REPLY_CAP, splitForJudge, superseded, turnsOf,
 } from './chat-turn'
 import type { TranscriptMessage } from './channel'
 
@@ -22,8 +22,24 @@ describe('superseded', () => {
 })
 
 describe('humanTookOver', () => {
-  const own = ['Hej! Jeg er Panettis assistent.']
-  it('ignores the assistant’s own replies, whitespace and all', () => {
+  const own = { ids: new Set(['9001']), texts: new Set(['hej! jeg er panettis assistent.']) }
+
+  it('knows its own reply by the id the channel gave it, whatever the text says', () => {
+    // The text differs from anything we stored; only the id says it is ours.
+    expect(humanTookOver([m(1, false, 'Hej'), m(9001, true, 'Ovnen gaar op til 450 grader.')], own)).toBe(false)
+  })
+
+  /**
+   * The hand-over note hands an agent a suggested reply and invites them to
+   * send it. Pasted verbatim, matching on text would read a person as us and
+   * the assistant would keep writing in a chat a person is handling.
+   */
+  it('treats a person pasting our suggested reply as a person, because only SENT text is ours', () => {
+    const drafted = { ...own, texts: new Set(['hej! jeg er panettis assistent.']) }
+    expect(humanTookOver([m(1, false, 'Hej'), m(5, true, 'Pakken er afsendt i dag.')], drafted)).toBe(true)
+  })
+
+  it('ignores the assistant’s own replies by text too, whitespace and all', () => {
     expect(humanTookOver([m(1, false, 'Hej'), m(2, true, '  Hej!  Jeg er Panettis assistent. ')], own)).toBe(false)
   })
   it('is true the moment an agent message is not one of ours', () => {
@@ -48,6 +64,21 @@ describe('turnsOf', () => {
       { role: 'user', text: 'Hei\nHvor varm blir ovnen?' },
     ])
   })
+  /**
+   * Some channels stamp a message we created through the API with the same
+   * `via` as their own auto-replies. Dropped, the assistant loses its own
+   * previous answers and re-answers the question it just answered.
+   */
+  it('keeps an automatic message that is OURS, so the assistant still sees what it said', () => {
+    const own = { ids: new Set(['2']), texts: new Set<string>() }
+    const ours = { ...m(2, true, 'Den gaar op til 450 grader.'), automatic: true }
+    expect(turnsOf([m(1, false, 'Hvor varm?'), ours, m(3, false, 'Og hvor lang tid?')], own)).toEqual([
+      { role: 'user', text: 'Hvor varm?' },
+      { role: 'assistant', text: 'Den gaar op til 450 grader.' },
+      { role: 'user', text: 'Og hvor lang tid?' },
+    ])
+  })
+
   it('joins consecutive customer messages into one turn and keeps the order', () => {
     expect(turnsOf([m(1, false, 'hi'), m(2, false, 'where is my order'), m(3, true, 'One moment'), m(4, false, '14689')])).toEqual([
       { role: 'user', text: 'hi\nwhere is my order' },
@@ -58,8 +89,8 @@ describe('turnsOf', () => {
   it('keeps only the last N turns', () => {
     const long: TranscriptMessage[] = []
     for (let i = 1; i <= 30; i++) long.push(m(i, i % 2 === 0, `t${i}`))
-    expect(turnsOf(long, 4)).toHaveLength(4)
-    expect(turnsOf(long, 4)[3].text).toBe('t30')
+    expect(turnsOf(long, NO_OWN, 4)).toHaveLength(4)
+    expect(turnsOf(long, NO_OWN, 4)[3].text).toBe('t30')
   })
   it('drops empty messages', () => {
     expect(turnsOf([m(1, false, ''), m(2, false, 'hi')])).toEqual([{ role: 'user', text: 'hi' }])

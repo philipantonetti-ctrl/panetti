@@ -26,7 +26,7 @@ const tags: { to: string; tag: string }[] = []
 let transcript: TranscriptMessage[] = []
 const channel: Channel = {
   name: 'test',
-  async sendMessage(id, text) { sent.push({ to: id, text }) },
+  async sendMessage(id, text) { sent.push({ to: id, text }); return String(9000 + sent.length) },
   async addInternalNote(id, text) { notes.push({ to: id, text }) },
   async transcript() { return transcript },
   async tag(id, tag) { tags.push({ to: id, tag }) },
@@ -97,12 +97,28 @@ describe('handleChatMessage', () => {
     expect(judge).toHaveBeenCalledTimes(1)
   })
 
-  it('lets the later delivery answer a burst', async () => {
+  it("lets the later delivery answer a burst, once that delivery has taken the message", async () => {
     transcript = [m(1, false, 'Hej'), m(2, false, 'Hvor er min pakke?'), m(3, false, '14689')]
+    // The later message's own run claims it first, exactly as it would live.
+    await db.aiConversation.create({
+      data: { source: 'test', externalTicketId: 'C-1', externalMessageId: '3', shopId, question: '14689', decision: 'pending' },
+    })
     const r = await handleChatMessage(incoming({ messageId: '2' }), deps())
     expect(r.decision).toBe('superseded')
     expect(sent).toHaveLength(0)
     expect(judge).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Standing down is only safe when somebody else really has the message. If
+   * the later message's own webhook never arrived, deferring to it drops the
+   * whole burst: the channel does not redeliver and the customer waits for ever.
+   */
+  it("answers the burst rather than dropping it when the later message was never taken", async () => {
+    transcript = [m(1, false, 'Hej'), m(2, false, 'Hvor er min pakke?'), m(3, false, '14689')]
+    const r = await handleChatMessage(incoming({ messageId: '2' }), deps())
+    expect(r.decision).toBe('sent')
+    expect(sent).toHaveLength(1)
   })
 
   it('stays silent for good once a person has written on the chat', async () => {
@@ -147,6 +163,88 @@ describe('handleChatMessage', () => {
 
     const human = await handleChatMessage(incoming({ messageId: '4', fromAgent: true, text: 'Selena here, taking over.' }), deps())
     expect(human.decision).toBe('skipped')
+    expect((await db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })).status).toBe('human')
+  })
+
+  /**
+   * The customer asks, is answered, goes away, and comes back twenty minutes
+   * later. Recognising our own reply by its text inside a fifteen-minute
+   * window made that chat go silent for good, with nothing written anywhere to
+   * say why. The id the channel gave the reply does not expire.
+   */
+  it("still knows its own reply twenty minutes later, so a quiet chat is not silently abandoned", async () => {
+    const start = new Date('2026-09-09T10:00:00Z')
+    const later = new Date(start.getTime() + 20 * 60_000)
+    await handleChatMessage(incoming(), deps({ now: () => start }))
+    const reply = await db.aiConversation.findFirstOrThrow({ where: { externalMessageId: '2' } })
+    expect(reply.externalReplyId).toBe('9001')
+
+    // Our own reply comes back through the same trigger, long after the window.
+    const ours = await handleChatMessage(
+      incoming({ messageId: '9001', fromAgent: true, text: 'Din pakke er på vej.' }),
+      deps({ now: () => later }),
+    )
+    expect(ours.reason).toMatch(/own message/)
+    expect((await db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })).status).toBe('ai')
+  })
+
+  /**
+   * The hand-over note hands an agent a suggested reply and invites them to
+   * send it. Counting a DRAFTED answer as ours meant the agent sending it was
+   * read as the assistant, and the assistant kept writing in a chat a person
+   * was already handling.
+   */
+  it("treats an agent sending the suggested reply as a person, not as itself", async () => {
+    judge.mockResolvedValue(judgement({ category: 'product' }))
+    const drafted = await handleChatMessage(incoming(), deps())
+    expect(drafted.decision).toBe('drafted')
+    expect(sent).toHaveLength(0)
+
+    const person = await handleChatMessage(
+      incoming({ messageId: '7', fromAgent: true, text: 'Din pakke er på vej.' }),
+      deps(),
+    )
+    expect(person.reason).toMatch(/person/)
+    expect((await db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })).status).toBe('human')
+  })
+
+  it("keeps the answer and says what went wrong when the channel refuses the reply", async () => {
+    const broken = { ...channel, sendMessage: async () => { throw new Error('Gorgias responded 401') } }
+    const r = await handleChatMessage(incoming(), deps({ channel: broken }))
+
+    expect(r.decision).toBe('failed')
+    expect(r.reason).toMatch(/401/)
+    const row = await db.aiConversation.findFirstOrThrow({ where: { externalMessageId: '2' } })
+    // The model was paid for; the answer is kept so an agent can still use it.
+    expect(row.answer).toBe('Din pakke er på vej.')
+    expect(row.decision).toBe('failed')
+  })
+
+  it("still leaves the note when the customer could not be told a person is coming", async () => {
+    judge.mockResolvedValue(judgement({ wantsHuman: true }))
+    const broken = { ...channel, sendMessage: async () => { throw new Error('Gorgias responded 500') } }
+    const r = await handleChatMessage(incoming(), deps({ channel: broken }))
+
+    expect(r.decision).toBe('failed')
+    expect(notes).toHaveLength(1)
+    expect(notes[0].text).toMatch(/Handed over by the assistant/)
+    expect(tags).toEqual([{ to: 'C-1', tag: 'ai-handover' }])
+    expect((await db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })).status).toBe('handed_over')
+  })
+
+  /**
+   * Judging takes ten to forty seconds. Nobody had written when the burst wait
+   * ended; by the time there is an answer, a colleague may be mid-sentence.
+   */
+  it("says nothing when a person steps in while the model is still thinking", async () => {
+    judge.mockImplementation(async () => {
+      transcript = [...transcript, m(5, true, 'Hej, Selena her. Jeg overtager.')]
+      return judgement()
+    })
+    const r = await handleChatMessage(incoming(), deps())
+
+    expect(r.decision).toBe('skipped')
+    expect(sent).toHaveLength(0)
     expect((await db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })).status).toBe('human')
   })
 

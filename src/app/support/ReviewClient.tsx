@@ -36,12 +36,20 @@ type Conversation = {
   createdAt: string
 }
 
-const FILTERS = ['all', 'sent', 'drafted', 'escalated', 'sandbox'] as const
+const FILTERS = ['all', 'sent', 'drafted', 'escalated', 'failed', 'sandbox'] as const
 
 const LABEL: Record<string, string> = {
   sent: 'Answered by itself',
   drafted: 'Suggested to an agent',
   escalated: 'Handed to a person',
+  // A turn the assistant finished and the helpdesk would not take. The answer
+  // is on the row, so an agent can still use it, and the reason says what
+  // refused it. Without a filter of its own this is the one outcome nobody
+  // would ever look at.
+  failed: 'Could not be delivered',
+  superseded: 'A later message answered',
+  pending: 'Still working',
+  sending: 'Still working',
   sandbox: 'Sandbox practice',
 }
 

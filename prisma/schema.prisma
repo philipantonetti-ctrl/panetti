@@ -1616,6 +1616,12 @@ model AiConversation {
   /// not number messages (email, sandbox).
   externalMessageId String?
 
+  /// The channel's id for the message the assistant SENT, as the channel
+  /// reported it back. This is how the assistant knows its own reply when that
+  /// reply arrives back through the same trigger: text and timing both lie,
+  /// an id does not. Null for a turn that sent nothing.
+  externalReplyId String?
+
   /// good | bad, from the review screen. Null until someone judges it.
   rating     String?
   /// What it should have said. Becomes an example for later answers.

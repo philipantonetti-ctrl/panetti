@@ -26,6 +26,7 @@ const channel: Channel = {
   name: 'test',
   async sendMessage(id, text) {
     sent.push({ to: id, text })
+    return null
   },
   async addInternalNote(id, text) {
     notes.push({ to: id, text })
