@@ -32,6 +32,29 @@ describe('decide', () => {
     expect(decide(sure, 'Jeg krever ERSTATNING', rules()).action).toBe('escalate')
   })
 
+  /**
+   * The live list holds the bare word "person". Danish, Norwegian, Swedish and
+   * German all make that "personer"/"Personen", which is how a customer asks
+   * the capacity of an oven or a massage chair. Matched as a substring, the one
+   * category the assistant is allowed to answer escalates instead.
+   */
+  it('matches a whole word, not a word inside another word', () => {
+    const words = rules({ escalateKeywords: ['person', 'agent', 'human'] })
+    expect(decide(sure, 'Hvor mange personer kan spise af den?', words).action).toBe('send')
+    expect(decide(sure, 'Wie viele Personen?', words).action).toBe('send')
+    expect(decide(sure, 'Er den til flere personers brug?', words).action).toBe('send')
+    // The word itself still hands over, punctuation and case and all.
+    expect(decide(sure, 'Jeg vil tale med en person.', words).action).toBe('escalate')
+    expect(decide(sure, 'PERSON!', words).action).toBe('escalate')
+    expect(decide(sure, 'can i talk to a human?', words).action).toBe('escalate')
+  })
+
+  it('never lets a word with a regular expression in it break the gate', () => {
+    const words = rules({ escalateKeywords: ['a.b', '(', 'menneske'] })
+    expect(decide(sure, 'Hvad koster axb?', words).action).toBe('send')
+    expect(decide(sure, 'Jeg vil tale med et menneske', words).action).toBe('escalate')
+  })
+
   it('hands over when the assistant itself asks for a person', () => {
     expect(decide({ ...sure, wantsHuman: true }, 'hello', rules()).action).toBe('escalate')
   })

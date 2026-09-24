@@ -45,8 +45,16 @@ export type TranscriptMessage = {
 export type Channel = {
   /** The channel's name, for the record. */
   name: string
-  /** Answer the customer, through the channel they wrote in on. */
-  sendMessage(conversationId: string, text: string): Promise<void>
+  /**
+   * Answer the customer, through the channel they wrote in on.
+   *
+   * Returns the channel's own id for the message just created, where the
+   * channel reports one. That id is how the assistant recognises its own reply
+   * when the reply arrives back through the same webhook: matching on the text
+   * instead means a chat goes silent the moment the text is re-rendered, or
+   * the moment an agent pastes a suggested reply verbatim.
+   */
+  sendMessage(conversationId: string, text: string): Promise<string | null>
   /**
    * Leave a note only the agents can see. This is how the AI hands a
    * conversation to a human: summary, reason, and a suggested reply.

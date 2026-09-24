@@ -2,8 +2,8 @@ import { db } from '@/lib/db'
 import { judge, NoApiKey, pickProducts, type SupportJudgement } from './agent'
 import { escalateToHuman, getCustomerContext, type Channel } from './channel'
 import {
-  askedSoFar, BURST_WAIT_MS, handoverLine, HANDOVER_LINES, humanTookOver, normalise, OWN_TEXT_WINDOW_MS,
-  REPLY_CAP, splitForJudge, superseded, turnsOf,
+  askedSoFar, BURST_WAIT_MS, handoverLine, HANDOVER_LINES, humanTookOver, normalise, type OwnMessages,
+  OWN_TEXT_WINDOW_MS, REPLY_CAP, splitForJudge, supersededBy, turnsOf,
 } from './chat-turn'
 import { knowledgeFor } from './knowledge'
 import { decide, DEFAULT_RULES, type RulesConfig } from './rules'
@@ -44,7 +44,7 @@ export type ChatDeps = {
 }
 
 export type ChatResult = {
-  decision: 'sent' | 'drafted' | 'escalated' | 'skipped' | 'superseded'
+  decision: 'sent' | 'drafted' | 'escalated' | 'skipped' | 'superseded' | 'failed'
   reason: string | null
 }
 
@@ -63,17 +63,42 @@ async function loadRules(): Promise<RulesConfig & { extraInstructions: string }>
 }
 
 /**
- * The texts the assistant itself put in this chat recently: its replies, and
- * every handover line. An agent message equal to one of these is ours; any
- * other agent message is a person.
+ * What the assistant itself put in this chat, so an agent message can be told
+ * from a person's.
+ *
+ * The ids are the real answer and carry no time limit: the channel gave us
+ * that id when it took the message, nobody else can write one, and a chat left
+ * for twenty minutes is still our chat. The texts are the fallback for a
+ * channel that numbers nothing, and they are only ever text the assistant
+ * actually SENT or is in the middle of sending. A DRAFTED answer is a
+ * suggestion a person may paste verbatim - counting that as ours would leave
+ * the assistant writing over the very person it handed the chat to.
  */
-async function ownTexts(sessionId: string, now: Date): Promise<string[]> {
+async function ownMessages(sessionId: string, now: Date): Promise<OwnMessages> {
   const rows = await db.aiConversation.findMany({
-    where: { sessionId, answer: { not: null }, createdAt: { gte: new Date(now.getTime() - OWN_TEXT_WINDOW_MS) } },
-    select: { answer: true },
+    where: { sessionId },
+    select: { externalReplyId: true, answer: true, decision: true, createdAt: true },
   })
-  return [...rows.map((r) => r.answer as string), ...Object.values(HANDOVER_LINES)]
+  const fresh = new Date(now.getTime() - OWN_TEXT_WINDOW_MS)
+  return {
+    ids: new Set(rows.map((r) => r.externalReplyId).filter((id): id is string => Boolean(id))),
+    texts: new Set([
+      ...rows
+        .filter((r) => SPOKEN.has(r.decision) && r.answer && r.createdAt >= fresh)
+        .map((r) => normalise(r.answer as string)),
+      ...Object.values(HANDOVER_LINES).map(normalise),
+    ]),
+  }
 }
+
+/**
+ * Decisions whose answer reached the customer, or is on the wire right now.
+ * `sending` exists for the gap between handing the text to the channel and
+ * learning the id it was given: our own reply comes back through the same
+ * webhook within that gap, and without this the assistant reads itself as a
+ * person and goes quiet on a chat it had just answered correctly.
+ */
+const SPOKEN = new Set(['sent', 'sending'])
 
 export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps): Promise<ChatResult> {
   const now = deps.now ?? (() => new Date())
@@ -102,8 +127,10 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   // An agent message: ours comes back through the same trigger and is
   // ignored; anyone else's is a person, and the assistant goes quiet for good.
   if (incoming.fromAgent) {
-    const own = new Set((await ownTexts(session.id, now())).map(normalise))
-    if (own.has(normalise(incoming.text))) return skip('The assistant’s own message.')
+    const own = await ownMessages(session.id, now())
+    if (own.ids.has(incoming.messageId) || own.texts.has(normalise(incoming.text))) {
+      return skip('The assistant’s own message.')
+    }
     await db.aiChatSession.update({ where: { id: session.id }, data: { status: 'human' } })
     return skip('A person is on this chat.')
   }
@@ -140,17 +167,52 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     return { decision, reason }
   }
 
+  const readTranscript = async (): Promise<Awaited<ReturnType<NonNullable<Channel['transcript']>>>> => {
+    try {
+      return channel.transcript ? await channel.transcript(incoming.conversationId) : []
+    } catch {
+      // A transcript we could not read is not a reason to leave the customer
+      // waiting: the delivered text alone is answered below.
+      return []
+    }
+  }
+
+  /**
+   * Whether a later customer message will really be answered by its own run.
+   *
+   * Standing down is only safe when somebody else has taken the message: the
+   * claim row is that proof. Without it a burst can be dropped in full - this
+   * run defers to a later message whose own run never happened - and the
+   * channel does not redeliver, so nothing ever answers the customer.
+   */
+  const answeredElsewhere = async (messageId: string): Promise<boolean> =>
+    (await db.aiConversation.count({
+      where: { source: channel.name, externalMessageId: messageId, NOT: { id: claim.id } },
+    })) > 0
+
+  /** A reason to stand down now, re-read from the channel. Null means carry on. */
+  const noLongerOurs = async (): Promise<{ decision: ChatResult['decision']; reason: string } | null> => {
+    const seen = await readTranscript()
+    const later = supersededBy(seen, incoming.messageId)
+    if (later && (await answeredElsewhere(later))) {
+      return { decision: 'superseded', reason: 'The customer wrote again; the later message answers.' }
+    }
+    if (humanTookOver(seen, await ownMessages(session.id, now()))) {
+      await db.aiChatSession.update({ where: { id: session.id }, data: { status: 'human' } }).catch(() => {})
+      return { decision: 'skipped', reason: 'A person is on this chat.' }
+    }
+    return null
+  }
+
   // Let the burst finish, then read all of it.
   await wait(BURST_WAIT_MS)
-  let transcript: Awaited<ReturnType<NonNullable<Channel['transcript']>>> = []
-  try {
-    transcript = channel.transcript ? await channel.transcript(incoming.conversationId) : []
-  } catch {
-    // A transcript we could not read is not a reason to leave the customer
-    // waiting: the delivered text alone is answered below.
+  const transcript = await readTranscript()
+  const later = supersededBy(transcript, incoming.messageId)
+  if (later && (await answeredElsewhere(later))) {
+    return outcome('superseded', {}, 'The customer wrote again; the later message answers.')
   }
-  if (superseded(transcript, incoming.messageId)) return outcome('superseded', {}, 'The customer wrote again; the later message answers.')
-  if (humanTookOver(transcript, await ownTexts(session.id, now()))) {
+  const own = await ownMessages(session.id, now())
+  if (humanTookOver(transcript, own)) {
     await db.aiChatSession.update({ where: { id: session.id }, data: { status: 'human' } })
     return outcome('skipped', {}, 'A person is on this chat.')
   }
@@ -159,22 +221,42 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   if (rules.mode === 'off') return outcome('skipped', {}, 'The assistant is switched off.')
 
   // The whole burst is the question, and it is what the review row shows.
-  const turns = turnsOf(transcript)
+  // `own` is passed in so a reply of ours the channel stamped as automatic is
+  // still shown to the model as its own previous turn.
+  const turns = turnsOf(transcript, own)
   const { history, message } = splitForJudge(turns, text)
   const asked = { question: message.slice(0, 5000) }
 
+  /**
+   * A handover must reach a person even when the customer-facing line fails.
+   * The note is what an agent actually reads, so a refused chat message never
+   * takes the note, the tag or the session flag down with it.
+   */
   const handover = async (reason: string, judgement: SupportJudgement | null): Promise<ChatResult> => {
     // Before the first judgement no language is known, so the line is English.
     const language = judgement?.language ?? session.language
+    const trouble: string[] = []
+    let replyId: string | null = null
     // Draft mode never speaks to the customer, not even to say a person is coming.
-    if (rules.mode === 'auto') await channel.sendMessage(incoming.conversationId, handoverLine(language))
-    await escalateToHuman(channel, incoming.conversationId, reason, judgement?.summary ?? 'The assistant handed this chat over.', judgement?.reply ?? null)
+    if (rules.mode === 'auto') {
+      try {
+        replyId = await channel.sendMessage(incoming.conversationId, handoverLine(language))
+      } catch (e) {
+        trouble.push(`the customer was not told a person is coming (${why(e)})`)
+      }
+    }
+    try {
+      await escalateToHuman(channel, incoming.conversationId, reason, judgement?.summary ?? 'The assistant handed this chat over.', judgement?.reply ?? null)
+    } catch (e) {
+      trouble.push(`the note could not be left (${why(e)})`)
+    }
     if (channel.tag) await channel.tag(incoming.conversationId, 'ai-handover').catch(() => {})
     await db.aiChatSession.update({
       where: { id: session.id },
       data: { status: 'handed_over', handedOverAt: now(), handoverReason: reason, ...(language ? { language } : {}) },
-    })
-    return outcome('escalated', { ...asked, ...(judgement ? recordable(judgement) : {}) }, reason)
+    }).catch(() => {})
+    const told = trouble.length ? `${reason} But ${trouble.join(', and ')}.` : reason
+    return outcome(trouble.length ? 'failed' : 'escalated', { ...asked, ...(judgement ? recordable(judgement) : {}), externalReplyId: replyId }, told)
   }
 
   if (session.replies >= REPLY_CAP) {
@@ -207,13 +289,33 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     rules,
   )
 
+  const judged = { ...asked, ...recordable(judgement), orderNumber: context.orders[0]?.number ?? null }
+
   if (verdict.action === 'send' && judgement.reply) {
-    await channel.sendMessage(incoming.conversationId, judgement.reply)
+    // Judging took ten to forty seconds. The customer may have written again
+    // in that time, or a colleague may have stepped in; neither was true when
+    // the burst wait ended, and answering over either of them is worse than
+    // saying nothing.
+    const gone = await noLongerOurs()
+    if (gone) return outcome(gone.decision, judged, gone.reason)
+
+    // Written down BEFORE the wire, and marked as spoken, for two reasons: a
+    // channel that refuses the reply must not also throw the answer away, and
+    // our own reply arrives back through this same webhook within
+    // milliseconds - before `sendMessage` has even returned its id.
+    await db.aiConversation.update({ where: { id: claim.id }, data: { ...judged, decision: 'sending' } }).catch(() => {})
+
+    let replyId: string | null = null
+    try {
+      replyId = await channel.sendMessage(incoming.conversationId, judgement.reply)
+    } catch (e) {
+      return outcome('failed', judged, `The answer was written but the channel refused it (${why(e)}).`)
+    }
     await db.aiChatSession.update({
       where: { id: session.id },
       data: { replies: { increment: 1 }, language: judgement.language },
-    })
-    return outcome('sent', { ...asked, ...recordable(judgement), orderNumber: context.orders[0]?.number ?? null }, null)
+    }).catch(() => {})
+    return outcome('sent', { ...judged, externalReplyId: replyId }, null)
   }
 
   if (verdict.action === 'escalate') {
@@ -221,11 +323,22 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   }
 
   // Draft: a suggestion for whoever answers, and the session stays open so
-  // the next message is drafted too.
+  // the next message is drafted too. Nothing reaches the customer here, so a
+  // failed note is recorded and the answer kept rather than lost.
   const reason = verdict.reason ?? 'Waiting for a person to send it.'
-  await escalateToHuman(channel, incoming.conversationId, reason, judgement.summary, judgement.reply)
-  await db.aiChatSession.update({ where: { id: session.id }, data: { language: judgement.language } })
-  return outcome('drafted', { ...asked, ...recordable(judgement), orderNumber: context.orders[0]?.number ?? null }, reason)
+  await db.aiConversation.update({ where: { id: claim.id }, data: judged }).catch(() => {})
+  try {
+    await escalateToHuman(channel, incoming.conversationId, reason, judgement.summary, judgement.reply)
+  } catch (e) {
+    return outcome('failed', judged, `${reason} But the note could not be left (${why(e)}).`)
+  }
+  await db.aiChatSession.update({ where: { id: session.id }, data: { language: judgement.language } }).catch(() => {})
+  return outcome('drafted', judged, reason)
+}
+
+/** An error in the few words that fit on a review row. */
+function why(e: unknown): string {
+  return e instanceof Error ? e.message.slice(0, 200) : 'unknown error'
 }
 
 /** The judgement's columns on the review row. */

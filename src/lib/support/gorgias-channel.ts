@@ -16,7 +16,12 @@ import type { Channel } from './channel'
 
 const REQUEST_TIMEOUT_MS = 20_000
 
-async function post(creds: GorgiasCredentials, path: string, body: unknown): Promise<void> {
+/**
+ * @returns the id Gorgias gave the thing just created, when it says one.
+ * Nothing depends on the rest of the answer, and a body we cannot read is not
+ * a failed write, so an unreadable answer is a null id rather than a throw.
+ */
+async function post(creds: GorgiasCredentials, path: string, body: unknown): Promise<string | null> {
   const auth = Buffer.from(`${creds.email}:${creds.apiKey}`).toString('base64')
   const res = await fetch(`https://${creds.domain}.gorgias.com/api/${path}`, {
     method: 'POST',
@@ -31,6 +36,8 @@ async function post(creds: GorgiasCredentials, path: string, body: unknown): Pro
   if (!res.ok) {
     throw new GorgiasError(`Gorgias responded ${res.status}: ${(await res.text()).slice(0, 200)}`)
   }
+  const created = (await res.json().catch(() => null)) as { id?: number | string } | null
+  return created?.id === undefined || created.id === null ? null : String(created.id)
 }
 
 /**
@@ -77,7 +84,7 @@ export function gorgiasChannel(via: string | null = 'email'): Channel | null {
     name: 'gorgias',
 
     async sendMessage(conversationId, text) {
-      await post(creds, `tickets/${conversationId}/messages`, {
+      return post(creds, `tickets/${conversationId}/messages`, {
         channel,
         from_agent: true,
         // Omitting sent_datetime is what asks Gorgias to deliver it rather
