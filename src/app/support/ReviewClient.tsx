@@ -72,6 +72,24 @@ const LABEL: Record<string, string> = {
   sandbox: 'Sandbox practice',
 }
 
+/**
+ * What an empty filter means, said for each one.
+ *
+ * Every filter used to share "Nothing here yet", which reads as "this is
+ * broken" on a filter that is simply empty - and it cost a round of "where? I
+ * cannot see it" for a filter that was working perfectly and had nothing in it
+ * yet. Each one now says what would put a line there.
+ */
+const EMPTY: Record<(typeof FILTERS)[number], string> = {
+  all: 'Nothing here yet. Live conversations appear once Gorgias sends messages to the assistant; practice runs are under Sandbox practice.',
+  sent: 'The assistant has not answered a chat by itself yet.',
+  drafted: 'No suggestions waiting. These appear when the assistant is set to suggest an answer rather than send it.',
+  escalated: 'Nothing handed over yet. This fills when the assistant decides a chat needs one of your team.',
+  skipped: 'Nothing here yet. This fills when a customer writes while one of your team is already answering that chat, and the assistant stays out of it.',
+  failed: 'Nothing has failed to send. This fills only if Gorgias refuses an answer the assistant had already written.',
+  sandbox: 'No practice runs yet. Press "Test the assistant" to try it without writing to a customer.',
+}
+
 /** The two things this page is: the numbers, and what the assistant said. */
 const VIEWS = [
   { key: 'analytics' as const, label: 'Analytics' },
@@ -230,7 +248,7 @@ export function ReviewClient({ email }: { email: string }) {
             <div className="skeleton h-[200px] w-full" style={{ borderRadius: 'var(--radius-card)' }} />
           ) : rows.length === 0 ? (
             <div className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-6 text-[13px] text-muted">
-              Nothing here yet. Live conversations appear once Gorgias sends messages to the assistant; practice runs are under Sandbox practice.
+              {EMPTY[filter]}
             </div>
           ) : (
             <div className="space-y-2">
