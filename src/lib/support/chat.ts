@@ -74,7 +74,7 @@ async function loadRules(): Promise<RulesConfig & { extraInstructions: string }>
  * suggestion a person may paste verbatim - counting that as ours would leave
  * the assistant writing over the very person it handed the chat to.
  */
-async function ownMessages(sessionId: string, now: Date): Promise<OwnMessages> {
+export async function ownMessages(sessionId: string, now: Date): Promise<OwnMessages> {
   const rows = await db.aiConversation.findMany({
     where: { sessionId },
     select: { externalReplyId: true, answer: true, decision: true, createdAt: true },
