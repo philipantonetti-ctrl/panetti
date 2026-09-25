@@ -36,6 +36,20 @@ type Conversation = {
   createdAt: string
 }
 
+/** The whole chat behind a row, as the customer saw it. */
+type ChatLine = { who: 'customer' | 'assistant' | 'person' | 'widget'; text: string; at: string }
+
+/**
+ * Said plainly, because the point of showing the chat at all is to tell our
+ * own line from a colleague's.
+ */
+const SPEAKER: Record<ChatLine['who'], string> = {
+  customer: 'Customer',
+  assistant: 'Assistant',
+  person: 'A person',
+  widget: 'Chat widget',
+}
+
 const FILTERS = ['all', 'sent', 'drafted', 'escalated', 'skipped', 'failed', 'sandbox'] as const
 
 const LABEL: Record<string, string> = {
@@ -72,6 +86,8 @@ export function ReviewClient({ email }: { email: string }) {
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [openId, setOpenId] = useState<string | null>(null)
   const [correction, setCorrection] = useState('')
+  const [chatId, setChatId] = useState<string | null>(null)
+  const [chat, setChat] = useState<{ messages: ChatLine[]; reason?: string } | null>(null)
 
   /**
    * State set inside the promise callback, never after an await in the effect
@@ -98,6 +114,24 @@ export function ReviewClient({ email }: { email: string }) {
   useEffect(() => {
     void load()
   }, [load])
+
+  /**
+   * The chat behind one row, read live. Closing and reopening reads it again
+   * on purpose: a person may have answered since, and that is the very thing
+   * somebody opening this is looking for.
+   */
+  async function showChat(id: string) {
+    if (chatId === id) {
+      setChatId(null)
+      setChat(null)
+      return
+    }
+    setChatId(id)
+    setChat(null)
+    const res = await fetch(`/api/support/conversations/${id}/chat`)
+    const body = res.ok ? await res.json() : null
+    setChat(body ?? { messages: [], reason: 'The chat could not be read.' })
+  }
 
   async function judge(id: string, rating: 'good' | 'bad', text?: string) {
     const res = await fetch(`/api/support/conversations/${id}`, {
@@ -242,8 +276,42 @@ export function ReviewClient({ email }: { email: string }) {
                     >
                       Needs work
                     </button>
+                    {r.source !== 'sandbox' && (
+                      <button
+                        onClick={() => void showChat(r.id)}
+                        className="rounded-full border border-line px-2.5 py-1 text-muted hover:border-faint"
+                      >
+                        {chatId === r.id ? 'Hide the whole chat' : 'Show the whole chat'}
+                      </button>
+                    )}
                     {r.correction && <span className="text-faint">Correction saved</span>}
                   </div>
+
+                  {chatId === r.id && (
+                    <div className="mt-2 rounded-[var(--radius-card)] border border-line bg-panel p-3">
+                      {chat === null ? (
+                        <div className="skeleton h-[60px] w-full" style={{ borderRadius: 'var(--radius-control)' }} />
+                      ) : chat.messages.length === 0 ? (
+                        <p className="text-[12px] text-muted">{chat.reason ?? 'Nothing was said in this chat.'}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {chat.messages.map((line, i) => (
+                            <div key={i}>
+                              <div className="text-[11px] text-muted">
+                                <span className={line.who === 'person' ? 'font-semibold text-ink' : ''}>
+                                  {SPEAKER[line.who]}
+                                </span>
+                                <span className="ml-1.5 tabular-nums">
+                                  {line.at.slice(0, 10)} {line.at.slice(11, 16)}
+                                </span>
+                              </div>
+                              <p className="whitespace-pre-wrap text-[13px] text-ink">{line.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {openId === r.id && (
                     <div className="mt-2">
