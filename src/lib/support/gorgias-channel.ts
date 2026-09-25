@@ -41,6 +41,45 @@ async function post(creds: GorgiasCredentials, path: string, body: unknown): Pro
 }
 
 /**
+ * Who a chat reply is for.
+ *
+ * MEASURED on the live account 2026-09-25, and the last thing standing between
+ * a correct answer and a customer reading it. A chat message Gorgias merely
+ * FILES looks exactly like one it delivers: both answer 201. The difference is
+ * the row afterwards. Ours came back
+ *
+ *     sent_datetime: null, integration_id: null, receiver: null
+ *
+ * and never reached the widget, while a reply a person sends carries the
+ * widget's id, the customer as receiver, and the visitor's own chat address in
+ * `source.to`. Sent with those three the same call came back with
+ * `sent_datetime` set, and the line appeared in the chat (ticket 241516211).
+ *
+ * All three are read from the CUSTOMER's own message, which is the only place
+ * that address exists. Null when there is none to read - a reply that is filed
+ * is worth more than no reply at all, and the review row records what happened
+ * either way.
+ */
+type ChatDestination = { widget: number; customer: number; visitor: string }
+
+async function chatDestination(
+  creds: GorgiasCredentials,
+  conversationId: string,
+): Promise<ChatDestination | null> {
+  try {
+    const messages = await fetchTicketMessages(creds, conversationId)
+    const theirs = [...messages].reverse().find((m) => m.from_agent !== true && m.channel === 'chat')
+    const widget = theirs?.integration_id ?? null
+    const customer = theirs?.sender?.id ?? null
+    const visitor = theirs?.source?.from?.address ?? null
+    if (widget == null || customer == null || !visitor) return null
+    return { widget, customer, visitor }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Which Gorgias channel a reply goes out on.
  *
  * `via` is how the customer arrived; the reply channel is not always the same
@@ -84,9 +123,13 @@ export function gorgiasChannel(via: string | null = 'email'): Channel | null {
     name: 'gorgias',
 
     async sendMessage(conversationId, text) {
+      // A chat reply has to be addressed to the visitor who wrote, or Gorgias
+      // files it on the ticket and never delivers it. See `chatDestination`.
+      const to = channel === 'chat' ? await chatDestination(creds, conversationId) : null
       return post(creds, `tickets/${conversationId}/messages`, {
         channel,
         from_agent: true,
+        ...(to ? { integration_id: to.widget, receiver: { id: to.customer } } : {}),
         // Required. Measured against the live API on 2026-09-24: without it
         // Gorgias answers 400 `{"sender": ["Missing data for required
         // field."]}` and the customer gets nothing. The address is the
@@ -96,7 +139,9 @@ export function gorgiasChannel(via: string | null = 'email'): Channel | null {
         // than merely record it.
         public: true,
         body_text: text,
-        source: { type: channel },
+        source: to
+          ? { type: channel, to: [{ name: '', address: to.visitor }], from: { name: '', address: '' } }
+          : { type: channel },
       })
     },
 
