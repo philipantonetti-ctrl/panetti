@@ -1,9 +1,9 @@
 import { db } from '@/lib/db'
 import { judge, NoApiKey, pickProducts, type SupportJudgement } from './agent'
-import { escalateToHuman, getCustomerContext, type Channel } from './channel'
+import { escalateToHuman, getCustomerContext, type Channel, type TranscriptMessage } from './channel'
 import {
-  askedSoFar, BURST_WAIT_MS, handoverLine, HANDOVER_LINES, humanTookOver, normalise, type OwnMessages,
-  OWN_TEXT_WINDOW_MS, REPLY_CAP, splitForJudge, supersededBy, turnsOf,
+  askedSoFar, BURST_WAIT_MS, conversationStart, handoverLine, HANDOVER_LINES, humanTookOver, normalise,
+  onlyTheCustomer, type OwnMessages, OWN_TEXT_WINDOW_MS, REPLY_CAP, since, splitForJudge, supersededBy, turnsOf,
 } from './chat-turn'
 import { knowledgeFor } from './knowledge'
 import { decide, DEFAULT_RULES, type RulesConfig } from './rules'
@@ -113,7 +113,7 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   if (!incoming.conversationStartedAt) return skip('The channel did not say when the chat started.')
   if (incoming.conversationStartedAt < shop.aiChatFrom) return skip('The chat started before the switch.')
 
-  const session = await db.aiChatSession.upsert({
+  let session = await db.aiChatSession.upsert({
     where: { source_externalTicketId: { source: channel.name, externalTicketId: incoming.conversationId } },
     create: {
       shopId: incoming.shopId,
@@ -124,8 +124,44 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     update: { ...(incoming.customerEmail ? { customerEmail: incoming.customerEmail } : {}) },
   })
 
+  /**
+   * Stand out of a chat, and say so on the review page - once.
+   *
+   * Silence with no record is what made this bug invisible for two days: a
+   * chat the assistant deliberately left alone looked exactly like a chat that
+   * never reached us. One line per conversation and not one per message,
+   * because a person answering twenty messages is still one chat the assistant
+   * stood out of. Nothing is written when the transcript could not be read,
+   * since then we do not know which conversation this is.
+   */
+  const standDown = async (reason: string, current: TranscriptMessage[]): Promise<ChatResult> => {
+    if (current.length === 0) return skip(reason)
+    const said = await db.aiConversation.count({
+      where: { sessionId: session.id, decision: 'skipped', externalMessageId: { in: current.map((m) => m.id) } },
+    })
+    if (said === 0) {
+      await db.aiConversation
+        .create({
+          data: {
+            source: channel.name,
+            externalTicketId: incoming.conversationId,
+            externalMessageId: incoming.messageId,
+            sessionId: session.id,
+            shopId: incoming.shopId,
+            customerEmail: incoming.customerEmail,
+            question: incoming.text.trim().slice(0, 5000),
+            decision: 'skipped',
+            escalationReason: reason,
+          },
+        })
+        .catch(() => {})
+    }
+    return skip(reason)
+  }
+
   // An agent message: ours comes back through the same trigger and is
-  // ignored; anyone else's is a person, and the assistant goes quiet for good.
+  // ignored; anyone else's is a person, and the assistant goes quiet for the
+  // rest of this conversation.
   if (incoming.fromAgent) {
     const own = await ownMessages(session.id, now())
     if (own.ids.has(incoming.messageId) || own.texts.has(normalise(incoming.text))) {
@@ -135,9 +171,53 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     return skip('A person is on this chat.')
   }
 
-  if (session.status !== 'ai') return skip(session.status === 'human' ? 'A person is on this chat.' : 'Already handed over.')
   const text = incoming.text.trim()
   if (!text) return skip('The message had no text.')
+
+  const readTranscript = async (): Promise<TranscriptMessage[]> => {
+    try {
+      return channel.transcript ? await channel.transcript(incoming.conversationId) : []
+    } catch {
+      // A transcript we could not read is not a reason to leave the customer
+      // waiting: the delivered text alone is answered below. It IS a reason to
+      // change nothing about who owns the chat - an empty transcript must
+      // never read as a conversation nobody is in.
+      return []
+    }
+  }
+
+  /**
+   * A chat a person joined, or one the assistant handed over, belongs to them
+   * - for the rest of THAT conversation.
+   *
+   * A chat widget keeps one conversation per visitor for ever, so without an
+   * end the latch is permanent: live ticket 241324637 was answered by a person
+   * on 24 September, and the customer's new question on 25 September was
+   * skipped in silence with nothing written anywhere to say why. The chat was
+   * working; it just looked dead.
+   *
+   * So the latch is released on all three of these at once: the ticket really
+   * has been quiet for six hours (NEW_CONVERSATION_GAP_MS, measured against
+   * this helpdesk's own reply times), the stretch since that silence holds the
+   * customer and nobody else, and there is a transcript to prove it. A
+   * handover a moment ago has no silence behind it and stays exactly as it is.
+   */
+  if (session.status !== 'ai') {
+    const seen = await readTranscript()
+    const start = conversationStart(seen)
+    const current = since(seen, start)
+    const afterASilence = start !== null && seen.length > 0 && start !== seen[0].at
+    if (!(afterASilence && onlyTheCustomer(current, await ownMessages(session.id, now())))) {
+      return standDown(
+        session.status === 'human' ? 'A person is on this chat.' : 'The assistant has already handed this chat over.',
+        current,
+      )
+    }
+    session = await db.aiChatSession.update({
+      where: { id: session.id },
+      data: { status: 'ai', replies: 0, handedOverAt: null, handoverReason: null },
+    })
+  }
 
   // Claim the message before waiting. The unique constraint on
   // (source, externalMessageId) makes a second delivery of the same message
@@ -167,16 +247,6 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     return { decision, reason }
   }
 
-  const readTranscript = async (): Promise<Awaited<ReturnType<NonNullable<Channel['transcript']>>>> => {
-    try {
-      return channel.transcript ? await channel.transcript(incoming.conversationId) : []
-    } catch {
-      // A transcript we could not read is not a reason to leave the customer
-      // waiting: the delivered text alone is answered below.
-      return []
-    }
-  }
-
   /**
    * Whether a later customer message will really be answered by its own run.
    *
@@ -197,7 +267,7 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     if (later && (await answeredElsewhere(later))) {
       return { decision: 'superseded', reason: 'The customer wrote again; the later message answers.' }
     }
-    if (humanTookOver(seen, await ownMessages(session.id, now()))) {
+    if (humanTookOver(since(seen, conversationStart(seen)), await ownMessages(session.id, now()))) {
       await db.aiChatSession.update({ where: { id: session.id }, data: { status: 'human' } }).catch(() => {})
       return { decision: 'skipped', reason: 'A person is on this chat.' }
     }
@@ -207,12 +277,16 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   // Let the burst finish, then read all of it.
   await wait(BURST_WAIT_MS)
   const transcript = await readTranscript()
+  // Only the conversation the customer is in NOW. A person who answered this
+  // same ticket yesterday answered a different conversation, and the ticket
+  // number is the only thing the two have in common.
+  const current = since(transcript, conversationStart(transcript))
   const later = supersededBy(transcript, incoming.messageId)
   if (later && (await answeredElsewhere(later))) {
     return outcome('superseded', {}, 'The customer wrote again; the later message answers.')
   }
   const own = await ownMessages(session.id, now())
-  if (humanTookOver(transcript, own)) {
+  if (humanTookOver(current, own)) {
     await db.aiChatSession.update({ where: { id: session.id }, data: { status: 'human' } })
     return outcome('skipped', {}, 'A person is on this chat.')
   }
@@ -223,7 +297,7 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   // The whole burst is the question, and it is what the review row shows.
   // `own` is passed in so a reply of ours the channel stamped as automatic is
   // still shown to the model as its own previous turn.
-  const turns = turnsOf(transcript, own)
+  const turns = turnsOf(current, own)
   const { history, message } = splitForJudge(turns, text)
   const asked = { question: message.slice(0, 5000) }
 

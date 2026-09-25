@@ -36,7 +36,7 @@ type Conversation = {
   createdAt: string
 }
 
-const FILTERS = ['all', 'sent', 'drafted', 'escalated', 'failed', 'sandbox'] as const
+const FILTERS = ['all', 'sent', 'drafted', 'escalated', 'skipped', 'failed', 'sandbox'] as const
 
 const LABEL: Record<string, string> = {
   sent: 'Answered by itself',
@@ -47,6 +47,11 @@ const LABEL: Record<string, string> = {
   // refused it. Without a filter of its own this is the one outcome nobody
   // would ever look at.
   failed: 'Could not be delivered',
+  // A chat that reached the assistant and that it deliberately left alone,
+  // because a person was already answering it. Without a line of its own, a
+  // chat the assistant stood out of looks exactly like a chat that never
+  // arrived, which is a question nobody can answer from this page.
+  skipped: 'A person was already answering',
   superseded: 'A later message answered',
   pending: 'Still working',
   sending: 'Still working',

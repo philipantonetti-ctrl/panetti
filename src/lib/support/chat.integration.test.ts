@@ -35,6 +35,13 @@ const m = (id: number, fromAgent: boolean, text: string): TranscriptMessage => (
   id: String(id), fromAgent, text, at: `2026-09-09T10:00:${String(id).padStart(2, '0')}Z`,
 })
 
+/** The same, with the time said out loud: a chat that spans days needs one. */
+const at = (id: number, fromAgent: boolean, text: string, when: string): TranscriptMessage => ({
+  id: String(id), fromAgent, text, at: when,
+})
+
+const session = () => db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })
+
 const judgement = (over = {}) => ({
   category: 'shipping', language: 'da', confidence: 0.95, wantsHuman: false,
   escalationReason: null, summary: 'Asks where the parcel is.', reply: 'Din pakke er på vej.', ...over,
@@ -153,6 +160,91 @@ describe('handleChatMessage', () => {
     expect(judge.mock.calls[0][0].history).toEqual([])
     const session = await db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })
     expect(session.status).toBe('ai')
+  })
+
+  /**
+   * The chat widget keeps ONE conversation for a visitor for ever. Live ticket
+   * 241324637: a question on 24 September, four replies from Selena, and a new
+   * question on 25 September that the assistant never answered, because the
+   * latch from the day before still held. Nothing was written anywhere, so the
+   * review page said "Nothing here yet" while the chat was plainly working.
+   */
+  it('takes a silent chat back when the customer returns the next day with a new question', async () => {
+    const yesterday = [
+      at(1, false, 'Hvor mange grader kan Pizzetta Pro komme op paa?', '2026-09-24T07:58:00Z'),
+      at(2, true, 'Hej, Selena her! Den naar 450 grader.', '2026-09-24T08:10:00Z'),
+    ]
+    transcript = yesterday
+    await handleChatMessage(
+      incoming({ messageId: '2', fromAgent: true, text: 'Hej, Selena her! Den naar 450 grader.' }),
+      deps(),
+    )
+    expect((await session()).status).toBe('human')
+
+    transcript = [...yesterday, at(3, false, 'Hvad vejer den?', '2026-09-25T09:21:00Z')]
+    const r = await handleChatMessage(incoming({ messageId: '3', text: 'Hvad vejer den?' }), deps())
+
+    expect(r.decision).toBe('sent')
+    expect(sent).toEqual([{ to: 'C-1', text: 'Din pakke er på vej.' }])
+    // Yesterday was a different conversation and is not replayed as this one.
+    expect(judge.mock.calls[0][0].history).toEqual([])
+    expect(judge.mock.calls[0][0].message).toBe('Hvad vejer den?')
+    expect(await session()).toMatchObject({ status: 'ai', replies: 1 })
+  })
+
+  it('stays out of a chat the person answered five hours ago, which is still the same conversation', async () => {
+    const earlier = [
+      at(1, false, 'Hvor mange grader?', '2026-09-24T07:58:00Z'),
+      at(2, true, 'Hej, Selena her!', '2026-09-24T08:10:00Z'),
+    ]
+    transcript = earlier
+    await handleChatMessage(incoming({ messageId: '2', fromAgent: true, text: 'Hej, Selena her!' }), deps())
+
+    transcript = [...earlier, at(3, false, 'Er du der?', '2026-09-24T13:05:00Z')]
+    const r = await handleChatMessage(incoming({ messageId: '3', text: 'Er du der?' }), deps())
+
+    expect(r.decision).toBe('skipped')
+    expect(sent).toHaveLength(0)
+    expect(judge).not.toHaveBeenCalled()
+  })
+
+  it('does not take back a chat it handed over itself a moment ago', async () => {
+    judge.mockResolvedValue(judgement({ wantsHuman: true, escalationReason: 'Asks for a person.' }))
+    transcript = [m(1, false, 'Hej'), m(2, false, 'Jeg vil tale med et menneske')]
+    await handleChatMessage(incoming({ text: 'Jeg vil tale med et menneske' }), deps())
+    expect((await session()).status).toBe('handed_over')
+
+    transcript = [...transcript, m(5, false, 'Hallo?')]
+    const r = await handleChatMessage(incoming({ messageId: '5', text: 'Hallo?' }), deps())
+    expect(r.decision).toBe('skipped')
+    expect(judge).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * Silence has to be visible. Without a line on the review page, a chat the
+   * assistant deliberately stood out of looks exactly like a chat that never
+   * reached us - which is the whole reason this bug took two days to see.
+   */
+  it('writes one line saying it stood out of a chat a person is answering, and only one', async () => {
+    // The person writes FIRST, which is how it happens live: the latch is set
+    // by the agent's own webhook, so no customer message was ever claimed and
+    // the whole chat had nothing written about it anywhere.
+    transcript = [m(1, true, 'Hej, Selena her!')]
+    await handleChatMessage(incoming({ messageId: '1', fromAgent: true, text: 'Hej, Selena her!' }), deps())
+    expect(await db.aiConversation.count({ where: { externalTicketId: 'C-1' } })).toBe(0)
+
+    transcript = [...transcript, m(2, false, 'Hvor er min pakke?')]
+    const first = await handleChatMessage(incoming({ messageId: '2' }), deps())
+    expect(first.decision).toBe('skipped')
+    const rows = await db.aiConversation.findMany({ where: { externalTicketId: 'C-1' } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ decision: 'skipped', question: 'Hvor er min pakke?', shopId })
+    expect(rows[0].escalationReason).toMatch(/person/i)
+
+    transcript = [...transcript, m(3, false, 'Hallo?')]
+    const again = await handleChatMessage(incoming({ messageId: '3', text: 'Hallo?' }), deps())
+    expect(again.decision).toBe('skipped')
+    expect(await db.aiConversation.count({ where: { externalTicketId: 'C-1' } })).toBe(1)
   })
 
   it('flips the latch on an agent message that is not its own, and ignores its own', async () => {
