@@ -247,6 +247,67 @@ describe('handleChatMessage', () => {
     expect(await db.aiConversation.count({ where: { externalTicketId: 'C-1' } })).toBe(1)
   })
 
+  /**
+   * Live on 2026-09-25, ticket 241324637: a customer asked, a colleague
+   * answered twice, and the review page stayed empty - because a row was only
+   * ever written when the CUSTOMER wrote. "Someone replied there and nothing
+   * shows here" is the whole complaint, and it was right.
+   */
+  it('records the chat the moment a person answers it, without waiting for the customer to write again', async () => {
+    transcript = [m(1, false, 'Hvor er min pakke?'), m(2, true, 'Hej, Selena her! Den er paa vej.')]
+    const r = await handleChatMessage(
+      incoming({ messageId: '2', fromAgent: true, text: 'Hej, Selena her! Den er paa vej.' }),
+      deps(),
+    )
+
+    expect(r.decision).toBe('skipped')
+    const rows = await db.aiConversation.findMany({ where: { externalTicketId: 'C-1' } })
+    expect(rows).toHaveLength(1)
+    // The QUESTION is the customer's, not the colleague's line.
+    expect(rows[0]).toMatchObject({ decision: 'skipped', question: 'Hvor er min pakke?', shopId })
+    expect(rows[0].escalationReason).toMatch(/person/i)
+    expect((await session()).status).toBe('human')
+  })
+
+  it('says it once however many times the person writes', async () => {
+    transcript = [m(1, false, 'Hvor er min pakke?'), m(2, true, 'Hej!')]
+    await handleChatMessage(incoming({ messageId: '2', fromAgent: true, text: 'Hej!' }), deps())
+    transcript = [...transcript, m(3, true, 'Den er paa vej.'), m(4, true, 'Har du flere spoergsmaal?')]
+    await handleChatMessage(incoming({ messageId: '3', fromAgent: true, text: 'Den er paa vej.' }), deps())
+    await handleChatMessage(incoming({ messageId: '4', fromAgent: true, text: 'Har du flere spoergsmaal?' }), deps())
+
+    expect(await db.aiConversation.count({ where: { externalTicketId: 'C-1' } })).toBe(1)
+  })
+
+  /**
+   * A colleague answering two seconds after the customer arrives, while that
+   * customer's message is still in its burst wait. Both runs want to say the
+   * same thing about the same chat; one line is the right number.
+   */
+  it('leaves the line to the run already in flight on the same conversation', async () => {
+    transcript = [m(1, false, 'Hvor er min pakke?'), m(2, true, 'Hej, Selena her!')]
+    const session2 = await db.aiChatSession.create({
+      data: { shopId, source: 'test', externalTicketId: 'C-1' },
+    })
+    await db.aiConversation.create({
+      data: {
+        source: 'test', externalTicketId: 'C-1', externalMessageId: '1', sessionId: session2.id, shopId,
+        question: 'Hvor er min pakke?', decision: 'pending',
+      },
+    })
+
+    await handleChatMessage(incoming({ messageId: '2', fromAgent: true, text: 'Hej, Selena her!' }), deps())
+
+    const rows = await db.aiConversation.findMany({ where: { externalTicketId: 'C-1' } })
+    expect(rows.map((r) => r.decision)).toEqual(['pending'])
+  })
+
+  it('writes nothing for a chat a person opened, where no customer has asked anything', async () => {
+    transcript = [m(1, true, 'Hej! Kan vi hjaelpe med noget?')]
+    await handleChatMessage(incoming({ messageId: '1', fromAgent: true, text: 'Hej! Kan vi hjaelpe med noget?' }), deps())
+    expect(await db.aiConversation.count({ where: { externalTicketId: 'C-1' } })).toBe(0)
+  })
+
   it('flips the latch on an agent message that is not its own, and ignores its own', async () => {
     await handleChatMessage(incoming(), deps())
     const own = await handleChatMessage(incoming({ messageId: '3', fromAgent: true, text: 'Din pakke er på vej.' }), deps())
