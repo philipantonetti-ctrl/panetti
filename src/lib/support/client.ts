@@ -133,6 +133,15 @@ export type GorgiasTicketMessage = {
   sender: { id?: number | null; name?: string | null; email?: string | null } | null
   /** The integration it travelled through. In a chat, every message carries the widget's id. */
   integration_id?: number | null
+  /**
+   * Where it came from and went to. On a chat message from the customer,
+   * `from.address` is that visitor's own chat address - the only place it
+   * exists, and what a reply has to be addressed to.
+   */
+  source?: {
+    from?: { address?: string | null } | null
+    to?: { address?: string | null }[] | null
+  } | null
 }
 
 /** One chat widget of the account, as the settings page offers it. */

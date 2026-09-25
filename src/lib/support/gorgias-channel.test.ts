@@ -26,6 +26,7 @@ describe('the Gorgias channel for a chat', () => {
   it('sends a chat reply on the chat channel, not on the widget name Gorgias reports', async () => {
     const calls: { url: string; body: unknown }[] = []
     vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init: RequestInit = {}) => {
+      if (String(url).includes('messages?')) return new Response(JSON.stringify({ data: [], meta: {} }), { status: 200 })
       calls.push({ url: String(url), body: init.body ? JSON.parse(String(init.body)) : null })
       return new Response('{}', { status: 200 })
     }))
@@ -43,7 +44,8 @@ describe('the Gorgias channel for a chat', () => {
    */
   it('names who is writing, because Gorgias refuses a message without a sender', async () => {
     const calls: unknown[] = []
-    vi.stubGlobal('fetch', vi.fn(async (_url: string | URL, init: RequestInit = {}) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init: RequestInit = {}) => {
+      if (String(url).includes('messages?')) return new Response(JSON.stringify({ data: [], meta: {} }), { status: 200 })
       calls.push(init.body ? JSON.parse(String(init.body)) : null)
       return new Response(JSON.stringify({ id: 626243177 }), { status: 201 })
     }))
@@ -52,6 +54,75 @@ describe('the Gorgias channel for a chat', () => {
     await channel.addInternalNote('7', 'A note for the agents.')
     expect(calls[0]).toMatchObject({ sender: { email: 'admin@example.invalid' } })
     expect(calls[1]).toMatchObject({ channel: 'internal-note', public: false, sender: { email: 'admin@example.invalid' } })
+  })
+
+  /**
+   * MEASURED on the live account 2026-09-25, and the last thing that stood
+   * between a correct answer and a customer reading it.
+   *
+   * A chat message Gorgias merely RECORDS looks identical to one it delivers:
+   * both answer 201. The difference is in the row afterwards - ours came back
+   * `sent_datetime: null, integration_id: null, receiver: null` and never
+   * reached the widget, while a reply a person sends carries the widget id,
+   * the customer as receiver, and the visitor's own chat address in
+   * `source.to`. Sent with those three, the same API call came back
+   * `sent_datetime` set, on ticket 241516211, and the line appeared in the
+   * chat. They are read from the customer's own message, which is the only
+   * place that address exists.
+   */
+  it('addresses a chat reply to the visitor who wrote, or it is only filed and never delivered', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init: RequestInit = {}) => {
+      calls.push({ url: String(url), body: init.body ? JSON.parse(String(init.body)) : null })
+      if (String(url).includes('messages?')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 1, from_agent: false, public: true, channel: 'chat', via: 'gorgias_chat',
+                body_text: 'Hej', created_datetime: '2026-09-25T11:12:29Z',
+                sender: { id: 556602751 }, integration_id: 104368,
+                source: { type: 'chat', from: { address: '73b94d95-6c49-4e83-bd10-5755094e2bce' } },
+              },
+            ],
+            meta: {},
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response(JSON.stringify({ id: 626775586 }), { status: 201 })
+    }))
+
+    await gorgiasChannel('gorgias_chat')!.sendMessage('241516211', 'Hej!')
+
+    const post = calls.find((c) => c.body && (c.body as { body_text?: string }).body_text === 'Hej!')
+    expect(post?.body).toMatchObject({
+      channel: 'chat',
+      integration_id: 104368,
+      receiver: { id: 556602751 },
+      source: { type: 'chat', to: [{ address: '73b94d95-6c49-4e83-bd10-5755094e2bce' }] },
+    })
+  })
+
+  it('still files the reply when the chat has no customer message to address', async () => {
+    const calls: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init: RequestInit = {}) => {
+      if (String(url).includes('messages?')) return new Response(JSON.stringify({ data: [], meta: {} }), { status: 200 })
+      calls.push(init.body ? JSON.parse(String(init.body)) : null)
+      return new Response(JSON.stringify({ id: 9 }), { status: 201 })
+    }))
+    expect(await gorgiasChannel('gorgias_chat')!.sendMessage('7', 'Hej!')).toBe('9')
+    expect(calls[0]).toMatchObject({ channel: 'chat', body_text: 'Hej!' })
+  })
+
+  it('does not go looking for a visitor when the reply is an email', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL) => {
+      urls.push(String(url))
+      return new Response(JSON.stringify({ id: 9 }), { status: 201 })
+    }))
+    await gorgiasChannel('email')!.sendMessage('7', 'Hej!')
+    expect(urls.filter((u) => u.includes('messages?'))).toEqual([])
   })
 
   it('hands back the id Gorgias gave the reply, so the assistant can know its own message', async () => {
