@@ -124,56 +124,6 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     update: { ...(incoming.customerEmail ? { customerEmail: incoming.customerEmail } : {}) },
   })
 
-  /**
-   * Stand out of a chat, and say so on the review page - once.
-   *
-   * Silence with no record is what made this bug invisible for two days: a
-   * chat the assistant deliberately left alone looked exactly like a chat that
-   * never reached us. One line per conversation and not one per message,
-   * because a person answering twenty messages is still one chat the assistant
-   * stood out of. Nothing is written when the transcript could not be read,
-   * since then we do not know which conversation this is.
-   */
-  const standDown = async (reason: string, current: TranscriptMessage[]): Promise<ChatResult> => {
-    if (current.length === 0) return skip(reason)
-    const said = await db.aiConversation.count({
-      where: { sessionId: session.id, decision: 'skipped', externalMessageId: { in: current.map((m) => m.id) } },
-    })
-    if (said === 0) {
-      await db.aiConversation
-        .create({
-          data: {
-            source: channel.name,
-            externalTicketId: incoming.conversationId,
-            externalMessageId: incoming.messageId,
-            sessionId: session.id,
-            shopId: incoming.shopId,
-            customerEmail: incoming.customerEmail,
-            question: incoming.text.trim().slice(0, 5000),
-            decision: 'skipped',
-            escalationReason: reason,
-          },
-        })
-        .catch(() => {})
-    }
-    return skip(reason)
-  }
-
-  // An agent message: ours comes back through the same trigger and is
-  // ignored; anyone else's is a person, and the assistant goes quiet for the
-  // rest of this conversation.
-  if (incoming.fromAgent) {
-    const own = await ownMessages(session.id, now())
-    if (own.ids.has(incoming.messageId) || own.texts.has(normalise(incoming.text))) {
-      return skip('The assistant’s own message.')
-    }
-    await db.aiChatSession.update({ where: { id: session.id }, data: { status: 'human' } })
-    return skip('A person is on this chat.')
-  }
-
-  const text = incoming.text.trim()
-  if (!text) return skip('The message had no text.')
-
   const readTranscript = async (): Promise<TranscriptMessage[]> => {
     try {
       return channel.transcript ? await channel.transcript(incoming.conversationId) : []
@@ -185,6 +135,101 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
       return []
     }
   }
+
+  /**
+   * Stand out of a chat, and say so on the review page - once.
+   *
+   * Silence with no record is what made this bug invisible for two days: a
+   * chat the assistant deliberately left alone looked exactly like a chat that
+   * never reached us. One line per conversation and not one per message,
+   * because a person answering twenty messages is still one chat the assistant
+   * stood out of. Nothing is written when the transcript could not be read,
+   * since then we do not know which conversation this is.
+   */
+  const standDown = async (
+    reason: string,
+    current: TranscriptMessage[],
+    question: string,
+  ): Promise<ChatResult> => {
+    // Nothing to show without a question: a chat a colleague opened, where the
+    // customer has not asked anything, is not a turn the assistant passed on.
+    if (current.length === 0 || !question.trim()) return skip(reason)
+
+    /**
+     * Already said for this conversation, or about to be.
+     *
+     * `skipped` is a line already written. `pending` and `sending` are a run
+     * still in flight on another message of the same conversation, which will
+     * record its own outcome - and it really happens: a colleague answering
+     * two seconds after the customer arrives while that customer's message is
+     * still in its burst wait, and without this the one chat gets two lines.
+     *
+     * Two ways of knowing it, because the channel's transcript can lag its own
+     * webhook by a second, and a person writing four times running must still
+     * leave one line rather than four.
+     */
+    const startedAt = Date.parse(current[0].at)
+    const said = await db.aiConversation.count({
+      where: {
+        sessionId: session.id,
+        decision: { in: ['skipped', 'pending', 'sending'] },
+        OR: [
+          { externalMessageId: { in: current.map((m) => m.id) } },
+          ...(Number.isFinite(startedAt) ? [{ createdAt: { gte: new Date(startedAt) } }] : []),
+        ],
+      },
+    })
+    if (said === 0) {
+      await db.aiConversation
+        .create({
+          data: {
+            source: channel.name,
+            externalTicketId: incoming.conversationId,
+            externalMessageId: incoming.messageId,
+            sessionId: session.id,
+            shopId: incoming.shopId,
+            customerEmail: incoming.customerEmail,
+            question: question.trim().slice(0, 5000),
+            decision: 'skipped',
+            escalationReason: reason,
+          },
+        })
+        .catch(() => {})
+    }
+    return skip(reason)
+  }
+
+  /** The newest thing the customer actually asked in this stretch of chat. */
+  const lastAsked = (current: TranscriptMessage[]): string =>
+    [...current].reverse().find((m) => !m.fromAgent && m.text.trim())?.text ?? ''
+
+  // An agent message: ours comes back through the same trigger and is
+  // ignored; anyone else's is a person, and the assistant goes quiet for the
+  // rest of this conversation.
+  if (incoming.fromAgent) {
+    const own = await ownMessages(session.id, now())
+    if (own.ids.has(incoming.messageId) || own.texts.has(normalise(incoming.text))) {
+      return skip('The assistant’s own message.')
+    }
+    await db.aiChatSession.update({ where: { id: session.id }, data: { status: 'human' } })
+
+    /**
+     * And say so on the review page, now rather than later.
+     *
+     * The line used to be written only when the CUSTOMER next wrote, so a
+     * chat a colleague answered - the ordinary case - left no trace at all
+     * unless the customer came back. Live ticket 241324637 on 2026-09-25 is
+     * exactly that: a question, two replies from a person, and an empty
+     * review page. The question on the row is the customer's, not the
+     * colleague's line, because the question is what the assistant passed on.
+     */
+    const seen = await readTranscript()
+    const current = since(seen, conversationStart(seen))
+    return standDown('A person answered this chat.', current, lastAsked(current))
+  }
+
+  const text = incoming.text.trim()
+  if (!text) return skip('The message had no text.')
 
   /**
    * A chat a person joined, or one the assistant handed over, belongs to them
@@ -211,6 +256,7 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
       return standDown(
         session.status === 'human' ? 'A person is on this chat.' : 'The assistant has already handed this chat over.',
         current,
+        text,
       )
     }
     session = await db.aiChatSession.update({
