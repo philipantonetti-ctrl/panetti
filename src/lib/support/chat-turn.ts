@@ -19,6 +19,24 @@ export const BURST_WAIT_MS = 6_000
 /** How far back an agent message is still recognisable as the assistant's own. */
 export const OWN_TEXT_WINDOW_MS = 15 * 60_000
 
+/**
+ * How long a chat has to be left alone before the next customer message is a
+ * NEW conversation rather than the same one.
+ *
+ * A chat widget keeps one conversation for a visitor for ever. Gorgias ticket
+ * 241324637 held the customer's question on 24 September, four replies from a
+ * person, and then, on 25 September, a new question - and every rule that asks
+ * "is a person on this chat" answered yes to the new question because of the
+ * old one. The assistant was silent, and nothing anywhere said why.
+ *
+ * Six hours, and the number is measured rather than chosen: over the 380
+ * newest live chat messages on this account, a person's reply came a median of
+ * five minutes after the message before it, nine in ten inside thirty-four
+ * minutes, and only five of a hundred and sixty-one ever passed four hours. A
+ * silence this long cannot cut across anybody still answering.
+ */
+export const NEW_CONVERSATION_GAP_MS = 6 * 60 * 60_000
+
 /** The one customer-visible line a handover sends, per language. */
 export const HANDOVER_LINES: Record<string, string> = {
   da: 'Jeg henter en kollega, som hjælper dig videre. Et øjeblik.',
@@ -91,6 +109,18 @@ export function humanTookOver(transcript: TranscriptMessage[], own: OwnMessages)
 }
 
 /**
+ * True when nobody but the customer has spoken in this stretch of chat: no
+ * person, and not the assistant either. The channel's own automatic lines do
+ * not count, because nobody wrote them.
+ *
+ * This is what makes a returning customer a NEW conversation rather than the
+ * old one: a silence, and then the customer alone.
+ */
+export function onlyTheCustomer(transcript: TranscriptMessage[], own: OwnMessages): boolean {
+  return !transcript.some((m) => m.fromAgent && (!m.automatic || isOurs(m, own)))
+}
+
+/**
  * The transcript as turns: customer messages are user turns, agent messages
  * are assistant turns, consecutive same-role messages joined, empty ones and
  * the channel's automatic lines dropped, and only the last `limit` turns kept.
@@ -137,4 +167,43 @@ export const ASKED_TURNS = 3
 export function askedSoFar(history: Turn[], message: string): string {
   const earlier = history.filter((t) => t.role === 'user').slice(-ASKED_TURNS).map((t) => t.text)
   return [...earlier, message].join('\n')
+}
+
+/**
+ * Where the conversation the customer is in NOW begins: the `at` of the first
+ * message after the newest long silence, or the first message of the ticket
+ * when it ran without one. Null for a transcript with nothing in it, which is
+ * also what a transcript we could not read looks like - so a caller can never
+ * mistake "I read nothing" for "this is a fresh conversation".
+ *
+ * A time the channel gives us that will not parse is not a boundary. Guessing
+ * one would split a live conversation in half and let the assistant talk over
+ * whoever is in it.
+ */
+export function conversationStart(
+  transcript: TranscriptMessage[],
+  gapMs = NEW_CONVERSATION_GAP_MS,
+): string | null {
+  if (transcript.length === 0) return null
+  for (let i = transcript.length - 1; i > 0; i--) {
+    const at = Date.parse(transcript[i].at)
+    const before = Date.parse(transcript[i - 1].at)
+    if (Number.isFinite(at) && Number.isFinite(before) && at - before >= gapMs) return transcript[i].at
+  }
+  return transcript[0].at
+}
+
+/**
+ * The part of the transcript from `at` onwards. A message whose time will not
+ * parse is kept: it might be a person, and everything this is used for is
+ * safer with one message too many than one too few.
+ */
+export function since(transcript: TranscriptMessage[], at: string | null): TranscriptMessage[] {
+  if (at === null) return transcript
+  const from = Date.parse(at)
+  if (!Number.isFinite(from)) return transcript
+  return transcript.filter((m) => {
+    const t = Date.parse(m.at)
+    return !Number.isFinite(t) || t >= from
+  })
 }

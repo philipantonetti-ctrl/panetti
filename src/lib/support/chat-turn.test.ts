@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  askedSoFar, handoverLine, humanTookOver, normalise, NO_OWN, REPLY_CAP, splitForJudge, superseded, turnsOf,
+  askedSoFar, conversationStart, handoverLine, humanTookOver, NEW_CONVERSATION_GAP_MS, normalise, NO_OWN,
+  REPLY_CAP, since, splitForJudge, superseded, turnsOf,
 } from './chat-turn'
 import type { TranscriptMessage } from './channel'
 
@@ -115,6 +116,68 @@ describe('handoverLine', () => {
     expect(handoverLine('de')).toMatch(/Kolleg/)
     expect(handoverLine('xx')).toMatch(/colleague/)
     expect(handoverLine(null)).toMatch(/colleague/)
+  })
+})
+
+/**
+ * A Gorgias chat keeps ONE ticket for a visitor for ever. Measured on the live
+ * account: ticket 241324637 carried the customer's question on 24 September,
+ * four replies from a person, and then a new question on 25 September. Without
+ * a boundary, every rule that asks "is a person on this chat" answers yes for
+ * the rest of the shop's life.
+ */
+describe('conversationStart', () => {
+  const at = (iso: string, id: number, fromAgent = false): TranscriptMessage =>
+    ({ id: String(id), fromAgent, text: 'x', at: iso })
+
+  it('is the first message when the chat ran without a long silence', () => {
+    expect(conversationStart([at('2026-09-24T07:58:00Z', 1), at('2026-09-24T08:01:00Z', 2, true)]))
+      .toBe('2026-09-24T07:58:00Z')
+  })
+
+  it('is the message after the silence, so yesterday is not this conversation', () => {
+    expect(conversationStart([
+      at('2026-09-24T07:58:00Z', 1), at('2026-09-24T08:10:00Z', 2, true), at('2026-09-25T09:21:00Z', 3),
+    ])).toBe('2026-09-25T09:21:00Z')
+  })
+
+  it('takes the NEWEST silence, however many the ticket has', () => {
+    expect(conversationStart([
+      at('2026-09-20T09:00:00Z', 1), at('2026-09-24T07:58:00Z', 2), at('2026-09-25T09:21:00Z', 3),
+    ])).toBe('2026-09-25T09:21:00Z')
+  })
+
+  it('is null for an empty transcript, so nothing can be released on a transcript we could not read', () => {
+    expect(conversationStart([])).toBeNull()
+  })
+
+  it('will not break a chat over a time it cannot read', () => {
+    expect(conversationStart([at('2026-09-24T07:58:00Z', 1), at('not a time', 2)])).toBe('2026-09-24T07:58:00Z')
+  })
+
+  it('is six hours, which is clear of how this helpdesk works', () => {
+    // Measured over 380 live chat messages: 90% of a person's replies land
+    // within 34 minutes of the message before, and 5 of 161 ever passed four
+    // hours. Six hours cannot cut across anyone still answering.
+    expect(NEW_CONVERSATION_GAP_MS).toBe(6 * 60 * 60_000)
+  })
+})
+
+describe('since', () => {
+  const at = (iso: string, id: number, fromAgent = false): TranscriptMessage =>
+    ({ id: String(id), fromAgent, text: 'x', at: iso })
+
+  it('keeps this conversation and drops the one before it', () => {
+    const t = [at('2026-09-24T07:58:00Z', 1), at('2026-09-24T08:10:00Z', 2, true), at('2026-09-25T09:21:00Z', 3)]
+    expect(since(t, '2026-09-25T09:21:00Z').map((m) => m.id)).toEqual(['3'])
+    expect(humanTookOver(since(t, '2026-09-25T09:21:00Z'), NO_OWN)).toBe(false)
+    expect(humanTookOver(t, NO_OWN)).toBe(true)
+  })
+
+  it('keeps everything when there is no start, and keeps a message whose time will not read', () => {
+    const t = [at('2026-09-24T07:58:00Z', 1), at('rubbish', 2, true)]
+    expect(since(t, null)).toHaveLength(2)
+    expect(since(t, '2026-09-25T00:00:00Z').map((m) => m.id)).toEqual(['2'])
   })
 })
 
