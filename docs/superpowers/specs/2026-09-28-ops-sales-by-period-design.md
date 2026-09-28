@@ -82,24 +82,27 @@ on the server, so the list, "Total N found" and "Load more" all follow it.
 ### `src/lib/metrics/periods.ts` (new, pure)
 
 - `periodBuckets(grain, today, count)` returns `count + 1` buckets, newest
-  first, each `{ from, to, soFar }`. The extra, oldest bucket exists only so
-  the oldest shown row has a "vs previous". `soFar` is true for the bucket
-  that contains `today`, whose `to` is `today`.
+  first, each `{ from, to, countedTo, soFar }`: `from` and `to` are the whole
+  calendar period (for the label), `countedTo` is the last day counted (today
+  for the current bucket, `to` for every other). The extra, oldest bucket
+  exists only so the oldest shown row has a "vs previous".
 - `salesByPeriod(input, buckets, { excludeZero })` returns one row per shown
   bucket: `{ from, to, soFar, orders, sales, avgOrder, vsPrevious }`.
-  - Orders are counted with the engine's own `entriesIn`
-    (`src/lib/metrics/engine.ts:118`): the same excluded statuses, and an order
-    belongs to the day it was placed **in its shop's timezone**.
-  - Money is converted per order with `crossConvert`
-    (`src/lib/metrics/fx.ts:127`) at that order's own day rate, then summed.
-    Per-order conversion is additive, so a bucket's sum equals
-    `computeMetrics` for the same dates.
-  - `excludeZero` drops orders with `total === 0` before anything is counted,
-    for every bucket alike.
+  - Each bucket is computed by the owner's own `computeMetrics`
+    (`src/lib/metrics/engine.ts:155`) over `from..countedTo`, and only
+    `orders`, `netRevenue` and `avgOrderValue` are read from its total. The
+    status rules, the shop-timezone day rule and the own-day exchange rate are
+    therefore the owner's dashboard's, not a copy of them, and a row agrees
+    with the owner's dashboard for the same dates by construction.
+  - `excludeZero` drops orders with `total === 0` from the input before any
+    bucket is computed, so every row and every comparison base leave them out.
+  - `vsPrevious` is `deltaPct(sales, previous bucket's sales)`
+    (`src/lib/metrics/trend.ts`), null when the previous is 0.
+- `periodLabel(from, to, grain)` gives "22-28 Sep", "29 Dec - 4 Jan" or
+  "September 2026".
 - Monday weeks come from `bucketStart`, moved from
-  `src/lib/ads/series-buckets.ts` to a neutral module (it currently imports a
-  marketing type) and re-exported from its old home so the Marketing chart is
-  untouched.
+  `src/lib/ads/series-buckets.ts` into `src/lib/dates.ts` and re-exported from
+  its old home, so the Marketing chart is untouched.
 
 ### `GET /api/sales/periods` (new)
 
