@@ -467,9 +467,14 @@ describe('the schedule itself', () => {
     // starve (see this file's own comments) is exactly the risk that avoids.
     // Pinned as the whole array, not toContainEqual, so this still notices a
     // third cron appearing or the briefing cron disappearing.
+    //
+    // The pickup reminder is the third, hourly in the daytime only so no
+    // customer is emailed at night. It costs Neon nothing extra: this route
+    // already keeps the database awake every fifteen minutes.
     expect(cfg.crons).toEqual([
       { path: '/api/cron/sync', schedule: '*/15 * * * *' },
       { path: '/api/cron/briefing', schedule: '0 5 * * *' },
+      { path: '/api/cron/pickup-reminders', schedule: '0 7-17 * * *' },
     ])
   })
 })
