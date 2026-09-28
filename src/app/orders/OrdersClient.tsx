@@ -259,6 +259,9 @@ export function OrdersClient({
   // /b2b links here with ?source=b2b. Read it once, from window rather than
   // useSearchParams, so this client component needs no Suspense boundary.
   const [source, setSource] = useState(initial.source)
+  // Replacements, giveaways and test orders go out at 0. Shown by default,
+  // because each is a real parcel; hidden on request.
+  const [excludeZero, setExcludeZero] = useState(false)
   // Slack alerts and the Delivery page link here with ?q=<order number>. Both
   // fire once per order, so this link is the only handle anyone gets on it.
   const [q, setQ] = useState(initial.q)
@@ -294,6 +297,7 @@ export function OrdersClient({
     else p.set('includeVoided', 'true')
     if (query) p.set('q', query)
     if (source) p.set('source', source)
+    if (excludeZero) p.set('excludeZero', '1')
     p.set('limit', String(PAGE))
     p.set('offset', String(offset))
     return p
@@ -337,7 +341,7 @@ export function OrdersClient({
       .finally(() => setLoading(false))
     return () => ctrl.abort() // a superseded response must never overwrite a newer one
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset, from, to, selected, status, source, query, refresh, tick])
+  }, [preset, from, to, selected, status, source, excludeZero, query, refresh, tick])
 
   async function loadMore() {
     setLoadingMore(true)
@@ -445,6 +449,17 @@ export function OrdersClient({
                   <option value="webshop">Webshop</option>
                   <option value="b2b">B2B</option>
                 </select>
+                <label className="flex items-center gap-1.5 text-[12px] text-ink">
+                  <input
+                    type="checkbox"
+                    checked={excludeZero}
+                    onChange={(e) => {
+                      setLoading(true)
+                      setExcludeZero(e.target.checked)
+                    }}
+                  />
+                  Exclude 0-amount orders
+                </label>
                 <input
                   type="search"
                   aria-label="Search orders"

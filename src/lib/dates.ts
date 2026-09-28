@@ -54,6 +54,23 @@ export function daysInYearOf(d: Date): number {
   return isLeap ? 366 : 365
 }
 
+export type Granularity = 'day' | 'week' | 'month'
+
+/**
+ * The first day of the week or month `date` falls in, as `yyyy-mm-dd`.
+ * Weeks start on Monday; months on the 1st. `date` is a calendar day that has
+ * already been placed in its zone, so plain UTC arithmetic on it is right.
+ */
+export function bucketStart(date: string, granularity: Granularity): string {
+  if (granularity === 'day') return date
+  if (granularity === 'month') return date.slice(0, 8) + '01'
+
+  const d = new Date(date + 'T00:00:00Z')
+  const back = (d.getUTCDay() + 6) % 7 // Sunday is 0 in JS; Monday is 0 here
+  d.setUTCDate(d.getUTCDate() - back)
+  return d.toISOString().slice(0, 10)
+}
+
 export function resolvePreset(preset: Preset, now: Date = new Date()): DateRange {
   const today = utcDay(now)
   const shift = (days: number) => new Date(today.getTime() + days * DAY_MS)

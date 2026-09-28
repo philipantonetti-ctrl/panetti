@@ -520,3 +520,25 @@ describe('OrdersClient without profit', () => {
     for (const column of MONEY_COLUMNS) expect(headers, column).toContain(column)
   })
 })
+
+describe('the 0-amount filter', () => {
+  it('is off by default and, once ticked, reaches the server', async () => {
+    const calls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        calls.push(String(url))
+        return new Response(JSON.stringify({ total: 0, orders: [] }), { status: 200 })
+      }),
+    )
+    render(<OrdersClient email="ops@test.local" shops={[{ id: 's1', name: 'Panetti Norway', currency: 'NOK' }]} showProfit={false} role="OPERATIONS" />)
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0))
+
+    const box = screen.getByLabelText('Exclude 0-amount orders') as HTMLInputElement
+    expect(box.checked).toBe(false)
+    expect(calls[0]).not.toContain('excludeZero')
+
+    fireEvent.click(box)
+    await waitFor(() => expect(calls.some((u) => u.includes('excludeZero=1'))).toBe(true))
+  })
+})
