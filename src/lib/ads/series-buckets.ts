@@ -1,4 +1,9 @@
 import type { MarketingSeriesPoint } from './marketing'
+import { bucketStart, type Granularity } from '../dates'
+
+// Moved to lib/dates so the operations sales table can use it without
+// importing a marketing type. Re-exported so nothing that imports it here breaks.
+export { bucketStart, type Granularity }
 
 /**
  * Rolling the daily series up into weeks or months, for the chart's
@@ -9,24 +14,11 @@ import type { MarketingSeriesPoint } from './marketing'
  * the header remain the period totals whatever this does.
  */
 
-export type Granularity = 'day' | 'week' | 'month'
-
 export type SeriesBucket = MarketingSeriesPoint & {
   /** Inclusive last day this bucket actually carries, for the tooltip. */
   endDate: string
   roas: number | null
   poas: number | null
-}
-
-/** ISO weeks start on Monday; months on the 1st. */
-export function bucketStart(date: string, granularity: Granularity): string {
-  if (granularity === 'day') return date
-  if (granularity === 'month') return date.slice(0, 8) + '01'
-
-  const d = new Date(date + 'T00:00:00Z')
-  const back = (d.getUTCDay() + 6) % 7 // Sunday is 0 in JS; Monday is 0 here
-  d.setUTCDate(d.getUTCDate() - back)
-  return d.toISOString().slice(0, 10)
 }
 
 export function bucketSeries(

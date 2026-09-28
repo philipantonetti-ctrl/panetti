@@ -13,6 +13,7 @@ import {
   warehouseProblems,
 } from '@/lib/operations/today'
 import { getSetting } from '@/lib/settings'
+import { SalesByPeriod } from './SalesByPeriod'
 import { TodayCard } from './TodayCard'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -43,7 +44,12 @@ export async function OperationsDashboard({ user }: { user: SessionUser }) {
   // later than its neighbour is a disagreement waiting for a midnight boundary.
   const now = new Date()
 
-  const shops = await db.shop.findMany({ where: { active: true }, select: { id: true } })
+  // The shops his sales table can narrow to: every active one, like the Orders tab.
+  const shops = await db.shop.findMany({
+    where: { active: true },
+    select: { id: true, name: true, currency: true },
+    orderBy: { name: 'asc' },
+  })
 
   const [delivery, inventory, receivables, lastImport, unlinkedParcels] = await Promise.all([
     loadDelivery(
@@ -123,6 +129,7 @@ export async function OperationsDashboard({ user }: { user: SessionUser }) {
             seeAllHref="/delivery"
           />
         </div>
+        <SalesByPeriod shops={shops} />
       </PageBody>
     </AppShell>
   )
