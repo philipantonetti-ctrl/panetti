@@ -479,6 +479,21 @@ describe('an offline form', () => {
     expect((await session()).status).toBe('handed_over')
   })
 
+  /** Live ticket 239482294: two offline-form messages 16.6 s apart. One note for the pair, from the later run. */
+  it('leaves the note to the later message when the customer writes again while it is thinking', async () => {
+    judge.mockImplementation(async () => {
+      transcript = [...transcript, m(3, false, 'Og hvornår kommer den?')]
+      await db.aiConversation.create({
+        data: { source: 'test', externalTicketId: 'C-1', externalMessageId: '3', shopId, question: 'Og hvornår kommer den?', decision: 'pending' },
+      })
+      return judgement()
+    })
+    const r = await handleChatMessage(incoming({ via: 'offline_capture' }), deps())
+    expect(r.decision).toBe('superseded')
+    expect(notes).toHaveLength(0)
+    expect(tags).toHaveLength(0)
+  })
+
   it('does not tell the customer a colleague is coming either', async () => {
     transcript = [m(1, false, 'Jeg vil tale med et menneske')]
     const r = await handleChatMessage(

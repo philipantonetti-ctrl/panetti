@@ -38,6 +38,16 @@ describe('chatInstructions', () => {
    * so "no orders" is not a fact about them. Said to a customer who has
    * three, it would be a wrong answer; said to a stranger, a hint.
    */
+  /** A chat never shows the phone; "none on file" would then be a false fact the model repeats. */
+  it('says nothing about a phone it was not shown', () => {
+    const shown: CustomerContext = {
+      customer: { name: 'Anna', email: 'anna@example.invalid', phone: null, country: 'DK' },
+      orders: [],
+      previousTickets: [],
+    }
+    expect(contextBlock(shown)).not.toMatch(/phone/i)
+  })
+
   it('never tells the model the customer has no orders, or whether an order exists', () => {
     expect(contextBlock(nobody)).not.toMatch(/no orders found/i)
     expect(chatInstructions({ firstReply: false, customerKnown: false })).toMatch(/never say whether/i)

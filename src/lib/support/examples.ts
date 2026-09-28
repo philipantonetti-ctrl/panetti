@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { normalizePhone, orderNumbersIn, phonesIn, trackingNumbersIn } from '@/lib/inbox/identifiers'
 
 /**
  * A correction becomes an example the assistant can find next time.
@@ -21,8 +22,11 @@ const TITLE_LIMIT = 200
 /** The widget's offline form puts its first field (often the email) and a line of dashes before the message. */
 const OFFLINE_HEADER = /^[\s\S]*?-{10,}\s*/
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/g
-/** An order, phone or parcel number. Four digits is a year or a model; five is somebody's. */
-const PERSONAL_NUMBER = /\d{5,}|\+?\d[\d -]{6,}\d/
+/** A run of four or more digits, spaces, dots or dashes allowed inside: "15 209", "20 30 40 50". */
+const LONG_NUMBER = /\d(?:[\s.-]?\d){3,}/g
+/** An order reference with separators in the number, which orderNumbersIn does not read: "ordre 15.209". */
+const SPACED_ORDER_REFERENCE =
+  /(?:#|\b(?:order|ordre|ordrenummer|ordrenr|bestilling|bestillingsnummer|beställning|beställningsnummer|ordernummer|bestellung|bestellnummer|tilaus|tilausnumero)\b[\s:.#-]*)\d(?:[ .-]?\d){2,6}\b/i
 
 /**
  * An example is offered to every later chat on its shop, so its title keeps
@@ -33,21 +37,68 @@ export function exampleTitle(question: string): string {
   return question
     .replace(OFFLINE_HEADER, '')
     .replace(EMAIL, ' ')
-    .replace(/\d{4,}/g, ' ')
+    .replace(LONG_NUMBER, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, TITLE_LIMIT)
 }
+
+/** What identifies the customer a conversation was with, read from the orders on its email. */
+export type CustomerMarks = { orderNumbers: string[]; phones: string[]; parcels: string[] }
 
 /**
  * Whether a correction is about one customer rather than about the shop.
  * Such an answer ("order 15209 went in two parcels") is right for that
  * customer and a leak for everyone else, so it is kept on its row and taught
  * to nobody.
+ *
+ * Any order reference, parcel number or email outside the shops' own domains
+ * counts; so does anything of THIS customer's - an order number, phone or
+ * parcel on their orders, however it is spaced. The shop's own phone, a
+ * postcode, a price or a model number does not: that is what the shop knows.
  */
-export function namesACustomer(text: string, orderNumber: string | null): boolean {
-  if (new RegExp(EMAIL.source).test(text) || PERSONAL_NUMBER.test(text)) return true
-  return orderNumber !== null && orderNumber.length > 0 && text.includes(orderNumber)
+export function namesACustomer(text: string, marks: CustomerMarks, shopDomains: string[]): boolean {
+  const outside = (text.match(EMAIL) ?? []).some((address) => {
+    const domain = address.split('@')[1].toLowerCase().replace(/[.,;:!?)]+$/, '')
+    return !shopDomains.some((d) => domain === d || domain.endsWith(`.${d}`))
+  })
+  if (outside) return true
+  if (orderNumbersIn(text).length > 0 || SPACED_ORDER_REFERENCE.test(text) || trackingNumbersIn(text).length > 0) return true
+
+  const written = new Set((text.match(LONG_NUMBER) ?? []).map((n) => n.replace(/\D/g, '')))
+  if (marks.orderNumbers.some((n) => written.has(n.replace(/\D/g, '')))) return true
+  if (marks.parcels.some((p) => written.has(p.replace(/\D/g, '')) || text.includes(p))) return true
+  const last8 = (n: string) => normalizePhone(n).slice(-8)
+  const phones = phonesIn(text).map(last8)
+  return marks.phones.some((p) => last8(p).length === 8 && phones.includes(last8(p)))
+}
+
+/** The customer's identifiers, from the orders on the conversation's email and its own order number. */
+async function marksOf(email: string | null, orderNumber: string | null): Promise<CustomerMarks> {
+  const orders = email
+    ? await db.order.findMany({
+        where: { customerEmail: { equals: email, mode: 'insensitive' } },
+        select: { number: true, customerPhone: true, shipments: { select: { trackingNumber: true } } },
+        take: 50,
+      })
+    : []
+  return {
+    orderNumbers: [...orders.map((o) => o.number), ...(orderNumber ? [orderNumber] : [])],
+    phones: orders.map((o) => o.customerPhone).filter((p): p is string => Boolean(p)),
+    parcels: orders.flatMap((o) => o.shipments.map((s) => s.trackingNumber)),
+  }
+}
+
+/** The shops' own web domains, so an address like kundeservice@panetti.dk is shop knowledge. */
+async function shopDomains(): Promise<string[]> {
+  const shops = await db.shop.findMany({ where: { wooUrl: { not: null } }, select: { wooUrl: true } })
+  return shops.flatMap((s) => {
+    try {
+      return [new URL(s.wooUrl as string).hostname.toLowerCase().replace(/^www\./, '')]
+    } catch {
+      return []
+    }
+  })
 }
 
 export const WITHHELD =
@@ -62,11 +113,11 @@ export async function promoteCorrection(
 
   const row = await db.aiConversation.findUnique({
     where: { id: conversationId },
-    select: { question: true, shopId: true, language: true, orderNumber: true },
+    select: { question: true, shopId: true, language: true, orderNumber: true, customerEmail: true },
   })
   if (!row) return null
 
-  if (namesACustomer(text, row.orderNumber)) {
+  if (namesACustomer(text, await marksOf(row.customerEmail, row.orderNumber), await shopDomains())) {
     await db.aiConversation.update({ where: { id: conversationId }, data: { rating: 'bad', correction: text } })
     return { knowledgeItemId: null, withheld: WITHHELD }
   }

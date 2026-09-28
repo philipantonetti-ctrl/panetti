@@ -173,7 +173,9 @@ export function contextBlock(context: CustomerContext): string {
     'CUSTOMER CONTEXT. These are facts from our own system:',
     `Customer: ${context.customer.name || 'name unknown'} (${context.customer.email})`,
     `Country: ${context.customer.country ?? 'unknown'}`,
-    `Phone: ${context.customer.phone ?? 'none on file'}`,
+    // Left out when there is none to show: a chat never shows the phone, and
+    // "none on file" would then be a false fact the model repeats.
+    ...(context.customer.phone ? [`Phone: ${context.customer.phone}`] : []),
     `Earlier support conversations: ${context.previousTickets.length}`,
     '',
     'Orders, newest first:',

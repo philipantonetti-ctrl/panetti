@@ -171,6 +171,21 @@ describe('onlyNamedOrders', () => {
   it('does not take a short number for an order', () => {
     expect(onlyNamedOrders({ ...context, orders: [order('12')] }, ['Den er 12 cm']).orders).toEqual([])
   })
+
+  it('reads an order number the customer typed with a space, a dot or a dash in it', () => {
+    for (const typed of ['Ordre 15 209', 'ordre 15.209', 'nr 15-209']) {
+      expect(onlyNamedOrders(context, [typed]).orders.map((o) => o.number)).toEqual(['15209'])
+    }
+  })
+
+  /** Order numbers are sequential; a list of them is a guess, not a customer who knows their order. */
+  it('shows nobody when the chat holds more than three candidate numbers', () => {
+    const guesses = Array.from({ length: 300 }, (_, i) => String(15000 + i)).join(' ')
+    expect(onlyNamedOrders(context, [guesses])).toEqual({ customer: null, orders: [], previousTickets: [] })
+    const spaced = Array.from({ length: 300 }, (_, i) => `15 ${String(i).padStart(3, '0')}`).join(', ')
+    expect(onlyNamedOrders(context, [spaced])).toEqual({ customer: null, orders: [], previousTickets: [] })
+    expect(onlyNamedOrders(context, ['ordre 15209, tlf 20304050, postnr 8800']).orders).toHaveLength(1)
+  })
 })
 
 /**

@@ -427,10 +427,14 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   // Whatever it would have said goes to the person who answers the form by
   // email, as the suggested reply on the note.
   if (offline) {
-    const why = verdict.action === 'escalate'
+    // The same re-check a sent answer gets: a later message of the burst
+    // leaves one note for all of it, rather than one note per message.
+    const gone = await noLongerOurs()
+    if (gone) return outcome(gone.decision, judged, gone.reason)
+    const because = verdict.action === 'escalate'
       ? (judgement.escalationReason ?? verdict.reason ?? 'A person should handle this.')
       : 'The customer wrote through the offline form, so a person answers by email.'
-    return handover(why, judgement)
+    return handover(because, judgement)
   }
 
   if (verdict.action === 'send' && judgement.reply) {

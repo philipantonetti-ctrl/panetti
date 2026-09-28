@@ -233,6 +233,27 @@ export function since(transcript: TranscriptMessage[], at: string | null): Trans
 /** An order number is at least this many digits; a shorter number is a size, a count or a day. */
 const ORDER_NUMBER_MIN_DIGITS = 4
 
+/**
+ * More candidate numbers than this in one chat is a list of guesses. Order
+ * numbers are sequential, so "15000 15001 ... 15999" would otherwise find
+ * whichever of them belongs to the email typed into the widget.
+ */
+const MAX_CANDIDATE_NUMBERS = 3
+
+/**
+ * The numbers a customer wrote, as they may mean them: each run of digits,
+ * and each run split by single spaces, dots or dashes read as one ("15 209",
+ * "15.209"). Only runs long enough to be an order count.
+ */
+function candidateNumbers(texts: string[]): Set<string> {
+  const found = new Set<string>()
+  for (const t of texts) {
+    for (const run of t.match(/\d+/g) ?? []) found.add(run)
+    for (const run of t.match(/\d(?:[ .-]?\d)*/g) ?? []) found.add(run.replace(/\D/g, ''))
+  }
+  return new Set([...found].filter((n) => n.length >= ORDER_NUMBER_MIN_DIGITS))
+}
+
 const NOBODY: CustomerContext = { customer: null, orders: [], previousTickets: [] }
 
 /**
@@ -250,9 +271,8 @@ const NOBODY: CustomerContext = { customer: null, orders: [], previousTickets: [
  * for the order number.
  */
 export function onlyNamedOrders(context: CustomerContext, customerTexts: string[]): CustomerContext {
-  const written = new Set(
-    customerTexts.flatMap((t) => t.match(/\d+/g) ?? []).filter((n) => n.length >= ORDER_NUMBER_MIN_DIGITS),
-  )
+  const written = candidateNumbers(customerTexts)
+  if (written.size > MAX_CANDIDATE_NUMBERS) return NOBODY
   const orders = context.orders.filter((o) => written.has(o.number.replace(/\D/g, '')))
   if (!context.customer || orders.length === 0) return NOBODY
   return { customer: { ...context.customer, phone: null }, orders, previousTickets: context.previousTickets }
