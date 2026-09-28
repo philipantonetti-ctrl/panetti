@@ -64,6 +64,9 @@ export async function GET(req: Request) {
     const q = params.get('q')?.trim() ?? ''
     // 'webshop' or 'b2b'; anything else means "both", the default.
     const source = params.get('source') ?? ''
+    // Replacements, giveaways and test orders go out at 0. They are real
+    // parcels, so the list shows them by default; this hides them on request.
+    const excludeZero = params.get('excludeZero') === '1'
 
     const activeShops = await db.shop.findMany({
       where: { active: true, ...(shopIds?.length ? { id: { in: shopIds } } : {}) },
@@ -119,6 +122,7 @@ export async function GET(req: Request) {
         : source === 'webshop'
           ? { b2bCustomerId: null }
           : {}),
+      ...(excludeZero ? { total: { not: 0 } } : {}),
       ...(q
         ? {
             OR: [

@@ -353,6 +353,26 @@ describe('B2B orders in the order list', () => {
     expect(onlyWebshop.orders.map((o: { number: string }) => o.number)).toEqual(['9001'])
   })
 
+  it('leaves out orders the customer paid nothing for, from the list and the count alike', async () => {
+    await asAdmin()
+    await db.order.create({
+      data: {
+        shopId: shopA, externalId: 'A-free', number: 'A-free', placedAt: new Date('2026-03-15T12:00:00Z'),
+        status: 'completed', currency: 'DKK',
+        grossSales: 10000, discountTotal: 10000, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+      },
+    })
+    const base = `from=2026-03-01&to=2026-03-31&shops=${shopA}`
+
+    const all = await (await get(base)).json()
+    expect(all.total).toBe(3)
+    expect(all.orders.map((o: { number: string }) => o.number)).toContain('A-free')
+
+    const paid = await (await get(`${base}&excludeZero=1`)).json()
+    expect(paid.total).toBe(2)
+    expect(paid.orders.map((o: { number: string }) => o.number)).not.toContain('A-free')
+  })
+
   it('charges shipping per unit by SKU, and leaves an uncosted SKU exactly as it was', async () => {
     await asAdmin()
     // 15.00 per order, flat, from March 1st - what this shop has always charged.
