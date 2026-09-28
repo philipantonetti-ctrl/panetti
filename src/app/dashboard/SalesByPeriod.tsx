@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { ShopFilter } from '@/components/filters/ShopFilter'
-import { periodLabel, type Grain } from '@/lib/metrics/periods'
+import { periodLabel, type Grain } from '@/lib/metrics/period-label'
 import { formatMoneyWhole } from '@/lib/money'
 
 type Shop = { id: string; name: string; currency: string }
@@ -46,6 +46,11 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
   const [excludeZero, setExcludeZero] = useState(false)
   const [data, setData] = useState<Answer | null>(null)
   const [error, setError] = useState('')
+  // Starts true: the very first render has no data yet either way, and every
+  // later request is put into this state by the handler that starts it
+  // (below), never by the effect itself - so React never sees a setState
+  // called synchronously from inside an effect body.
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -61,8 +66,17 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
       .catch((e: Error) => {
         if (e.name !== 'AbortError') setError(e.message)
       })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false)
+      })
     return () => ctrl.abort()
   }, [grain, selected, excludeZero])
+
+  /** Marks a fetch as starting: dims the table (if any) and drops a stale error. */
+  function startLoad() {
+    setLoading(true)
+    setError('')
+  }
 
   return (
     <section className="mt-6 rounded-[var(--radius-card)] border border-line bg-surface">
@@ -86,7 +100,10 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
                 type="button"
                 role="tab"
                 aria-selected={grain === g.id}
-                onClick={() => setGrain(g.id)}
+                onClick={() => {
+                  startLoad()
+                  setGrain(g.id)
+                }}
                 className={`rounded-[var(--radius-control)] px-2.5 py-1 text-[12px] font-semibold transition-colors duration-150 ${
                   grain === g.id ? 'bg-accent-soft text-accent-ink' : 'text-muted hover:bg-panel hover:text-ink'
                 }`}
@@ -95,9 +112,23 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
               </button>
             ))}
           </div>
-          <ShopFilter shops={shops} selected={selected} onChange={setSelected} />
+          <ShopFilter
+            shops={shops}
+            selected={selected}
+            onChange={(next) => {
+              startLoad()
+              setSelected(next)
+            }}
+          />
           <label className="flex items-center gap-1.5 text-[12px] text-ink">
-            <input type="checkbox" checked={excludeZero} onChange={(e) => setExcludeZero(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={excludeZero}
+              onChange={(e) => {
+                startLoad()
+                setExcludeZero(e.target.checked)
+              }}
+            />
             Exclude 0-amount orders
           </label>
         </div>
@@ -108,30 +139,35 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
       ) : !data ? (
         <div className="skeleton m-4 h-[160px]" />
       ) : (
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-              <th className="px-4 py-2 font-semibold">Period</th>
-              <th className="px-4 py-2 text-right font-semibold">Orders</th>
-              <th className="px-4 py-2 text-right font-semibold">Sales ({data.currency})</th>
-              <th className="px-4 py-2 text-right font-semibold">Avg order</th>
-              <th className="px-4 py-2 text-right font-semibold">vs previous</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((r) => (
-              <tr key={r.from} className="border-t border-line">
-                <td className="px-4 py-2 text-ink">
-                  {`${periodLabel(r.from, r.to, data.grain)}${r.soFar ? ' (so far)' : ''}`}
-                </td>
-                <td className="num px-4 py-2 text-right">{r.orders}</td>
-                <td className="num px-4 py-2 text-right">{formatMoneyWhole(r.sales, data.currency)}</td>
-                <td className="num px-4 py-2 text-right">{formatMoneyWhole(r.avgOrder, data.currency)}</td>
-                <td className="num px-4 py-2 text-right text-muted">{change(r.vsPrevious)}</td>
+        <div className="overflow-x-auto">
+          <table
+            className={`w-full text-[13px] transition-opacity duration-150 ${loading ? 'opacity-60' : ''}`}
+            aria-busy={loading}
+          >
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+                <th className="px-4 py-2 font-semibold">Period</th>
+                <th className="px-4 py-2 text-right font-semibold">Orders</th>
+                <th className="px-4 py-2 text-right font-semibold">Sales ({data.currency})</th>
+                <th className="px-4 py-2 text-right font-semibold">Avg order</th>
+                <th className="px-4 py-2 text-right font-semibold">vs previous</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.rows.map((r) => (
+                <tr key={r.from} className="border-t border-line">
+                  <td className="px-4 py-2 text-ink">
+                    {`${periodLabel(r.from, r.to, data.grain)}${r.soFar ? ' (so far)' : ''}`}
+                  </td>
+                  <td className="num px-4 py-2 text-right">{r.orders}</td>
+                  <td className="num px-4 py-2 text-right">{formatMoneyWhole(r.sales, data.currency)}</td>
+                  <td className="num px-4 py-2 text-right">{formatMoneyWhole(r.avgOrder, data.currency)}</td>
+                  <td className="num px-4 py-2 text-right text-muted">{change(r.vsPrevious)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   )
