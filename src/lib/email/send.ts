@@ -18,6 +18,23 @@ export type SendOptions = {
   headers?: Record<string, string>
 }
 
+/**
+ * Postmark refused the message. `errorCode` is Postmark's own number from the
+ * response body (300 invalid email, 406 inactive recipient, 412 account still
+ * pending approval...), null when the body carried none. It is what lets a
+ * caller tell "this one address is dead" from "nothing can be sent at all".
+ */
+export class PostmarkError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly errorCode: number | null,
+  ) {
+    super(message)
+    this.name = 'PostmarkError'
+  }
+}
+
 export type SendResult = {
   /** Postmark's own id for the delivery, for its activity log. Null if it sent none. */
   postmarkId: string | null
@@ -82,8 +99,15 @@ export async function sendEmail(
     // exactly what is wrong ("Sender signature not confirmed", "Bad token").
     // Carrying it into the thrown error is the difference between a diagnosable
     // failure and a bare status code.
-    const body = (await res.text()).slice(0, 200)
-    throw new Error(`Postmark responded ${res.status}: ${body}`)
+    const text = await res.text()
+    let errorCode: number | null = null
+    try {
+      const code = (JSON.parse(text) as { ErrorCode?: unknown }).ErrorCode
+      if (typeof code === 'number') errorCode = code
+    } catch {
+      // Not JSON - a gateway page. The status alone has to do.
+    }
+    throw new PostmarkError(`Postmark responded ${res.status}: ${text.slice(0, 200)}`, res.status, errorCode)
   }
 
   // Best-effort: the send already succeeded, and an unparseable body must not

@@ -59,6 +59,21 @@ model Shop {
   /// never reach a chat already in progress.
   aiChatFrom           DateTime?
 
+  /// Null = this shop's customers never get a pickup reminder, which is what
+  /// every shop reads until someone switches one on. Set = when a Bring parcel
+  /// of this shop's has waited at the pickup point for two days without being
+  /// collected, the customer gets ONE email about it, in their language.
+  ///
+  /// Compared against the parcel's own availableAt (the day it reached the
+  /// pickup point), so switching a shop on reaches only parcels that arrive
+  /// from that day. Same date-not-boolean shape as wooNotesFrom above.
+  pickupReminderFrom   DateTime?
+  /// The address the pickup reminder is sent from and replied to, e.g.
+  /// kundeservice@panetti.no. Postmark refuses any address whose domain it has
+  /// not verified, which the settings page's test button shows at once. Null =
+  /// the shop's inbox mailbox if it has one, else the app's EMAIL_FROM.
+  reminderSenderEmail  String?
+
   /// The id of this shop's chat widget in Gorgias. One Gorgias account serves
   /// every shop and its HTTP integration fires for all ten widgets, so this is
   /// what says a chat is this shop's. Null = no chat of any widget is answered
@@ -251,6 +266,13 @@ model Order {
   /// When we posted this order to Slack as late. Set only after Slack accepts,
   /// so nothing can ever alert twice and a Slack outage retries next run.
   deliveryAlertedAt DateTime?
+  /// When the customer was emailed that their parcel is waiting at the pickup
+  /// point. On the ORDER, not the parcel: two boxes of one order are one
+  /// reminder, never two. Set after Postmark accepts, or when Postmark says the
+  /// address can never receive mail - either way the order leaves the queue.
+  pickupReminderAt    DateTime?
+  /// Why the last reminder for this order was not sent; null when it was.
+  pickupReminderError String?
 
   shop        Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
   ambassador  Ambassador?  @relation(fields: [ambassadorId], references: [id], onDelete: SetNull)
@@ -786,6 +808,9 @@ model Shipment {
   /// never shrinks - without the createdAt column here the queue read would
   /// scan all of it on every tick.
   @@index([wooNoteAt, createdAt])
+  /// The pickup-reminder queue starts from parcels that reached a pickup point
+  /// in the last few days.
+  @@index([availableAt])
 }
 
 /// Bring restates events. The unique constraint is what makes re-ingestion a
@@ -847,6 +872,10 @@ model DeliveryConfig {
   /// field on every successful run, and sharing one column let it wipe a live
   /// Slack failure within one cron tick. Two subsystems, two fields.
   slackLastError         String?
+  /// Why the last pickup-reminder run could not send; null after a run that
+  /// had no trouble. Its own field for the same reason as slackLastError: the
+  /// reminder has no other place on screen to say a sender is not verified.
+  pickupReminderLastError String?
 }
 
 /// What the last B2B sales import from Visma did, so a person can see it.

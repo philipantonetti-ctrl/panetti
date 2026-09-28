@@ -19,6 +19,8 @@ type ShopRow = {
   name: string
   deliveryTrackingFrom: string | null
   wooNotesFrom: string | null
+  pickupReminderFrom: string | null
+  reminderSenderEmail: string | null
 }
 
 type ImportRow = {
@@ -49,6 +51,8 @@ type Settings = {
   // and gets cleared on every successful run, which would otherwise wipe a
   // still-live Slack failure within one cron tick.
   slackLastError: string | null
+  /** Why the last pickup reminder could not be sent; null once one gets through. */
+  pickupReminderLastError: string | null
   promises: PromiseRow[]
   shops: ShopRow[]
   imports: ImportRow[]
@@ -164,6 +168,7 @@ export function DeliverySettingsClient({ email }: { email: string }) {
             <SlackSection data={data} reload={load} />
             <PromisesSection promises={data.promises} shops={data.shops} reload={load} />
             <ShopsSection shops={data.shops} reload={load} />
+            <PickupReminderSection shops={data.shops} lastError={data.pickupReminderLastError} reload={load} />
             <ImportsSection imports={data.imports} />
           </div>
         ) : null}
@@ -848,6 +853,162 @@ function ShopsSection({ shops, reload }: { shops: ShopRow[]; reload: () => void 
           </tbody>
         </table>
       </div>
+    </Card>
+  )
+}
+
+function PickupReminderSection({
+  shops,
+  lastError,
+  reload,
+}: {
+  shops: ShopRow[]
+  lastError: string | null
+  reload: () => void
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const toast = useToast()
+
+  async function setDate(shop: ShopRow, date: string) {
+    setBusy(shop.id)
+    try {
+      const res = await fetch('/api/delivery/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopReminders: [{ shopId: shop.id, date }] }),
+      })
+      if (!res.ok) {
+        toast.error((await res.json().catch(() => null))?.error ?? 'Could not save')
+        return
+      }
+      toast.success(
+        date
+          ? `${shop.name} reminds customers about parcels arriving from ${date}`
+          : `${shop.name} no longer sends pickup reminders`,
+      )
+      reload()
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function setSender(shop: ShopRow, email: string) {
+    if (email.trim() === (shop.reminderSenderEmail ?? '')) return
+    setBusy(shop.id)
+    try {
+      const res = await fetch('/api/delivery/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopReminderSenders: [{ shopId: shop.id, email: email.trim() }] }),
+      })
+      if (!res.ok) {
+        toast.error('That does not look like an email address')
+        return
+      }
+      toast.success(
+        email.trim()
+          ? `${shop.name} sends reminders from ${email.trim()}. Press Send test email to check it works.`
+          : `${shop.name} sends reminders from the default address`,
+      )
+      reload()
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function test(shop: ShopRow) {
+    setBusy(shop.id)
+    try {
+      const res = await fetch('/api/delivery/pickup-reminder/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: shop.id }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        toast.error(body?.error ?? 'Could not send the test email')
+      } else {
+        toast.success(`Test email sent to ${body?.to}`)
+      }
+      reload()
+    } catch {
+      toast.error('Could not reach the server')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Card
+      title="Pickup reminder email"
+      subtitle="When a Bring parcel has waited 2 days at the pickup point and is still not collected, the customer gets one email from the shop, in their own language. Blank date means off. Only parcels that arrive at the pickup point from the date you set. Send from is the shop's own address, for example kundeservice@panetti.no; its domain must be verified in Postmark. Send test email sends the reminder to you."
+    >
+      <div className="overflow-x-auto rounded-[var(--radius-control)] border border-line">
+        <table className="w-full border-collapse text-[13px]">
+          <thead>
+            <tr className="border-b border-line bg-panel text-[11px] font-semibold text-faint">
+              <th className="px-4 py-2 text-left">Shop</th>
+              <th className="px-4 py-2 text-left">Remind customers from</th>
+              <th className="px-4 py-2 text-left">Send from</th>
+              <th className="px-4 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {shops.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-4 py-6 text-center text-muted">
+                  No shops yet.
+                </td>
+              </tr>
+            )}
+            {shops.map((s) => (
+              <tr key={s.id} className="border-b border-line last:border-b-0">
+                <td className="px-4 py-2.5 font-medium text-ink">{s.name}</td>
+                <td className="px-4 py-2.5">
+                  <input
+                    type="date"
+                    aria-label={`Pickup reminder email for ${s.name}, from`}
+                    defaultValue={s.pickupReminderFrom ?? ''}
+                    onChange={(e) => void setDate(s, e.target.value)}
+                    disabled={busy === s.id}
+                    className="rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1.5 text-xs text-ink disabled:opacity-60"
+                  />
+                </td>
+                <td className="px-4 py-2.5">
+                  <input
+                    type="email"
+                    aria-label={`Pickup reminder sender for ${s.name}`}
+                    placeholder="Default sender"
+                    defaultValue={s.reminderSenderEmail ?? ''}
+                    onBlur={(e) => void setSender(s, e.target.value)}
+                    disabled={busy === s.id}
+                    className="w-56 rounded-[var(--radius-control)] border border-line bg-surface px-2.5 py-1.5 text-xs text-ink disabled:opacity-60"
+                  />
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  <button
+                    onClick={() => void test(s)}
+                    disabled={busy === s.id}
+                    className="text-xs font-medium text-ink hover:underline disabled:opacity-60"
+                  >
+                    {busy === s.id ? 'Sending…' : 'Send test email'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {lastError && (
+        <div className="mt-4 border-t border-line pt-3 text-[12px] text-loss">
+          <p>Last reminder could not be sent: {lastError}</p>
+        </div>
+      )}
     </Card>
   )
 }
