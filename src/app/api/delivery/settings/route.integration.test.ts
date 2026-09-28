@@ -239,3 +239,42 @@ describe('which shops write tracking notes back to WooCommerce', () => {
     expect(row.wooNotesFrom?.toISOString().slice(0, 10)).toBe('2026-09-07')
   })
 })
+
+/**
+ * The pickup reminder writes to CUSTOMERS, so it has its own switch and its
+ * own sender, and neither is implied by any other setting on the page.
+ */
+describe('pickup reminder email', () => {
+  it('writes Shop.pickupReminderFrom and the sender, and blanks switch them back', async () => {
+    const shop = await db.shop.create({ data: { name: `Reminder shop ${TAG}`, currency: 'NOK' } })
+
+    await put({
+      shopReminders: [{ shopId: shop.id, date: '2026-09-29' }],
+      shopReminderSenders: [{ shopId: shop.id, email: ' Kundeservice@Panetti.no ' }],
+    })
+    let row = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(row.pickupReminderFrom?.toISOString().slice(0, 10)).toBe('2026-09-29')
+    expect(row.reminderSenderEmail).toBe('kundeservice@panetti.no')
+    // The other switches are untouched.
+    expect(row.wooNotesFrom).toBeNull()
+    expect(row.deliveryTrackingFrom).toBeNull()
+
+    const body = await (await GET()).json()
+    const listed = body.shops.find((s: { id: string }) => s.id === shop.id)
+    expect(listed.pickupReminderFrom).toBe('2026-09-29')
+    expect(listed.reminderSenderEmail).toBe('kundeservice@panetti.no')
+    expect(body).toHaveProperty('pickupReminderLastError', null)
+
+    await put({ shopReminders: [{ shopId: shop.id, date: '' }], shopReminderSenders: [{ shopId: shop.id, email: '' }] })
+    row = await db.shop.findUniqueOrThrow({ where: { id: shop.id } })
+    expect(row.pickupReminderFrom).toBeNull()
+    expect(row.reminderSenderEmail).toBeNull()
+  })
+
+  it('refuses a sender that is not an email address', async () => {
+    const shop = await db.shop.create({ data: { name: `Bad sender ${TAG}`, currency: 'NOK' } })
+    const res = await put({ shopReminderSenders: [{ shopId: shop.id, email: 'kundeservice' }] })
+    expect(res.status).toBe(400)
+    expect((await db.shop.findUniqueOrThrow({ where: { id: shop.id } })).reminderSenderEmail).toBeNull()
+  })
+})

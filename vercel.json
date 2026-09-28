@@ -3,6 +3,7 @@
   "regions": ["lhr1"],
   "crons": [
     { "path": "/api/cron/sync", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/briefing", "schedule": "0 5 * * *" }
+    { "path": "/api/cron/briefing", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/pickup-reminders", "schedule": "0 7-17 * * *" }
   ]
 }

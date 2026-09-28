@@ -58,6 +58,17 @@ const Body = z.object({
   shopNotes: z
     .array(z.object({ shopId: z.string().min(1), date: z.string() }))
     .optional(),
+  // Which shops email a customer whose Bring parcel has waited two days at the
+  // pickup point, and from when. Its own switch for the same reason as
+  // shopNotes: this one writes to CUSTOMERS, so it is never implied by another.
+  shopReminders: z
+    .array(z.object({ shopId: z.string().min(1), date: z.string() }))
+    .optional(),
+  // The address a shop's reminder is sent from. Blank means "the default
+  // sender", a deliberate choice like a blank date above.
+  shopReminderSenders: z
+    .array(z.object({ shopId: z.string().min(1), email: z.string().trim().email().or(z.literal('')) }))
+    .optional(),
 })
 
 export async function GET() {
@@ -72,7 +83,7 @@ export async function GET() {
       }),
       db.shop.findMany({
         where: { active: true },
-        select: { id: true, name: true, deliveryTrackingFrom: true, wooNotesFrom: true },
+        select: { id: true, name: true, deliveryTrackingFrom: true, wooNotesFrom: true, pickupReminderFrom: true, reminderSenderEmail: true },
         orderBy: { name: 'asc' },
       }),
       db.trackingImport.findMany({
@@ -104,6 +115,7 @@ export async function GET() {
         // Its own field, separate from the Bring sync's lastError above - see
         // the schema comment on DeliveryConfig.slackLastError.
         slackLastError: row?.slackLastError ?? null,
+        pickupReminderLastError: row?.pickupReminderLastError ?? null,
         promises: promises.map((p) => ({
           ...p, effectiveFrom: p.effectiveFrom.toISOString().slice(0, 10),
         })),
@@ -114,6 +126,8 @@ export async function GET() {
             ? s.deliveryTrackingFrom.toISOString().slice(0, 10)
             : null,
           wooNotesFrom: s.wooNotesFrom ? s.wooNotesFrom.toISOString().slice(0, 10) : null,
+          pickupReminderFrom: s.pickupReminderFrom ? s.pickupReminderFrom.toISOString().slice(0, 10) : null,
+          reminderSenderEmail: s.reminderSenderEmail,
         })),
         imports: imports.map((i) => ({ ...i, receivedAt: i.receivedAt.toISOString() })),
       },
@@ -200,6 +214,28 @@ export async function PUT(req: Request) {
           db.shop.updateMany({
             where: { id: s.shopId },
             data: { wooNotesFrom: s.date ? new Date(`${s.date}T00:00:00Z`) : null },
+          }),
+        ),
+      )
+    }
+
+    if (b.shopReminders) {
+      await Promise.all(
+        b.shopReminders.map((s) =>
+          db.shop.updateMany({
+            where: { id: s.shopId },
+            data: { pickupReminderFrom: s.date ? new Date(`${s.date}T00:00:00Z`) : null },
+          }),
+        ),
+      )
+    }
+
+    if (b.shopReminderSenders) {
+      await Promise.all(
+        b.shopReminderSenders.map((s) =>
+          db.shop.updateMany({
+            where: { id: s.shopId },
+            data: { reminderSenderEmail: s.email ? s.email.toLowerCase() : null },
           }),
         ),
       )
