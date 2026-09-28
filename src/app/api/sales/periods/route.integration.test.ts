@@ -20,8 +20,8 @@ async function cleanup() {
 }
 afterAll(cleanup)
 
-// Placed yesterday and eight days ago, so one lands in this week or last and
-// the other a week further back, whatever day the suite runs on.
+// Both orders below are placed daysAgo(1) - yesterday - so they land in the
+// same bucket whatever day the suite runs on.
 const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000)
 
 async function order(externalId: string, placedAt: Date, total: number) {
