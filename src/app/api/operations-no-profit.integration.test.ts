@@ -31,6 +31,7 @@ const orders = await import('./orders/route')
 const productAnalytics = await import('./products/analytics/route')
 const products = await import('./products/route')
 const b2bCustomer = await import('./b2b/customers/[id]/route')
+const salesPeriods = await import('./sales/periods/route')
 
 const MARK = 'ops-no-profit-test'
 const FROM = '2026-03-01'
@@ -144,6 +145,27 @@ describe('the Orders tab', () => {
     expect(his?.total).toBe(500000)
     expect(his?.netSales).toBe(400000)
     expect(his?.taxTotal).toBe(100000)
+  })
+
+  it('leaves no cost, fee, commission or margin anywhere in the JSON he receives', async () => {
+    state.role = 'OPERATIONS'
+    const raw = await (await call(fixture.shopId)()).text()
+    for (const word of ['cogs', 'commission', 'margin', 'profit', 'fulfillment']) {
+      expect(raw.toLowerCase(), `"${word}" reached him`).not.toContain(`"${word}"`)
+    }
+  })
+})
+
+describe('the Dashboard sales table', () => {
+  const call = (shopId: string) => () =>
+    salesPeriods.GET(new Request(`http://localhost/api/sales/periods?grain=month&shops=${shopId}`))
+
+  it('gives him and the admin the same sales, and neither a cost', async () => {
+    type Body = { rows: { orders: number; sales: number }[] }
+    const { admin, ops } = await bothWays<Body>(call(fixture.shopId))
+    // Twelve months either way, and identical: he gets the owner's sales, not a cut-down copy.
+    expect(ops.rows).toHaveLength(12)
+    expect(ops.rows).toEqual(admin.rows)
   })
 
   it('leaves no cost, fee, commission or margin anywhere in the JSON he receives', async () => {

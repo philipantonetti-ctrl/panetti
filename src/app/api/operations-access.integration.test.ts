@@ -50,6 +50,7 @@ const b2bCustomers = await import('./b2b/customers/route')
 const b2bCustomer = await import('./b2b/customers/[id]/route')
 const b2bOrders = await import('./b2b/orders/route')
 const b2bOrder = await import('./b2b/orders/[id]/route')
+const salesPeriods = await import('./sales/periods/route')
 
 // Doors he must not have. Imported here so the refusals are proved against the
 // real routes rather than assumed from the guard's unit test.
@@ -99,6 +100,7 @@ const HIS_DOORS: [string, () => Promise<Response>][] = [
   ['GET /api/b2b/orders/[id]', () => b2bOrder.GET(url('/api/b2b/orders/nope'), ctx('nope'))],
   ['PATCH /api/b2b/orders/[id]', () => b2bOrder.PATCH(json('/api/b2b/orders/nope', {}, 'PATCH'), ctx('nope'))],
   ['DELETE /api/b2b/orders/[id]', () => b2bOrder.DELETE(url('/api/b2b/orders/nope'), ctx('nope'))],
+  ['GET /api/sales/periods', () => salesPeriods.GET(url('/api/sales/periods?grain=week'))],
 ]
 
 /** The owner's house: company money, the ad accounts, and minting logins. */
