@@ -78,7 +78,9 @@ export function stemOf(word: string): string {
 /** The words worth matching on: long enough to mean something, not stop words, cut to their stems. */
 export function keywordsOf(text: string): string[] {
   const words = text.toLowerCase().match(/[a-zæøåäöüß0-9-]{4,}/g) ?? []
-  return [...new Set(words.filter((w) => !STOP.has(w)).map(stemOf))]
+  // A hyphen joins a word ("wi-fi"); it is not one. The offline form's line
+  // of 31 dashes was otherwise a "word" every offline chat shared.
+  return [...new Set(words.filter((w) => /[a-zæøåäöüß0-9]/.test(w) && !STOP.has(w)).map(stemOf))]
 }
 
 export type KnowledgeRow = {

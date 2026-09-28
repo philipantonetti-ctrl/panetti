@@ -8,6 +8,17 @@ import { keywordsOf, summariseKnowledge } from './knowledge'
  * be cut back to the part that survives inflection before it is looked for.
  */
 describe('keywordsOf', () => {
+  /**
+   * The widget's offline form sends "<email or subject>", a line of 31
+   * dashes, then the message. A line of dashes is not a word: kept, it made
+   * every offline chat match every example that came from an offline chat.
+   */
+  it('takes no word from a line of dashes', () => {
+    const words = keywordsOf('udleveringssted\n-------------------------------\nhvor bliver pakken leveret')
+    expect(words.some((w) => !/[\p{L}\p{N}]/u.test(w))).toBe(false)
+    expect(words).toContain('udleveringssted')
+  })
+
   it('cuts a definite or plural ending off, so the customer\'s form finds the page\'s form', () => {
     expect(keywordsOf('Hvor mange grader kan pizzaovnen gå opp til?')).toEqual(['hvor', 'mange', 'grad', 'pizzaovn'])
   })

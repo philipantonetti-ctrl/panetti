@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { judge, NoApiKey, pickProducts, type ChatMode, type SupportJudgement, type Turn } from './agent'
 import { getCustomerContext } from './channel'
-import { askedSoFar } from './chat-turn'
+import { askedSoFar, onlyNamedOrders } from './chat-turn'
 import { knowledgeFor, summariseKnowledge, type KnowledgeSummary } from './knowledge'
 import { decide, DEFAULT_RULES, type RulesConfig } from './rules'
 
@@ -70,8 +70,13 @@ export async function runSandboxTurn(
   const history = input.messages.slice(0, -1)
   const message = last.text.trim()
 
+  // The live chat's rule, so practice predicts what a customer gets: the
+  // email unlocks only an order whose number the customer wrote.
   const context = input.customerEmail
-    ? await getCustomerContext(input.customerEmail)
+    ? onlyNamedOrders(
+        await getCustomerContext(input.customerEmail),
+        input.messages.filter((t) => t.role === 'user').map((t) => t.text),
+      )
     : { customer: null, orders: [], previousTickets: [] }
 
   const knowledge = await knowledgeFor(askedSoFar(history, message), {

@@ -89,7 +89,8 @@ describe('handleChatMessage', () => {
     expect(r.decision).toBe('sent')
     expect(sent).toEqual([{ to: 'C-1', text: 'Din pakke er på vej.' }])
     expect(judge.mock.calls[0][0].message).toBe('Hej\nHvor er min pakke?')
-    expect(judge.mock.calls[0][0].chat).toEqual({ firstReply: true, customerKnown: true })
+    // No order number in the chat, so the email alone unlocks nothing.
+    expect(judge.mock.calls[0][0].chat).toEqual({ firstReply: true, customerKnown: false })
     const row = await db.aiConversation.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })
     expect(row).toMatchObject({ source: 'test', externalMessageId: '2', shopId, decision: 'sent', question: 'Hej\nHvor er min pakke?' })
     const session = await db.aiChatSession.findUniqueOrThrow({ where: { source_externalTicketId: { source: 'test', externalTicketId: 'C-1' } } })
@@ -406,7 +407,7 @@ describe('handleChatMessage', () => {
     const r = await handleChatMessage(incoming({ messageId: '1', text: 'Jeg vil tale med et menneske' }), deps())
 
     expect(r.decision).toBe('escalated')
-    expect(sent).toEqual([{ to: 'C-1', text: 'Jeg henter en kollega, som hjælper dig videre. Et øjeblik.' }])
+    expect(sent).toEqual([{ to: 'C-1', text: 'En kollega svarer dig her så hurtigt som muligt.' }])
     expect(notes[0].text).toMatch(/menneske/)
     expect(tags).toEqual([{ to: 'C-1', tag: 'ai-handover' }])
     const session = await db.aiChatSession.findFirstOrThrow({ where: { externalTicketId: 'C-1' } })
@@ -455,7 +456,91 @@ describe('handleChatMessage', () => {
     expect(r.decision).toBe('escalated')
     expect(notes[0].text).toMatch(/could not be reached/i)
     // No judgement means no detected language yet, so the line is the English one.
-    expect(sent).toEqual([{ to: 'C-1', text: 'I am getting a colleague to help you. One moment.' }])
+    expect(sent).toEqual([{ to: 'C-1', text: 'A colleague will answer you here as soon as possible.' }])
+  })
+})
+
+/**
+ * The widget's offline form: the chat was closed, the customer left an email
+ * and went. People answer these by email (live ticket 239482294: "No chat
+ * option"), and a line in a chat window nobody is looking at helps nobody - on
+ * 241709254 it promised a colleague on a Saturday night. So the assistant
+ * writes nothing to the customer and leaves its answer for the person.
+ */
+describe('an offline form', () => {
+  it('never writes in the chat: an answer becomes a note for the person who replies by email', async () => {
+    const r = await handleChatMessage(incoming({ via: 'offline_capture' }), deps())
+
+    expect(sent).toHaveLength(0)
+    expect(r.decision).toBe('escalated')
+    expect(notes).toHaveLength(1)
+    expect(notes[0].text).toContain('Din pakke er på vej.')
+    expect(tags).toEqual([{ to: 'C-1', tag: 'ai-handover' }])
+    expect((await session()).status).toBe('handed_over')
+  })
+
+  /** Live ticket 239482294: two offline-form messages 16.6 s apart. One note for the pair, from the later run. */
+  it('leaves the note to the later message when the customer writes again while it is thinking', async () => {
+    judge.mockImplementation(async () => {
+      transcript = [...transcript, m(3, false, 'Og hvornår kommer den?')]
+      await db.aiConversation.create({
+        data: { source: 'test', externalTicketId: 'C-1', externalMessageId: '3', shopId, question: 'Og hvornår kommer den?', decision: 'pending' },
+      })
+      return judgement()
+    })
+    const r = await handleChatMessage(incoming({ via: 'offline_capture' }), deps())
+    expect(r.decision).toBe('superseded')
+    expect(notes).toHaveLength(0)
+    expect(tags).toHaveLength(0)
+  })
+
+  it('does not tell the customer a colleague is coming either', async () => {
+    transcript = [m(1, false, 'Jeg vil tale med et menneske')]
+    const r = await handleChatMessage(
+      incoming({ messageId: '1', text: 'Jeg vil tale med et menneske', via: 'offline_capture' }),
+      deps(),
+    )
+    expect(r.decision).toBe('escalated')
+    expect(sent).toHaveLength(0)
+    expect(notes).toHaveLength(1)
+  })
+})
+
+describe('who the model is told about', () => {
+  it('tells it nothing about the customer until an order number of theirs is written in the chat', async () => {
+    await handleChatMessage(incoming(), deps())
+    const seen = judge.mock.calls[0][0]
+    expect(seen.context).toEqual({ customer: null, orders: [], previousTickets: [] })
+    expect(seen.chat.customerKnown).toBe(false)
+  })
+
+  it('shows that one order once its number is written, and never the phone number', async () => {
+    await db.order.create({
+      data: {
+        shopId, externalId: 'chat-2', number: '15001', placedAt: new Date('2026-09-07'), status: 'completed',
+        currency: 'DKK', grossSales: 0, discountTotal: 0, netSales: 0, shippingCharged: 0, taxTotal: 0, total: 0,
+        customerName: 'Nikolaj', customerEmail: EMAIL, customerPhone: '+45 11 22 33 44',
+      },
+    })
+    transcript = [m(1, false, 'Hej'), m(2, false, 'Hvor er min pakke? Ordre 14689')]
+    await handleChatMessage(incoming({ text: 'Hvor er min pakke? Ordre 14689' }), deps())
+
+    const seen = judge.mock.calls[0][0]
+    expect(seen.context.orders.map((o: { number: string }) => o.number)).toEqual(['14689'])
+    expect(seen.context.customer.phone).toBeNull()
+    expect(seen.chat.customerKnown).toBe(true)
+  })
+})
+
+describe('its own lines from before the wording changed', () => {
+  it('still reads the old handover line as its own, not as a person', async () => {
+    await handleChatMessage(incoming(), deps())
+    const r = await handleChatMessage(
+      incoming({ messageId: '7', fromAgent: true, text: 'Jeg henter en kollega, som hjælper dig videre. Et øjeblik.' }),
+      deps(),
+    )
+    expect(r.reason).toMatch(/own message/)
+    expect((await session()).status).toBe('ai')
   })
 })
 
