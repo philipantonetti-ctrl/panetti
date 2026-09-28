@@ -278,6 +278,22 @@ describe('sendPickupReminders', () => {
     expect(row.pickupReminderError).toMatch(/Inactive recipient/)
   })
 
+  it('treats an invalid To as the customer’s address, but an invalid From as ours', async () => {
+    const badTo = await order(norwayId)
+    await waitingParcel('0065', badTo.id, 3)
+    postmark = () => json({ ErrorCode: 300, Message: "Invalid 'To' address: 'kari@'." }, 422)
+    await sendPickupReminders({ now: NOW })
+    expect((await orderRow(badTo.id)).pickupReminderAt).toEqual(NOW)
+
+    const badFrom = await order(norwayId)
+    await waitingParcel('0066', badFrom.id, 3)
+    postmark = () => json({ ErrorCode: 300, Message: "Invalid 'From' address: 'kundeservice@'." }, 422)
+    await sendPickupReminders({ now: NOW })
+    const row = await orderRow(badFrom.id)
+    expect(row.pickupReminderAt).toBeNull()
+    expect(row.pickupReminderError).toMatch(/Invalid 'From'/)
+  })
+
   it('keeps orders queued, says why on the settings page, and stops early when WE cannot send', async () => {
     const orders = []
     for (let i = 0; i < 5; i++) {

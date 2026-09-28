@@ -45,8 +45,17 @@ const MAX_ORDERS_PER_RUN = 25
  */
 const MAX_FAILURES_IN_A_ROW = 3
 
-/** Postmark's codes for "this ADDRESS can never receive", as opposed to "we cannot send". */
-const DEAD_ADDRESS = new Set([300, 406])
+/**
+ * "This ADDRESS can never receive", as opposed to "we cannot send". 406 is an
+ * inactive recipient. 300 is any invalid request, which includes a malformed
+ * FROM - and reading that as the customer's fault would drop every order in
+ * the queue for good - so it counts only when Postmark names the To address.
+ */
+function deadAddress(e: unknown): boolean {
+  if (!(e instanceof PostmarkError)) return false
+  if (e.errorCode === 406) return true
+  return e.errorCode === 300 && /'To'/.test(e.message)
+}
 
 const ERROR_LIMIT = 300
 
@@ -220,8 +229,7 @@ export async function sendPickupReminders(
     } catch (e) {
       failed++
       const why = message(e)
-      const dead = e instanceof PostmarkError && e.errorCode !== null && DEAD_ADDRESS.has(e.errorCode)
-      if (dead) {
+      if (deadAddress(e)) {
         // The address itself is refused. Trying again changes nothing.
         await db.order
           .update({ where: { id: order.id }, data: { pickupReminderAt: now, pickupReminderError: why } })
