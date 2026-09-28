@@ -101,6 +101,7 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
                 role="tab"
                 aria-selected={grain === g.id}
                 onClick={() => {
+                  if (g.id === grain) return
                   startLoad()
                   setGrain(g.id)
                 }}

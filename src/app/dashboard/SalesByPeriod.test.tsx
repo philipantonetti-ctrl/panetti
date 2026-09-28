@@ -132,4 +132,17 @@ describe('SalesByPeriod', () => {
     await waitFor(() => expect(screen.queryByText('Could not load sales')).toBeNull())
     await waitFor(() => expect(screen.getByRole('table')).toBeTruthy())
   })
+
+  it('does nothing when the already-selected tab is clicked again', async () => {
+    const calls = stub()
+    render(<SalesByPeriod shops={shops} />)
+    await waitFor(() => expect(screen.getByRole('table')).toBeTruthy())
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'false')
+    expect(calls.length).toBe(1)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Week' }))
+
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'false')
+    expect(calls.length).toBe(1)
+  })
 })
