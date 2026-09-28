@@ -1,6 +1,11 @@
 import { bucketStart } from '../dates'
+import { zonedDayStr } from '../tz'
 import { computeMetrics, type MetricsInput } from './engine'
 import { deltaPct } from './trend'
+import type { EngineOrder } from './types'
+import type { Grain } from './period-label'
+
+export { periodLabel, type Grain } from './period-label'
 
 /**
  * Sales by week or by month, for the operations manager's Dashboard.
@@ -14,8 +19,6 @@ import { deltaPct } from './trend'
  *
  * Nothing that is a cost leaves this file: the row type has no field for one.
  */
-
-export type Grain = 'week' | 'month'
 
 /** How many periods the table shows. */
 export const PERIODS = 12
@@ -81,8 +84,40 @@ export function salesByPeriod(
   opts: { excludeZero: boolean },
 ): PeriodRow[] {
   const orders = opts.excludeZero ? input.orders.filter((o) => o.total !== 0) : input.orders
+
+  // Group every kept order onto its own calendar day ONCE, in the very zone
+  // the engine uses for it - the same fix dailySeries (trend.ts) already
+  // applies to the identical problem. Without this, each of the up to 13
+  // buckets' own computeMetrics call re-scanned every order in the whole
+  // window (a timezone format per order per bucket): at production volume
+  // that was seconds of CPU for one page load. Grouped once, each bucket's
+  // computeMetrics runs over only the orders whose day falls within it - the
+  // engine still applies its own status and day rules to that subset, so the
+  // rows are unchanged.
+  const tz = input.timezone ?? 'UTC'
+  const tzFor = (shopId: string) => input.shopTimezones?.get(shopId) ?? tz
+  const byDay = new Map<string, EngineOrder[]>()
+  for (const o of orders) {
+    const key = zonedDayStr(o.placedAt, tzFor(o.shopId))
+    const list = byDay.get(key)
+    if (list) list.push(o)
+    else byDay.set(key, [o])
+  }
+
+  const ordersInRange = (from: Date, to: Date): EngineOrder[] => {
+    const fromKey = ymd(from)
+    const toKey = ymd(to)
+    const out: EngineOrder[] = []
+    for (const [key, list] of byDay) {
+      if (key >= fromKey && key <= toKey) out.push(...list)
+    }
+    return out
+  }
+
   const totals = buckets.map(
-    (b) => computeMetrics({ ...input, orders, from: b.from, to: b.countedTo }).total,
+    (b) =>
+      computeMetrics({ ...input, orders: ordersInRange(b.from, b.countedTo), from: b.from, to: b.countedTo })
+        .total,
   )
 
   return buckets.slice(0, -1).map((b, i) => ({
@@ -94,21 +129,4 @@ export function salesByPeriod(
     avgOrder: totals[i].avgOrderValue,
     vsPrevious: deltaPct(totals[i].netRevenue, totals[i + 1].netRevenue),
   }))
-}
-
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const MONTH_LONG = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-]
-
-/** "22-28 Sep", "29 Dec - 4 Jan", or "September 2026". Hyphens, never dashes. */
-export function periodLabel(from: string, to: string, grain: Grain): string {
-  const f = day(from)
-  const t = day(to)
-  if (grain === 'month') return `${MONTH_LONG[f.getUTCMonth()]} ${f.getUTCFullYear()}`
-  if (f.getUTCMonth() === t.getUTCMonth()) {
-    return `${f.getUTCDate()}-${t.getUTCDate()} ${MONTH_SHORT[t.getUTCMonth()]}`
-  }
-  return `${f.getUTCDate()} ${MONTH_SHORT[f.getUTCMonth()]} - ${t.getUTCDate()} ${MONTH_SHORT[t.getUTCMonth()]}`
 }
