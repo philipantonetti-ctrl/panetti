@@ -1,3 +1,4 @@
+import type { CustomerContext } from '@/lib/inbox/context'
 import type { TranscriptMessage } from './channel'
 import type { Turn } from './agent'
 
@@ -37,15 +38,36 @@ export const OWN_TEXT_WINDOW_MS = 15 * 60_000
  */
 export const NEW_CONVERSATION_GAP_MS = 6 * 60 * 60_000
 
-/** The one customer-visible line a handover sends, per language. */
+/**
+ * The one customer-visible line a handover sends, per language.
+ *
+ * It names no time, because the assistant does not know when a person will
+ * be there. The line it replaced ended "Et øjeblik", and live tickets
+ * 241709254 (Saturday 20:47, chat closed) and 241784957 (Sunday) were told
+ * exactly that and then waited for days.
+ */
 export const HANDOVER_LINES: Record<string, string> = {
-  da: 'Jeg henter en kollega, som hjælper dig videre. Et øjeblik.',
-  nb: 'Jeg henter en kollega som hjelper deg videre. Et øyeblikk.',
-  sv: 'Jag hämtar en kollega som hjälper dig vidare. Ett ögonblick.',
-  fi: 'Haen kollegan auttamaan sinua. Hetki vain.',
-  de: 'Ich hole eine Kollegin oder einen Kollegen, die Ihnen weiterhelfen. Einen Moment.',
-  en: 'I am getting a colleague to help you. One moment.',
+  da: 'En kollega svarer dig her så hurtigt som muligt.',
+  nb: 'En kollega svarer deg her så snart som mulig.',
+  sv: 'En kollega svarar dig här så snart som möjligt.',
+  fi: 'Kollegamme vastaa sinulle täällä mahdollisimman pian.',
+  de: 'Eine Kollegin oder ein Kollege antwortet Ihnen hier so bald wie möglich.',
+  en: 'A colleague will answer you here as soon as possible.',
 }
+
+/**
+ * The lines sent before the wording changed. They are still in live chats,
+ * and a handover line of ours read back as somebody else's would look like a
+ * person on the chat.
+ */
+export const EARLIER_HANDOVER_LINES: readonly string[] = [
+  'Jeg henter en kollega, som hjælper dig videre. Et øjeblik.',
+  'Jeg henter en kollega som hjelper deg videre. Et øyeblikk.',
+  'Jag hämtar en kollega som hjälper dig vidare. Ett ögonblick.',
+  'Haen kollegan auttamaan sinua. Hetki vain.',
+  'Ich hole eine Kollegin oder einen Kollegen, die Ihnen weiterhelfen. Einen Moment.',
+  'I am getting a colleague to help you. One moment.',
+]
 
 export function handoverLine(language: string | null): string {
   return HANDOVER_LINES[language ?? ''] ?? HANDOVER_LINES.en
@@ -206,4 +228,32 @@ export function since(transcript: TranscriptMessage[], at: string | null): Trans
     const t = Date.parse(m.at)
     return !Number.isFinite(t) || t >= from
   })
+}
+
+/** An order number is at least this many digits; a shorter number is a size, a count or a day. */
+const ORDER_NUMBER_MIN_DIGITS = 4
+
+const NOBODY: CustomerContext = { customer: null, orders: [], previousTickets: [] }
+
+/**
+ * What of a customer's record a chat may see.
+ *
+ * The chat widget takes any email a visitor types and Gorgias checks none of
+ * it, so the email alone must unlock nothing: typing a stranger's address
+ * would otherwise put their name, orders, parcels and pickup point in front of
+ * the model. An order is shown when the customer has written its number in
+ * this chat and it belongs to that email - two facts a stranger rarely holds
+ * together - and then only that order. Never the phone number: nothing a chat
+ * answer needs.
+ *
+ * With no such order the customer is nobody, name included, and the model asks
+ * for the order number.
+ */
+export function onlyNamedOrders(context: CustomerContext, customerTexts: string[]): CustomerContext {
+  const written = new Set(
+    customerTexts.flatMap((t) => t.match(/\d+/g) ?? []).filter((n) => n.length >= ORDER_NUMBER_MIN_DIGITS),
+  )
+  const orders = context.orders.filter((o) => written.has(o.number.replace(/\D/g, '')))
+  if (!context.customer || orders.length === 0) return NOBODY
+  return { customer: { ...context.customer, phone: null }, orders, previousTickets: context.previousTickets }
 }

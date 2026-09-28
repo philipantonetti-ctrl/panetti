@@ -2,8 +2,9 @@ import { db } from '@/lib/db'
 import { judge, NoApiKey, pickProducts, type SupportJudgement } from './agent'
 import { escalateToHuman, getCustomerContext, type Channel, type TranscriptMessage } from './channel'
 import {
-  askedSoFar, BURST_WAIT_MS, conversationStart, handoverLine, HANDOVER_LINES, humanTookOver, normalise,
-  onlyTheCustomer, type OwnMessages, OWN_TEXT_WINDOW_MS, REPLY_CAP, since, splitForJudge, supersededBy, turnsOf,
+  askedSoFar, BURST_WAIT_MS, conversationStart, EARLIER_HANDOVER_LINES, handoverLine, HANDOVER_LINES, humanTookOver,
+  normalise, onlyNamedOrders, onlyTheCustomer, type OwnMessages, OWN_TEXT_WINDOW_MS, REPLY_CAP, since, splitForJudge,
+  supersededBy, turnsOf,
 } from './chat-turn'
 import { knowledgeFor } from './knowledge'
 import { decide, DEFAULT_RULES, type RulesConfig } from './rules'
@@ -87,6 +88,7 @@ export async function ownMessages(sessionId: string, now: Date): Promise<OwnMess
         .filter((r) => SPOKEN.has(r.decision) && r.answer && r.createdAt >= fresh)
         .map((r) => normalise(r.answer as string)),
       ...Object.values(HANDOVER_LINES).map(normalise),
+      ...EARLIER_HANDOVER_LINES.map(normalise),
     ]),
   }
 }
@@ -105,6 +107,11 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   const wait = deps.wait ?? sleep
   const { channel } = deps
   const skip = (reason: string): ChatResult => ({ decision: 'skipped', reason })
+  /**
+   * The widget's offline form: the chat was closed and the customer left an
+   * email. A person answers it by email, so nothing is written in the chat.
+   */
+  const offline = incoming.via === 'offline_capture'
 
   // The switch, checked before anything is written: a shop that is off leaves
   // no trace, and a chat older than the switch is not ours.
@@ -357,8 +364,9 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     const language = judgement?.language ?? session.language
     const trouble: string[] = []
     let replyId: string | null = null
-    // Draft mode never speaks to the customer, not even to say a person is coming.
-    if (rules.mode === 'auto') {
+    // Draft mode never speaks to the customer, not even to say a person is
+    // coming, and neither does an offline form nobody is reading.
+    if (rules.mode === 'auto' && !offline) {
       try {
         replyId = await channel.sendMessage(incoming.conversationId, handoverLine(language))
       } catch (e) {
@@ -383,8 +391,13 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
     return handover(`The assistant has already replied eight times in this chat, so a person takes over.`, null)
   }
 
+  // The email on a chat is whatever the visitor typed, so it unlocks only an
+  // order whose number they have also written here. See onlyNamedOrders.
   const context = incoming.customerEmail
-    ? await getCustomerContext(incoming.customerEmail)
+    ? onlyNamedOrders(
+        await getCustomerContext(incoming.customerEmail),
+        [...history.filter((t) => t.role === 'user').map((t) => t.text), message],
+      )
     : { customer: null, orders: [], previousTickets: [] }
   const knowledge = await knowledgeFor(askedSoFar(history, message), {
     shopId: incoming.shopId,
@@ -410,6 +423,15 @@ export async function handleChatMessage(incoming: ChatIncoming, deps: ChatDeps):
   )
 
   const judged = { ...asked, ...recordable(judgement), orderNumber: context.orders[0]?.number ?? null }
+
+  // Whatever it would have said goes to the person who answers the form by
+  // email, as the suggested reply on the note.
+  if (offline) {
+    const why = verdict.action === 'escalate'
+      ? (judgement.escalationReason ?? verdict.reason ?? 'A person should handle this.')
+      : 'The customer wrote through the offline form, so a person answers by email.'
+    return handover(why, judgement)
+  }
 
   if (verdict.action === 'send' && judgement.reply) {
     // Judging took ten to forty seconds. The customer may have written again

@@ -52,6 +52,24 @@ describe('PATCH /api/support/conversations/[id]', () => {
     expect(updated.correction).toContain('Bring')
   })
 
+  it('says why a correction that names a customer was saved but not taught', async () => {
+    const conv = await db.aiConversation.create({
+      data: {
+        source: 'gorgias', externalTicketId: 'PATCHROUTE-3', question: 'Hvor er min pakke?',
+        language: 'da', decision: 'escalated', orderNumber: '15209',
+      },
+    })
+    const res = await PATCH(
+      new Request(`http://localhost/api/support/conversations/${conv.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ rating: 'bad', correction: `Ordre 15209 er sendt. ${TAG}` }),
+      }),
+      { params: Promise.resolve({ id: conv.id }) },
+    )
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, knowledgeItemId: null, withheld: expect.stringMatching(/customer/i) })
+  })
+
   it('404s a correction for an unknown conversation, and creates nothing', async () => {
     const res = await PATCH(
       new Request('http://localhost/api/support/conversations/no-such-conversation', {

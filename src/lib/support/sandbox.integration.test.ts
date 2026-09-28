@@ -52,7 +52,7 @@ const rules = { mode: 'draft', autoCategories: ['shipping'], escalateKeywords: [
 describe('runSandboxTurn', () => {
   it('judges as if live even while the rules say draft, and records the run as sandbox', async () => {
     const r = await runSandboxTurn(
-      { shopId, customerEmail: EMAIL, sessionKey: 'test-1', messages: [{ role: 'user', text: 'Hvor er min pakke?' }] },
+      { shopId, customerEmail: EMAIL, sessionKey: 'test-1', messages: [{ role: 'user', text: 'Hvor er min pakke? Ordre 14689' }] },
       { rules },
     )
 
@@ -60,7 +60,22 @@ describe('runSandboxTurn', () => {
     expect(r.reply).toBe('Din pakke er på vej.')
     expect(r.saw.orders.map((o) => o.number)).toEqual(['14689'])
     const row = await db.aiConversation.findUniqueOrThrow({ where: { id: r.conversationId } })
-    expect(row).toMatchObject({ source: 'sandbox', externalTicketId: 'sandbox:test-1', shopId, decision: 'sent', question: 'Hvor er min pakke?' })
+    expect(row).toMatchObject({ source: 'sandbox', externalTicketId: 'sandbox:test-1', shopId, decision: 'sent', question: 'Hvor er min pakke? Ordre 14689' })
+  })
+
+  /** The same rule as a live chat, so a practice run predicts what customers get. */
+  it("sees an email's orders only once one of their numbers is written, as a live chat does", async () => {
+    const without = await runSandboxTurn(
+      { shopId, customerEmail: EMAIL, sessionKey: 'test-priv', messages: [{ role: 'user', text: 'Hvad har jeg bestilt?' }] },
+      { rules },
+    )
+    expect(without.saw).toEqual({ customer: null, orders: [] })
+
+    const withNumber = await runSandboxTurn(
+      { shopId, customerEmail: EMAIL, sessionKey: 'test-priv', messages: [{ role: 'user', text: 'Hvor er ordre 14689?' }] },
+      { rules },
+    )
+    expect(withNumber.saw.orders.map((o) => o.number)).toEqual(['14689'])
   })
 
   it('passes the earlier turns as history and says it is not the first reply', async () => {

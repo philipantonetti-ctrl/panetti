@@ -73,6 +73,8 @@ export function chatInstructions(mode: ChatMode): string {
     lines.push(
       'You have no orders in front of you for this customer. For anything about an order or a parcel,',
       'ask for the order number and the email used at checkout, and state no order facts until then.',
+      'Never say whether an order exists or whether this email has any orders: you are not shown them',
+      'until the customer writes an order number that belongs to the email on the chat.',
     )
   }
   return lines.join('\n')
@@ -165,7 +167,7 @@ const SCHEMA = {
 /** The orders, parcels and history as the model sees them. Facts only. */
 export function contextBlock(context: CustomerContext): string {
   if (!context.customer) {
-    return 'CUSTOMER CONTEXT: no orders found for this email address. You do not know who this is or what they bought.'
+    return 'CUSTOMER CONTEXT: none in front of you. You do not know who this is or what they bought.'
   }
   const lines = [
     'CUSTOMER CONTEXT. These are facts from our own system:',

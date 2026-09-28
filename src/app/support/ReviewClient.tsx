@@ -160,7 +160,11 @@ export function ReviewClient({ email }: { email: string }) {
       toast.error('Could not record that')
       return
     }
-    toast.success(rating === 'good' ? 'Marked good' : 'Marked bad')
+    // A correction about one customer is kept but taught to nobody, and the
+    // person who typed it must not believe the assistant learned it.
+    const saved = (await res.json().catch(() => null)) as { withheld?: string } | null
+    if (saved?.withheld) toast.error(saved.withheld)
+    else toast.success(rating === 'good' ? 'Marked good' : 'Marked bad')
     setCorrection('')
     await load()
   }

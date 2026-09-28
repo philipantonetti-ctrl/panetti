@@ -36,7 +36,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
       if (!promoted) {
         return NextResponse.json({ error: 'No such conversation' }, { status: 404, headers: NO_STORE })
       }
-      return NextResponse.json({ ok: true, knowledgeItemId: promoted.knowledgeItemId }, { headers: NO_STORE })
+      return NextResponse.json(
+        { ok: true, knowledgeItemId: promoted.knowledgeItemId, ...(promoted.withheld ? { withheld: promoted.withheld } : {}) },
+        { headers: NO_STORE },
+      )
     }
 
     const updated = await db.aiConversation.updateMany({

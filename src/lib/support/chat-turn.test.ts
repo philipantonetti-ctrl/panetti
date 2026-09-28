@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  askedSoFar, conversationStart, handoverLine, humanTookOver, NEW_CONVERSATION_GAP_MS, normalise, NO_OWN,
-  REPLY_CAP, since, splitForJudge, superseded, turnsOf,
+  askedSoFar, conversationStart, EARLIER_HANDOVER_LINES, handoverLine, humanTookOver, NEW_CONVERSATION_GAP_MS,
+  normalise, NO_OWN, onlyNamedOrders, REPLY_CAP, since, splitForJudge, superseded, turnsOf,
 } from './chat-turn'
+import type { CustomerContext, OrderSummary } from '@/lib/inbox/context'
 import type { TranscriptMessage } from './channel'
 
 const m = (id: number, fromAgent: boolean, text: string): TranscriptMessage => ({
@@ -116,6 +117,59 @@ describe('handoverLine', () => {
     expect(handoverLine('de')).toMatch(/Kolleg/)
     expect(handoverLine('xx')).toMatch(/colleague/)
     expect(handoverLine(null)).toMatch(/colleague/)
+  })
+
+  /**
+   * Live tickets 241709254 (Saturday 20:47, chat closed) and 241784957
+   * (Sunday) were told "Et øjeblik" and nobody came. The line must be true at
+   * any hour, so it names no time at all.
+   */
+  it('promises no time, in any language', () => {
+    for (const lang of ['da', 'nb', 'sv', 'fi', 'de', 'en']) {
+      expect(handoverLine(lang)).not.toMatch(/øjeblik|øyeblikk|ögonblick|hetki|moment/i)
+    }
+    expect(handoverLine('da')).toBe('En kollega svarer dig her så hurtigt som muligt.')
+  })
+
+  it('still knows the line it used to send, so a chat handed over before the change is not read as a person', () => {
+    expect(EARLIER_HANDOVER_LINES).toContain('Jeg henter en kollega, som hjælper dig videre. Et øjeblik.')
+  })
+})
+
+/**
+ * Anyone can type any email into the chat widget; Gorgias checks none of it.
+ * So the email alone unlocks nothing: an order is shown only when the
+ * customer has written its number in this chat, and only that order.
+ */
+describe('onlyNamedOrders', () => {
+  const order = (number: string): OrderSummary => ({
+    id: `o-${number}`, number, shop: 'Panetti Denmark', placedAt: '2026-09-06T00:00:00.000Z', status: 'completed',
+    refunded: false, currency: 'DKK', total: 0, products: [], parcels: [],
+    delivery: {} as OrderSummary['delivery'], deliveryPhrase: null,
+  })
+  const context: CustomerContext = {
+    customer: { name: 'Anna Holm', email: 'anna@example.invalid', phone: '+45 12 34 56 78', country: 'DK' },
+    orders: [order('15209'), order('14689')],
+    previousTickets: [{ id: 't1', number: 3, subject: 'Hej', status: 'closed', lastMessageAt: '2026-09-01T00:00:00.000Z' }],
+  }
+
+  it('shows nothing, not even a name, when no order number was written', () => {
+    expect(onlyNamedOrders(context, ['Hvor er min pakke?'])).toEqual({ customer: null, orders: [], previousTickets: [] })
+  })
+
+  it('shows nothing when the number written belongs to somebody else', () => {
+    expect(onlyNamedOrders(context, ['ordre 99999'])).toEqual({ customer: null, orders: [], previousTickets: [] })
+  })
+
+  it('shows only the order that was named, and never the phone number', () => {
+    const seen = onlyNamedOrders(context, ['Hej', 'Spaden mangler - bestilling nr #15209'])
+    expect(seen.orders.map((o) => o.number)).toEqual(['15209'])
+    expect(seen.customer).toEqual({ name: 'Anna Holm', email: 'anna@example.invalid', phone: null, country: 'DK' })
+    expect(seen.previousTickets).toHaveLength(1)
+  })
+
+  it('does not take a short number for an order', () => {
+    expect(onlyNamedOrders({ ...context, orders: [order('12')] }, ['Den er 12 cm']).orders).toEqual([])
   })
 })
 
