@@ -9,7 +9,9 @@ import { db } from '@/lib/db'
  * that a token really verifies, that a row really exists, that a failure really
  * does not change the answer.
  */
-const sent = vi.hoisted(() => vi.fn<(to: string, subject: string, body: string) => Promise<void>>())
+const sent = vi.hoisted(() =>
+  vi.fn<(to: string, subject: string, body: string, opts?: { from?: string; html?: string }) => Promise<void>>(),
+)
 vi.mock('@/lib/email/send', () => ({ sendEmail: sent }))
 
 const { POST } = await import('./route')
@@ -108,5 +110,28 @@ describe('asking for a reset link', () => {
     vi.stubEnv('APP_URL', 'https://panetti.vercel.app')
     await forgot({ email: KNOWN })
     expect(sent.mock.calls[0][2]).toContain('https://panetti.vercel.app/reset/')
+  })
+
+  /**
+   * The message used to leave as "Philip Antonetti", the display name on
+   * EMAIL_FROM. An ambassador who never met Philip reads a stranger's name on
+   * a password email and marks it spam, and Gmail learns from that: the
+   * 2026-10-01 reset landed in spam as "similar to messages identified as spam
+   * in the past". The address stays whatever is configured; only the name is
+   * the product's own.
+   */
+  it("leaves in the product's name, at the configured address", async () => {
+    vi.stubEnv('EMAIL_FROM', '"Philip Antonetti" <philip@example.no>')
+    await forgot({ email: KNOWN })
+    expect(sent.mock.calls[0][3]?.from).toBe('"Panetti-analytics" <philip@example.no>')
+  })
+
+  it('carries the same link in an HTML part, so clients render a button rather than a bare token', async () => {
+    vi.stubEnv('APP_URL', 'https://panetti.vercel.app')
+    await forgot({ email: KNOWN })
+    const [, , text, opts] = sent.mock.calls[0]
+    const link = text.match(/https:\/\/panetti\.vercel\.app\/reset\/[\w.-]+/)?.[0]
+    expect(link).toBeTruthy()
+    expect(opts?.html).toContain(`href="${link}"`)
   })
 })

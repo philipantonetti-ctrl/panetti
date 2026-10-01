@@ -121,4 +121,24 @@ describe('sendEmail', () => {
     vi.stubGlobal('fetch', ok())
     await expect(sendEmail('a@b.c', 'S', 'B', { from: 'support@panetti.no' })).resolves.toEqual({ postmarkId: null })
   })
+
+  /**
+   * A reset link that arrives as one bare 200-character URL in a plain-text
+   * message is the shape of a phishing email. An HTML part with a button lets
+   * the client render it as the ordinary account email it is; the text part
+   * stays, for clients that want it.
+   */
+  it('sends an HTML body alongside the text when one is given, and none otherwise', async () => {
+    const fn = ok()
+    vi.stubGlobal('fetch', fn)
+
+    await sendEmail('amb@example.com', 'S', 'plain', { html: '<p>rich</p>' })
+    await sendEmail('amb@example.com', 'S', 'plain')
+
+    const first = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string)
+    const second = JSON.parse((fn.mock.calls[1][1] as RequestInit).body as string)
+    expect(first.TextBody).toBe('plain')
+    expect(first.HtmlBody).toBe('<p>rich</p>')
+    expect(second.HtmlBody).toBeUndefined()
+  })
 })
