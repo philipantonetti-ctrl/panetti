@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { AddAmbassadorClient } from './AddAmbassadorClient'
 import { ToastProvider } from '@/components/toast/ToastProvider'
@@ -24,6 +24,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200
 function renderPage(ambassadors: unknown[] = [], role: 'ADMIN' | 'MARKETING' = 'ADMIN') {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: unknown, init?: RequestInit) => {
     const u = String(url)
+    if (u.includes('/api/users/reset-link')) return json({ link: 'https://panetti.vercel.app/reset/tok' })
     if (init?.method === 'POST') return json({ ok: true, id: 'new' })
     if (u.includes('/api/shops')) return json({ shops: [{ id: 's1', name: 'Norway' }, { id: 's2', name: 'Sweden' }] })
     if (u.includes('/api/coupons')) return json({ codes: ['JOHN10', 'SUMMER'] })
@@ -201,6 +202,55 @@ describe('the row menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Maria Ghanem' }))
     expect(screen.getByRole('menuitem', { name: 'Reactivate' })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: 'Deactivate' })).toBeNull()
+  })
+})
+
+/**
+ * Once an ambassador has a login, the invite link is gone and the only way back
+ * in is the reset email - which can land in spam. The admin can hand the same
+ * link over directly, from the same spot the invite link lived in.
+ */
+describe('a reset link for an ambassador who already has a login', () => {
+  const onboarded = [
+    {
+      id: 'a1', name: 'Maria Ghanem', email: 'maria@x.local', commissionPercent: 10, active: true,
+      onboarded: true, emailHasLogin: true, invitePath: null, products: [],
+      codes: [{ id: 'c1', code: 'MARIA500', shopId: 's1', shopName: 'Norway' }],
+    },
+  ]
+  const writeText = vi.fn(async () => {})
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    writeText.mockClear()
+  })
+  afterEach(() => {
+    delete (navigator as unknown as { clipboard?: unknown }).clipboard
+  })
+
+  it('lets the admin copy one, beside the Active status', async () => {
+    renderPage(onboarded, 'ADMIN')
+    const button = await screen.findByTestId('copy-reset')
+    expect(screen.getByText('Active')).toBeTruthy()
+    fireEvent.click(button)
+
+    await waitFor(() => expect(button.textContent).toBe('Copied'))
+    expect(writeText).toHaveBeenCalledWith('https://panetti.vercel.app/reset/tok')
+    const post = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.find(([url]) =>
+      String(url).includes('/api/users/reset-link'),
+    )
+    expect(JSON.parse(String((post?.[1] as RequestInit).body))).toEqual({ email: 'maria@x.local' })
+  })
+
+  it('does not offer it to marketing, who cannot mint one', async () => {
+    renderPage(onboarded, 'MARKETING')
+    await waitFor(() => expect(screen.getByText('MARIA500')).toBeTruthy())
+    expect(screen.queryByTestId('copy-reset')).toBeNull()
+  })
+
+  it('does not offer it while they are still to set up - the invite link is the way in', async () => {
+    renderPage([{ ...onboarded[0], onboarded: false, emailHasLogin: false, invitePath: '/invite/x' }], 'ADMIN')
+    await waitFor(() => expect(screen.getByTestId('copy-invite')).toBeTruthy())
+    expect(screen.queryByTestId('copy-reset')).toBeNull()
   })
 })
 

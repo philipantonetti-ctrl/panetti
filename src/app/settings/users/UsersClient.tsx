@@ -29,6 +29,7 @@ export function UsersClient({ email, myUserId }: { email: string; myUserId: stri
   const [newPassword, setNewPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [removing, setRemoving] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
 
   async function load() {
     try {
@@ -94,6 +95,37 @@ export function UsersClient({ email, myUserId }: { email: string; myUserId: stri
     }
   }
 
+  /**
+   * The same one-hour link the forgot-password email carries, for when that
+   * email lands in spam or is never read. The admin hands it over on whatever
+   * channel they already use, the way they hand an ambassador an invite link.
+   */
+  async function copyResetLink(user: StaffUser) {
+    try {
+      const res = await fetch('/api/users/reset-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email }),
+      })
+      const data = (await res.json().catch(() => null)) as { link?: string; error?: string } | null
+      if (!res.ok || !data?.link) {
+        toast.error(data?.error ?? 'Could not make a reset link')
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(data.link)
+        // The button itself says "Copied" for 2s; a toast would only repeat it.
+        setCopied(user.id)
+        setTimeout(() => setCopied(null), 2000)
+      } catch {
+        // No clipboard (old browser, insecure origin): show the link rather than lose it.
+        toast.error(`Could not reach the clipboard. The reset link is ${data.link}`)
+      }
+    } catch {
+      toast.error('Could not reach the server')
+    }
+  }
+
   return (
     <AppShell email={email}>
       <PageHeader
@@ -128,11 +160,17 @@ export function UsersClient({ email, myUserId }: { email: string; myUserId: stri
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-right">
+                      <button
+                        onClick={() => void copyResetLink(u)}
+                        className="font-semibold text-accent hover:underline"
+                      >
+                        {copied === u.id ? 'Copied' : 'Copy reset link'}
+                      </button>
                       {u.id !== myUserId && (
                         <button
                           onClick={() => void remove(u)}
                           disabled={removing !== null}
-                          className="font-semibold text-loss hover:underline disabled:opacity-60"
+                          className="ml-3 font-semibold text-loss hover:underline disabled:opacity-60"
                         >
                           {removing === u.id ? 'Removing…' : 'Remove'}
                         </button>

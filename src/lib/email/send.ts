@@ -16,6 +16,12 @@ export type SendOptions = {
   from?: string
   /** Extra RFC headers, e.g. Message-ID / In-Reply-To / References for threading. */
   headers?: Record<string, string>
+  /**
+   * An HTML rendering of the same message, sent alongside the text. The text
+   * body is always sent: it is what every client falls back to, and what the
+   * tests read the link out of.
+   */
+  html?: string
 }
 
 /**
@@ -88,6 +94,7 @@ export async function sendEmail(
       To: to,
       Subject: subject,
       TextBody: textBody,
+      ...(opts.html ? { HtmlBody: opts.html } : {}),
       MessageStream: STREAM,
       ...(headers ? { Headers: headers } : {}),
     }),

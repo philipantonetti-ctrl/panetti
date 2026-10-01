@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { UsersClient } from './UsersClient'
 import { ToastProvider } from '@/components/toast/ToastProvider'
@@ -19,6 +19,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 function renderPage(users: unknown[] = []) {
   const fetchMock = vi.fn().mockImplementation(async (url: unknown, init?: RequestInit) => {
+    if (String(url).includes('/api/users/reset-link')) return json({ link: 'https://panetti.vercel.app/reset/tok' })
     if (init?.method === 'POST') return json({ ok: true, id: 'new-1' })
     if (init?.method === 'DELETE') return json({ ok: true })
     return json({ users })
@@ -102,5 +103,32 @@ describe('the operations login on the Users page', () => {
       const table = within(screen.getByRole('table'))
       expect(table.getByText('Operations')).toBeTruthy()
     })
+  })
+})
+
+/**
+ * The reset email can land in spam, or never be read. The admin can then hand
+ * the same link over by any channel they like, the way they already hand over
+ * an ambassador's invite link.
+ */
+describe('a reset link by hand', () => {
+  const writeText = vi.fn(async () => {})
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    writeText.mockClear()
+  })
+  afterEach(() => {
+    delete (navigator as unknown as { clipboard?: unknown }).clipboard
+  })
+
+  it('copies a one-hour reset link for a login', async () => {
+    const fetchMock = renderPage([{ id: 'u3', email: 'ops@test.local', role: 'OPERATIONS' }])
+    const button = await screen.findByRole('button', { name: 'Copy reset link' })
+    fireEvent.click(button)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy())
+    expect(writeText).toHaveBeenCalledWith('https://panetti.vercel.app/reset/tok')
+    const post = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/users/reset-link'))
+    expect(JSON.parse(String((post?.[1] as RequestInit).body))).toEqual({ email: 'ops@test.local' })
   })
 })
