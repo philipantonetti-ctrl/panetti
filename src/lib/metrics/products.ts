@@ -87,7 +87,7 @@ export type ProductResult = {
  * sequential. Merging on them would fold two different stores' product #42
  * into a single row that adds up unrelated money.
  */
-export function mergeKey(meta: ProductMeta): string {
+export function mergeKey<T extends Pick<ProductMeta, 'productId' | 'sku' | 'externalId'>>(meta: T): string {
   if (meta.sku && meta.sku !== meta.externalId) return `sku:${meta.sku}`
   return `product:${meta.productId}`
 }
