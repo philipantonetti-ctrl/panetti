@@ -9,7 +9,7 @@ import { signReset } from './reset'
  * on an old deployment dies on Google's redirect_uri_mismatch. Same fixed
  * default as lib/delivery/alerts.ts uses for its Slack links.
  */
-export const appUrl = () => process.env.APP_URL || 'https://panetti.vercel.app'
+export const appUrl = () => (process.env.APP_URL || 'https://panetti.vercel.app').replace(/\/$/, '')
 
 /**
  * A one-hour, single-use link to choose a new password for this login.

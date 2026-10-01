@@ -18,6 +18,13 @@ describe('resetLink', () => {
     const link = await resetLink({ id: 'user-1', passwordHash: '$2b$fake' })
     expect(link.startsWith('https://panetti.vercel.app/reset/')).toBe(true)
   })
+
+  it('does not double the slash when APP_URL ends in one', async () => {
+    vi.stubEnv('APP_URL', 'https://panetti.vercel.app/')
+    const link = await resetLink({ id: 'user-1', passwordHash: '$2b$fake' })
+    expect(link.startsWith('https://panetti.vercel.app/reset/')).toBe(true)
+    expect(link).not.toContain('//reset')
+  })
 })
 
 describe('resetSender', () => {
