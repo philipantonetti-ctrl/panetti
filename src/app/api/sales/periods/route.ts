@@ -3,7 +3,16 @@ import { currentUser } from '@/lib/auth/current-user'
 import { assertOperations, AuthError } from '@/lib/auth/guard'
 import { shopIdsFromQuery } from '@/lib/api/range'
 import { loadMetricsInput } from '@/lib/data/load'
-import { periodBuckets, PERIODS, salesByPeriod, type Grain } from '@/lib/metrics/periods'
+import { db } from '@/lib/db'
+import {
+  periodBuckets,
+  PERIODS,
+  salesByPeriod,
+  unitsByPeriod,
+  type Grain,
+  type ProductName,
+  type UnitsRow,
+} from '@/lib/metrics/periods'
 import { getSetting } from '@/lib/settings'
 import { todayInZone } from '@/lib/tz'
 
@@ -34,6 +43,21 @@ export async function GET(req: Request) {
     const input = await loadMetricsInput({ shopIds, from: oldest.from, to: today, timezone })
     const rows = salesByPeriod(input, buckets, { excludeZero })
 
+    // The names the units table prints. The engine's loader reads no product
+    // row (the Dashboard needs none), so the handful this span touched are
+    // fetched here - name and SKU only, never a cost.
+    const productIds = [...new Set(input.orders.flatMap((o) => o.items.map((i) => i.productId)))]
+    const products = new Map<string, ProductName>(
+      (
+        await db.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, shopId: true, sku: true, externalId: true, name: true },
+        })
+      ).map((p) => [p.id, { productId: p.id, shopId: p.shopId, sku: p.sku, externalId: p.externalId, name: p.name }]),
+    )
+    const units = unitsByPeriod(input, buckets, { excludeZero, products })
+    const unitsRow = (r: UnitsRow) => ({ id: r.id, name: r.name, units: r.units })
+
     return NextResponse.json(
       {
         grain,
@@ -46,8 +70,11 @@ export async function GET(req: Request) {
           orders: r.orders,
           sales: r.sales,
           avgOrder: r.avgOrder,
+          units: r.units,
           vsPrevious: r.vsPrevious,
         })),
+        byShop: units.byShop.map(unitsRow),
+        byProduct: units.byProduct.map(unitsRow),
       },
       { headers: NO_STORE },
     )
