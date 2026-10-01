@@ -173,6 +173,27 @@ Connecting it:
 Until an address is connected the inbox runs on the seeded sample tickets, the
 same way shops show sample data until they are connected.
 
+## The password reset email
+
+/forgot mails a one-hour link through Postmark, from `EMAIL_FROM` with the
+display name "Panetti-analytics", as text plus HTML. It needs
+`POSTMARK_SERVER_TOKEN` and `EMAIL_FROM` (an address Postmark has verified).
+The form answers the same whether or not the address has a login, so a failure
+shows only in the server log, never on screen.
+
+Where it lands is decided by the SENDER DOMAIN, not by the code. On 2026-10-01
+Gmail filed the reset in spam, shown as "via pm.mtasv.net": the From address
+was on a domain with no DKIM for Postmark, so the mail was signed by Postmark's
+own domain and the From domain went unauthenticated. The fix is in Postmark:
+Sender Signatures -> the domain of `EMAIL_FROM` -> DNS settings, then add its
+DKIM TXT record and Return-Path CNAME at the domain's DNS host. Once both show
+verified, the "via" disappears and Gmail sees the sender it claims to be.
+
+Until then, and for anyone whose mail is lost anyway, an admin can press
+"Copy reset link" on Settings -> Users or beside an onboarded ambassador on the
+roster, and hand over the very same link by any channel. Admin only: whoever
+holds the link holds the account.
+
 ## The advisor
 
 Every morning a briefing is written from the last seven days against the seven

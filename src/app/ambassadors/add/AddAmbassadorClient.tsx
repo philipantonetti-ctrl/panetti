@@ -366,6 +366,37 @@ export function AddAmbassadorClient({
     }
   }
 
+  /**
+   * Once they have a login the invite link is gone, and the forgot-password
+   * email is the way back in - which can land in spam. This is that same
+   * one-hour link, minted on the server (it is tied to their current
+   * password) and handed over by hand. Admin only: the route refuses anyone
+   * else, so the button is not shown to anyone else.
+   */
+  async function copyReset(row: Row) {
+    try {
+      const res = await fetch('/api/users/reset-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: row.email }),
+      })
+      const data = (await res.json().catch(() => null)) as { link?: string; error?: string } | null
+      if (!res.ok || !data?.link) {
+        toast.error(data?.error ?? 'Could not make a reset link')
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(data.link)
+        setCopied(row.id)
+        setTimeout(() => setCopied(null), 2000)
+      } catch {
+        toast.error(`Could not reach the clipboard. The reset link is ${data.link}`)
+      }
+    } catch {
+      toast.error('Could not reach the server')
+    }
+  }
+
   const editing = rows.find((r) => r.id === editingId) ?? null
 
   return (
@@ -569,6 +600,17 @@ export function AddAmbassadorClient({
                           className="mt-1 block whitespace-nowrap text-[11px] font-semibold text-accent hover:underline"
                         >
                           {copied === row.id ? 'Copied' : 'Copy invite link'}
+                        </button>
+                      )}
+                      {/* Its successor, once they are in: the reset link, for
+                          the day the reset email lands in spam. */}
+                      {row.onboarded && role === 'ADMIN' && (
+                        <button
+                          data-testid="copy-reset"
+                          onClick={() => copyReset(row)}
+                          className="mt-1 block whitespace-nowrap text-[11px] font-semibold text-accent hover:underline"
+                        >
+                          {copied === row.id ? 'Copied' : 'Copy reset link'}
                         </button>
                       )}
                     </td>
