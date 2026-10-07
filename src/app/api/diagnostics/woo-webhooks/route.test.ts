@@ -115,6 +115,22 @@ describe('GET /api/diagnostics/woo-webhooks', () => {
     expect(raw).not.toContain('ck')
   })
 
+  /**
+   * The per-shop page asks for ONE store. Without the filter it would read all
+   * nine, one slow store would stall the page, and the admin would wait on
+   * eight stores they did not ask about.
+   */
+  it('reads only the shop asked for when shopId is given', async () => {
+    admin()
+    vi.mocked(db.shop.findMany).mockResolvedValue([shop('se', 'Panetti Sweden')] as never)
+    vi.mocked(fetchWebhooks).mockResolvedValue([] as never)
+
+    const res = await GET(new Request('http://x/api/diagnostics/woo-webhooks?shopId=se'))
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.shop.findMany).mock.calls[0][0]?.where).toMatchObject({ id: 'se' })
+    expect((await res.json()).shops).toEqual([{ shop: 'Panetti Sweden', ok: true, webhooks: [] }])
+  })
+
   it('reports a store that cannot be read and still lists the others', async () => {
     admin()
     vi.mocked(db.shop.findMany).mockResolvedValue([
