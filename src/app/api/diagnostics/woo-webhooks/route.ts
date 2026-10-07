@@ -23,12 +23,20 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
  * signing `secret`, and a delivery URL can carry a token in its query string,
  * so neither may ever reach the browser.
  */
-export async function GET() {
+export async function GET(req?: Request) {
   try {
     assertAdmin(await currentUser())
 
+    // One shop when the per-shop page asks; otherwise every connected one.
+    const shopId = req ? new URL(req.url).searchParams.get('shopId') : null
     const shops = await db.shop.findMany({
-      where: { active: true, wooUrl: { not: null }, wooKey: { not: null }, wooSecret: { not: null } },
+      where: {
+        ...(shopId ? { id: shopId } : {}),
+        active: true,
+        wooUrl: { not: null },
+        wooKey: { not: null },
+        wooSecret: { not: null },
+      },
       select: { id: true, name: true, wooUrl: true, wooKey: true, wooSecret: true },
       orderBy: { name: 'asc' },
     })

@@ -102,6 +102,22 @@ describe('ShopsClient', () => {
     expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy()
   })
 
+  /**
+   * The Visma connector's webhooks are switched off by WooCommerce itself after
+   * failed deliveries, and nobody here has the store's admin login. The page
+   * that shows and re-enables them must be reachable from the shop's row - but
+   * only for a connected shop, since there is no store to ask otherwise.
+   */
+  it('links a connected shop to its Webhooks page, and an unconnected one not', () => {
+    renderShops([
+      { ...SHOP, id: 's1', name: 'Panetti Norway', connected: true },
+      { ...SHOP, id: 's2', name: 'Panetti Iceland', connected: false },
+    ])
+    const links = screen.getAllByRole('link', { name: 'Webhooks' })
+    expect(links).toHaveLength(1)
+    expect(links[0].getAttribute('href')).toBe('/settings/shops/s1/webhooks')
+  })
+
   it('a cancelled confirm deletes nothing', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)

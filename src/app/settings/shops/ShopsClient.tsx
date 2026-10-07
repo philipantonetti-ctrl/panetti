@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { useToast } from '@/components/toast/useToast'
@@ -275,6 +276,12 @@ export function ShopsClient({ email, shops }: { email: string; shops: Row[] }) {
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-3">
+                      {/* Only a connected shop has a store to ask about its webhooks. */}
+                      {s.connected && (
+                        <Link href={`/settings/shops/${s.id}/webhooks`} className="font-semibold text-accent hover:underline">
+                          Webhooks
+                        </Link>
+                      )}
                       <button onClick={() => setEditing(s)} className="font-semibold text-accent hover:underline">
                         {s.connected ? 'Edit' : 'Connect'}
                       </button>
