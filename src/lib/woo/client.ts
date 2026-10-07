@@ -316,6 +316,9 @@ export type WooWebhook = {
   topic: string
   delivery_url: string
   status: string // "active" | "paused" | "disabled"
+  name?: string
+  date_created_gmt?: string
+  date_modified_gmt?: string
 }
 
 /** Every webhook the store has, whatever its status. */
