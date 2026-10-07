@@ -370,6 +370,26 @@ export async function activateWebhook(
 }
 
 /**
+ * Switch a webhook that is NOT ours back on, and change nothing else.
+ *
+ * The Visma connector's webhooks are someone else's: their secret and
+ * delivery address belong to them, and `activateWebhook` above overwrites the
+ * secret, which would break their signature check for good. Only the status
+ * travels here - the same single field an admin changes on the store's own
+ * webhook page.
+ */
+export async function enableWebhook(creds: WooCredentials, id: number): Promise<void> {
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/webhooks/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    body: JSON.stringify({ status: 'active' }),
+  })
+  if (!res.ok) throw await wooError(res)
+}
+
+/**
  * Write one note onto an order, PRIVATE to whoever administers the store.
  *
  * `customer_note: false` is the whole safety of this call and is sent
