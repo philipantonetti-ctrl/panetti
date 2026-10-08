@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { vismaCredentials, vismaGet } from '@/lib/visma/client'
+import { vismaGetPages } from '@/lib/visma/pages'
 import { unwrap } from '@/lib/visma/purchase-orders'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
@@ -39,9 +40,10 @@ export async function GET(req: Request) {
     const customer = params.get('customer')?.trim() ?? ''
     const number = params.get('number')?.trim() ?? ''
     const since = params.get('since')?.trim() || defaultSince()
-    if (!/^\d+$/.test(customer) || !/^\d+$/.test(number) || !/^\d{4}-\d{2}-\d{2}$/.test(since))
+    const list = params.get('list') === '1'
+    if (!/^\d+$/.test(customer) || (!list && !/^\d+$/.test(number)) || !/^\d{4}-\d{2}-\d{2}$/.test(since))
       return NextResponse.json(
-        { error: 'Send customer (the Visma house customer number), number (the webshop order number) and optionally since (YYYY-MM-DD)' },
+        { error: 'Send customer (the Visma house customer number), number (the webshop order number) or list=1, and optionally since (YYYY-MM-DD)' },
         { status: 400, headers: NO_STORE },
       )
 
@@ -50,6 +52,35 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Visma is not configured here' }, { status: 503, headers: NO_STORE })
 
     const gt = encodeURIComponent('>')
+
+    // Every webshop order number Visma holds for this customer since the date:
+    // one paged read of each list, so all nine shops can be checked without
+    // tripping Visma's rate limit one number at a time.
+    if (list) {
+      const so = await vismaGetPages(
+        creds,
+        `controller/api/v1/customer/${customer}/salesorderbasic?lastModifiedDateTime=${since}&lastModifiedDateTimeCondition=${gt}`,
+        { pageSize: 500, maxPages: 20 },
+      )
+      const inv = await vismaGetPages(
+        creds,
+        `controller/api/v1/customerinvoice?customer=${customer}&documentDate=${since}&documentDateCondition=${gt}`,
+        { pageSize: 500, maxPages: 20 },
+      )
+      const numbers = (list: Row[], ...fields: string[]) =>
+        [...new Set(list.flatMap((r) => fields.map((f) => str(r[f]))).filter((n) => /^\d+$/.test(n)))].sort()
+      return NextResponse.json(
+        {
+          customer,
+          since,
+          complete: so.complete && inv.complete,
+          scanned: { salesOrders: so.rows.length, invoices: inv.rows.length },
+          inSalesOrders: numbers(rows(so.rows), 'customerOrder', 'customerRefNo'),
+          inInvoices: numbers(rows(inv.rows), 'customerRefNumber', 'externalReference'),
+        },
+        { headers: NO_STORE },
+      )
+    }
     const orders = rows(
       await vismaGet(
         creds,

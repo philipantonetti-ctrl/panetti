@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/auth/current-user', () => ({ currentUser: vi.fn() }))
 vi.mock('@/lib/visma/client', () => ({ vismaCredentials: vi.fn(), vismaGet: vi.fn() }))
+vi.mock('@/lib/visma/pages', () => ({ vismaGetPages: vi.fn() }))
 
 import { currentUser } from '@/lib/auth/current-user'
 import { vismaCredentials, vismaGet } from '@/lib/visma/client'
+import { vismaGetPages } from '@/lib/visma/pages'
 import { GET } from './route'
 
 const admin = () =>
@@ -87,6 +89,54 @@ describe('GET /api/diagnostics/visma-order', () => {
     const body = await (await get('customer=10421&number=30187')).json()
     expect(body.salesOrders[0]).toMatchObject({ orderNo: '500901', customerOrder: '30187', orderTotal: 4999 })
     expect(body.found).toBe(true)
+  })
+
+  /**
+   * "Which orders of all nine shops never reached Visma?" cannot be asked one
+   * number at a time: Visma refuses after about ten quick calls. List mode
+   * reads every page of the customer's sales orders and invoices since the
+   * date once, and answers every webshop order number it holds.
+   */
+  it('in list mode answers every order number Visma holds for the customer, from every page', async () => {
+    admin()
+    vi.mocked(vismaGetPages)
+      .mockResolvedValueOnce({
+        complete: true,
+        rows: [
+          { customerOrder: '14176', customerRefNo: '14176' },
+          { customerOrder: { value: '14178' }, customerRefNo: '' },
+          { customerOrder: '', customerRefNo: '' },
+        ],
+      })
+      .mockResolvedValueOnce({
+        complete: true,
+        rows: [{ customerRefNumber: '14176', externalReference: '14176' }, { customerRefNumber: '14150', externalReference: '' }],
+      })
+
+    const res = await get('customer=10430&list=1&since=2026-09-27')
+    expect(res.status).toBe(200)
+    const [orders, invoices] = vi.mocked(vismaGetPages).mock.calls.map((c) => c[1])
+    expect(orders).toBe(
+      'controller/api/v1/customer/10430/salesorderbasic?lastModifiedDateTime=2026-09-27&lastModifiedDateTimeCondition=%3E',
+    )
+    expect(invoices).toBe('controller/api/v1/customerinvoice?customer=10430&documentDate=2026-09-27&documentDateCondition=%3E')
+    expect(await res.json()).toEqual({
+      customer: '10430',
+      since: '2026-09-27',
+      complete: true,
+      scanned: { salesOrders: 3, invoices: 2 },
+      inSalesOrders: ['14176', '14178'],
+      inInvoices: ['14150', '14176'],
+    })
+    expect(vismaGet).not.toHaveBeenCalled()
+  })
+
+  it('in list mode says incomplete when either read stopped at its page limit', async () => {
+    admin()
+    vi.mocked(vismaGetPages)
+      .mockResolvedValueOnce({ complete: false, rows: [] })
+      .mockResolvedValueOnce({ complete: true, rows: [] })
+    expect((await (await get('customer=10430&list=1')).json()).complete).toBe(false)
   })
 
   it('answers found: false, not an error, when nothing carries the number', async () => {
