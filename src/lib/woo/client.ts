@@ -390,6 +390,36 @@ export async function enableWebhook(creds: WooCredentials, id: number): Promise<
 }
 
 /**
+ * Write ONE hidden field onto an order and nothing else.
+ *
+ * The point is the side effect: any save fires the store's `order.updated`
+ * webhooks, so every receiver - the Visma connector among them - gets the
+ * order again, exactly as it would a new one. The field itself (an
+ * underscore key, which Woo keeps off every screen) is only there so the
+ * save has something to save. Status, lines, customer and notes are not in
+ * the body, so they cannot change.
+ */
+export async function stampOrder(
+  creds: WooCredentials,
+  orderId: string,
+  meta: { key: string; value: string },
+): Promise<{ status: string; modified: string | null }> {
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  const res = await fetch(
+    `${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders/${encodeURIComponent(orderId)}`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      body: JSON.stringify({ meta_data: [{ key: meta.key, value: meta.value }] }),
+    },
+  )
+  if (!res.ok) throw await wooError(res)
+  const body = await readJson<{ status?: string; date_modified_gmt?: string }>(res, 'the stamped order')
+  return { status: body.status ?? 'unknown', modified: body.date_modified_gmt ?? null }
+}
+
+/**
  * Write one note onto an order, PRIVATE to whoever administers the store.
  *
  * `customer_note: false` is the whole safety of this call and is sent
