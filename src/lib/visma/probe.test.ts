@@ -21,14 +21,14 @@ const stubVisma = (answers: Record<string, unknown>, status = 200) => {
       const u = String(url)
       if (u.includes('connect/token')) return json({ access_token: 'tok', expires_in: 3600 })
       calls.push(u)
-      const hit = Object.keys(answers).find((k) => u.includes('/api/v1/' + k))
+      const hit = Object.keys(answers).find((k) => u.includes('/v1/' + k))
       return json(hit ? answers[hit] : [], status)
     }),
   )
   return calls
 }
 
-const resource = (u: string) => u.split('/api/v1/')[1]?.split('?')[0]
+const resource = (u: string) => u.split('/v1/')[1]?.split('?')[0]
 
 const doc = (over: Record<string, unknown> = {}) => ({
   referenceNumber: '130001',

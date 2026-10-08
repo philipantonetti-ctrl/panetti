@@ -3,16 +3,25 @@
  * src/lib/bring/client.ts: a hard request ceiling and error bodies truncated so
  * a gateway's HTML page never reaches a log line.
  *
- * The host is the trap. The Developer Portal advertises
- * `https://api.finance.visma.net/erp/service`, which is the token's AUDIENCE -
- * every path under it 404s. Requests go to `https://integration.visma.net/API`.
- * Confirmed by probing unauthenticated: 404 means no route, 401 means the route
- * is there and only auth is missing.
+ * The host moved. Until September 2026 requests went to
+ * `https://integration.visma.net/API/controller/api/v1/...`; that name no
+ * longer resolves anywhere (our last successful read was 2026-09-21), and
+ * Visma's end-of-life notice names `https://api.finance.visma.net` with the
+ * `API/controller/api/` segment dropped: `/v1/customerinvoice`. Probed
+ * unauthenticated on 2026-10-08: the new shape answers 401 (route there,
+ * auth missing), the old shape under the new host 404s. Callers still write
+ * their paths the old way; `vismaPath` translates once, here.
+ * https://docs.vismasoftware.no/vismanetapi/setting-up-your-integration/end-of-life-notices/change-base-url
  */
 
 const TOKEN_URL = 'https://connect.visma.com/connect/token'
-const BASE = 'https://integration.visma.net/API'
+const BASE = 'https://api.finance.visma.net'
 const SCOPE = 'vismanet_erp_service_api:read'
+
+/** The old `controller/api/v1/x` or the new `v1/x`, as the new host wants it. */
+export function vismaPath(path: string): string {
+  return path.replace(/^\/?(?:API\/)?(?:controller\/api\/)?/, '')
+}
 
 /** No single request gets longer than this, deadline or not. */
 const REQUEST_TIMEOUT_MS = 60_000
@@ -193,7 +202,7 @@ export async function vismaGet<T>(
   // clamped to what is left when IT starts, so a slow mint leaves the GET the
   // 1ms floor rather than a fresh minute of its own.
   const token = await vismaToken(creds, Date.now(), opts)
-  const res = await fetch(`${BASE}/${path}`, {
+  const res = await fetch(`${BASE}/${vismaPath(path)}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(vismaRequestBudgetMs(opts)),
   })

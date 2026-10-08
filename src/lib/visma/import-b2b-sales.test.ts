@@ -393,7 +393,7 @@ describe('importVismaB2bSales', () => {
     await runImport()
 
     expect(asked).toHaveLength(1)
-    expect(asked[0]).toContain('controller/api/v1/customerinvoice')
+    expect(asked[0]).toContain('/v1/customerinvoice')
     expect(asked[0]).toContain(`customer=${NUMBER}`)
     expect(asked[0]).toContain('pageSize=1000')
     // The trap, named outright: `customerNumber=` is silently ignored.
