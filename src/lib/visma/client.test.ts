@@ -100,7 +100,14 @@ describe('vismaToken', () => {
 })
 
 describe('vismaGet', () => {
-  it('sends the bearer token to the integration host', async () => {
+  /**
+   * Visma retired integration.visma.net (its name no longer resolves; our
+   * last successful read was 2026-09-21) and the documented replacement is
+   * api.finance.visma.net with the `API/controller/api/` segment dropped. Every
+   * caller still names its path the old way, so the client is where the old
+   * shape is translated - once, for all of them.
+   */
+  it('sends the bearer token to api.finance.visma.net, in the new path shape', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(json({ access_token: 'tok', expires_in: 3600 }))
@@ -111,8 +118,19 @@ describe('vismaGet', () => {
     expect(rows).toEqual([{ orderNbr: '500000' }])
 
     const [url, init] = fetchMock.mock.calls[1]
-    expect(url).toBe('https://integration.visma.net/API/controller/api/v1/purchaseorder')
+    expect(url).toBe('https://api.finance.visma.net/v1/purchaseorder')
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok')
+  })
+
+  it('leaves a path already in the new shape alone', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ access_token: 'tok', expires_in: 3600 }))
+      .mockResolvedValueOnce(json([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await vismaGet(CREDS, 'v1/customer/10421/salesorderbasic?pageSize=500')
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.finance.visma.net/v1/customer/10421/salesorderbasic?pageSize=500')
   })
 
   it('truncates a gateway HTML error rather than logging the page', async () => {
