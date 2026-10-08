@@ -12,6 +12,72 @@ const rows = (v: unknown): Row[] => (Array.isArray(v) ? (v as Row[]) : [])
 const str = (v: unknown): string => String(unwrap<string | number>(v) ?? '').trim()
 const num = (v: unknown): number => Number(unwrap<string | number>(v) ?? 0)
 
+const who = (c: unknown): string => {
+  const o = (c ?? {}) as Row
+  return `${str(o.number)} ${str(o.name)}`.trim()
+}
+
+/**
+ * Search EVERY customer for some webshop order numbers. A big order can be
+ * invoiced to the buyer's own Visma customer instead of the shop's
+ * "Webkunde" one, so "not on the house customer" is not yet "not in Visma".
+ * Reads every sales order and invoice since the date and names, per number,
+ * who holds it. Called after assertAdmin.
+ */
+async function searchEveryCustomer(params: URLSearchParams, wanted: string[]) {
+  const since = params.get('since')?.trim() || defaultSince()
+  if (!wanted.every((n) => /^\d+$/.test(n)) || wanted.length > 200 || !/^\d{4}-\d{2}-\d{2}$/.test(since))
+    return NextResponse.json({ error: 'Send numbers=1,2,3 (at most 200) and optionally since (YYYY-MM-DD)' }, { status: 400, headers: NO_STORE })
+
+  const creds = vismaCredentials()
+  if (!creds) return NextResponse.json({ error: 'Visma is not configured here' }, { status: 503, headers: NO_STORE })
+
+  const gt = encodeURIComponent('>')
+  const so = await vismaGetPages(
+    creds,
+    `controller/api/v1/salesorderbasic?lastModifiedDateTime=${since}&lastModifiedDateTimeCondition=${gt}`,
+    { pageSize: 500, maxPages: 40 },
+  )
+  const inv = await vismaGetPages(
+    creds,
+    `controller/api/v1/customerinvoice?documentDate=${since}&documentDateCondition=${gt}`,
+    { pageSize: 500, maxPages: 40 },
+  )
+
+  const results = wanted.map((number) => {
+    const salesOrders = rows(so.rows)
+      .filter((o) => str(o.customerOrder) === number || str(o.customerRefNo) === number)
+      .map((o) => ({
+        orderType: str(o.orderType),
+        orderNo: str(o.orderNo),
+        status: str(o.status),
+        total: num(o.orderTotal),
+        currency: str(o.currency),
+        customer: who(o.customer),
+      }))
+    const invoices = rows(inv.rows)
+      .filter((i) => str(i.customerRefNumber) === number || str(i.externalReference) === number)
+      .map((i) => ({
+        referenceNumber: str(i.referenceNumber),
+        status: str(i.status),
+        amount: num(i.amountInCurrency),
+        currency: str(i.currencyId),
+        customer: who(i.customer),
+      }))
+    return { number, found: salesOrders.length > 0 || invoices.length > 0, salesOrders, invoices }
+  })
+
+  return NextResponse.json(
+    {
+      since,
+      complete: so.complete && inv.complete,
+      scanned: { salesOrders: so.rows.length, invoices: inv.rows.length },
+      results,
+    },
+    { headers: NO_STORE },
+  )
+}
+
 /** Yesterday's date, so a check made the morning after still sees last night. */
 function defaultSince(): string {
   const d = new Date(Date.now() - 24 * 3_600_000)
@@ -37,6 +103,8 @@ export async function GET(req: Request) {
     assertAdmin(await currentUser())
 
     const params = new URL(req.url).searchParams
+    const wanted = (params.get('numbers') ?? '').split(',').map((n) => n.trim()).filter(Boolean)
+    if (wanted.length > 0 && !params.get('customer')) return searchEveryCustomer(params, wanted)
     const customer = params.get('customer')?.trim() ?? ''
     const number = params.get('number')?.trim() ?? ''
     const since = params.get('since')?.trim() || defaultSince()

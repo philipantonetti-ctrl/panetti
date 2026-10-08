@@ -139,6 +139,45 @@ describe('GET /api/diagnostics/visma-order', () => {
     expect((await (await get('customer=10430&list=1')).json()).complete).toBe(false)
   })
 
+  /**
+   * A big webshop order can be invoiced to the buyer's own Visma customer
+   * rather than the shop's "Webkunde" one. Before an order is called "not in
+   * Visma", every customer's sales orders and invoices are searched.
+   */
+  it('with numbers= and no customer, searches every customer and names who holds each one', async () => {
+    admin()
+    vi.mocked(vismaGetPages)
+      .mockResolvedValueOnce({
+        complete: true,
+        rows: [
+          { orderType: 'SO', orderNo: '7001', status: 'Completed', customerOrder: '12044', customerRefNo: '', orderTotal: 40000, currency: 'NOK', customer: { number: '20555', name: 'Hytte AS' } },
+          { orderType: 'IO', orderNo: '7002', status: 'Open', customerOrder: '99999', customerRefNo: '', orderTotal: 1, currency: 'NOK', customer: { number: '10421', name: 'Panetti Norge - Webkunde' } },
+        ],
+      })
+      .mockResolvedValueOnce({
+        complete: true,
+        rows: [
+          { referenceNumber: '131500', status: 'Closed', customerRefNumber: '', externalReference: '12045', amountInCurrency: 44999, currencyId: 'NOK', customer: { number: '20556', name: 'Ola Nordmann' } },
+        ],
+      })
+
+    const res = await get('numbers=12044,12045,12046&since=2026-09-27')
+    expect(res.status).toBe(200)
+    const [orders, invoices] = vi.mocked(vismaGetPages).mock.calls.map((c) => c[1])
+    expect(orders).toBe('controller/api/v1/salesorderbasic?lastModifiedDateTime=2026-09-27&lastModifiedDateTimeCondition=%3E')
+    expect(invoices).toBe('controller/api/v1/customerinvoice?documentDate=2026-09-27&documentDateCondition=%3E')
+    expect(await res.json()).toEqual({
+      since: '2026-09-27',
+      complete: true,
+      scanned: { salesOrders: 2, invoices: 1 },
+      results: [
+        { number: '12044', found: true, salesOrders: [{ orderType: 'SO', orderNo: '7001', status: 'Completed', total: 40000, currency: 'NOK', customer: '20555 Hytte AS' }], invoices: [] },
+        { number: '12045', found: true, salesOrders: [], invoices: [{ referenceNumber: '131500', status: 'Closed', amount: 44999, currency: 'NOK', customer: '20556 Ola Nordmann' }] },
+        { number: '12046', found: false, salesOrders: [], invoices: [] },
+      ],
+    })
+  })
+
   it('answers found: false, not an error, when nothing carries the number', async () => {
     admin()
     vi.mocked(vismaGet).mockResolvedValueOnce([]).mockResolvedValueOnce([])
