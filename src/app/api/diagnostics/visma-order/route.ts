@@ -107,8 +107,11 @@ export async function GET(req: Request) {
     if (e instanceof AuthError)
       return NextResponse.json({ error: e.message }, { status: 403, headers: NO_STORE })
     console.error(e)
+    // A network failure says only "fetch failed"; the reason (DNS, TLS, a
+    // reset) sits in `cause`, and without it this answer is a dead end.
+    const cause = e instanceof Error && e.cause instanceof Error ? ` (${e.cause.message})` : ''
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Could not read Visma' },
+      { error: e instanceof Error ? `${e.message}${cause}` : 'Could not read Visma' },
       { status: 500, headers: NO_STORE },
     )
   }
