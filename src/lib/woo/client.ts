@@ -389,6 +389,28 @@ export async function enableWebhook(creds: WooCredentials, id: number): Promise<
   if (!res.ok) throw await wooError(res)
 }
 
+/** One order exactly as the store returns it, for diagnostics. Read only. */
+export async function fetchOrderRaw(creds: WooCredentials, orderId: string): Promise<Record<string, unknown>> {
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  const res = await fetch(`${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders/${encodeURIComponent(orderId)}`, {
+    headers: { Authorization: `Basic ${auth}` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  if (!res.ok) throw await wooError(res)
+  return readJson<Record<string, unknown>>(res, 'the order')
+}
+
+/** Every note on one order, private and customer-facing. Read only. */
+export async function fetchOrderNotes(creds: WooCredentials, orderId: string): Promise<Record<string, unknown>[]> {
+  const auth = Buffer.from(`${creds.key}:${creds.secret}`).toString('base64')
+  const res = await fetch(
+    `${creds.url.replace(/\/$/, '')}/wp-json/wc/v3/orders/${encodeURIComponent(orderId)}/notes?type=any`,
+    { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
+  )
+  if (!res.ok) throw await wooError(res)
+  return readJson<Record<string, unknown>[]>(res, 'the order notes')
+}
+
 /**
  * Write ONE hidden field onto an order and nothing else.
  *
