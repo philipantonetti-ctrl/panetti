@@ -1,391 +1,348 @@
 # Posting Dintero payouts to Visma
 
-2026-09-03. Design only. Nothing here is built, and nothing in this
-document writes to Visma. The accountant confirms the accounts and the
-choices marked **DECISION** before any posting code is switched on.
+**Revised 2026-10-15** to follow the bookkeeper's drawing (Abacus, sent by
+Philip with Panetti DE as the example). It replaces the 2026-09-03 version,
+which is in git history. Design only: nothing here is built, and nothing
+writes to the real Visma company. Every write goes to the test company first,
+and the accountant sees it work there before the real books are touched.
 
-Every API fact below comes from the Visma.net ERP API's own OpenAPI
-document (`https://integration.visma.net/API-index/doc/swagger`, 395 paths,
-downloaded 2026-09-03). Every number about our side is from the production
-database, read-only. Every fact about Philip's Visma company was read from
-the live company on 2026-09-03 through a read-only probe that runs inside
-the scheduled sync (`src/lib/visma/probe.ts`, PR #118) - the only place the
-Visma credentials exist - and stored in `DiagnosticSnapshot`. Nothing below
-is inferred from documentation alone.
+Facts are marked by source: **[code]** read from this repo on 2026-10-15,
+**[live]** read from Philip's Visma company by the read-only probe,
+**[portal]** seen in the Visma Developer Portal / App Store on 2026-10-15,
+**[Abacus]** from the drawing or the bookkeeper's replies. Anything not yet
+proven is marked **VERIFY IN TEST** and is the first thing the test company
+is used for.
 
-## What the client asked for
+## What Abacus asked for
 
-For each Dintero payout: settle the individual webshop orders in Visma,
-register the Dintero fee, handle refunds, reconcile the net amount against
-the bank, carry the Dintero bank reference for the audit trail. Never post a
-payout that is not fully matched. Store the Visma document id on the payout,
-show Ready / Posted / Error, and make a double post impossible.
+The drawing has two independent jobs that both read the same Dintero
+settlement (payout), and one control account that ties them together.
+
+```
+                 Dintero settlement (one payout to the bank)
+                 /                                     \
+  Branch A: CompleteInvoiceFromDintero     Branch B: CreateCashTransactionFromDintero
+  for each order line in the report:       once per payout:
+    event_reference = the order number       read Capture, Amount (net) and Fee
+    find the OPEN customer invoice of        one bank transaction (batch):
+      the shop's webshop customer whose        Debit  bank      = Amount
+      Customer order no. = event_reference     Debit  7770 fees = Fee
+    found -> customer payment                  Credit Dintero   = Capture
+      cash account = Dintero clearing
+      payment method 5
+      amount = capture, at most the invoice
+      -> invoice closed
+    not found -> no action
+
+  Dintero clearing account (1509 for EUR): Branch A debits it, Branch B
+  credits it. It nets to 0 when both have run and every order matched.
+```
+
+Their replies (relayed by Philip, 2026-10-15) **[Abacus]**:
+
+- Nothing runs today. There is no Dintero to Visma integration yet; this is
+  what we build.
+- The old bank rule that posted the bank line is set inactive, so Branch B's
+  bank line is not booked twice.
+- Post the invoices that match. Do not wait for the whole payout to match.
+  Abacus follows up whatever does not match. (This replaces the earlier
+  "never post a payout that is 128 of 129".)
+
+Still valid from the 29 Sept answers **[Abacus]**: one payment per invoice,
+`paymentRef` = the Dintero reference, payment date = the bank date, credit
+notes stay the accountant's job, chargebacks stay manual, start with payouts
+landing from 1 Oct 2026, test company first. Superseded: "fees not booked"
+and "transfer not booked" (Branch B now books both).
+
+Philip's own asks that still apply: store the Visma document numbers on the
+payout, show Ready / Posted / Error, and make posting the same payout twice
+impossible. Match Dintero lines straight to Visma invoices by order number,
+never through Panetti's order table.
+
+## Open questions (sent to Abacus, waiting)
+
+1. **Refunds.** The drawing has no refund step, and its Branch B only
+   balances when a payout has no refund (see "Branch B", below). Proposed:
+   Branch B credits the clearing account with Amount + Fee, and a refund line
+   becomes a Refund document that applies the credit note with the same order
+   number from the clearing account; no credit note, no action, Abacus
+   follows up.
+2. **Accounts and customers per shop.** Only Panetti DE is confirmed (1509,
+   1940, 7770, customer 10859). Our guess from the live company: DKK 1512 +
+   bank 1960, SEK 1513 + bank 1970, NOK 1514 + bank 1920, fees 7770 for all.
+   Mazzetti Denmark's customer number is unknown.
+3. **Payment date (not asked yet).** On 29 Sept Abacus asked for the bank
+   date. We only have Dintero's settlement date (`settledAt`); the bank may
+   book the money a day or two later. Proposed: use `settledAt`, and Abacus
+   says whether that is acceptable.
+
+Until they answer, only Panetti DE is configured and refund lines are left
+alone. Nothing else in this design depends on the answers.
 
 ## What is already true
 
-### On our side (production, 2026-09-03)
+### Our side **[code]**
 
-| | |
+- `Payout` mirrors one Dintero settlement: `currency`, `capture`, `refund`,
+  `fee`, `amount` (minor units, `capture + refund - fee = amount`, refund
+  stored negative), `reference` (the bank transfer reference, e.g.
+  `R17882-6311A9`), `settledAt`, `linesPending`, `reportVersion`.
+- `PayoutLine` is one row of the settlement report: `capture`, `refund`,
+  `fee`, `amount`, and `reference2`, which since report version 3 is read
+  from the row's **`event_reference`** (falling back to
+  `merchant_reference_2`). That is exactly the drawing's key. Branch A uses
+  `reference2` directly and ignores `orderId`.
+- Measured 2026-09-30 (read-only, production): `reference2` is numeric on
+  97.9% of lines since 1 Aug. The gap is mostly Panetti Sweden Swish
+  captures, whose report rows carry no order number; those become "no match"
+  and Abacus follows them up.
+- `Payout.settledAt` is Dintero's `settled_at`, not the day the bank booked
+  the money. We have no bank feed, so the bank date is not available to us.
+- The Visma client asks `connect.visma.com` for a client-credentials token
+  with `scope=vismanet_erp_service_api:read` and `tenant_id` from
+  `VISMA_TENANT_ID`; the API host is `https://api.finance.visma.net`. No code
+  writes to Visma today.
+
+### Philip's real company **[live, 2026-09-03 and 2026-09-30]**
+
+- Cash accounts: Dintero clearing 1509 EUR, 1512 DKK, 1513 SEK, 1514 NOK;
+  banks 1920 NOK, 1940 EUR, 1960 DKK, 1970 SEK. Payment method 5 Netthandel
+  on every webshop document.
+- Webshop customers: Panetti Norge 10421, Mazzetti Norge 10423, Panetti
+  Sweden 10430, Panetti Denmark 10478, Panetti Finland 10504, Panetti
+  Deutschland 10859, Mazzetti Finland 10892, Mazzetti Sweden 10706.
+- The connector makes one invoice per webshop order. The invoice's
+  `customerRefNumber` (shown as "Customer order no.") holds the webshop order
+  number. The direct join `event_reference = customerRefNumber` was 82 of 82
+  on Panetti Denmark's non-zero invoices, amounts equal to the øre.
+- Order numbers repeat across shops (2,370 shared values), so the search is
+  always scoped to the shop's own webshop customer.
+
+### The test company **[portal, 2026-10-15]**
+
+- "Test LEDENDE TEKNOLOGI AS", tenant `08058ec7-a375-11ec-b60b-0638767d04b5`,
+  opened in the browser at `demo.finance.visma.net`. Our app is connected
+  with **read + create**. The real company, tenant
+  `83949a19-af32-11ec-b60b-0638767d04b5`, is still **read only**, so Visma
+  itself refuses any write there.
+- The app's `update` permission is deactivated. Releasing a document needs
+  it, so until it is switched on every document we create stays **on hold**.
+- The test company is a nearly empty standard company: 3 customers (10000,
+  10001, 10002) and cash accounts 1520, 1900, 1910, 1920, 1930, 1940 EUR,
+  1950, 2420. No webshop customer, no Dintero clearing account. It has to be
+  filled before anything can be tested (see "Test plan").
+
+## Branch A: settle each invoice
+
+Run per payout, once it is Ready (see below).
+
+1. Take the payout's lines with a capture. Group them by `reference2`, since
+   one order can be captured in more than one line; the group's capture is
+   the sum. Lines with no `reference2` are "no match".
+2. Read the shop's webshop customer's open invoices from Visma, paged. The
+   receivables import already reads `customerdocument?status=Open` live
+   **[code]**, and `customerinvoice` filtered by customer and document date
+   is proven **[live]**. Match in our code all the same: status open,
+   customer, `customerRefNumber` equal to `reference2`, same currency as the
+   payout. Filtering on `customerRefNumber` in the request has never been
+   proven, and an unknown filter answers 200 with the wrong rows, so it is
+   not relied on. Which of the two reads carries `customerRefNumber` and the
+   open balance is **VERIFY IN TEST**.
+3. For each order:
+   - exactly one open invoice: create a customer payment (below);
+   - none open (not invoiced yet, already paid, or a different customer):
+     no action, recorded as "no open invoice";
+   - more than one open invoice with that number: no action, recorded as
+     "two invoices for order N". Paying the wrong one is worse than paying
+     none.
+4. The payment, one per invoice **[Abacus]**:
+
+| field | value |
 |---|---|
-| payouts mirrored | 641, across 9 shops, all settled |
-| fully matched | 584 |
-| partially matched | 57 (these wait; never posted) |
-| lines | 17 942, 17 866 matched |
-| currencies | NOK (Panetti + Mazzetti Norway), SEK (both Sweden), DKK (both Denmark), EUR (Finland x2, Germany) |
-| bank reference shape | `R17882-6311A9` - a weekly run id and a suffix, one per shop per week |
+| `type` | `Payment` |
+| `customer` | the shop's webshop customer (10859 for Panetti DE) |
+| `cashAccount` | the currency's Dintero clearing account (1509 for EUR) |
+| `paymentMethod` | `5` |
+| `paymentRef` | the Dintero reference, `Payout.reference` |
+| `applicationDate` | `Payout.settledAt` (open question 3) |
+| `paymentAmount` | the order's capture, **at most** the invoice's open balance |
+| `paymentLines` | one line: document type `Invoice`, the invoice number, the same amount |
+| `invoiceText` | `Dintero <reference> order <number>` (50 characters max) |
+| `hold` | `true` (until `update` is granted, then released) |
 
-The example from the request is real: Panetti Denmark, settled 2026-09-01,
-period 21-27 Aug, reference `R17882-6311A9`, capture DKK 73 147.00, fee
-DKK 525.28, net DKK 72 621.72, 23 of 23 orders matched. Its 23 lines are
-MobilePay and card payments with a fee on every line.
+When the capture is lower than the invoice (a discount Dintero saw and Visma
+did not), the invoice stays partly open and Abacus sees it. When the capture
+is higher, the invoice is paid in full and the difference stays on the
+clearing account. Both are visible, neither is guessed at.
 
-Three measured facts shape the accounting:
+## Branch B: book the payout
 
-1. **Refunds are mostly partial.** 653 lines carry a refund. 486 are pure
-   refund lines (no capture); of those, 263 belong to orders that are now
-   refunded or cancelled, and 221 to orders still `completed` - a partial
-   refund such as NOK 749.50 back on a NOK 1 499 order. 167 lines carry a
-   capture and a refund of the same order in the same week.
-2. **28 payouts do not satisfy `capture + refund - fee = net`.** The lines
-   still sum to the net on all but one of them, so the difference lives in
-   per-line fields we do not store yet - the report row carries `chargeback`
-   and `vat` beside `capture`, `refund` and `fee`. The residuals are whole
-   order amounts (NOK 5 999.00, SEK 4 999.00, ...), which is what a lost
-   chargeback looks like. These payouts must never post as if they balanced.
-3. **The lines balance to the header** on 640 of 641 payouts (the exception
-   is a 2025-09-16 Mazzetti Norway payout whose report holds 3 lines against a
-   larger net - an old partial report). That is the check the gate uses.
+Once per payout, independent of how many orders matched.
 
-### In Philip's Visma company (read live, 2026-09-03)
-
-**The company.** One branch (`1`, Ledende Teknologi AS), one actual ledger
-(`1`, NOK). 32 cash accounts, of which these matter:
-
-| cash account | currency | what it is |
+| line | account | amount |
 |---|---|---|
-| 1509 Dintero - EUR | EUR | Dintero clearing |
-| 1512 Dintero - DKK | DKK | Dintero clearing |
-| 1513 Dintero - SEK | SEK | Dintero clearing |
-| 1514 Dintero NOK | NOK | Dintero clearing |
-| 1920 Bank 1506.51.15155 | NOK | main bank |
-| 1940 Bank EURO 1251.05.96798 | EUR | bank |
-| 1960 Bank - DKK 1251.06.32328 | DKK | bank |
-| 1970 Bank - SEK 1251.05.96828 | SEK | bank |
+| debit | the currency's bank account (1940 for EUR) | `amount` (the net payout) |
+| debit | 7770 Dintero fees | `fee` |
+| credit | the currency's Dintero clearing account (1509 for EUR) | `amount + fee` |
 
-Payment method `5 Netthandel` is on every webshop document. The bank
-accounts carry entry types `Gebyr` (Bankgebyr) and `3 Bankkostnader`; the
-Dintero accounts carry only `1 Utbetaling` and `2 Innbetaling`.
+`amount + fee` is the drawing's "Capture" whenever the payout has no refund,
+so for those payouts this is the drawing to the cent. It also always
+balances: with a refund, `amount + fee = capture - refund`, which is what
+actually left the clearing account. This is open question 1.
 
-**The webshop customers.** One house account per shop: Panetti Norge 10421,
-Mazzetti Norge 10423, Panetti Sweden 10430, Panetti Denmark 10478, Panetti
-Finland 10504, Panetti Deutschland 10859, Mazzetti Finland 10892, Mazzetti
-Sweden 10706. Mazzetti Denmark has not appeared in any read yet.
+Date `Payout.settledAt`, description and reference `Dintero <reference>`.
 
-**The invoices.** The webshop connector makes a sales order, a shipment and
-an invoice per order. The invoice's **`customerRefNumber` and
-`externalReference` both hold the webshop order number** (`14238`), its text
-reads `Panetti.dk - Weborder`, its cash account is the currency's Dintero
-clearing account. 85 Panetti Denmark invoices since 15 Aug against 85
-Panetti Denmark orders in our database for the same window, amounts equal to
-the øre (order 14238 = invoice 130474 = DKK 2 999.00). The join the whole
-feature stands on is therefore `customerRefNumber` = `Order.number`, scoped
-to the shop's house customer, and the API filters on it directly.
+Which Visma document this is: the drawing says "bank transaction (batch)".
+The candidates in the API are a journal transaction (`/v2/journaltransaction`,
+three lines, one balanced entry) and a cash transaction on the bank account
+(`/v1/cashTransaction`). The journal transaction is the first choice because it
+holds all three lines in one document. Whether Visma accepts journal lines
+directly on cash accounts 1940/1509, and in EUR on a NOK ledger, is
+**VERIFY IN TEST**. If it refuses, we ask Abacus which document they meant
+rather than invent one.
 
-**How settlement is done today - by hand, in batches.** A closed webshop
-invoice carries exactly one application: a customer payment for the full
-amount, dated the invoice date, `paymentRef` = the invoice number, payment
-method 5, cash account = the Dintero clearing account. All 97 Panetti
-Denmark payments dated 2 Jan to 6 Feb 2026 were last modified on
-**2026-02-22** - one sitting. On 3 Sep every webshop invoice from 26 Aug on
-was still open (37 Denmark, 133 Panetti Norge, 16 Sweden, 7 Finland, 3
-Germany, 2 Mazzetti Norge, 1 Mazzetti Finland: 199 invoices) because nobody
-had sat down yet. Of the example payout's 23 orders, 17 are paid this way
-and 6 (orders 14379 to 14420, invoiced 26-27 Aug) are still open. This
-batch of one-payment-per-invoice is the manual matching the client wants
-gone.
+A payout whose header does not add up (`capture + refund - fee` differs from
+`amount`, which is what a chargeback looks like: 28 of 641 payouts on
+2026-09-03) still posts Branch B with `amount + fee`. The difference stays
+on the clearing account, where Abacus sees it.
 
-**How refunds are done today.** A credit note exists per refund - some from
-the connector (`Refund and return of stock for Invoice 128868`,
-`Cancellation of Invoice 129390 with return to stock.`), some typed
-(`Panetti.dk - Webrefund of order #12006`, created 27 Aug for a refund
-Dintero paid on 16 Jun). The accountant then creates a **Refund** document
-(type `Refund`, payment method 5, cash account 1514, `paymentRef` = the
-credit note number, one `CreditNote` line) which takes the money out of the
-clearing account; the two Mazzetti Norge ones were made on 26 Aug. The two
-Denmark credit notes were still open on 3 Sep, no Refund yet.
+## Worked example
 
-**Fees** do not appear in the customer ledger at all. The one trace of
-reconciliation is a Denmark credit note of DKK 15 636 dated 28 Feb, text
-`Avstemt januar og februar - panetti.dk` - a plug whose composition cannot
-be seen (Denmark's Dintero fees for those two months were DKK 3 043.67).
+Panetti Denmark, settled 2026-09-01, reference `R17882-6311A9`, capture
+DKK 73 147.00, fee DKK 525.28, net DKK 72 621.72, no refund, 23 orders.
+Accounts are the unconfirmed DKK guess (open question 2).
 
-**What this means.** Visma already has an object for every piece of the
-payout: the invoice per order, the credit note per refund, the clearing
-account per currency, the bank account per currency. What is missing is
-the work of tying them together per payout, and it is done late, by hand,
-without the Dintero reference. The design below does that work, per payout,
-in the same documents the accountant uses today, so nothing about the
-company's books changes shape.
+- Branch A: one payment per order whose invoice is still open, into 1512,
+  method 5, payment ref `R17882-6311A9`. Orders already paid by hand are not
+  open, so they get no action.
+- Branch B: debit 1960 72 621.72, debit 7770 525.28, credit 1512 73 147.00.
+- Clearing account 1512 for this payout: Branch A (+ any earlier hand
+  payments) debits 73 147.00, Branch B credits 73 147.00, net 0.
 
-## What the Visma API offers (from the OpenAPI document)
+## When a payout is Ready
 
-`POST /controller/api/v1/customerPayment` - body `PaymentUpdateDto`, every
-scalar wrapped as `{ "value": … }`:
+All of these, otherwise the payout shows the first one that fails:
 
-| field | meaning |
-|---|---|
-| `type` | `Payment` for money in, `Refund` for money out |
-| `customer` | the shop's house customer number |
-| `applicationDate` | the accounting date |
-| `paymentRef` | mandatory on the screen ("Payment ref.*") - the audit-trail field |
-| `paymentMethod`, `cashAccount` | `5` and the currency's Dintero clearing account, as today |
-| `currency`, `paymentAmount` | the document currency and amount |
-| `invoiceText` | free text, 50 characters |
-| `paymentLines[]` | `documentType` `Invoice` or `CreditNote`, `refNbr`, `amountPaid` |
-| `financeCharges[]` | charges deducted by the payment provider (`entryType`, `offsetAccount`, `amount`) - unused in the recommended variant |
-| `hold` | `true` creates a draft the accountant can inspect before release |
+1. `settledAt` is set and on or after the start date (1 Oct 2026).
+2. The report is stored: `linesPending` is false and `reportVersion` is
+   current.
+3. The shop has a Visma mapping: webshop customer, clearing account, bank
+   account, fee account. Only Panetti DE has one until Abacus confirms the
+   rest.
+4. No posting exists for it yet. A posting left in `posting` or `error` is
+   resumed by the next run (see "Never twice"), never started again.
 
-Then `POST /customerPayment/{n}/action/release` posts it and
-`POST …/action/void` reverses one. `GET /customerPayment` filters by
-`customer`, `docDate` + `docDateCondition`, `status`, `invoiceRefNbr`.
-`GET /customerinvoice` and `GET /customerCreditNote` filter by `customer`,
-`documentDate` + `documentDateCondition`, `status`, `customerRefNumber`,
-`externalReference`; `expandApplications=true` returns what is applied.
-All of these were exercised live and returned the rows they claim to.
+Unmatched orders do **not** stop a payout. They are recorded and shown, and
+Abacus follows them up.
 
-`POST /v1/cashTransaction` (+ release) books a receipt or disbursement on a
-cash account against an offset account; `POST /v2/journaltransaction`
-(+ release) is the general entry. There is no cash-transfer endpoint and
-no bank-statement endpoint; the bank match stays in Visma's bank import,
-and this design makes that match trivial.
+## Never twice
 
-## The proposal
+- One `VismaPosting` row per payout (unique `payoutId`), status
+  `ready` → `posting` → `posted` or `error`.
+- One `VismaPostingDocument` row per document, unique on
+  `(payoutId, kind, key)`, where kind is `payment` (key = order number) or
+  `payout` (key = the payout). The row is written **before** the POST with
+  status `sending`, and gets the Visma document number from the response
+  afterwards.
+- A row left in `sending` (a crash between the POST and our write) is never
+  re-sent blind. The next run reads Visma first: for a payment, is the
+  invoice still open; for the payout entry, does a document with our
+  description exist. Only when Visma shows nothing is it sent again.
+- On top of that, Visma itself will not take a write to the real company:
+  it is connected read only.
 
-Mirror the accountant's documents, one payout at a time, the day the money
-lands, with the Dintero reference on every one of them.
+## What Philip sees in Panetti
 
-For the example payout Visma receives:
+`/finance/payouts` gets a Visma column per payout:
 
-```
-1. One customer payment PER ORDER not yet paid (6 of 23 today; 0 once caught up)
-     type Payment, customer 10478, method 5, cash account 1512 Dintero - DKK
-     date        invoice date            (as today)          DECISION: or 2026-09-01, the bank date
-     payment ref R17882-6311A9           (the Dintero reference)   DECISION: or the invoice number, as today
-     text        Dintero R17882-6311A9 order 14379
-     line        Invoice 130677  3 777.00
+- `Waiting: before 1 Oct` / `Waiting: report pending` / `Waiting: no Visma setup for this shop`
+- `Ready`
+- `Posted: 21 of 23 orders settled, 2 left for Abacus` (click for the
+  Visma document numbers and the reason per unmatched order)
+- `Error: <Visma's message>`
 
-2. One Refund PER REFUND LINE, applying the credit note
-     type Refund, customer, method 5, cash account 1512
-     payment ref R17882-6311A9, text Dintero R17882-6311A9 refund order 12006
-     line        CreditNote 130722  399.00
-   (none in the example payout)
+This is Philip's view, not the accountant's tool: Abacus works only in Visma,
+where every document carries the Dintero reference.
 
-3. The fee, once per payout
-     cash transaction on 1512, disbursement, entry type <Dintero fee>      DECISION: entry type + account
-     amount 525.28, description Dintero fee R17882-6311A9
+## Safety switches
 
-4. The transfer to the bank, once per payout
-     Dr 1960 Bank - DKK  72 621.72  /  Cr 1512 Dintero - DKK  72 621.72
-     date 2026-09-01, description Dintero R17882-6311A9
-     (a cash transaction on 1960 with offset 1512, or a journal transaction)  DECISION
-```
+- Writes use their own tenant setting, `VISMA_WRITE_TENANT_ID`, set to the
+  test tenant. The code refuses to write when it equals the real tenant
+  `83949a19-...` unless a second, explicit setting names the real tenant
+  too. Moving to the real books is two deliberate steps, never one.
+- The write token asks for exactly `read create` (plus `update` once it is
+  switched on). Asking for a scope the company has not accepted fails the
+  whole token request, so the read token used by the live site is never
+  touched.
+- Off by default: an admin switch turns posting on; until then the job only
+  computes what it would send and shows it.
 
-After the four steps the clearing account's movements for the payout net to
-zero: + 73 147.00 in (1) - 0 in (2) - 525.28 in (3) - 72 621.72 in (4). The
-bank statement line of DKK 72 621.72 on 1 Sep matches document (4) by
-amount, date and reference.
-
-**Orders already paid by the accountant** (the 17) are adopted, not paid
-twice: the invoice's application is read live, and a closed invoice whose
-single application equals the captured amount counts as settled. The
-stored record notes the existing payment number.
-
-**A refund whose credit note does not exist** holds the payout with the
-reason `credit note missing for order 27606`, and the accountant creates it
-as today. Creating credit notes from our side (`POST /v2/customerCreditNote`,
-which needs an account and VAT code) is possible but is a **DECISION** for
-later; the safe first version waits.
-
-**A chargeback** (the 28 payouts above) is a held payout with the residual
-shown - "DKK 5 999.00 not explained by capture, refund or fee" - and is
-booked by hand, because a chargeback is a dispute and belongs to a person.
-
-### The single-document alternative
-
-The API can carry a whole payout in one customer payment: all invoices as
-lines, the fee as a deducted charge (`financeCharges`), the payment amount
-= the net, cash account = the bank account directly. One document, no
-clearing account. It is fewer documents but it changes the shape of the
-books the accountant has kept for two years (the per-invoice payments and
-the clearing accounts), so it is offered, not recommended. **DECISION.**
-
-### What "Ready" means
-
-A payout is Ready only when every one of these holds; otherwise it shows the
-first failing rule as its reason and is never posted:
-
-1. Every line is matched to an order (`128 of 129` waits, as asked).
-2. `settledAt` is set and is on or after the **start date** the accountant
-   chooses. Older payouts show "before Visma start" and stay manual.
-3. The lines sum to the header: `sum(line.amount) = payout.amount`, and each
-   line's `capture + refund - fee` equals its net - no chargeback, no
-   unexplained residual.
-4. At posting time, live against Visma: each order resolves to exactly one
-   invoice for the shop's house customer with `customerRefNumber` equal to
-   the order number, in the payout currency, amount equal to the captured
-   amount, and either open or already paid in full by one application; each
-   refund resolves to a credit note of at least that balance. Anything else
-   (two candidates, none, a different amount, a partial application) holds
-   the payout with that sentence.
-5. No `VismaPosting` row for this payout is Posted or Posting.
-
-### Double posting cannot happen
-
-- `VismaPosting` has a unique `payoutId`. Status moves Ready → Posting →
-  Posted, or → Held / Error with a reason. Posting carries a timestamp so a
-  crashed run is noticed and retried, never run twice at once.
-- Every document we create carries the Dintero reference in `paymentRef` or
-  the description. Before creating, the poster reads the customer's payments
-  on that date and the invoice's applications; a document already carrying
-  our reference, or an invoice already paid, is adopted - this covers a
-  crash between a `POST` and our own write.
-- The Visma reference numbers (from the `Location` header of each 201)
-  are stored on the row with the request sent and the document as Visma
-  returned it.
-
-### Posting sequence, per payout
-
-1. Build the documents from the stored lines (pure function, unit tested).
-2. Live checks (rule 4). Any failure → Held, nothing written.
-3. Create each document with `hold: true`, in the order above.
-4. Read each back; verify amounts and applications equal what was sent.
-   Any difference → Error, and the drafts are voided.
-5. Release. Store Posted with the Visma numbers and time.
-6. On the first payouts the release is left to the accountant: the drafts
-   sit on hold in Visma where they can be opened and released by hand.
-   Automatic release is switched on in settings once they are satisfied.
-
-Paced like the read imports (the same rate limit applies): a payout with
-23 orders is at most 23 + refunds + 2 creates plus the reads, so one payout
-per cron tick, never more, and the reads are cached per tick.
-
-### What the pages show
-
-`/finance/payouts` gains a **Visma** column: `Ready` · `Waiting: 1 order
-unmatched` · `Held: chargeback DKK 5 999.00` · `Held: credit note missing
-for #27606` · `Before Visma start` · `Posted` (with the document numbers in
-the row's detail) · `Error: <Visma's message>`. A Ready row has a **Post to
-Visma** button (admin only). An "Auto-post ready payouts" switch lives in
-`/settings/payouts` and is off until the accountant says otherwise.
-
-`/settings/payouts` gains a Visma posting card: start date; per shop the
-house customer number and clearing cash account (pre-filled from the live
-lists above); the fee entry type and account; the transfer method; the
-dry-run / hold / auto-release switches; and a **Test** button that runs the
-live checks for the newest Ready payout and shows the documents it would
-send without sending them.
-
-### Data model
+## Data model (new)
 
 ```
 model VismaPosting {
-  id            String   @id @default(cuid())
-  payoutId      String   @unique
-  status        String   // ready | held | posting | posted | error
-  reason        String?
-  documents     Json?    // [{kind, vismaRefNbr, amount, adopted}]
-  request       Json?
-  response      Json?
-  postedAt      DateTime?
-  releasedAt    DateTime?
-  attempts      Int      @default(0)
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(cuid())
+  payoutId  String   @unique
+  tenantId  String          // which Visma company it was written to
+  status    String          // ready | posting | posted | error
+  matched   Int      @default(0)
+  unmatched Int      @default(0)
+  error     String?
+  postedAt  DateTime?
+  updatedAt DateTime @updatedAt
+  documents VismaPostingDocument[]
 }
 
-model VismaPostingConfig {          // singleton, like DeliveryConfig
-  startDate         DateTime?
-  feeEntryType      String?
-  feeAccount        String?
-  transferMethod    String   @default("cash")   // cash | journal
-  paymentRefStyle   String   @default("dintero") // dintero | invoice
-  autoPost          Boolean  @default(false)
-  autoRelease       Boolean  @default(false)
+model VismaPostingDocument {
+  id          String  @id @default(cuid())
+  postingId   String
+  kind        String          // payment | payout
+  key         String          // order number, or the payout id
+  status      String          // sending | sent | skipped | error
+  reason      String?         // "no open invoice", "two invoices for order N", Visma's error
+  vismaNumber String?         // from the Location header of the 201
+  amount      Int?
+  @@unique([postingId, kind, key])
 }
 
-// per shop (on DinteroConfig): vismaCustomerNumber, vismaCashAccount,
-// vismaBankAccount
-// on PayoutLine: chargeback Int, vat Int (report fields, REPORT_VERSION 4)
+// per shop, on DinteroConfig: vismaCustomer, vismaClearingAccount,
+// vismaBankAccount, vismaFeeAccount (all nullable; null = not set up)
 ```
 
-### Credentials and scope
+## Test plan
 
-Every write needs the app to hold `vismanet_erp_service_api:create` (POST)
-and `update` (the release and void actions). Both were added to the app
-`isv_panetti_inventory_forecast` in the Visma Developer Portal on
-2026-09-03 and show **Approved** there. That is not enough: production
-asked the token endpoint for both write scopes at 15:16Z the same day and
-Visma answered `invalid_scope` (HTTP 400), and the Customers tab lists
-Ledende Teknologi AS with 1 scope. The company itself has to accept the new
-scopes (App Store as Integration Administrator, or the tenant row in the
-Customers tab). The probe's last step (PRs #119, #120) asks again every
-tick and stores granted / status / error, never the token, so the moment
-the company accepts is recorded without anyone watching. The posting client then asks
-for read, create and update together. Until the answer is "granted" the
-poster reports "Visma has not granted write access" and does nothing. The credentials themselves stay where they are: in the
-production environment only, which is why the live checks above were made
-by the cron and not from a laptop.
+In order. Nothing goes further until the step before it is shown to work.
 
-## Testing
+1. **Connection.** One read through the test tenant: list the test company's
+   customers and expect 10000, 10001, 10002. This also proves which API host
+   serves the test company (`api.finance.visma.net` is assumed,
+   **VERIFY IN TEST**). It runs through the scheduled probe, because the
+   Visma secret only exists in production.
+2. **Fill the test company** to mirror Panetti DE: the GL accounts and cash
+   account 1509 (EUR, payment method 5), 7770 if missing, webshop customer
+   10859, and a handful of open invoices whose Customer order no. equals the
+   `event_reference` of a real Panetti DE payout's lines. Through the API
+   where it allows creation, otherwise by hand in the test company with a
+   guided click list.
+3. **Dry run** against that real payout: the job computes every document it
+   would send and shows it. Nothing is written.
+4. **Write on hold** into the test company. Philip and Abacus open the
+   documents in Visma and check them against the drawing.
+5. **Release in test** once `update` is switched on for the app (test company
+   only), and check that the clearing account nets to 0 for the payout.
+6. Only then, and only with Abacus's sign-off: the real company accepts
+   `create` (and `update`), the second safety setting is set, and the first
+   real payouts post on hold for Abacus to release.
 
-- **Pure builder**: payout → documents, red-first. Cases: the DKK example
-  reproduces to the øre with 6 payments and 17 adoptions; a refund line
-  becomes a Refund applying the credit note; a mixed capture+refund line
-  becomes a payment and a refund; a chargeback residual holds; an unmatched
-  line holds; a payout before the start date is skipped; lines that do not
-  sum to the header hold.
-- **Client**: request shape (`{value}` wrapping, `operation: Insert`),
-  `Location` header parsing, ETag/412 handling, 429 backoff, the
-  "adopt an existing document by reference" path, never logging a token.
-- **Route tests** mock `@/lib/visma/*` exactly as the cron test does today.
-- **Live, in order**: (1) the dry run in production through the cron, the
-  way the probe already works - resolves every invoice for the newest Ready
-  payouts, stores the documents it would send, sends nothing; (2) a test
-  company if Philip's Visma has one; (3) the first production post on hold,
-  inspected and released by the accountant; (4) three more the same way;
-  (5) auto-release.
-
-## Live checks: answered
-
-| question | answer (2026-09-03) |
-|---|---|
-| which invoice field carries the order number | `customerRefNumber` and `externalReference`, both; filterable |
-| the house customer numbers | eight found (table above); Mazzetti Denmark still to find |
-| invoice amount and currency equal the capture | yes, 85 of 85 Denmark invoices since 15 Aug |
-| refunds | credit notes exist per refund, then a `Refund` document by hand; two Denmark ones open |
-| cash accounts, payment methods, entry types | Dintero clearing per currency, banks per currency, method 5, `Gebyr` on banks only |
-| how settlements are booked today | one payment per invoice, by hand, in batches weeks later; 199 invoices waiting on 3 Sep |
-| the write scope | create + update approved in the Developer Portal 2026-09-03; token endpoint still answers invalid_scope, so the company has not accepted them yet; re-checked every tick; nothing has been written |
-
-## Questions for the accountant
-
-1. Keep the per-invoice payments into the Dintero clearing accounts as
-   today (recommended), or one document per payout straight to the bank?
-2. Payment ref on our payments: the Dintero reference (recommended, it is
-   the audit trail asked for) or the invoice number as today?
-3. Payment date: invoice date as today, or the bank date?
-4. The fee: which expense account and VAT code, and may we add an entry
-   type "Dintero gebyr" on the four Dintero cash accounts?
-5. The transfer to the bank: a cash transaction on the bank account with
-   the clearing account as offset, or a journal transaction?
-6. Refunds: keep creating the credit notes as today and let the system
-   apply them, or should the system create them too (account, VAT code)?
-7. Chargebacks stay manual: confirm.
-8. The start date. Everything settled before it stays as it is. The 199
-   open invoices from 26 Aug would be the first batch.
-9. Is there a test company we can post to first?
+Automated tests, red first: grouping lines by order, the capped payment
+amount, one / none / two open invoices, the Branch B lines balancing with and
+without a refund and with a chargeback residual, the Ready rules, the
+`sending` crash path (read Visma, then decide), and the refusal to write to
+the real tenant. Route tests mock `@/lib/visma/*`; no test may reach the live
+ERP.
 
 ## Out of scope
 
-Creating invoices in Visma (the connector does), B2B invoices, Klarna's
-own settlements if any bypass Dintero, bank statement import, and anything
-that edits an invoice.
+Creating or editing invoices or credit notes (the connector and the
+accountant do), chargebacks (manual), bank statement import, B2B invoices,
+and anything in the real company before the test steps above are done.
