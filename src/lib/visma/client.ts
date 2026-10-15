@@ -16,6 +16,8 @@
 
 const TOKEN_URL = 'https://connect.visma.com/connect/token'
 const BASE = 'https://api.finance.visma.net'
+/** The API host, for the write client in ./write.ts. */
+export const VISMA_BASE = BASE
 const SCOPE = 'vismanet_erp_service_api:read'
 
 /** The old `controller/api/v1/x` or the new `v1/x`, as the new host wants it. */
@@ -61,21 +63,28 @@ export function vismaCredentials(): VismaCredentials | null {
   return { clientId, clientSecret, tenantId }
 }
 
-let cached: { token: string; expiresAt: number; key: string } | null = null
+/**
+ * One token per client, tenant and scope. The read imports and the posting
+ * job ask for different scopes, sometimes for different companies, in the
+ * same run; a single slot would throw one away every time the other asked.
+ */
+let cached = new Map<string, { token: string; expiresAt: number }>()
 
 /** Tests only. Module state would otherwise leak a token between cases. */
 export function resetVismaTokenCache(): void {
-  cached = null
+  cached = new Map()
 }
 
 export async function vismaToken(
   creds: VismaCredentials,
   now: number = Date.now(),
   opts: VismaRequestOpts = {},
+  scope: string = SCOPE,
 ): Promise<string> {
-  // Keyed by client and tenant so a credential change is never served a stale token.
-  const key = `${creds.clientId}:${creds.tenantId}`
-  if (cached && cached.key === key && cached.expiresAt - RENEW_MARGIN_MS > now) return cached.token
+  // Keyed by client, tenant and scope so a change of any is never served a stale token.
+  const key = `${creds.clientId}:${creds.tenantId}:${scope}`
+  const hit = cached.get(key)
+  if (hit && hit.expiresAt - RENEW_MARGIN_MS > now) return hit.token
 
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
@@ -84,7 +93,7 @@ export async function vismaToken(
       grant_type: 'client_credentials',
       client_id: creds.clientId,
       client_secret: creds.clientSecret,
-      scope: SCOPE,
+      scope,
       tenant_id: creds.tenantId,
     }),
     // Clamped like the GET below. A cold cache pays this mint FIRST, so a
@@ -102,8 +111,8 @@ export async function vismaToken(
   const body = (await res.json()) as { access_token?: string; expires_in?: number }
   if (!body.access_token) throw new VismaError('Visma returned no access token')
 
-  cached = { token: body.access_token, expiresAt: now + (body.expires_in ?? 3600) * 1000, key }
-  return cached.token
+  cached.set(key, { token: body.access_token, expiresAt: now + (body.expires_in ?? 3600) * 1000 })
+  return body.access_token
 }
 
 export type VismaRequestOpts = { deadline?: number }
