@@ -52,6 +52,8 @@ const JOURNAL_PATH = 'controller/api/v2/journaltransaction'
 const UNCONFIRMED =
   'Sent to Visma but the answer was lost. Look for this Dintero reference in Visma before sending it again.'
 
+const UNANSWERED = 'unanswered POST, not found in Visma'
+
 /** A thrown POST we cannot read as "Visma refused it": it may have been created. */
 const mayExist = (e: unknown) => !(e instanceof VismaError && e.status !== undefined && e.status < 500)
 
@@ -159,9 +161,16 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
       db.vismaPostingDocument.update({ where: { id }, data })
 
     // 1. Anything left `sending` by an earlier run: ask Visma first.
-    for (const d of await db.vismaPostingDocument.findMany({ where: { postingId: posting.id, status: 'sending' } })) {
+    // Only stale rows are orphans; a fresh one belongs to a run that may still be live. Every change
+    // is conditional on the row being exactly as read, so a run that finishes meanwhile wins.
+    const orphans = await db.vismaPostingDocument.findMany({
+      where: { postingId: posting.id, status: 'sending', updatedAt: { lt: new Date(Date.now() - STALE_SENDING_MS) } },
+    })
+    const settle = async (d: { id: string; updatedAt: Date }, data: Prisma.VismaPostingDocumentUpdateManyMutationInput) =>
+      db.vismaPostingDocument.updateMany({ where: { id: d.id, status: 'sending', updatedAt: d.updatedAt }, data })
+    for (const d of orphans) {
       if (d.kind !== 'payment' || !d.invoiceNumber) {
-        await setDoc(d.id, { status: 'unconfirmed', reason: UNCONFIRMED })
+        await settle(d, { status: 'unconfirmed', reason: UNCONFIRMED })
         continue
       }
       if (!canCall()) return result
@@ -175,9 +184,9 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
         })
         if (taken > 0) found = null
       }
-      if (found) await setDoc(d.id, { status: 'sent', vismaNumber: found, reason: null })
-      else if (d.attempts >= MAX_SEND_ATTEMPTS) await setDoc(d.id, { status: 'unconfirmed', reason: UNCONFIRMED })
-      else await setDoc(d.id, { status: 'pending' })
+      if (found) await settle(d, { status: 'sent', vismaNumber: found, reason: null })
+      else if (d.attempts >= MAX_SEND_ATTEMPTS) await settle(d, { status: 'unconfirmed', reason: UNCONFIRMED })
+      else await settle(d, { status: 'pending', reason: UNANSWERED })
     }
 
     // 2. Orders with nothing to pay: recorded once, for the bookkeeper.
@@ -209,11 +218,17 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
         if (claimed.count !== 1) return false
         rowId = existing.id
       } else {
-        rowId = (
-          await db.vismaPostingDocument.create({
-            data: { postingId: posting.id, kind, key, status: 'sending', attempts: 1, ...extra },
-          })
-        ).id
+        try {
+          rowId = (
+            await db.vismaPostingDocument.create({
+              data: { postingId: posting.id, kind, key, status: 'sending', attempts: 1, ...extra },
+            })
+          ).id
+        } catch (e) {
+          // Another run created it first: it is live, leave the posting to it.
+          if ((e as { code?: string } | null)?.code === 'P2002') return false
+          throw e
+        }
       }
       used++
       result.calls++
@@ -250,9 +265,18 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
 
     // 4. The verdict.
     // A payment left pending whose order has since lost its invoice is the bookkeeper's now.
-    for (const s of plan.skipped) {
-      const left = await doc('payment', s.key)
-      if (left && left.status === 'pending') await setDoc(left.id, { status: 'skipped', reason: s.reason })
+    const skippedBy = new Map(plan.skipped.map((s) => [s.key, s.reason]))
+    const planned = new Set([...plan.payments.map((p) => p.key), ...skippedBy.keys()])
+    for (const d of await db.vismaPostingDocument.findMany({
+      where: { postingId: posting.id, kind: 'payment', status: 'pending' },
+    })) {
+      if (skippedBy.has(d.key)) {
+        // Its POST may have reached Visma: never call that "nothing to pay".
+        if (d.reason?.startsWith('unanswered')) await setDoc(d.id, { status: 'unconfirmed', reason: UNCONFIRMED })
+        else await setDoc(d.id, { status: 'skipped', reason: skippedBy.get(d.key) })
+      } else if (!planned.has(d.key)) {
+        await setDoc(d.id, { status: 'skipped', reason: 'no longer in the Dintero report' })
+      }
     }
     const docs = await db.vismaPostingDocument.findMany({ where: { postingId: posting.id } })
     const failed = docs.find((d) => d.status === 'error' || d.status === 'unconfirmed')
@@ -274,7 +298,14 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
     return result
   } catch (e) {
     result.error = e instanceof Error ? e.message : 'Visma posting failed'
-    if (postingId) {
+    if (postingId && mode === 'dry_run') {
+      // A dry run creates no documents: forget the failed preview so it is tried again.
+      try {
+        await db.vismaPosting.deleteMany({ where: { id: postingId, documents: { none: {} } } })
+      } catch {
+        // the original error is the one to report
+      }
+    } else if (postingId) {
       // Record it, so a payout that always fails runs out of attempts instead of wedging the queue.
       // (attempts was already counted when this run claimed the posting.)
       try {
