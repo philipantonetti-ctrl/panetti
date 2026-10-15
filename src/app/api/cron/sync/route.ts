@@ -7,6 +7,7 @@ import { syncKlaviyo, type KlaviyoSyncResult } from '@/lib/klaviyo/sync'
 import { rematchOpenPayoutLines, syncDinteroPayouts, type DinteroSyncResult } from '@/lib/dintero/sync'
 import { resolveUnpaidOrders, type ResolveResult } from '@/lib/dintero/resolve'
 import { runVismaProbe, type VismaProbeResult } from '@/lib/visma/probe'
+import { runVismaPosting, type VismaPostingResult } from '@/lib/visma/posting/run'
 import { syncShipments, type ShipmentSyncResult } from '@/lib/delivery/sync'
 import { backfillNameKeys } from '@/lib/delivery/name-key-backfill'
 import { rereadStoredFiles, type RereadResult } from '@/lib/bring/reread'
@@ -56,6 +57,13 @@ const SHOPS_DEADLINE_MS = 240_000
  * that follow keep the time they had before this stage existed.
  */
 const VISMA_PROBE_DEADLINE_MS = 200_000
+
+/**
+ * Posting to the Visma test company runs after the payout mirror, so it sees
+ * this run's settlements. At most 20 calls; it stops starting calls 20s before
+ * this, which leaves the later stages their own deadlines.
+ */
+const VISMA_POSTING_DEADLINE_MS = 250_000
 
 /**
  * Parcel polling is the LAST and greediest data pull, and it stops well short
@@ -397,6 +405,17 @@ export async function GET(req: Request) {
     // holding is simply first in line next run.
   }
 
+  // Dintero payouts into the Visma TEST company, per the bookkeeper's drawing.
+  // Off until an admin picks a mode on /settings/payouts; one payout a run.
+  let vismaPosting: VismaPostingResult = {
+    mode: 'off', configured: false, payoutId: null, status: null, calls: 0, error: null,
+  }
+  try {
+    vismaPosting = await runVismaPosting({ deadline: runStartedAt + VISMA_POSTING_DEADLINE_MS })
+  } catch {
+    // It does not throw. Same belt and braces as every other stage.
+  }
+
   // Top up exchange rates BEFORE parcel tracking, not after. Rates are one
   // cheap bounded call; parcel polling is greedy and runs to its deadline. With
   // the order reversed, a busy backlog of parcels could eat the whole
@@ -592,6 +611,10 @@ export async function GET(req: Request) {
     vismaProbePending: vismaProbe.pending,
     vismaProbePartial: vismaProbe.partial,
     vismaProbeError: vismaProbe.error,
+    vismaPostingMode: vismaPosting.mode,
+    vismaPostingPayout: vismaPosting.payoutId,
+    vismaPostingStatus: vismaPosting.status,
+    vismaPostingError: vismaPosting.error,
     // Reported per reason, not as a bare total: a line dropped because its SKU
     // did not match looks exactly like a line that never existed.
     vismaConfigured: visma.configured,
