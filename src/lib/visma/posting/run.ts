@@ -18,7 +18,7 @@
 
 import type { Prisma } from '@prisma/client'
 import { db } from '../../db'
-import { payoutIsIngested } from '../../dintero/sync'
+import { payoutIsIngested, REPORT_VERSION } from '../../dintero/sync'
 import { VismaError, type VismaRequestOpts } from '../client'
 import { vismaPost, writeCredentials } from '../write'
 import { journalBody, paymentBody } from './dto'
@@ -32,6 +32,10 @@ const MAX_CALLS = 20
 const MAX_ATTEMPTS = 3
 /** No call is started with less than this left of the caller's budget. */
 const CALL_MARGIN_MS = 20_000
+/** A `sending` row younger than this belongs to a run that may still be live (function limit is 300 s). */
+const STALE_SENDING_MS = 6 * 60_000
+/** Unanswered POST attempts after which a payment is no longer resent on a guess. */
+const MAX_SEND_ATTEMPTS = 2
 
 export type PostingMode = 'off' | 'dry_run' | 'hold'
 export type VismaPostingResult = {
@@ -63,6 +67,7 @@ async function nextPayout(tenantId: string, mode: PostingMode) {
     where: {
       settledAt: { gte: POSTING_START },
       linesPending: false,
+      reportVersion: { gte: REPORT_VERSION },
       reference: { not: null },
       shop: {
         dinteroConfig: {
@@ -84,6 +89,8 @@ async function nextPayout(tenantId: string, mode: PostingMode) {
 export async function runVismaPosting(opts: { deadline?: number } = {}): Promise<VismaPostingResult> {
   let mode: PostingMode = 'off'
   const result: VismaPostingResult = { mode, configured: false, payoutId: null, status: null, calls: 0, error: null }
+  // Posting id once the row exists, so a failure can be recorded instead of wedging the queue.
+  let postingId: string | null = null
   try {
     const config = await db.vismaPostingConfig.findUnique({ where: { id: 'singleton' } })
     mode = (config?.mode ?? 'off') as PostingMode
@@ -94,8 +101,10 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
     result.configured = true
 
     const ro: VismaRequestOpts = { deadline: opts.deadline }
+    // The budget counts POSTs and payment look-ups only; page reads are capped by MAX_PAGES.
+    let used = 0
     const canCall = () =>
-      result.calls < MAX_CALLS && (opts.deadline === undefined || Date.now() + CALL_MARGIN_MS < opts.deadline)
+      used < MAX_CALLS && (opts.deadline === undefined || Date.now() + CALL_MARGIN_MS < opts.deadline)
 
     const payout = await nextPayout(creds.tenantId, mode)
     if (!payout) return result
@@ -112,12 +121,23 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
     const prior = await db.vismaPosting.findUnique({
       where: { payoutId_tenantId: { payoutId: payout.id, tenantId: creds.tenantId } },
     })
+    // Another run is live if any of this posting's documents is `sending` and fresh.
+    if (mode === 'hold' && prior) {
+      const live = await db.vismaPostingDocument.count({
+        where: { postingId: prior.id, status: 'sending', updatedAt: { gt: new Date(Date.now() - STALE_SENDING_MS) } },
+      })
+      if (live > 0) {
+        result.status = prior.status
+        return result
+      }
+    }
     const status = mode === 'dry_run' ? 'dry_run' : 'posting'
     const posting = await db.vismaPosting.upsert({
       where: { payoutId_tenantId: { payoutId: payout.id, tenantId: creds.tenantId } },
       create: { payoutId: payout.id, tenantId: creds.tenantId, status, attempts: 1 },
       update: { status, error: null, ...(prior?.status === 'error' ? { attempts: { increment: 1 } } : {}) },
     })
+    postingId = posting.id
     result.status = status
 
     const read = await readOpenInvoices(creds, mapping.customer, ro)
@@ -145,9 +165,19 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
         continue
       }
       if (!canCall()) return result
+      used++
       result.calls++
-      const found = await findOurPayment(creds, mapping.customer, d.invoiceNumber, reference, ro)
-      await setDoc(d.id, found ? { status: 'sent', vismaNumber: found, reason: null } : { status: 'pending' })
+      let found = await findOurPayment(creds, mapping.customer, d.invoiceNumber, reference, ro)
+      // A number a sibling document already holds is not ours.
+      if (found) {
+        const taken = await db.vismaPostingDocument.count({
+          where: { postingId: posting.id, vismaNumber: found, id: { not: d.id } },
+        })
+        if (taken > 0) found = null
+      }
+      if (found) await setDoc(d.id, { status: 'sent', vismaNumber: found, reason: null })
+      else if (d.attempts >= MAX_SEND_ATTEMPTS) await setDoc(d.id, { status: 'unconfirmed', reason: UNCONFIRMED })
+      else await setDoc(d.id, { status: 'pending' })
     }
 
     // 2. Orders with nothing to pay: recorded once, for the bookkeeper.
@@ -169,24 +199,36 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
       const existing = await doc(kind, key)
       if (existing && existing.status !== 'pending' && existing.status !== 'error') return true
       if (!canCall()) return false
-      const row = existing
-        ? await setDoc(existing.id, { status: 'sending', reason: null, ...extra })
-        : await db.vismaPostingDocument.create({
-            data: { postingId: posting.id, kind, key, status: 'sending', ...extra },
+      let rowId: string
+      if (existing) {
+        // Conditional claim: an overlapping run that got here first leaves count 0.
+        const claimed = await db.vismaPostingDocument.updateMany({
+          where: { id: existing.id, status: { in: ['pending', 'error'] } },
+          data: { status: 'sending', reason: null, attempts: { increment: 1 }, ...extra },
+        })
+        if (claimed.count !== 1) return false
+        rowId = existing.id
+      } else {
+        rowId = (
+          await db.vismaPostingDocument.create({
+            data: { postingId: posting.id, kind, key, status: 'sending', attempts: 1, ...extra },
           })
+        ).id
+      }
+      used++
       result.calls++
       try {
         const made = await vismaPost(creds, path, body, ro)
-        await setDoc(row.id, { status: 'sent', vismaNumber: made.number })
+        await setDoc(rowId, { status: 'sent', vismaNumber: made.number })
         return true
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
         if (e instanceof VismaError && e.status === 429) {
-          await setDoc(row.id, { status: 'pending' })
+          await setDoc(rowId, { status: 'pending' })
           return false
         }
         if (mayExist(e)) return false // stays `sending`; the next run asks Visma
-        await setDoc(row.id, { status: 'error', reason: message.slice(0, 500) })
+        await setDoc(rowId, { status: 'error', reason: message.slice(0, 500) })
         return true
       }
     }
@@ -207,8 +249,15 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
     }
 
     // 4. The verdict.
+    // A payment left pending whose order has since lost its invoice is the bookkeeper's now.
+    for (const s of plan.skipped) {
+      const left = await doc('payment', s.key)
+      if (left && left.status === 'pending') await setDoc(left.id, { status: 'skipped', reason: s.reason })
+    }
     const docs = await db.vismaPostingDocument.findMany({ where: { postingId: posting.id } })
     const failed = docs.find((d) => d.status === 'error' || d.status === 'unconfirmed')
+    const open = docs.some((d) => d.status === 'pending' || d.status === 'sending')
+    if (!failed && open) return result // still `posting`: something is unsent
     const final = failed ? 'error' : 'posted'
     await db.vismaPosting.update({
       where: { id: posting.id },
@@ -225,6 +274,19 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
     return result
   } catch (e) {
     result.error = e instanceof Error ? e.message : 'Visma posting failed'
+    if (postingId) {
+      // Record it, so a payout that always fails runs out of attempts instead of wedging the queue.
+      // (attempts was already counted when this run claimed the posting.)
+      try {
+        await db.vismaPosting.update({
+          where: { id: postingId },
+          data: { status: 'error', error: result.error.slice(0, 500) },
+        })
+        result.status = 'error'
+      } catch {
+        // the original error is the one to report
+      }
+    }
     return result
   }
 }

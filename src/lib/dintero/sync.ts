@@ -41,7 +41,7 @@ const BACKLOG_MINUTES_BETWEEN = 30
  * v3: the live rows carry the order number as event_reference and the net
  * as net_amount - both read from Philip's own report file.
  */
-const REPORT_VERSION = 3
+export const REPORT_VERSION = 3
 
 /**
  * Match a shop's unmatched payout lines against the orders we hold now.

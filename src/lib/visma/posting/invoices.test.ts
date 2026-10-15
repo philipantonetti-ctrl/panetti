@@ -94,6 +94,30 @@ describe('findOurPayment', () => {
     expect(f).not.toHaveBeenCalled()
   })
 
+  it('does not accept a payment whose lines belong to another invoice', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url).includes('connect/token')
+          ? json({ access_token: 't', expires_in: 3600 })
+          : json([{ refNbr: '000200', paymentRef: 'R17882-6311A9', paymentLines: [{ refNbr: { value: '130999' } }] }]),
+      ),
+    )
+    expect(await findOurPayment(creds, '10859', '130474', 'R17882-6311A9')).toBeNull()
+  })
+
+  it('accepts a payment whose lines include this invoice', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url).includes('connect/token')
+          ? json({ access_token: 't', expires_in: 3600 })
+          : json([{ refNbr: '000201', paymentRef: 'R17882-6311A9', paymentLines: [{ refNbr: { value: '130474' } }] }]),
+      ),
+    )
+    expect(await findOurPayment(creds, '10859', '130474', 'R17882-6311A9')).toBe('000201')
+  })
+
   it('is null when none carries it', async () => {
     vi.stubGlobal(
       'fetch',

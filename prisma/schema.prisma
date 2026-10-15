@@ -1909,6 +1909,7 @@ model VismaPostingDocument {
   invoiceNumber String?
   vismaNumber   String?
   amount        Int?
+  attempts      Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

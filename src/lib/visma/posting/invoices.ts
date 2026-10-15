@@ -72,6 +72,9 @@ export async function findOurPayment(
     `controller/api/v1/customerPayment?customer=${enc(customer)}&invoiceRefNbr=${enc(invoiceNumber)}`,
     opts,
   )
-  const hit = (Array.isArray(rows) ? rows : []).find((r) => str(r.paymentRef) === reference)
+  // A payment with lines must apply to THIS invoice: a sibling order's payment shares our reference.
+  const appliesHere = (r: Row) =>
+    !Array.isArray(r.paymentLines) || (r.paymentLines as Row[]).some((l) => str(l?.refNbr) === invoiceNumber)
+  const hit = (Array.isArray(rows) ? rows : []).find((r) => str(r.paymentRef) === reference && appliesHere(r))
   return hit ? str(hit.refNbr) || null : null
 }

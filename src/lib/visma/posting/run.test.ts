@@ -40,6 +40,13 @@ beforeEach(async () => {
   findOurPayment.mockReset()
 })
 
+/** Pretend the last run died ten minutes ago: a `sending` row is only an orphan once it is stale. */
+const age = () =>
+  db.vismaPostingDocument.updateMany({
+    where: { status: 'sending' },
+    data: { updatedAt: new Date(Date.now() - 10 * 60_000) },
+  })
+
 const mode = (m: string) => db.vismaPostingConfig.create({ data: { id: 'singleton', mode: m } })
 
 async function dePayout(over: Record<string, unknown> = {}, mapped = true) {
@@ -152,6 +159,7 @@ describe('runVismaPosting', () => {
     // Visma DID create it: the invoice is no longer open, and our payment is found.
     readOpenInvoices.mockResolvedValue({ invoices: [], calls: 1 })
     findOurPayment.mockResolvedValue('P-77')
+    await age()
     vismaPost.mockReset().mockResolvedValue({ status: 201, number: 'GL-1' })
     const second = await runVismaPosting()
     expect(findOurPayment).toHaveBeenCalledWith(expect.anything(), '10859', '130474', 'R20001-ABC', expect.anything())
@@ -167,6 +175,7 @@ describe('runVismaPosting', () => {
     readOpenInvoices.mockResolvedValue({ invoices: [], calls: 1 })
     vismaPost.mockRejectedValueOnce(new VismaError('Visma responded 502 for POST', 502))
     await runVismaPosting()
+    await age()
     vismaPost.mockReset()
     const second = await runVismaPosting()
     expect(vismaPost).not.toHaveBeenCalled()
@@ -197,5 +206,115 @@ describe('runVismaPosting', () => {
     expect(r.status).toBe('posting')
     const doc = await db.vismaPostingDocument.findFirst({ where: { kind: 'payment', key: '14238' } })
     expect(doc?.status).toBe('pending')
+  })
+
+  it('never says posted while a payment is still unsent: a pending row whose order is now skipped becomes skipped', async () => {
+    await mode('hold')
+    await dePayout()
+    readOpenInvoices.mockResolvedValue({ invoices, calls: 1 })
+    vismaPost.mockRejectedValueOnce(new VismaError('rate limited', 429))
+    expect((await runVismaPosting()).status).toBe('posting')
+    readOpenInvoices.mockResolvedValue({ invoices: [], calls: 1 })
+    vismaPost.mockReset().mockResolvedValue({ status: 201, number: 'GL-3' })
+    const second = await runVismaPosting()
+    const doc = await db.vismaPostingDocument.findFirst({ where: { kind: 'payment', key: '14238' } })
+    expect(doc).toMatchObject({ status: 'skipped', reason: 'no open invoice' })
+    expect(second.status).toBe('posted')
+  })
+
+  it('stays posting while a payment row is still pending after everything else was handled', async () => {
+    await mode('hold')
+    await dePayout()
+    readOpenInvoices.mockResolvedValue({ invoices, calls: 1 })
+    vismaPost.mockRejectedValueOnce(new VismaError('rate limited', 429))
+    await runVismaPosting()
+    // An extra pending row the plan knows nothing about must keep the posting open.
+    const posting = await db.vismaPosting.findFirstOrThrow({})
+    await db.vismaPostingDocument.create({
+      data: { postingId: posting.id, kind: 'payment', key: 'stray', status: 'pending' },
+    })
+    vismaPost.mockReset().mockResolvedValue({ status: 201, number: 'N' })
+    const second = await runVismaPosting()
+    expect(second.status).toBe('posting')
+    expect((await db.vismaPosting.findFirstOrThrow({})).postedAt).toBeNull()
+  })
+
+  it('does not re-POST a payment forever: after two unanswered tries it is unconfirmed', async () => {
+    await mode('hold')
+    await dePayout()
+    readOpenInvoices.mockResolvedValue({ invoices, calls: 1 })
+    findOurPayment.mockResolvedValue(null)
+    vismaPost.mockRejectedValue(new Error('The operation was aborted due to timeout'))
+    await runVismaPosting()
+    await age()
+    await runVismaPosting()
+    await age()
+    vismaPost.mockReset().mockResolvedValue({ status: 201, number: 'GL-5' }) // the payout entry goes through
+    const third = await runVismaPosting()
+    const paymentPosts = vismaPost.mock.calls.filter((c) => c[1] === 'controller/api/v1/customerPayment')
+    expect(paymentPosts).toHaveLength(0)
+    const doc = await db.vismaPostingDocument.findFirst({ where: { kind: 'payment', key: '14238' } })
+    expect(doc?.status).toBe('unconfirmed')
+    expect(third.status).toBe('error')
+  })
+
+  it('a read failure marks the posting error, and after three tries the payout is let go', async () => {
+    await mode('hold')
+    await dePayout()
+    readOpenInvoices.mockRejectedValue(new VismaError('Visma responded 400 for GET: bad customer', 400))
+    const r = await runVismaPosting()
+    expect(r.error).toContain('bad customer')
+    const p = await db.vismaPosting.findFirstOrThrow({})
+    expect(p).toMatchObject({ status: 'error', attempts: 1 })
+    expect(p.error).toContain('bad customer')
+    await runVismaPosting()
+    await runVismaPosting()
+    expect((await db.vismaPosting.findFirstOrThrow({})).attempts).toBe(3)
+    expect((await runVismaPosting()).payoutId).toBeNull()
+  })
+
+  it('page reads do not eat the POST budget', async () => {
+    await mode('hold')
+    await dePayout()
+    readOpenInvoices.mockResolvedValue({ invoices, calls: 20 })
+    vismaPost.mockResolvedValue({ status: 201, number: 'Z' })
+    const r = await runVismaPosting()
+    expect(r.status).toBe('posted')
+    expect(r.calls).toBe(22)
+  })
+
+  it('never accepts a payment number that already belongs to a sibling document', async () => {
+    await mode('hold')
+    await dePayout()
+    readOpenInvoices.mockResolvedValue({
+      invoices: [...invoices, { number: '130475', customerRefNumber: '14239', currency: 'EUR', balance: 8000 }],
+      calls: 1,
+    })
+    vismaPost
+      .mockResolvedValueOnce({ status: 201, number: 'P-1' })
+      .mockRejectedValueOnce(new Error('The operation was aborted due to timeout'))
+    await runVismaPosting()
+    await age()
+    findOurPayment.mockResolvedValue('P-1')
+    vismaPost.mockReset().mockResolvedValue({ status: 201, number: 'P-2' })
+    await runVismaPosting()
+    const second = await db.vismaPostingDocument.findFirstOrThrow({ where: { kind: 'payment', key: '14239' } })
+    expect(second.vismaNumber).not.toBe('P-1')
+  })
+
+  it('leaves a fresh sending row alone: another run is live', async () => {
+    await mode('hold')
+    await dePayout()
+    readOpenInvoices.mockResolvedValue({ invoices, calls: 1 })
+    vismaPost.mockRejectedValueOnce(new Error('The operation was aborted due to timeout'))
+    await runVismaPosting()
+    const before = await db.vismaPostingDocument.findFirstOrThrow({ where: { kind: 'payment', key: '14238' } })
+    vismaPost.mockClear()
+    await runVismaPosting()
+    expect(vismaPost).not.toHaveBeenCalled()
+    expect(findOurPayment).not.toHaveBeenCalled()
+    const after = await db.vismaPostingDocument.findFirstOrThrow({ where: { kind: 'payment', key: '14238' } })
+    expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime())
+    expect(after.status).toBe('sending')
   })
 })
