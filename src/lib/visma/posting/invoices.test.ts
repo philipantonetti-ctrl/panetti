@@ -39,6 +39,32 @@ describe('readOpenInvoices', () => {
     expect(invoices).toHaveLength(101)
     expect(invoices[0]).toEqual({ number: '130000', customerRefNumber: '14000', currency: 'EUR', balance: 2999 })
   })
+
+  it('stops when Visma repeats a full page: no duplicates, and the repeat is not a second page', async () => {
+    const same = Array.from({ length: 100 }, (_, i) => row(i))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url).includes('connect/token') ? json({ access_token: 't', expires_in: 3600 }) : json(same),
+      ),
+    )
+    const { invoices, calls } = await readOpenInvoices(creds, '10859')
+    expect(invoices).toHaveLength(100)
+    expect(new Set(invoices.map((i) => i.number)).size).toBe(100)
+    expect(calls).toBe(2)
+  })
+
+  it('skips a row with no referenceNumber rather than returning a ghost invoice', async () => {
+    const { referenceNumber: _drop, ...noNumber } = row(7)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        String(url).includes('connect/token') ? json({ access_token: 't', expires_in: 3600 }) : json([noNumber, row(1)]),
+      ),
+    )
+    const { invoices } = await readOpenInvoices(creds, '10859')
+    expect(invoices.map((i) => i.number)).toEqual(['130001'])
+  })
 })
 
 describe('findOurPayment', () => {
@@ -56,6 +82,16 @@ describe('findOurPayment', () => {
       }),
     )
     expect(await findOurPayment(creds, '10859', '130474', 'R17882-6311A9')).toBe('000101')
+  })
+
+  it('is null without calling Visma when our reference is blank', async () => {
+    const f = vi.fn(async (url: string) =>
+      String(url).includes('connect/token') ? json({ access_token: 't', expires_in: 3600 }) : json([]),
+    )
+    vi.stubGlobal('fetch', f)
+    expect(await findOurPayment(creds, '10859', '130474', '')).toBeNull()
+    expect(await findOurPayment(creds, '10859', '130474', '   ')).toBeNull()
+    expect(f).not.toHaveBeenCalled()
   })
 
   it('is null when none carries it', async () => {
