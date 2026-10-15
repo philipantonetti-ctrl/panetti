@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { useToast } from '@/components/toast/useToast'
+import { VismaPostingCard } from './VismaPostingCard'
 
 /**
  * Where the client connects each webshop to its Dintero account.
@@ -260,6 +261,7 @@ export function DinteroClient({ email }: { email: string }) {
             </p>
           </div>
         )}
+        <VismaPostingCard />
       </PageBody>
     </AppShell>
   )
