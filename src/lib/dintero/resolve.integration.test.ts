@@ -293,6 +293,33 @@ describe('resolveUnpaidOrders', () => {
   })
 
   /**
+   * Mazzetti Norway, 16 Oct 2026: old orders carry a payment id from before
+   * Dintero (a 2021 Stripe charge), and Dintero refuses the path with "400:
+   * Invalid parameter (id): Value failed JSON Schema validation". That is an
+   * answer about THIS order, like a 404 - not a shop-wide failure. Treated as
+   * a refusal, the same order was asked first on every run, the shop never
+   * got past it, and its settings card said "Last sync failed" for ever.
+   */
+  it('records an id Dintero refuses as not one of its transactions, without failing the shop', async () => {
+    stubDintero({
+      transaction: () =>
+        jsonResponse({ error: { message: 'Invalid parameter (id): Value failed JSON Schema validation' } }, 400),
+    })
+    await order({ transactionId: 'ch_1JxYzAbCdEfGhIjK' })
+    await order({ externalId: '10973', number: '10973', transactionId: TX })
+
+    const result = await resolveUnpaidOrders({ shopId })
+
+    expect(result.errors).toEqual([])
+    expect((await stored()).payoutCheckNote).toMatch(/not a Dintero transaction id/i)
+    expect((await stored()).payoutCheckedAt).not.toBeNull()
+    // The next order of the same shop was still asked.
+    expect(calls.filter((c) => c.url.includes('/payments/transactions/'))).toHaveLength(2)
+    const config = await db.dinteroConfig.findFirstOrThrow({ where: { shopId } })
+    expect(config.lastError).toBeNull()
+  })
+
+  /**
    * These API clients were created to read settlement reports; this endpoint
    * needs read:checkout. The shop must be told which scope to add, in those
    * words, rather than being sent to re-paste credentials that are fine.
