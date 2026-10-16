@@ -480,6 +480,8 @@ describe('runVismaPosting', () => {
       const p = await db.vismaPosting.findFirstOrThrow({})
       expect(p.status).not.toBe('error')
       expect(p.attempts).toBe(1)
+      // A payout waiting on Visma says why.
+      expect(p.error).toContain('aborted')
     }
     // A 5xx and a 429 are outages too.
     readOpenInvoices.mockRejectedValueOnce(new VismaError('Visma responded 503 for GET', 503))
@@ -517,7 +519,9 @@ describe('runVismaPosting', () => {
     vismaPost.mockReset()
     const r = await runVismaPosting()
     expect(r.error).toContain('502')
-    expect(await db.vismaPosting.findFirstOrThrow({})).toMatchObject({ status: 'posting', attempts: 1 })
+    const p = await db.vismaPosting.findFirstOrThrow({})
+    expect(p).toMatchObject({ status: 'posting', attempts: 1 })
+    expect(p.error).toContain('Visma unavailable, will retry')
     expect(vismaPost).not.toHaveBeenCalled()
   })
 

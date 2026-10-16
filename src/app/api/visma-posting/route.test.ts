@@ -55,27 +55,43 @@ describe('/api/visma-posting', () => {
     expect((await put({ mode: 'off', shops: [{ shopId: 'x', vismaCustomer: '10859; DROP' }] })).status).toBe(400)
   })
 
+  // Paid and with an amount no other test uses: the payouts list shows every unpaid
+  // payout in every range, and its own test runs in parallel with this one.
+  const payoutFor = (shopId: string, externalId: string) =>
+    db.payout.create({
+      data: {
+        shopId, externalId, currency: 'EUR', settledAt: new Date('2026-10-06T09:00:00Z'),
+        amount: 4242, capture: 4242, refund: 0, fee: 0,
+      },
+    })
+  const shopWith = async (suffix: string, vismaCustomer: string) => {
+    const shop = await db.shop.create({ data: { name: `${MARK} ${suffix}`, currency: 'EUR' } })
+    await db.dinteroConfig.create({
+      data: { shopId: shop.id, accountId: `P-${suffix}`, clientId: encryptSecret('c'), clientSecret: encryptSecret('s'), vismaCustomer },
+    })
+    return shop
+  }
+  /** A failed posting; with a document, something may exist in Visma for it. */
+  const failedPosting = async (shopId: string, externalId: string, withDocument: boolean) => {
+    const payout = await payoutFor(shopId, externalId)
+    return db.vismaPosting.create({
+      data: {
+        payoutId: payout.id, tenantId: 'route-test-tenant', status: 'error', attempts: 3, error: 'bad customer',
+        ...(withDocument
+          ? { documents: { create: [{ kind: 'payment', key: '14238', status: 'error', reason: 'Customer 99999 not found' }] } }
+          : {}),
+      },
+    })
+  }
+
   it('a corrected mapping gives that shop\'s failed postings their attempts back', async () => {
-    const make = async (suffix: string, vismaCustomer: string) => {
-      const shop = await db.shop.create({ data: { name: `${MARK} ${suffix}`, currency: 'EUR' } })
-      await db.dinteroConfig.create({
-        data: { shopId: shop.id, accountId: `P-${suffix}`, clientId: encryptSecret('c'), clientSecret: encryptSecret('s'), vismaCustomer },
-      })
-      const payout = await db.payout.create({
-        data: { shopId: shop.id, externalId: `set-${suffix}`, currency: 'EUR', amount: 1, capture: 1, refund: 0, fee: 0 },
-      })
-      const posting = await db.vismaPosting.create({
-        data: { payoutId: payout.id, tenantId: 'route-test-tenant', status: 'error', attempts: 3, error: 'bad customer' },
-      })
-      return { shop, posting }
-    }
-    const fixed = await make('FI', '99999')
-    const other = await make('SE', '10478')
+    const fixedShop = await shopWith('FI', '99999')
+    const otherShop = await shopWith('SE', '10478')
+    const fixed = { shop: fixedShop, posting: await failedPosting(fixedShop.id, 'set-FI', true) }
+    const other = { shop: otherShop, posting: await failedPosting(otherShop.id, 'set-SE', true) }
     const done = await db.vismaPosting.create({
       data: {
-        payoutId: (await db.payout.create({
-          data: { shopId: fixed.shop.id, externalId: 'set-FI-2', currency: 'EUR', amount: 1, capture: 1, refund: 0, fee: 0 },
-        })).id,
+        payoutId: (await payoutFor(fixed.shop.id, 'set-FI-2')).id,
         tenantId: 'route-test-tenant', status: 'posted', attempts: 2,
       },
     })
@@ -89,6 +105,24 @@ describe('/api/visma-posting', () => {
     expect((await db.vismaPosting.findUniqueOrThrow({ where: { id: fixed.posting.id } })).attempts).toBe(0)
     expect((await db.vismaPosting.findUniqueOrThrow({ where: { id: other.posting.id } })).attempts).toBe(3)
     expect((await db.vismaPosting.findUniqueOrThrow({ where: { id: done.id } })).attempts).toBe(2)
+  })
+
+  it('a corrected mapping forgets a failed posting with no documents, so the dry run previews it again', async () => {
+    const shop = await shopWith('NL', '99999')
+    const bare = await failedPosting(shop.id, 'set-NL-1', false)
+    const sent = await failedPosting(shop.id, 'set-NL-2', true)
+    const other = await shopWith('BE', '10478')
+    const untouched = await failedPosting(other.id, 'set-BE-1', false)
+
+    // Saving the same values changes nothing.
+    await put({ mode: 'dry_run', shops: [{ shopId: shop.id, vismaCustomer: '99999' }] })
+    expect(await db.vismaPosting.findUnique({ where: { id: bare.id } })).not.toBeNull()
+
+    const res = await put({ mode: 'dry_run', shops: [{ shopId: shop.id, vismaCustomer: '10859' }, { shopId: other.id, vismaCustomer: '10478' }] })
+    expect(res.status).toBe(200)
+    expect(await db.vismaPosting.findUnique({ where: { id: bare.id } })).toBeNull()
+    expect(await db.vismaPosting.findUniqueOrThrow({ where: { id: sent.id } })).toMatchObject({ status: 'error', attempts: 0 })
+    expect(await db.vismaPosting.findUniqueOrThrow({ where: { id: untouched.id } })).toMatchObject({ status: 'error', attempts: 3 })
   })
 
   it('treats an empty field as not set', async () => {

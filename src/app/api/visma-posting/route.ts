@@ -71,8 +71,10 @@ export async function PUT(req: Request) {
       }
       updates.push({ shopId: String(s.shopId ?? ''), data })
     }
-    // A shop whose mapping really changes gets its failed postings' attempts back, so a
-    // corrected customer or account number is retried instead of staying given up on.
+    // A shop whose mapping really changes gets its failed postings back, so a corrected
+    // customer or account number is retried instead of staying given up on. A failed posting
+    // with no documents has nothing in Visma: it is forgotten, so the dry run previews it
+    // again. One with documents keeps them and gets its attempts back.
     const current = await db.dinteroConfig.findMany({ where: { shopId: { in: updates.map((u) => u.shopId) } } })
     const changed = updates
       .filter((u) => {
@@ -84,7 +86,12 @@ export async function PUT(req: Request) {
       db.vismaPostingConfig.upsert({ where: { id: 'singleton' }, create: { id: 'singleton', mode }, update: { mode } }),
       ...updates.map((u) => db.dinteroConfig.updateMany({ where: { shopId: u.shopId }, data: u.data })),
       ...(changed.length > 0
-        ? [db.vismaPosting.updateMany({ where: { status: 'error', payout: { shopId: { in: changed } } }, data: { attempts: 0 } })]
+        ? [
+            db.vismaPosting.deleteMany({
+              where: { status: 'error', payout: { shopId: { in: changed } }, documents: { none: {} } },
+            }),
+            db.vismaPosting.updateMany({ where: { status: 'error', payout: { shopId: { in: changed } } }, data: { attempts: 0 } }),
+          ]
         : []),
     ])
     return NextResponse.json(await state(), { headers: NO_STORE })

@@ -383,12 +383,17 @@ export async function runVismaPosting(opts: { deadline?: number } = {}): Promise
       }
     } else if (postingId && outage) {
       // An outage is not this payout's fault: put the posting back as it was, no attempt used.
-      // (A new posting stays `posting` with the attempt it was created with.)
+      // (A new posting stays `posting` with the attempt it was created with.) It still says why
+      // it waits, unless an earlier refusal's text is the one a person needs.
+      const waiting = `Visma unavailable, will retry: ${result.error}`.slice(0, 500)
       try {
-        if (before) {
-          await db.vismaPosting.update({ where: { id: postingId }, data: before })
-          result.status = before.status
-        }
+        await db.vismaPosting.update({
+          where: { id: postingId },
+          data: before
+            ? { ...before, error: before.status === 'error' ? before.error : waiting }
+            : { error: waiting },
+        })
+        if (before) result.status = before.status
       } catch {
         // the original error is the one to report
       }
