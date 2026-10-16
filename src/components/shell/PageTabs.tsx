@@ -83,3 +83,13 @@ export const AMBASSADOR_TABS: Tab[] = [
   { href: '/ambassadors', label: 'Ambassadors' },
   { href: '/ambassadors/add', label: 'Add an ambassador' },
 ]
+
+/**
+ * Payout settings' two screens: connecting each shop's Dintero account, and
+ * posting those payouts into Visma. The Visma card sat at the bottom of a
+ * long list of shop cards - a tab puts it one click from the sidebar.
+ */
+export const PAYOUT_SETTINGS_TABS: Tab[] = [
+  { href: '/settings/payouts', label: 'Dintero' },
+  { href: '/settings/payouts/visma', label: 'Visma posting' },
+]

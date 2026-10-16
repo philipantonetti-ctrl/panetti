@@ -37,6 +37,16 @@ const shop = (over: Record<string, unknown> = {}) => ({
 const statusResponse = (shops: unknown[]) => new Response(JSON.stringify({ shops }), { status: 200 })
 
 describe('DinteroClient', () => {
+  it('sits under two tabs, and leaves Visma posting to its own tab', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(statusResponse([shop()]))))
+    renderWithToast(<DinteroClient email="a@b.test" />)
+
+    expect(await screen.findByText('Not connected.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Dintero' })).toHaveAttribute('href', '/settings/payouts')
+    expect(screen.getByRole('link', { name: 'Visma posting' })).toHaveAttribute('href', '/settings/payouts/visma')
+    expect(screen.queryByText('Visma posting (test company)')).not.toBeInTheDocument()
+  })
+
   it('shows one card per shop, waiting or connected with its figures', async () => {
     vi.stubGlobal(
       'fetch',

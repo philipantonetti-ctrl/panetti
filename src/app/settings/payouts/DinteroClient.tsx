@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { useToast } from '@/components/toast/useToast'
-import { VismaPostingCard } from './VismaPostingCard'
+import { PAYOUT_SETTINGS_TABS, PageTabs } from '@/components/shell/PageTabs'
 
 /**
  * Where the client connects each webshop to its Dintero account.
@@ -176,6 +176,7 @@ export function DinteroClient({ email }: { email: string }) {
         title="Payouts (Dintero)"
         subtitle="Connect each webshop's Dintero account. Every weekly payout is then matched to the exact orders behind it, automatically."
       />
+      <PageTabs tabs={PAYOUT_SETTINGS_TABS} />
       <PageBody>
         {error ? (
           <div className="rounded-[var(--radius-card)] border border-line bg-surface px-4 py-3 text-[13px] text-loss">
@@ -261,7 +262,6 @@ export function DinteroClient({ email }: { email: string }) {
             </p>
           </div>
         )}
-        <VismaPostingCard />
       </PageBody>
     </AppShell>
   )
