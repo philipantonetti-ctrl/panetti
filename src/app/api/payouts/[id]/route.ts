@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { currentUser } from '@/lib/auth/current-user'
 import { assertAdmin, AuthError } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
+import { TEST_TENANT_ID } from '@/lib/visma/write'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 export const dynamic = 'force-dynamic'
@@ -16,6 +17,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       where: { id },
       include: {
         shop: { select: { name: true } },
+        vismaPostings: {
+          where: { tenantId: TEST_TENANT_ID },
+          include: { documents: { orderBy: [{ kind: 'asc' }, { key: 'asc' }] } },
+        },
         lines: {
           orderBy: [{ transactionDate: 'asc' }, { reference: 'asc' }],
           include: {
@@ -42,6 +47,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         fee: payout.fee,
         reference: payout.reference,
         linesPending: payout.linesPending,
+        visma: payout.vismaPostings[0]
+          ? {
+              status: payout.vismaPostings[0].status,
+              documents: payout.vismaPostings[0].documents.map((d) => ({
+                kind: d.kind, key: d.key, status: d.status, reason: d.reason, vismaNumber: d.vismaNumber, amount: d.amount,
+              })),
+            }
+          : null,
         lines: payout.lines.map((l) => ({
           id: l.id,
           reference: l.reference,

@@ -6,6 +6,7 @@ vi.mock('@/lib/auth/current-user', () => ({
 
 const { db } = await import('@/lib/db')
 const { GET } = await import('./route')
+const { REPORT_VERSION } = await import('@/lib/dintero/sync')
 
 const MARK = 'payouts-route-test'
 
@@ -185,5 +186,19 @@ describe('orders waiting for a payout', () => {
     const row = body.waiting.find((w: { id: string }) => w.id === asked.id)
     expect(row.payoutCheckNote).toBe('Dintero says this is not settled yet (NOT_SETTLED).')
     expect(row.payoutCheckedAt).toBeTypeOf('string')
+  })
+
+  it('says why a recent payout is not posted to Visma', async () => {
+    const shop = await db.shop.create({ data: { name: `${MARK} NO`, currency: 'NOK' } })
+    const payout = await db.payout.create({
+      data: {
+        shopId: shop.id, externalId: 'v1', settledAt: new Date('2026-10-06T09:00:00Z'),
+        currency: 'NOK', amount: 5, capture: 5, refund: 0, fee: 0, reference: 'DINTERO-77', linesPending: false, reportVersion: REPORT_VERSION,
+      },
+    })
+
+    const body = await (await get('?from=2026-10-01&to=2026-10-31')).json()
+    const row = body.payouts.find((p: { id: string }) => p.id === payout.id)
+    expect(row.visma).toBe('Waiting: no Visma setup for this shop')
   })
 })

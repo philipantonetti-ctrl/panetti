@@ -29,6 +29,7 @@ const payout = (over: Record<string, unknown> = {}) => ({
   linesPending: false,
   orders: 12,
   matched: 12,
+  visma: 'Waiting: no Visma setup for this shop',
   ...over,
 })
 
@@ -145,5 +146,12 @@ describe('PayoutsClient', () => {
 
     expect(await screen.findByText('Dintero is not connected yet')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Connect Dintero' })).toHaveAttribute('href', '/settings/payouts')
+  })
+
+  it('shows the Visma status text from the list', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(listResponse([payout({ visma: 'Ready' })]))))
+    render(<PayoutsClient email="a@b.test" />)
+
+    expect(await screen.findByText('Ready')).toBeInTheDocument()
   })
 })

@@ -47,6 +47,8 @@ export default defineConfig(({ mode }) => {
               'src/lib/data/load.integration.test.ts',
               'src/lib/inventory/load.test.ts',
               'src/app/api/products/source.integration.test.ts',
+              'src/lib/visma/posting/run.test.ts',
+              'src/app/api/visma-posting/route.test.ts',
             ],
           },
         },
@@ -60,7 +62,14 @@ export default defineConfig(({ mode }) => {
             // `app` project's normal parallelism, the two race on one
             // un-taggable row - same shape of problem the `delivery` project
             // below already solves, and the same fix: run them one at a time.
-            include: ['src/lib/data/load.test.ts', 'src/lib/data/load.integration.test.ts'],
+            include: [
+              'src/lib/data/load.test.ts',
+              'src/lib/data/load.integration.test.ts',
+              // Both write the VismaPostingConfig singleton, and the runner test
+              // reads payouts database-wide, so they must not run in parallel.
+              'src/lib/visma/posting/run.test.ts',
+              'src/app/api/visma-posting/route.test.ts',
+            ],
             fileParallelism: false,
           },
         },

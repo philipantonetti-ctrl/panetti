@@ -30,6 +30,7 @@ import {
 } from './client'
 import { unwrap } from './purchase-orders'
 import { isWebshopAccount } from './receivables'
+import { TEST_TENANT_ID, writeCredentials } from './write'
 
 export const VISMA_PROBE_VERSION = 1
 
@@ -45,6 +46,8 @@ type Row = Record<string, unknown>
 type Get = (path: string) => Promise<unknown>
 type Ctx = {
   get: Get
+  /** A GET against the TEST company (read scope). Throws when the credentials are missing. */
+  testGet: Get
   stored: (step: string) => Promise<unknown>
   /** One token request with the given scopes, answered without the token. */
   scopeCheck: (scope: string) => Promise<VismaScopeAnswer>
@@ -368,6 +371,22 @@ export const VISMA_PROBE_STEPS: ProbeStep[] = [
     },
   },
   {
+    // The test company ("Test LEDENDE TEKNOLOGI AS"), connected read + create
+    // on 2026-10-15. Before anything is written there, prove the token, the
+    // tenant and the API host answer for it. Expect customers 10000-10002.
+    name: 'test-company',
+    calls: 2,
+    run: async ({ testGet }) => {
+      const customers = rows(await testGet('controller/api/v1/customer?pageSize=50&pageNumber=1'))
+      const cash = rows(await testGet('controller/api/v1/cashaccount'))
+      return {
+        tenant: TEST_TENANT_ID,
+        customers: customers.map((c) => pick(c, ['number', 'name', 'status'])),
+        cashAccounts: cash.map((a) => pick(a, ['number', 'description', 'currency'])),
+      }
+    },
+  },
+  {
     // May the production credentials WRITE? The create and update scopes were
     // approved in the Developer Portal on 2026-09-03; the token endpoint is
     // the proof that the company has accepted them too. Last, and one call.
@@ -436,6 +455,13 @@ export async function runVismaProbe(
       calls++
       return vismaGet<unknown>(creds, path, { deadline: opts.deadline })
     }
+    const testCreds = writeCredentials()
+    const testGet: Get = async (path) => {
+      if (!testCreds) throw new Error('no Visma credentials for the test company')
+      if (calls > 0 && pauseMs > 0) await pause(pauseMs)
+      calls++
+      return vismaGet<unknown>(testCreds, path, { deadline: opts.deadline })
+    }
     const stored = async (step: string) =>
       (await db.diagnosticSnapshot.findUnique({ where: { key: probeKey(step) } }))?.payload ?? null
     const scopeCheck = async (scope: string) => {
@@ -452,7 +478,7 @@ export async function runVismaProbe(
         break
       }
       try {
-        await store(step.name, await step.run({ get, stored, scopeCheck }))
+        await store(step.name, await step.run({ get, testGet, stored, scopeCheck }))
       } catch (e) {
         if (e instanceof VismaError && e.status === 429) {
           partial = true

@@ -5,6 +5,9 @@ import { db } from '@/lib/db'
 import { getSetting } from '@/lib/settings'
 import { rangeFromQuery } from '@/lib/api/range'
 import { zoneDayEndUtc, zoneDayStartUtc } from '@/lib/tz'
+import { payoutIsIngested } from '@/lib/dintero/sync'
+import { vismaLabel } from '@/lib/visma/posting/label'
+import { TEST_TENANT_ID } from '@/lib/visma/write'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 export const dynamic = 'force-dynamic'
@@ -44,7 +47,10 @@ export async function GET(req: Request) {
         OR: [{ settledAt: { gte: start, lte: end } }, { settledAt: null }],
       },
       orderBy: [{ settledAt: { sort: 'desc', nulls: 'first' } }],
-      include: { shop: { select: { name: true } } },
+      include: {
+        shop: { select: { name: true, dinteroConfig: { select: { vismaCustomer: true, vismaClearingAccount: true, vismaBankAccount: true, vismaFeeAccount: true } } } },
+        vismaPostings: { where: { tenantId: TEST_TENANT_ID }, select: { status: true, matched: true, unmatched: true, error: true } },
+      },
     })
 
     const lineCounts = await db.payoutLine.groupBy({
@@ -134,6 +140,16 @@ export async function GET(req: Request) {
           linesPending: p.linesPending,
           orders: linesOf.get(p.id) ?? 0,
           matched: matchedOf.get(p.id) ?? 0,
+          visma: vismaLabel({
+            settledAt: p.settledAt,
+            ingested: payoutIsIngested(p),
+            reference: p.reference,
+            mapped: Boolean(
+              p.shop.dinteroConfig?.vismaCustomer && p.shop.dinteroConfig.vismaClearingAccount &&
+                p.shop.dinteroConfig.vismaBankAccount && p.shop.dinteroConfig.vismaFeeAccount,
+            ),
+            posting: p.vismaPostings[0] ?? null,
+          }),
         })),
         waiting: waiting.map((o) => ({
           id: o.id,

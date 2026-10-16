@@ -35,6 +35,7 @@ export type PayoutRow = {
   linesPending: boolean
   orders: number
   matched: number
+  visma: string
 }
 
 export type WaitingOrder = {
@@ -74,7 +75,21 @@ export type PayoutLineRow = {
   order: { number: string; placedAt: string; status: string; total: number } | null
 }
 
-type Detail = { currency: string; linesPending: boolean; reference: string | null; lines: PayoutLineRow[] }
+type VismaDocument = {
+  kind: string
+  key: string
+  status: string
+  reason: string | null
+  vismaNumber: string | null
+  amount: number | null
+}
+type Detail = {
+  currency: string
+  linesPending: boolean
+  reference: string | null
+  lines: PayoutLineRow[]
+  visma: { status: string; documents: VismaDocument[] } | null
+}
 
 const day = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'
@@ -112,6 +127,24 @@ export function ordersCell(p: PayoutRow): { text: string; tone: string } {
   if (p.matched === p.orders) return { text: `${p.orders} of ${p.orders}`, tone: 'text-ink' }
   // Short is the state this page exists to surface.
   return { text: `${p.matched} of ${p.orders} matched`, tone: 'text-warn font-semibold' }
+}
+
+function VismaDocuments({ detail }: { detail: Detail }) {
+  if (!detail.visma) return null
+  return (
+    <div className="px-4 py-3 text-sm">
+      <div className="font-semibold text-ink">In Visma (test company)</div>
+      <ul className="mt-1 space-y-0.5">
+        {detail.visma.documents.map((d) => (
+          <li key={`${d.kind}-${d.key}`}>
+            {d.kind === 'payout' ? 'Payout entry' : `Order ${d.key}`}: {d.status}
+            {d.vismaNumber ? ` (Visma ${d.vismaNumber})` : ''}
+            {d.reason ? ` - ${d.reason}` : ''}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 function Lines({ detail }: { detail: Detail }) {
@@ -363,6 +396,7 @@ export function PayoutsClient({ email }: { email: string }) {
                         <th className="px-3 py-2.5">Period</th>
                         <th className="px-3 py-2.5">Bank reference</th>
                         <th className="px-3 py-2.5">Orders</th>
+                        <th className="px-3 py-2.5">Visma</th>
                         <th className="num px-3 py-2.5 text-right">Captured</th>
                         <th className="num px-3 py-2.5 text-right">Refunds</th>
                         <th className="num px-3 py-2.5 text-right">Fees</th>
@@ -403,6 +437,7 @@ export function PayoutsClient({ email }: { email: string }) {
                                 {p.reference ?? '-'}
                               </td>
                               <td className={`num px-3 py-2.5 ${cell.tone}`}>{cell.text}</td>
+                              <td className={`px-3 py-2.5 ${p.visma.startsWith('Error') ? 'text-warn font-semibold' : ''}`}>{p.visma}</td>
                               <td className="num px-3 py-2.5 text-right">{formatMoney(p.capture, p.currency)}</td>
                               <td className="num px-3 py-2.5 text-right">
                                 {p.refund !== 0 ? (
@@ -418,9 +453,12 @@ export function PayoutsClient({ email }: { email: string }) {
                             </tr>
                             {open && (
                               <tr className="border-b border-line bg-panel/50 last:border-b-0">
-                                <td colSpan={9} className="p-0">
+                                <td colSpan={10} className="p-0">
                                   {details[p.id] ? (
-                                    <Lines detail={details[p.id]} />
+                                    <>
+                                      <Lines detail={details[p.id]} />
+                                      <VismaDocuments detail={details[p.id]} />
+                                    </>
                                   ) : (
                                     <div className="skeleton m-3 h-[60px]" style={{ borderRadius: 'var(--radius-card)' }} />
                                   )}

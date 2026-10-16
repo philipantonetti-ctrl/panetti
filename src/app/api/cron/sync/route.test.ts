@@ -38,6 +38,11 @@ const importVismaB2bSales = vi.fn(async (opts?: { deadline?: number }) => ({
 vi.mock('@/lib/visma/probe', () => ({
   runVismaProbe: async () => ({ configured: false, ran: [], pending: [], calls: 0, partial: false, error: null }),
 }))
+// Nor the Visma posting job: unmocked it would read the database's mode and
+// could POST to the test company from a test run.
+vi.mock('@/lib/visma/posting/run', () => ({
+  runVismaPosting: async () => ({ mode: 'off', configured: false, payoutId: null, status: null, calls: 0, error: null }),
+}))
 vi.mock('@/lib/visma/import', () => ({
   importVismaPurchaseOrders: () => importVismaPurchaseOrders(),
   // Arguments forwarded, not dropped: the deadline this route hands it is the

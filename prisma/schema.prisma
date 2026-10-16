@@ -1765,6 +1765,13 @@ model DinteroConfig {
   /// settlement list to this shop's payout destination.
   payoutDestinationId String?
 
+  /// Where this shop's payouts go in Visma (bookkeeper's drawing). All four
+  /// set = the shop is ready to post; any null = "no Visma setup".
+  vismaCustomer        String? // webshop customer, e.g. 10859
+  vismaClearingAccount String? // Dintero clearing cash account, e.g. 1509
+  vismaBankAccount     String? // bank account the net lands on, e.g. 1940
+  vismaFeeAccount      String? // Dintero fees, e.g. 7770
+
   /// The last report link the sync followed - a window into what Dintero
   /// actually serves, for debugging a report that will not parse. Never
   /// exposed by the API: a signed link IS access to the report.
@@ -1816,8 +1823,9 @@ model Payout {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  shop  Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  lines PayoutLine[]
+  shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  lines         PayoutLine[]
+  vismaPostings VismaPosting[]
 
   @@unique([shopId, externalId])
   @@index([settledAt])
@@ -1857,4 +1865,55 @@ model PayoutLine {
   @@unique([payoutId, transactionId])
   @@index([orderId])
   @@index([reference])
+}
+
+/// Off until an admin picks a mode on /settings/payouts.
+model VismaPostingConfig {
+  id        String   @id @default("singleton")
+  mode      String   @default("off") // off | dry_run | hold
+  updatedAt DateTime @updatedAt
+}
+
+/// One payout's posting into one Visma company. Unique per company, so the
+/// test company's run never blocks the real one later.
+model VismaPosting {
+  id        String    @id @default(cuid())
+  payoutId  String
+  tenantId  String
+  status    String // dry_run | posting | posted | error
+  matched   Int       @default(0)
+  unmatched Int       @default(0)
+  attempts  Int       @default(0)
+  error     String?
+  /// What the planner decided, for the dry run and for a person to read.
+  preview   Json?
+  postedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  payout    Payout                 @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  documents VismaPostingDocument[]
+
+  @@unique([payoutId, tenantId])
+}
+
+/// One document we send (or decided not to). Written BEFORE the POST, so a
+/// crash between Visma's answer and ours is noticed and checked, never resent blind.
+model VismaPostingDocument {
+  id            String   @id @default(cuid())
+  postingId     String
+  kind          String // payment | payout
+  key           String // order number (payment), payout id (payout)
+  status        String // sending | sent | pending | skipped | error | unconfirmed
+  reason        String?
+  invoiceNumber String?
+  vismaNumber   String?
+  amount        Int?
+  attempts      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  posting VismaPosting @relation(fields: [postingId], references: [id], onDelete: Cascade)
+
+  @@unique([postingId, kind, key])
 }

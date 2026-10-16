@@ -289,3 +289,43 @@ describe('pickWebshopCustomer', () => {
     expect(pickWebshopCustomer(customers, /nobody/i, /nowhere/i, 'SEK')).toBeNull()
   })
 })
+
+describe('the test-company step', () => {
+  it('reads customers and cash accounts with a token for the TEST tenant', async () => {
+    // Everything else answered, and write-scope already granted, so only this step runs.
+    for (const s of VISMA_PROBE_STEPS) {
+      if (s.name === 'test-company') continue
+      await db.diagnosticSnapshot.create({
+        data: { key: probeKey(s.name), payload: s.name === 'write-scope' ? { granted: true } : { rows: 0 } },
+      })
+    }
+    const tokenBodies: string[] = []
+    const urls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url)
+        if (u.includes('connect/token')) {
+          tokenBodies.push(String(init?.body))
+          return json({ access_token: 'tok', expires_in: 3600 })
+        }
+        urls.push(u)
+        if (u.includes('/v1/customer?')) return json([{ number: '10000', name: 'Test Kunde Dataplan', status: 'Active' }])
+        if (u.includes('/v1/cashaccount')) return json([{ number: '1940', description: 'Bankinnskudd EURO', currency: 'EUR' }])
+        return json([])
+      }),
+    )
+
+    const result = await runVismaProbe({ maxCalls: 2, pauseMs: 0 })
+    expect(result.ran).toEqual(['test-company'])
+    expect(tokenBodies.every((b) => b.includes('tenant_id=08058ec7-a375-11ec-b60b-0638767d04b5'))).toBe(true)
+    expect(urls).toHaveLength(2)
+
+    const stored = await db.diagnosticSnapshot.findUnique({ where: { key: probeKey('test-company') } })
+    expect(stored?.payload).toEqual({
+      tenant: '08058ec7-a375-11ec-b60b-0638767d04b5',
+      customers: [{ number: '10000', name: 'Test Kunde Dataplan', status: 'Active' }],
+      cashAccounts: [{ number: '1940', description: 'Bankinnskudd EURO', currency: 'EUR' }],
+    })
+  })
+})
