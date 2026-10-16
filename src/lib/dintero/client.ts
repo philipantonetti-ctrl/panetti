@@ -21,6 +21,13 @@ const TIMEOUT_MS = 20_000
 /** Wording safe to store as lastError and show on the settings page. */
 export class DinteroApiError extends Error {}
 
+/**
+ * Dintero refused the id itself (400 on a lookup path): it is not one of its
+ * transaction ids at all - an old Stripe charge on a 2021 order, say. An
+ * answer about that one id, never a fault of the connection.
+ */
+export class DinteroInvalidIdError extends DinteroApiError {}
+
 export type DinteroCredentials = {
   /** T or P plus eight digits; P is production. */
   accountId: string
@@ -101,6 +108,11 @@ type RequestOpts = {
    * wrong for a good credential that simply lacks a scope.
    */
   forbidden?: string
+  /**
+   * A 400 means the id in the path is not one Dintero accepts. Only for a
+   * single-id lookup, where the id is the one thing the request carries.
+   */
+  invalidIdOn400?: boolean
 }
 
 async function request(path: string, init: RequestInit, opts: RequestOpts = {}): Promise<unknown> {
@@ -132,11 +144,11 @@ async function request(path: string, init: RequestInit, opts: RequestOpts = {}):
     } catch {
       // An unreadable body leaves the status to speak for itself.
     }
-    throw new DinteroApiError(
-      detail
-        ? `Dintero answered ${res.status}: ${detail.slice(0, 160)}`
-        : `Dintero answered ${res.status}. Try again in a while.`,
-    )
+    const message = detail
+      ? `Dintero answered ${res.status}: ${detail.slice(0, 160)}`
+      : `Dintero answered ${res.status}. Try again in a while.`
+    if (res.status === 400 && opts.invalidIdOn400) throw new DinteroInvalidIdError(message)
+    throw new DinteroApiError(message)
   }
   try {
     return await res.json()
@@ -329,6 +341,7 @@ export async function getTransaction(
     { headers: { Authorization: `Bearer ${token}` } },
     {
       nullOn404: true,
+      invalidIdOn400: true,
       // These API clients were created to read settlement reports. This
       // endpoint needs read:checkout, and the default 403 sentence would send
       // someone to re-paste credentials that are perfectly good.

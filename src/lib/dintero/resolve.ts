@@ -18,6 +18,7 @@ import { db } from '../db'
 import { decryptSecret } from '../secrets'
 import {
   DinteroApiError,
+  DinteroInvalidIdError,
   getToken,
   getTransaction,
   listSettlements,
@@ -225,6 +226,15 @@ export async function resolveUnpaidOrders(
       if (linked) result.resolved++
       else await stamp(order.id, `Dintero says it was paid in ${tx.settlements[0].settlementId}.`)
     } catch (e) {
+      if (e instanceof DinteroInvalidIdError) {
+        // Dintero refused the id itself: this order's payment id is not one
+        // of its transactions (an old pre-Dintero charge). An answer about
+        // this order - the shop's connection is fine, so the next order is
+        // still asked and nothing is written to the settings card.
+        result.checked++
+        await stamp(order.id, `Not a Dintero transaction id (${transactionId}), so Dintero cannot say which payout paid it.`)
+        continue
+      }
       if (!(e instanceof DinteroApiError)) console.error('dintero resolve', config.shop.name, e)
       const error =
         e instanceof DinteroApiError
