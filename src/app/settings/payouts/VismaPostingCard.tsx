@@ -70,7 +70,7 @@ export function VismaPostingCard() {
   }
 
   return (
-    <section className="mt-8 rounded-[var(--radius-card)] border border-line bg-surface p-5">
+    <section className="rounded-[var(--radius-card)] border border-line bg-surface p-5">
       <h2 className="text-base font-semibold text-ink">Visma posting (test company)</h2>
       <p className="mt-1 text-sm text-muted">
         Posts each Dintero payout into Visma as the bookkeeper&apos;s drawing describes. Writes go only to the test
