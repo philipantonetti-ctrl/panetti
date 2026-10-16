@@ -71,9 +71,21 @@ export async function PUT(req: Request) {
       }
       updates.push({ shopId: String(s.shopId ?? ''), data })
     }
+    // A shop whose mapping really changes gets its failed postings' attempts back, so a
+    // corrected customer or account number is retried instead of staying given up on.
+    const current = await db.dinteroConfig.findMany({ where: { shopId: { in: updates.map((u) => u.shopId) } } })
+    const changed = updates
+      .filter((u) => {
+        const c = current.find((x) => x.shopId === u.shopId)
+        return c !== undefined && FIELDS.some((f) => f in u.data && u.data[f] !== c[f])
+      })
+      .map((u) => u.shopId)
     await db.$transaction([
       db.vismaPostingConfig.upsert({ where: { id: 'singleton' }, create: { id: 'singleton', mode }, update: { mode } }),
       ...updates.map((u) => db.dinteroConfig.updateMany({ where: { shopId: u.shopId }, data: u.data })),
+      ...(changed.length > 0
+        ? [db.vismaPosting.updateMany({ where: { status: 'error', payout: { shopId: { in: changed } } }, data: { attempts: 0 } })]
+        : []),
     ])
     return NextResponse.json(await state(), { headers: NO_STORE })
   } catch (e) {
