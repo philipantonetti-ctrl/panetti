@@ -67,6 +67,24 @@ describe('a card on the operations manager\'s first page', () => {
     expect(seeAll.getAttribute('href')).toBe('/delivery')
   })
 
+  /**
+   * A long product name ran under the red detail on the right ("Mazzetti
+   * Advanced Comfort - Massasjestol" over "105 days late"): `truncate` on an
+   * inline span does nothing. The name must be a shrinkable flex item that
+   * cuts itself off, with the whole name kept in a tooltip.
+   */
+  it('cuts a long name off before the detail instead of running under it', () => {
+    const long = 'Mazzetti Advanced Comfort - Massasjestol med varme og zero gravity'
+    draw(card({ total: 1, rows: [{ ...row(1), label: 'MACBE661', sub: long, detail: 'ordered from Belgo, 105 days late' }] }))
+
+    const sub = screen.getByText(long)
+    expect(sub).toHaveClass('truncate', 'min-w-0')
+    expect(sub).toHaveAttribute('title', long)
+    // Its holder is a flex row that may shrink, so the cut-off can happen.
+    expect(sub.parentElement).toHaveClass('flex', 'min-w-0')
+    expect(screen.getByText('MACBE661')).toHaveClass('shrink-0')
+  })
+
   it('shows an amount beside the row when one is carried', () => {
     draw(
       card({

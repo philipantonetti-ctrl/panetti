@@ -49,11 +49,17 @@ export function TodayCard({
                 href={r.href}
                 className="flex items-baseline justify-between gap-3 px-4 py-2.5 transition-colors duration-150 hover:bg-panel"
               >
-                <span className="min-w-0">
-                  <span className="text-[13px] font-medium text-ink">{r.label}</span>
-                  {r.sub && <span className="ml-2 truncate text-[12px] text-muted">{r.sub}</span>}
+                {/* A flex row that may shrink, so a long product name cuts
+                    itself off here instead of running under the detail. */}
+                <span className="flex min-w-0 items-baseline">
+                  <span className="shrink-0 text-[13px] font-medium text-ink">{r.label}</span>
+                  {r.sub && (
+                    <span title={r.sub} className="ml-2 min-w-0 truncate text-[12px] text-muted">
+                      {r.sub}
+                    </span>
+                  )}
                 </span>
-                <span className="shrink-0 text-right">
+                <span className="max-w-[55%] shrink-0 text-right">
                   <span className="block text-[12px] text-warn">{r.detail}</span>
                   {r.amount && (
                     <span className="num block text-[12px] text-muted">
