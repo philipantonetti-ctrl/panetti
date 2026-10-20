@@ -78,11 +78,25 @@ describe('a card on the operations manager\'s first page', () => {
     draw(card({ total: 1, rows: [{ ...row(1), label: 'MACBE661', sub: long, detail: 'ordered from Belgo, 105 days late' }] }))
 
     const sub = screen.getByText(long)
-    expect(sub).toHaveClass('truncate', 'min-w-0')
+    expect(sub).toHaveClass('truncate', 'min-w-0', 'max-w-full')
     expect(sub).toHaveAttribute('title', long)
-    // Its holder is a flex row that may shrink, so the cut-off can happen.
-    expect(sub.parentElement).toHaveClass('flex', 'min-w-0')
-    expect(screen.getByText('MACBE661')).toHaveClass('shrink-0')
+    // Its holder is a wrapping flex row that may shrink: a sub that does not
+    // fit beside the label drops to its own line and cuts itself off there.
+    expect(sub.parentElement).toHaveClass('flex', 'flex-wrap', 'min-w-0')
+  })
+
+  /**
+   * The first fix pinned the label to its full width (shrink-0), so a long
+   * customer name - "VELFERDSKLUBBEN SIBELCO NORDIC AVD. STJERNØY" on Overdue
+   * invoices - ran under "29 days overdue" instead. A label must wrap.
+   */
+  it('wraps a long label instead of pinning it to full width', () => {
+    const club = 'VELFERDSKLUBBEN SIBELCO NORDIC AVD. STJERNØY'
+    draw(card({ total: 1, rows: [{ ...row(1), label: club, sub: '131042', detail: '29 days overdue' }] }))
+
+    const label = screen.getByText(club)
+    expect(label).not.toHaveClass('shrink-0')
+    expect(label).toHaveClass('max-w-full')
   })
 
   it('shows an amount beside the row when one is carried', () => {

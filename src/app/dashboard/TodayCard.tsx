@@ -49,12 +49,13 @@ export function TodayCard({
                 href={r.href}
                 className="flex items-baseline justify-between gap-3 px-4 py-2.5 transition-colors duration-150 hover:bg-panel"
               >
-                {/* A flex row that may shrink, so a long product name cuts
-                    itself off here instead of running under the detail. */}
-                <span className="flex min-w-0 items-baseline">
-                  <span className="shrink-0 text-[13px] font-medium text-ink">{r.label}</span>
+                {/* Never runs under the detail: a long label (a club's full
+                    name) wraps, and a sub that no longer fits beside it drops
+                    to its own line and cuts itself off there. */}
+                <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                  <span className="max-w-full text-[13px] font-medium text-ink">{r.label}</span>
                   {r.sub && (
-                    <span title={r.sub} className="ml-2 min-w-0 truncate text-[12px] text-muted">
+                    <span title={r.sub} className="min-w-0 max-w-full truncate text-[12px] text-muted">
                       {r.sub}
                     </span>
                   )}
