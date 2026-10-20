@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { AmbassadorsClient } from './AmbassadorsClient'
 import { ToastProvider } from '@/components/toast/ToastProvider'
 
@@ -55,14 +55,35 @@ describe('the Ambassadors tab', () => {
       expect(screen.getByText('Salla Klemetti')).toBeTruthy()
     })
     expect(screen.getByLabelText('Shops')).toBeTruthy()
-    expect(screen.getByLabelText('Period')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Date range' })).toBeTruthy()
+  })
+
+  it('lets the team pick exact dates, and asks the statistics for exactly those days', async () => {
+    vi.useFakeTimers({ now: new Date('2026-07-21T10:00:00Z'), toFake: ['Date'] })
+    try {
+      renderPage()
+      await waitFor(() => expect(screen.getByText('Salla Klemetti')).toBeTruthy())
+
+      fireEvent.click(screen.getByRole('button', { name: 'Date range' }))
+      fireEvent.click(screen.getByRole('button', { name: '2026-07-03' }))
+      fireEvent.click(screen.getByRole('button', { name: '2026-07-17' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+      await waitFor(() => {
+        const urls = vi.mocked(fetch).mock.calls.map(([u]) => String(u))
+        expect(urls.some((u) => u.includes('/api/ambassadors/stats') && u.includes('from=2026-07-03') && u.includes('to=2026-07-17'))).toBe(true)
+      })
+      expect(screen.getByRole('button', { name: 'Date range' }).textContent).toContain('2026-07-03 → 2026-07-17')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows which products have gone out, under the statistics, and says the filters do not apply to it', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('Products with ambassadors')).toBeTruthy())
     expect(within(screen.getByTestId('product-overview-row')).getByText('Pro X')).toBeTruthy()
-    // The Shops and Period selects above drive Top ambassadors only; this
+    // The Shops and date filters above drive Top ambassadors only; this
     // table counts every product ever handed out, and must say so where the
     // eye compares the two.
     expect(screen.getByText('1 product, all shops, all time')).toBeTruthy()

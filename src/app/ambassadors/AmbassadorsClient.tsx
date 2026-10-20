@@ -4,15 +4,13 @@ import { useEffect, useState } from 'react'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { AMBASSADOR_TABS, PageTabs } from '@/components/shell/PageTabs'
 import { Leaderboard } from '@/components/dashboard/Leaderboard'
-import { PRESET_LABELS, type Preset } from '@/lib/dates'
+import { DateFilter, type RangeChoice } from '@/components/filters/DateFilter'
+import type { Preset } from '@/lib/dates'
 import type { LeaderboardRow } from '@/lib/metrics/ambassadors'
 import { ProductOverview, type ProductSummaryRow } from '@/components/ambassadors/ProductOverview'
 
 const INPUT =
   'rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint'
-
-/** The period choices for the statistics - the everyday ones, nothing exotic. */
-const STAT_PRESETS: Preset[] = ['this_month', 'last_month', 'last_30_days', 'last_90_days', 'this_year']
 
 type Stats = {
   leaderboard: LeaderboardRow[]
@@ -33,13 +31,22 @@ export function AmbassadorsClient({
   email: string
   role?: 'ADMIN' | 'MARKETING'
 }) {
-  // The statistics: who sold, filtered by shop and period.
+  // The statistics: who sold, filtered by shop and dates. The dates use the
+  // same picker as every other page: a preset, or exact days from the calendar.
   const [stats, setStats] = useState<Stats | null>(null)
   const [statShop, setStatShop] = useState('') // '' = all shops
-  const [statPreset, setStatPreset] = useState<Preset>('this_month')
+  const [statPreset, setStatPreset] = useState<Preset | 'custom'>('this_month')
+  const [statFrom, setStatFrom] = useState('')
+  const [statTo, setStatTo] = useState('')
   useEffect(() => {
     let live = true
-    const params = new URLSearchParams({ preset: statPreset })
+    const params = new URLSearchParams()
+    if (statPreset === 'custom') {
+      params.set('from', statFrom)
+      params.set('to', statTo)
+    } else {
+      params.set('preset', statPreset)
+    }
     if (statShop) params.set('shops', statShop)
     fetch(`/api/ambassadors/stats?${params}`)
       .then(async (r) => (r.ok ? ((await r.json()) as Stats) : null))
@@ -50,7 +57,13 @@ export function AmbassadorsClient({
     return () => {
       live = false
     }
-  }, [statShop, statPreset])
+  }, [statShop, statPreset, statFrom, statTo])
+
+  function pickRange(next: RangeChoice) {
+    setStatPreset(next.preset)
+    setStatFrom(next.from ?? '')
+    setStatTo(next.to ?? '')
+  }
 
   // How many ambassadors hold each product. Read once on arrival: the roster
   // tab is where products are handed out, and coming back here reads it again.
@@ -87,18 +100,7 @@ export function AmbassadorsClient({
             </option>
           ))}
         </select>
-        <select
-          aria-label="Period"
-          value={statPreset}
-          onChange={(e) => setStatPreset(e.target.value as Preset)}
-          className={INPUT}
-        >
-          {STAT_PRESETS.map((p) => (
-            <option key={p} value={p}>
-              {PRESET_LABELS[p]}
-            </option>
-          ))}
-        </select>
+        <DateFilter preset={statPreset} from={statFrom} to={statTo} onChange={pickRange} />
       </PageHeader>
 
       <PageTabs tabs={AMBASSADOR_TABS} />
