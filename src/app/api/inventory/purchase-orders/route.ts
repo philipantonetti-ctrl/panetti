@@ -63,6 +63,8 @@ export async function POST(req: Request) {
         // Null is allowed and honest. An order with no ETA is shown on the
         // forecast row but never moves a run-out date.
         eta: date(b.eta),
+        // Optional. A blank one is none, so the column shows a dash, not a gap.
+        poNumber: typeof b.poNumber === 'string' && b.poNumber.trim() ? b.poNumber.trim() : null,
         notes: (b.notes as string | null) ?? null,
       },
     })

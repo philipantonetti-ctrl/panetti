@@ -223,3 +223,27 @@ export async function vismaGet<T>(
 
   return (await res.json()) as T
 }
+
+/**
+ * The same GET for a file rather than JSON: the response comes back untouched
+ * so its bytes and Content-Type can be handed straight on. Visma's OpenAPI
+ * document types `attachment/{id}` only as "object", so nothing here assumes
+ * what the body is.
+ */
+export async function vismaGetFile(
+  creds: VismaCredentials,
+  path: string,
+  opts: VismaRequestOpts = {},
+): Promise<Response> {
+  const token = await vismaToken(creds, Date.now(), opts)
+  const res = await fetch(`${BASE}/${vismaPath(path)}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: '*/*' },
+    signal: AbortSignal.timeout(vismaRequestBudgetMs(opts)),
+  })
+
+  if (!res.ok) {
+    const text = (await res.text()).replace(/\s+/g, ' ').slice(0, 300)
+    throw new VismaError(`Visma responded ${res.status} for ${path}: ${text}`, res.status)
+  }
+  return res
+}

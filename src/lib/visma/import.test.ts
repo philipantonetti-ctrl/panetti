@@ -99,6 +99,16 @@ describe('importVismaPurchaseOrders', () => {
     expect(row!.eta).toEqual(new Date('2026-08-20T00:00:00Z'))
   })
 
+  it('stores the PO number and the supplier ref, and keeps them current', async () => {
+    stubVisma([vismaOrder({ supplierRef: { value: 'SUP-1' } })])
+    await importVismaPurchaseOrders()
+    stubVisma([vismaOrder({ supplierRef: { value: 'SUP-2' } })])
+    await importVismaPurchaseOrders()
+
+    const row = await db.purchaseOrder.findFirst({ where: { item: { sku: SKU } } })
+    expect(row).toMatchObject({ poNumber: TAG, supplierRef: 'SUP-2' })
+  })
+
   it('dates a finished order from its receipt, not from lastModified', async () => {
     stubVisma([closedOrder()])
     await importVismaPurchaseOrders()

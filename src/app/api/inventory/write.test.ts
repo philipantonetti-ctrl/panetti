@@ -81,6 +81,16 @@ describe('inventory write routes', () => {
     expect(order.eta).toBeNull()
   })
 
+  it('keeps the PO number someone typed, and stores a blank one as none', async () => {
+    admin()
+    const item = await db.supplyItem.create({ data: { sku: `${TAG}-PON`, name: 'Test' } })
+    await postOrder(post({ supplyItemId: item.id, quantity: 5, orderedAt: '2026-08-13', poNumber: ' 500321 ' }))
+    await postOrder(post({ supplyItemId: item.id, quantity: 6, orderedAt: '2026-08-13', poNumber: '  ' }))
+
+    const rows = await db.purchaseOrder.findMany({ where: { supplyItemId: item.id }, orderBy: { quantity: 'asc' } })
+    expect(rows.map((r) => r.poNumber)).toEqual(['500321', null])
+  })
+
   it('refuses a purchase order for nothing', async () => {
     admin()
     const item = await db.supplyItem.create({ data: { sku: `${TAG}-PO2`, name: 'Test' } })

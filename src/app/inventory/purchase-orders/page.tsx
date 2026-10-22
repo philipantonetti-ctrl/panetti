@@ -4,6 +4,7 @@ import { currentUser } from '@/lib/auth/current-user'
 import { canRunOperations } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { catalogueOf, imageOf, imagesOf, nameOf, namedFromSource } from '@/lib/inventory/sources'
+import { poNumberOf } from '@/lib/visma/po-files'
 import { InventoryTabs } from '../InventoryTabs'
 import { PurchaseOrdersClient } from './PurchaseOrdersClient'
 
@@ -68,6 +69,8 @@ export default async function PurchaseOrdersPage() {
             id: o.id, quantity: o.quantity,
             receivedQuantity: o.receivedQuantity,
             externalId: o.externalId,
+            poNumber: poNumberOf(o),
+            supplierRef: o.supplierRef,
             orderedAt: o.orderedAt.toISOString(),
             eta: o.eta?.toISOString() ?? null,
             receivedAt: o.receivedAt?.toISOString() ?? null,
@@ -83,6 +86,8 @@ export default async function PurchaseOrdersPage() {
             },
           }))}
           items={named.map((i) => ({ id: i.id, sku: i.sku, name: i.name }))}
+          // Supplier invoices print what we paid, so the files are the owner's.
+          canSeeFiles={user.role === 'ADMIN'}
         />
       </PageBody>
     </AppShell>

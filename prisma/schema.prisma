@@ -1116,6 +1116,12 @@ model PurchaseOrder {
   /// single seam the Visma import plugs into, and it is unique so a re-import
   /// updates rather than duplicates.
   externalId       String?   @unique
+  /// The PO number people quote: Visma's `orderNbr` on an imported row, or
+  /// whatever was typed on a hand-entered one. Null when nobody gave one.
+  poNumber         String?
+  /// Visma's `supplierRef`: the supplier's own number for this order, when
+  /// someone filled it in. Imported rows only.
+  supplierRef      String?
   notes            String?
   createdAt        DateTime  @default(now())
 

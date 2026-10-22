@@ -12,6 +12,10 @@ export type Order = {
   receivedQuantity: number | null
   /** Visma's own id. Null means someone typed this row here. */
   externalId: string | null
+  /** The number people quote: Visma's order number, or what was typed here. */
+  poNumber: string | null
+  /** The supplier's own reference for the order, when Visma has one. */
+  supplierRef: string | null
   orderedAt: string
   eta: string | null
   receivedAt: string | null
@@ -59,11 +63,91 @@ function units(o: Order) {
   return `${o.quantity} ordered · ${o.receivedQuantity} landed · ${outstanding} still coming`
 }
 
+type PoFile = { id: string; name: string; invoice: string; invoiceDate: string | null }
+
+type FilesState =
+  | { kind: 'closed' }
+  | { kind: 'loading' }
+  | { kind: 'failed' }
+  | { kind: 'shown'; configured: boolean; complete: boolean; files: PoFile[] }
+
+/**
+ * The files Visma holds for one order, fetched when asked for.
+ *
+ * They are the files on the supplier invoices that name this PO number:
+ * Visma's API has no files on a purchase order itself. Every outcome is said
+ * in words, because "no files", "Visma not connected" and "Visma did not
+ * answer" are three different answers and an empty cell would be all three.
+ */
+function FilesCell({ id, poNumber }: { id: string; poNumber: string | null }) {
+  const [state, setState] = useState<FilesState>({ kind: 'closed' })
+
+  if (!poNumber) return <span className="text-[12px] text-faint">no PO number</span>
+
+  async function open() {
+    setState({ kind: 'loading' })
+    try {
+      const res = await fetch(`/api/inventory/purchase-orders/files?id=${encodeURIComponent(id)}`)
+      if (!res.ok) {
+        setState({ kind: 'failed' })
+        return
+      }
+      const body = (await res.json()) as { configured: boolean; complete: boolean; files: PoFile[] }
+      setState({ kind: 'shown', configured: body.configured, complete: body.complete, files: body.files })
+    } catch {
+      setState({ kind: 'failed' })
+    }
+  }
+
+  if (state.kind === 'closed') {
+    return (
+      <button
+        type="button"
+        onClick={open}
+        aria-label={`Files for PO ${poNumber}`}
+        className="text-[12px] text-accent underline-offset-2 hover:underline"
+      >
+        Files
+      </button>
+    )
+  }
+  if (state.kind === 'loading') return <span className="text-[12px] text-muted">Looking in Visma…</span>
+  if (state.kind === 'failed') return <span className="text-[12px] text-loss">Could not reach Visma</span>
+  if (!state.configured) return <span className="text-[12px] text-muted">Visma is not connected here</span>
+  if (state.files.length === 0) {
+    return <span className="text-[12px] text-muted">No files in Visma for this order</span>
+  }
+
+  return (
+    <ul className="space-y-1 text-[12px]">
+      {state.files.map((f) => (
+        <li key={f.id}>
+          <a
+            href={`/api/inventory/purchase-orders/files/${f.id}?name=${encodeURIComponent(f.name)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline-offset-2 hover:underline"
+          >
+            {f.name}
+          </a>
+          <span className="block text-[11px] text-muted">supplier invoice {f.invoice}</span>
+        </li>
+      ))}
+      {!state.complete && (
+        <li className="text-[11px] text-warn">Visma had more invoices than one look reads; this list may be short.</li>
+      )}
+    </ul>
+  )
+}
+
 type Status = 'coming' | 'received' | 'all'
 
 /** The columns worth ordering by, and how to read each one for comparison. */
 const COLUMNS = {
   Product: (o: Order) => o.item.name.toLowerCase(),
+  // Visma's numbers are all six digits, so text order is number order there;
+  // a typed one sorts among them as text, which is the only order it has.
+  'PO number': (o: Order) => o.poNumber,
   Units: (o: Order) => o.quantity,
   Ordered: (o: Order) => o.orderedAt,
   Expected: (o: Order) => o.eta,
@@ -83,6 +167,8 @@ type Column = keyof typeof COLUMNS
  */
 const OPENS_ASCENDING: Record<Column, boolean> = {
   Product: true,
+  // Newest first, like Ordered: Visma counts its PO numbers upwards.
+  'PO number': false,
   Units: false,
   Ordered: false,
   Expected: true,
@@ -129,9 +215,16 @@ function sortRows(rows: Order[], by: Column, ascending: boolean): Order[] {
 export function PurchaseOrdersClient({
   orders,
   items,
+  canSeeFiles = false,
 }: {
   orders: Order[]
   items: { id: string; sku: string; name: string }[]
+  /**
+   * The owner only. The files are supplier invoices, which print what we paid
+   * per unit, and the operations login never sees a cost. The routes refuse
+   * him as well; this just keeps the button that would fail off his screen.
+   */
+  canSeeFiles?: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -143,7 +236,7 @@ export function PurchaseOrdersClient({
   // the question the page exists to answer. Only a click overrides it.
   const [sort, setSort] = useState<{ by: Column; ascending: boolean } | null>(null)
 
-  const [form, setForm] = useState({ itemId: '', quantity: '', orderedAt: '', eta: '' })
+  const [form, setForm] = useState({ itemId: '', quantity: '', orderedAt: '', eta: '', poNumber: '' })
   const [addBusy, setAddBusy] = useState(false)
   const [addError, setAddError] = useState('')
 
@@ -180,13 +273,14 @@ export function PurchaseOrdersClient({
           // arrival nobody knows must not push out a run-out date, so null is
           // the honest value and the row will say so.
           eta: form.eta || null,
+          poNumber: form.poNumber.trim() || null,
         }),
       })
       if (!res.ok) {
         setAddError('Could not add that order.')
         return
       }
-      setForm({ itemId: '', quantity: '', orderedAt: '', eta: '' })
+      setForm({ itemId: '', quantity: '', orderedAt: '', eta: '', poNumber: '' })
       router.refresh()
     } catch {
       setAddError('Could not reach the server.')
@@ -229,8 +323,10 @@ export function PurchaseOrdersClient({
       if (needle === '') return true
       // Name AND code, because he knows some products by one and some by the
       // other - the same reason the orders page searches both.
-      return (
-        o.item.name.toLowerCase().includes(needle) || o.item.sku.toLowerCase().includes(needle)
+      // The PO number and the supplier's ref too, because that is what a
+      // supplier's email or an invoice quotes.
+      return [o.item.name, o.item.sku, o.poNumber, o.supplierRef].some((v) =>
+        v?.toLowerCase().includes(needle),
       )
     })
     return sort === null ? kept : sortRows(kept, sort.by, sort.ascending)
@@ -309,6 +405,17 @@ export function PurchaseOrdersClient({
           <span className="mt-1 block text-[11px] text-faint">Leave blank if you do not know yet</span>
         </label>
 
+        <label className="text-[12px] text-muted">
+          <span className="block pb-1">PO number</span>
+          <input
+            aria-label="PO number"
+            value={form.poNumber}
+            onChange={(e) => setForm((f) => ({ ...f, poNumber: e.target.value }))}
+            className="w-28 rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
+          />
+          <span className="mt-1 block text-[11px] text-faint">Optional</span>
+        </label>
+
         <button
           onClick={addOrder}
           disabled={addBusy}
@@ -376,7 +483,7 @@ export function PurchaseOrdersClient({
           <input
             type="search"
             aria-label="Search purchase orders"
-            placeholder="Product or SKU…"
+            placeholder="Product, SKU or PO number…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className={`${control} w-[200px] placeholder:text-faint`}
@@ -399,7 +506,7 @@ export function PurchaseOrdersClient({
         <table className="w-full text-[13px]">
           <thead>
             <tr className="border-b border-line text-left text-[12px] text-muted">
-              {(['Product', 'Units', 'Ordered', 'Expected'] as Column[]).map((c) => (
+              {(['Product', 'PO number', 'Units', 'Ordered', 'Expected'] as Column[]).map((c) => (
                 <th key={c} className="px-4 py-2.5">
                   <button
                     type="button"
@@ -412,6 +519,7 @@ export function PurchaseOrdersClient({
                 </th>
               ))}
               <th className="px-4 py-2.5">Source</th>
+              {canSeeFiles && <th className="px-4 py-2.5">Files</th>}
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
@@ -424,6 +532,18 @@ export function PurchaseOrdersClient({
                     <span>{o.item.name}</span>
                   </div>
                 </td>
+                <td className="whitespace-nowrap px-4 py-2.5">
+                  {o.poNumber ? (
+                    <>
+                      <span className="block tabular-nums text-ink">{o.poNumber}</span>
+                      {o.supplierRef && (
+                        <span className="block text-[11px] text-muted">supplier ref {o.supplierRef}</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-faint">none</span>
+                  )}
+                </td>
                 <td className="px-4 py-2.5 tabular-nums">{units(o)}</td>
                 <td className="px-4 py-2.5">{when(o.orderedAt)}</td>
                 <td className="px-4 py-2.5">
@@ -434,6 +554,11 @@ export function PurchaseOrdersClient({
                 <td className="px-4 py-2.5 text-muted">
                   {o.externalId ? 'Visma' : 'added here'}
                 </td>
+                {canSeeFiles && (
+                  <td className="px-4 py-2.5 align-top">
+                    <FilesCell id={o.id} poNumber={o.poNumber} />
+                  </td>
+                )}
                 <td className="px-4 py-2.5 text-right">
                   {o.receivedAt ? (
                     // "recorded", not "received", on a Visma row. Most of those

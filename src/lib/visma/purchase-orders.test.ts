@@ -79,6 +79,15 @@ describe('mapVismaOrders', () => {
     })
   })
 
+  it('carries the PO number people quote, and the supplier ref when there is one', () => {
+    const [withRef] = mapVismaOrders([order({ supplierRef: { value: ' AB-77 ' } })], OURS, DATES).orders
+    expect(withRef).toMatchObject({ poNumber: '500001', supplierRef: 'AB-77' })
+
+    // Bare and blank both arrive; a blank ref is no ref.
+    const [bare] = mapVismaOrders([order({ orderNbr: 500002, supplierRef: '' })], OURS, DATES).orders
+    expect(bare).toMatchObject({ poNumber: '500002', supplierRef: null })
+  })
+
   it('prefers the line promise over the order promise', () => {
     expect(mapVismaOrders([order()], OURS, DATES).orders[0].eta).toEqual(
       new Date('2026-08-20T00:00:00Z'),

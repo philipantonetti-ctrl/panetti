@@ -5,6 +5,10 @@ export type { VismaOrder, VismaOrderLine, VismaReceipt, VismaReceiptRef } from '
 
 export type MappedOrder = {
   externalId: string
+  /** Visma's order number, the one people quote. */
+  poNumber: string
+  /** The supplier's own reference, or null when nobody filled it in. */
+  supplierRef: string | null
   sku: string
   /** What was ordered. Never the outstanding amount - see the design doc. */
   quantity: number
@@ -152,6 +156,8 @@ export function mapVismaOrders(
       continue
     }
 
+    const poNumber = String(orderNbr).trim()
+    const supplierRef = String(unwrap<string>(order.supplierRef) ?? '').trim() || null
     const orderEta = date(order.promisedOn)
     const finished = finishedOn(order, receiptDates, orderedAt)
 
@@ -179,6 +185,8 @@ export function mapVismaOrders(
 
       out.push({
         externalId: `${orderNbr}-${lineNbr}`,
+        poNumber,
+        supplierRef,
         sku,
         quantity: ordered,
         receivedQuantity: Math.max(0, num(line.qtyOnReceipts) ?? 0),
