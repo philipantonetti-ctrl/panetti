@@ -34,6 +34,8 @@ export type VismaReceiptRef = {
 
 export type VismaOrder = {
   orderNbr?: Wrapped<string | number>
+  /** The supplier's own number for this order, when someone filled it in. */
+  supplierRef?: Wrapped<string>
   status?: Wrapped<string>
   hold?: Wrapped<boolean>
   date?: Wrapped<string>

@@ -22,6 +22,8 @@ const order = (over: Partial<Order> = {}): Order => ({
   // this file was written about.
   receivedQuantity: null,
   externalId: null,
+  poNumber: null,
+  supplierRef: null,
   orderedAt: '2026-08-01T00:00:00.000Z',
   eta: null,
   receivedAt: null,
@@ -427,5 +429,130 @@ describe('PurchaseOrdersClient sorting', () => {
     expect(names()[1]).toBe('No date')
     fireEvent.click(screen.getByRole('button', { name: /Expected/ }))
     expect(names()[1]).toBe('No date')
+  })
+})
+
+describe('the PO number and the files from Visma', () => {
+  const FILE = '11111111-2222-3333-4444-555555555555'
+
+  it('shows the PO number on every row, with the supplier ref under it when there is one', () => {
+    render(
+      <PurchaseOrdersClient
+        orders={[
+          vismaOrder({ poNumber: '500001', supplierRef: 'AB-77' }),
+          order({ id: 'typed', poNumber: null, item: { sku: 'X', name: 'Typed', imageUrl: null } }),
+        ]}
+        items={[]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /PO number/ })).toBeInTheDocument()
+    const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
+    expect(within(rows[0]).getByText('500001')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('supplier ref AB-77')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('none')).toBeInTheDocument()
+  })
+
+  it('finds an order by its PO number or the supplier ref', () => {
+    render(
+      <PurchaseOrdersClient
+        orders={[
+          vismaOrder({ id: 'a', poNumber: '500001', supplierRef: 'AB-77' }),
+          vismaOrder({ id: 'b', poNumber: '500002', item: { sku: 'Y', name: 'Other', imageUrl: null } }),
+        ]}
+        items={[]}
+      />,
+    )
+    const search = screen.getByLabelText('Search purchase orders')
+
+    fireEvent.change(search, { target: { value: '500002' } })
+    expect(table().getByText('Other')).toBeInTheDocument()
+    expect(table().queryByText('Pizzetta Pro')).toBeNull()
+
+    fireEvent.change(search, { target: { value: 'ab-77' } })
+    expect(table().getByText('Pizzetta Pro')).toBeInTheDocument()
+  })
+
+  it('sends a typed PO number with a new order', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    render(<PurchaseOrdersClient orders={[]} items={[item]} />)
+
+    fireEvent.change(screen.getByLabelText('Product'), { target: { value: 'i1' } })
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Ordered'), { target: { value: '2026-08-14' } })
+    fireEvent.change(screen.getByLabelText('PO number'), { target: { value: '500321' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add order' }))
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body)).poNumber).toBe('500321')
+    fetchSpy.mockRestore()
+  })
+
+  /** Supplier invoices print what we paid; the operations login never sees cost. */
+  it('offers no Files column unless the viewer may see costs', () => {
+    render(<PurchaseOrdersClient orders={[vismaOrder({ poNumber: '500001' })]} items={[]} />)
+    expect(screen.queryByRole('columnheader', { name: 'Files' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Files/ })).toBeNull()
+  })
+
+  it('opens the files Visma holds for the order, each a link that downloads it', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          configured: true,
+          poNumber: '500001',
+          complete: true,
+          files: [{ id: FILE, name: 'order confirmation.pdf', invoice: 'INV-9', invoiceDate: '2026-07-02' }],
+        }),
+        { status: 200 },
+      ),
+    )
+    render(<PurchaseOrdersClient orders={[vismaOrder({ poNumber: '500001' })]} items={[]} canSeeFiles />)
+
+    expect(screen.getByRole('columnheader', { name: 'Files' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Files for PO 500001' }))
+
+    const link = await screen.findByRole('link', { name: 'order confirmation.pdf' })
+    expect(fetchSpy.mock.calls[0][0]).toBe('/api/inventory/purchase-orders/files?id=v1')
+    expect(link).toHaveAttribute(
+      'href',
+      `/api/inventory/purchase-orders/files/${FILE}?name=order%20confirmation.pdf`,
+    )
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(screen.getByText(/supplier invoice INV-9/)).toBeInTheDocument()
+    fetchSpy.mockRestore()
+  })
+
+  it('says so in words when Visma has no files, is not connected, or cannot be reached', async () => {
+    const answer = (body: unknown, status = 200) =>
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify(body), { status }))
+    const open = async (text: RegExp) => {
+      fireEvent.click(screen.getByRole('button', { name: 'Files for PO 500001' }))
+      expect(await screen.findByText(text)).toBeInTheDocument()
+    }
+
+    const { unmount } = render(
+      <PurchaseOrdersClient orders={[vismaOrder({ poNumber: '500001' })]} items={[]} canSeeFiles />,
+    )
+    answer({ configured: true, poNumber: '500001', complete: true, files: [] })
+    await open(/No files in Visma for this order/)
+    unmount()
+
+    const second = render(
+      <PurchaseOrdersClient orders={[vismaOrder({ poNumber: '500001' })]} items={[]} canSeeFiles />,
+    )
+    answer({ configured: false, poNumber: '500001', complete: true, files: [] })
+    await open(/Visma is not connected here/)
+    second.unmount()
+
+    render(<PurchaseOrdersClient orders={[vismaOrder({ poNumber: '500001' })]} items={[]} canSeeFiles />)
+    answer({ error: 'x' }, 502)
+    await open(/Could not reach Visma/)
+    vi.restoreAllMocks()
+  })
+
+  it('has no Files button on a row with no PO number to look up', () => {
+    render(<PurchaseOrdersClient orders={[order({ poNumber: null })]} items={[]} canSeeFiles />)
+    expect(screen.queryByRole('button', { name: /Files for PO/ })).toBeNull()
   })
 })

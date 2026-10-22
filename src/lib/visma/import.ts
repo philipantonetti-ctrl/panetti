@@ -104,6 +104,8 @@ export async function importVismaPurchaseOrders(): Promise<VismaImportResult> {
 
       const fields = {
         supplyItemId,
+        poNumber: row.poNumber,
+        supplierRef: row.supplierRef,
         quantity: row.quantity,
         receivedQuantity: row.receivedQuantity,
         orderedAt: row.orderedAt,
