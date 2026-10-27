@@ -33,6 +33,13 @@ export type MappedStock = {
   quantityOnHand: number
   /** Visma's own available figure. Shown, never forecast on - see types.ts. */
   available: number
+  /**
+   * "Available for Shipping" across the counted warehouses: the stock figure
+   * the pages and the forecast use. Null when no counted warehouse sent the
+   * field, so a payload without it falls back to the physical count instead of
+   * reading as nothing to ship.
+   */
+  availableForShipment: number | null
   /** Newest warehouse timestamp among the counted ones. */
   measuredAt: Date | null
 }
@@ -85,10 +92,27 @@ export function mapVismaStock(
       if (!measuredAt || at > measuredAt) measuredAt = at
     }
 
+    // A warehouse row that left the field out counts its physical stock rather
+    // than nothing; only when every counted row left it out is the figure
+    // unknown. No counted rows at all is the real zero described above.
+    const sent = mine.filter((d) => typeof unwrap<unknown>(d?.availableForShipment) === 'number')
+    const availableForShipment =
+      mine.length > 0 && sent.length === 0
+        ? null
+        : mine.reduce(
+            (s, d) =>
+              s +
+              (typeof unwrap<unknown>(d?.availableForShipment) === 'number'
+                ? num(d?.availableForShipment)
+                : num(d?.quantityOnHand)),
+            0,
+          )
+
     rows.push({
       sku: normaliseSku(sku),
       quantityOnHand: mine.reduce((s, d) => s + num(d?.quantityOnHand), 0),
       available: mine.reduce((s, d) => s + num(d?.available), 0),
+      availableForShipment,
       measuredAt,
     })
   }

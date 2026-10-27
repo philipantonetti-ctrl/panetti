@@ -63,6 +63,12 @@ export type VismaWarehouseDetail = {
    * not landed, and arriving purchase orders are already counted separately.
    */
   available?: Wrapped<number>
+  /**
+   * On hand less what is already shipped or on a shipment. Visma's screen calls
+   * it "Available for Shipping" and Philip asked for it as THE stock figure on
+   * 2026-10-27. In WarehouseDetailDto of the OpenAPI; absent on older payloads.
+   */
+  availableForShipment?: Wrapped<number>
   lastModifiedDateTime?: Wrapped<string>
 }
 

@@ -163,7 +163,9 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     // What Visma counted. Read unfiltered and joined by SKU below: the table
     // holds the whole company, and which products are worth forecasting is
     // already settled by the shops. Nothing here widens that list.
-    db.vismaStock.findMany({ select: { sku: true, quantityOnHand: true, measuredAt: true } }),
+    db.vismaStock.findMany({
+      select: { sku: true, quantityOnHand: true, availableForShipment: true, measuredAt: true },
+    }),
     db.orderItem.findMany({
       where: {
         order: {
@@ -204,8 +206,20 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   // SKU to what Visma counted. A SKU absent here is UNKNOWN, never zero - that
   // is the whole reason resolveStock takes a nullable reading rather than a
   // number with a default.
+  //
+  // The figure is "Available for Shipping" (Philip, 2026-10-27): on hand less
+  // what is already on a shipment, which can no longer be sold. A row read
+  // before Visma sent that field keeps the physical count.
   const vismaStock = new Map(
-    visma.map((v) => [normaliseSku(v.sku), { quantity: v.quantityOnHand, measuredAt: v.measuredAt }]),
+    visma.map((v) => [
+      normaliseSku(v.sku),
+      {
+        quantity: v.availableForShipment ?? v.quantityOnHand,
+        measuredAt: v.measuredAt,
+        onHand: v.quantityOnHand,
+        forShipping: v.availableForShipment !== null,
+      },
+    ]),
   )
   // What each product is CALLED, according to the shops that count. SupplyItem
   // snapshots its name once, from whichever shop the database returned first

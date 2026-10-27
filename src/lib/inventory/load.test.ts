@@ -13,6 +13,7 @@ afterEach(async () => {
   await db.supplyItem.deleteMany({ where: { sku: { startsWith: TAG } } })
   await db.product.deleteMany({ where: { sku: { startsWith: TAG } } })
   await db.shop.deleteMany({ where: { name: { startsWith: TAG } } })
+  await db.vismaStock.deleteMany({ where: { sku: { startsWith: TAG } } })
 })
 
 async function sell(shopName: string, sku: string, stock: number | null, units: number, daysAgo: number, country: string) {
@@ -87,6 +88,33 @@ describe('loadInventory', () => {
     const row = view.rows.find((r) => r.sku === SKU)!
     expect(row.burn).toBeCloseTo(2) // 120 units over 60 days
     expect(row.stock.quantity).toBe(100) // agreed, not summed
+  })
+
+  /**
+   * Philip, 2026-10-27: the stock figure is Visma's "Available for Shipping"
+   * per SKU, not the physical count. Same number on Stock and on Forecast.
+   */
+  it('takes the stock from Visma as available for shipping, keeping on hand beside it', async () => {
+    await sell(`${TAG}-no`, SKU, 100, 60, 5, 'NO')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
+    await db.vismaStock.create({
+      data: { sku: SKU, quantityOnHand: 4942, available: 4732, availableForShipment: 4740 },
+    })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.stock.source).toBe('visma')
+    expect(row.stock.quantity).toBe(4740)
+    expect(row.stock.visma).toMatchObject({ quantity: 4740, onHand: 4942, forShipping: true })
+  })
+
+  it('falls back to on hand when Visma sent no shipping figure', async () => {
+    await sell(`${TAG}-no`, SKU, 100, 60, 5, 'NO')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
+    await db.vismaStock.create({ data: { sku: SKU, quantityOnHand: 991, available: 992 } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.stock.quantity).toBe(991)
+    expect(row.stock.visma).toMatchObject({ quantity: 991, onHand: 991, forShipping: false })
   })
 
   it('does not count a cancelled order as demand', async () => {

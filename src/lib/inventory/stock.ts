@@ -64,9 +64,14 @@ export type StockSource = 'visma' | 'shops' | 'none'
 
 /** What Visma counted, in the warehouses we sell from. */
 export type VismaReading = {
+  /** Available for shipping where Visma sent it, else the physical count. */
   quantity: number
   /** When Visma last moved that warehouse row, not when we read it. */
   measuredAt: Date | null
+  /** The physical count, shown beside the figure when the two differ. */
+  onHand?: number
+  /** True when `quantity` is Visma's "Available for Shipping". */
+  forShipping?: boolean
 }
 
 export type ResolvedStock = AgreedStock & {
