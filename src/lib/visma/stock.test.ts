@@ -115,6 +115,77 @@ describe('mapVismaStock', () => {
     expect(row.available).toBe(992)
   })
 
+  /**
+   * Philip's figure (2026-10-27), from Visma's Inventory Allocation Details on
+   * PANPIZPRO in Jonkoping: 4 942 on hand, 4 740 available for shipping. The
+   * gap is stock already promised to sales orders, which can no longer be sold.
+   */
+  it('reads available for shipping beside the physical count', () => {
+    const [row] = only([
+      item({
+        warehouseDetails: [
+          { warehouse: '10', quantityOnHand: 4942, available: 4732, availableForShipment: 4740 },
+        ],
+      }),
+    ])
+
+    expect(row.quantityOnHand).toBe(4942)
+    expect(row.availableForShipment).toBe(4740)
+  })
+
+  it('adds up available for shipping over the warehouses it counts, and only those', () => {
+    const [row] = only([
+      item({
+        warehouseDetails: [
+          { warehouse: '1', quantityOnHand: 2, availableForShipment: 1 },
+          { warehouse: '10', quantityOnHand: 4942, availableForShipment: 4740 },
+          { warehouse: '13', quantityOnHand: 291, availableForShipment: 291 },
+        ],
+      }),
+    ])
+
+    expect(row.availableForShipment).toBe(4741)
+  })
+
+  it('reads a wrapped available-for-shipping figure', () => {
+    const [row] = only([
+      item({ warehouseDetails: [{ warehouse: '10', quantityOnHand: 5, availableForShipment: { value: 3 } }] }),
+    ])
+
+    expect(row.availableForShipment).toBe(3)
+  })
+
+  /**
+   * Not sent is not zero. A payload without the field must leave the page on
+   * the physical count, never announce that nothing can ship.
+   */
+  it('reports null when no counted warehouse sent the field', () => {
+    const [row] = only([item({ warehouseDetails: [{ warehouse: '10', quantityOnHand: 989 }] })])
+
+    expect(row.availableForShipment).toBeNull()
+  })
+
+  it('falls back to on hand for a counted warehouse that left the field out', () => {
+    const [row] = only([
+      item({
+        warehouseDetails: [
+          { warehouse: '1', quantityOnHand: 2 },
+          { warehouse: '10', quantityOnHand: 4942, availableForShipment: 4740 },
+        ],
+      }),
+    ])
+
+    expect(row.availableForShipment).toBe(4742)
+  })
+
+  it('reports a real zero for shipping when none of it sits where we ship from', () => {
+    const [row] = only([
+      item({ warehouseDetails: [{ warehouse: '13', quantityOnHand: 291, availableForShipment: 291 }] }),
+    ])
+
+    expect(row.availableForShipment).toBe(0)
+  })
+
   it('takes the newest timestamp among the warehouses it counted', () => {
     const [row] = only([
       item({

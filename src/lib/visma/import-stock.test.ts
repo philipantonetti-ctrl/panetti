@@ -54,6 +54,31 @@ describe('importVismaStock', () => {
     expect(row!.measuredAt).toEqual(new Date('2026-08-18T08:57:32.59'))
   })
 
+  it('stores available for shipping, the figure the page shows', async () => {
+    stubVisma([
+      invItem({
+        warehouseDetails: [
+          { warehouse: '10', quantityOnHand: 4942, available: 4732, availableForShipment: 4740 },
+        ],
+      }),
+    ])
+
+    await importVismaStock()
+
+    expect(await db.vismaStock.findUnique({ where: { sku: SKU } })).toMatchObject({
+      quantityOnHand: 4942,
+      availableForShipment: 4740,
+    })
+  })
+
+  it('stores null for shipping when Visma did not send it', async () => {
+    stubVisma([invItem()])
+
+    await importVismaStock()
+
+    expect((await db.vismaStock.findUnique({ where: { sku: SKU } }))!.availableForShipment).toBeNull()
+  })
+
   /**
    * The end-to-end form of the mapper's rule, because this is the one that
    * would quietly overstate the shelf: 291 Pizzeta Primo Stones sit in Speed

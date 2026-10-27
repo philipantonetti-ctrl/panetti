@@ -206,6 +206,7 @@ export async function importVismaStock(): Promise<VismaStockResult> {
           sku: m.sku,
           quantityOnHand: m.quantityOnHand,
           available: m.available,
+          availableForShipment: m.availableForShipment,
           measuredAt: m.measuredAt,
         })),
       }),

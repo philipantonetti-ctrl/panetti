@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { AppShell, PageBody, PageHeader } from '@/components/shell/AppShell'
 import { currentUser } from '@/lib/auth/current-user'
 import { canRunOperations } from '@/lib/auth/guard'
+import { db } from '@/lib/db'
+import { vismaCredentials } from '@/lib/visma/client'
 import { describeSources } from '@/lib/inventory/describe'
 import { loadInventory } from '@/lib/inventory/load'
 import { InventoryTabs } from '../InventoryTabs'
@@ -13,7 +15,12 @@ export default async function StockPage() {
   const user = await currentUser()
   if (!canRunOperations(user)) redirect('/login')
 
-  const { rows, stockFrom, shopCount } = await loadInventory()
+  const [{ rows, stockFrom, shopCount }, lastRead] = await Promise.all([
+    loadInventory(),
+    // The snapshot is rewritten whole on every read, so any row's readAt is
+    // when Visma was last read; the newest one is the honest answer.
+    db.vismaStock.aggregate({ _max: { readAt: true } }),
+  ])
 
   return (
     <AppShell email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'}>
@@ -29,6 +36,8 @@ export default async function StockPage() {
           <InventoryTabs />
         </div>
         <StockClient
+          vismaConnected={vismaCredentials() !== null}
+          vismaReadAt={lastRead._max.readAt?.toISOString() ?? null}
           rows={rows.map((r) => ({
             sku: r.sku,
             name: r.name,
@@ -37,6 +46,8 @@ export default async function StockPage() {
             disagrees: r.stock.disagrees,
             source: r.stock.source,
             countedAt: r.stock.visma?.measuredAt?.toISOString() ?? null,
+            onHand: r.stock.visma?.onHand ?? null,
+            forShipping: r.stock.visma?.forShipping ?? false,
             // Straight from the forecast, so "36 days left" here and the
             // run-out date on the Forecast tab are the same fact.
             runsOutOn: r.forecast.runsOutOn?.toISOString() ?? null,

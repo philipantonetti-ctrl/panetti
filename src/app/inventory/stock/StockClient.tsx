@@ -1,5 +1,7 @@
 'use client'
 
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Thumb } from '@/components/Thumb'
 import { daysLeft, readAgo } from '@/lib/inventory/cover'
 
@@ -17,6 +19,10 @@ export type StockRow = {
   source: 'visma' | 'shops' | 'none'
   /** When Visma last moved that warehouse row. Null unless it decided the number. */
   countedAt: string | null
+  /** Visma's physical count, shown beside the figure when the two differ. */
+  onHand?: number | null
+  /** True when `quantity` is Visma's "Available for Shipping". */
+  forShipping?: boolean
   /** From the forecast, so this page and the Forecast tab never contradict. */
   runsOutOn: string | null
   /** Why there is no run-out date, in the forecast's own words. */
@@ -60,27 +66,95 @@ function cover(r: StockRow, now: Date) {
 }
 
 /**
- * What each shop says is on the shelf, and what that means.
- *
  * Sorted by what is about to hurt: gone first, then soonest to run out. A
  * disagreement is badged rather than sorted to the top - a mirror that has
  * drifted by thirteen units matters, but not more than being out of stock
  * today. Products with no run-out date sort last in both cases, because a null
  * is not a zero and must never head a list about what to worry about.
  */
-export function StockClient({ rows, now }: { rows: StockRow[]; now?: string }) {
-  const today = now ? new Date(now) : new Date()
+function byRunOut(a: StockRow, b: StockRow): number {
+  const gone = Number(b.quantity === 0) - Number(a.quantity === 0)
+  if (gone !== 0) return gone
+  const x = a.runsOutOn ? Date.parse(a.runsOutOn) : null
+  const y = b.runsOutOn ? Date.parse(b.runsOutOn) : null
+  if (x === null && y === null) return 0
+  if (x === null) return 1
+  if (y === null) return -1
+  return x - y
+}
 
-  const sorted = [...rows].sort((a, b) => {
-    const gone = Number(b.quantity === 0) - Number(a.quantity === 0)
-    if (gone !== 0) return gone
-    const x = a.runsOutOn ? Date.parse(a.runsOutOn) : null
-    const y = b.runsOutOn ? Date.parse(b.runsOutOn) : null
-    if (x === null && y === null) return 0
-    if (x === null) return 1
-    if (y === null) return -1
-    return x - y
-  })
+/** "No stock data" is not a zero, so it sorts last whichever way the count runs. */
+const byCount = (most: boolean) => (a: StockRow, b: StockRow): number => {
+  if (a.quantity === null && b.quantity === null) return 0
+  if (a.quantity === null) return 1
+  if (b.quantity === null) return -1
+  return most ? b.quantity - a.quantity : a.quantity - b.quantity
+}
+
+const SORTS = {
+  runout: { label: 'Runs out first', compare: byRunOut },
+  most: { label: 'Most in stock', compare: byCount(true) },
+  least: { label: 'Least in stock', compare: byCount(false) },
+  name: { label: 'Name A to Z', compare: (a: StockRow, b: StockRow) => a.name.localeCompare(b.name) },
+} as const
+type SortKey = keyof typeof SORTS
+
+/**
+ * Read Visma's stock now rather than at the next 15-minute sync. Only drawn
+ * where Visma is connected; a failed read leaves the figures as they were.
+ */
+function RefreshFromVisma({ readAt, now }: { readAt: string | null; now: Date }) {
+  const router = useRouter()
+  const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle')
+
+  async function refresh() {
+    setState('busy')
+    try {
+      const res = await fetch('/api/inventory/stock/refresh', { method: 'POST' })
+      if (!res.ok) return setState('failed')
+      setState('idle')
+      router.refresh()
+    } catch {
+      setState('failed')
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
+      <span>Visma read {readAgo(readAt ? new Date(readAt) : null, now)}</span>
+      <button
+        type="button"
+        onClick={refresh}
+        disabled={state === 'busy'}
+        className="rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[12px] font-semibold text-ink disabled:opacity-50"
+      >
+        {state === 'busy' ? 'Reading Visma…' : 'Refresh from Visma'}
+      </button>
+      {state === 'failed' && (
+        <span className="text-loss">Could not read Visma. The figures below are from the last read.</span>
+      )}
+    </div>
+  )
+}
+
+/** What each shop says is on the shelf, and what that means. */
+export function StockClient({
+  rows,
+  now,
+  vismaConnected = false,
+  vismaReadAt = null,
+}: {
+  rows: StockRow[]
+  now?: string
+  /** Draws the refresh button. False where no Visma credentials are set. */
+  vismaConnected?: boolean
+  /** When we last read Visma's stock, from the sync or a refresh. */
+  vismaReadAt?: string | null
+}) {
+  const today = now ? new Date(now) : new Date()
+  const [sortKey, setSortKey] = useState<SortKey>('runout')
+
+  const sorted = useMemo(() => [...rows].sort(SORTS[sortKey].compare), [rows, sortKey])
 
   if (sorted.length === 0) {
     return (
@@ -92,6 +166,23 @@ export function StockClient({ rows, now }: { rows: StockRow[]; now?: string }) {
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-1">
+        <label className="flex items-center gap-2 text-[12px] text-muted">
+          Sort by
+          <select
+            aria-label="Sort by"
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SortKey)}
+            className="rounded-[var(--radius-control)] border border-line bg-canvas px-2 py-1 text-[13px] text-ink"
+          >
+            {(Object.keys(SORTS) as SortKey[]).map((k) => (
+              <option key={k} value={k}>{SORTS[k].label}</option>
+            ))}
+          </select>
+        </label>
+        {vismaConnected && <RefreshFromVisma readAt={vismaReadAt} now={today} />}
+      </div>
+
       {sorted.map((r) => {
         const c = cover(r, today)
         const read = lastRead(r.byShop)
@@ -131,7 +222,14 @@ export function StockClient({ rows, now }: { rows: StockRow[]; now?: string }) {
                     unanswerable before Visma was asked at all. */}
                 {r.source === 'visma' ? (
                   <p className="mt-1.5 text-[11px] text-muted">
-                    from Visma
+                    {/* Philip asked for "Available for Shipping" as the figure
+                        (2026-10-27): on hand less what is already on a
+                        shipment. On hand is kept beside it when they differ,
+                        so the gap to Visma's other screen is explained. */}
+                    {r.forShipping ? 'from Visma, available for shipping' : 'from Visma, on hand'}
+                    {r.forShipping && r.onHand != null && r.onHand !== r.quantity && (
+                      <span> · {r.onHand} on hand</span>
+                    )}
                     {counted && <span> · counted {readAgo(counted, today)}</span>}
                     {shopsDiffer && <span className="text-warn"> · the shops say otherwise</span>}
                   </p>

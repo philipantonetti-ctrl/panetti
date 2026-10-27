@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
+
+const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }))
+vi.mock('next/navigation', () => ({ useRouter: () => router }))
+
 import { StockClient, type StockRow } from './StockClient'
 
 // Fixed, so "36 days left" is a fact rather than whatever day the suite runs on.
@@ -206,5 +210,115 @@ describe('StockClient, on where the number came from', () => {
 
     expect(screen.queryByText(/from Visma/)).not.toBeInTheDocument()
     expect(screen.getByText('no stock data')).toBeInTheDocument()
+  })
+})
+
+/**
+ * Philip, 2026-10-27: "create a sort feature for the inventory count". The
+ * default stays what is about to hurt; the count sorts both ways on request.
+ */
+describe('StockClient, sorting', () => {
+  const ROWS = [
+    row({ sku: 'MID', name: 'Mid', quantity: 500, runsOutOn: '2026-09-01T00:00:00.000Z' }),
+    row({ sku: 'NONE', name: 'None', quantity: null, runsOutOn: null, note: 'no stock data', byShop: [] }),
+    row({ sku: 'BIG', name: 'Big', quantity: 4740, runsOutOn: '2027-06-01T00:00:00.000Z' }),
+    row({ sku: 'GONE', name: 'Gone', quantity: 0, runsOutOn: TODAY }),
+    row({ sku: 'ALPHA', name: 'Alpha', quantity: 12, runsOutOn: '2026-08-20T00:00:00.000Z' }),
+  ]
+  const names = () => screen.getAllByTestId('stock-name').map((e) => e.textContent)
+  const sortBy = (label: string) =>
+    fireEvent.change(screen.getByLabelText('Sort by'), {
+      target: { value: [...(screen.getByLabelText('Sort by') as HTMLSelectElement).options].find((o) => o.text === label)!.value },
+    })
+
+  it('opens on what runs out first, as before', () => {
+    show(ROWS)
+    expect(screen.getByLabelText('Sort by')).toHaveDisplayValue('Runs out first')
+    expect(names()).toEqual(['Gone', 'Alpha', 'Mid', 'Big', 'None'])
+  })
+
+  it('sorts by the stock count, most first, with no figure last', () => {
+    show(ROWS)
+    sortBy('Most in stock')
+    expect(names()).toEqual(['Big', 'Mid', 'Alpha', 'Gone', 'None'])
+  })
+
+  it('sorts by the stock count, least first, with no figure still last', () => {
+    show(ROWS)
+    sortBy('Least in stock')
+    expect(names()).toEqual(['Gone', 'Alpha', 'Mid', 'Big', 'None'])
+  })
+
+  it('sorts by name', () => {
+    show(ROWS)
+    sortBy('Name A to Z')
+    expect(names()).toEqual(['Alpha', 'Big', 'Gone', 'Mid', 'None'])
+  })
+})
+
+describe('StockClient, Visma available for shipping', () => {
+  it('names the figure as available for shipping and shows on hand beside it', () => {
+    show([row({ source: 'visma', quantity: 4740, onHand: 4942, forShipping: true, byShop: [] })])
+
+    expect(screen.getByText('4740')).toBeInTheDocument()
+    expect(screen.getByText(/available for shipping/)).toBeInTheDocument()
+    expect(screen.getByText(/4942 on hand/)).toBeInTheDocument()
+  })
+
+  it('does not repeat on hand when it is the same figure', () => {
+    show([row({ source: 'visma', quantity: 991, onHand: 991, forShipping: true, byShop: [] })])
+
+    expect(screen.queryByText(/on hand/)).not.toBeInTheDocument()
+  })
+
+  it('says on hand when Visma sent no shipping figure', () => {
+    show([row({ source: 'visma', quantity: 991, onHand: 991, forShipping: false, byShop: [] })])
+
+    expect(screen.queryByText(/available for shipping/)).not.toBeInTheDocument()
+    expect(screen.getByText(/from Visma, on hand/)).toBeInTheDocument()
+  })
+})
+
+describe('StockClient, refreshing from Visma', () => {
+  beforeEach(() => router.refresh.mockClear())
+  afterEach(() => vi.unstubAllGlobals())
+
+  const connected = () =>
+    render(
+      <StockClient rows={[row()]} now={TODAY} vismaConnected vismaReadAt="2026-08-13T22:00:00.000Z" />,
+    )
+
+  it('says when Visma was last read', () => {
+    connected()
+    expect(screen.getByText(/Visma read 2h ago/)).toBeInTheDocument()
+  })
+
+  it('reads Visma now and redraws the page with the new figures', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ stored: 3, error: null }), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+    connected()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh from Visma' }))
+
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled())
+    expect(fetch).toHaveBeenCalledWith('/api/inventory/stock/refresh', { method: 'POST' })
+  })
+
+  it('says so when Visma could not be read, and keeps the figures it has', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: 'Visma 500' }), { status: 502 })),
+    )
+    connected()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh from Visma' }))
+
+    expect(await screen.findByText(/Could not read Visma/)).toBeInTheDocument()
+    expect(router.refresh).not.toHaveBeenCalled()
+  })
+
+  it('offers no refresh where Visma is not connected', () => {
+    show([row()])
+    expect(screen.queryByRole('button', { name: 'Refresh from Visma' })).not.toBeInTheDocument()
   })
 })

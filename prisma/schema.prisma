@@ -1084,6 +1084,11 @@ model VismaStock {
   /// Visma's own available figure. Shown, never forecast on: it folds in stock
   /// that has not landed, and arriving purchase orders are already counted.
   available      Int
+  /// Visma's "Available for Shipping": on hand less what is shipped or on a
+  /// shipment. THE stock figure since 2026-10-27, for the pages and the
+  /// forecast alike. Null when Visma did not send it; readers fall back to
+  /// quantityOnHand.
+  availableForShipment Int?
   /// When Visma last moved the warehouse row. Null when it reported no date.
   measuredAt     DateTime?
   /// When we last read it, which is a different question from when it changed.
