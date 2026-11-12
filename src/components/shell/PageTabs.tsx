@@ -82,6 +82,8 @@ export const DELIVERY_TABS: Tab[] = [
 export const AMBASSADOR_TABS: Tab[] = [
   { href: '/ambassadors', label: 'Ambassadors' },
   { href: '/ambassadors/add', label: 'Add an ambassador' },
+  // "The shop says 15, Panetti says 13": every order on one code, and why.
+  { href: '/ambassadors/codes', label: 'Check a code' },
 ]
 
 /**

@@ -18,8 +18,20 @@ type Portal = {
   orders: number
   rank: number | null
   totalAmbassadors: number
+  /** Every order that used their code in the period, counted or not. */
+  used: number
+  /** Orders with their code that earn nothing, each with the reason. */
+  notCounted: {
+    id: string
+    number: string
+    date: string
+    shop: string
+    statusLabel: string
+    reason: string | null
+  }[]
   recent: {
     id: string
+    number: string
     date: string
     shop: string
     sales: number
@@ -133,6 +145,7 @@ export function PortalClient({
 
   const firstName = data?.name.split(' ')[0] ?? ''
   const shownOrders = showAll ? (data?.recent ?? []) : (data?.recent ?? []).slice(0, PAGE)
+  const notCounted = data?.notCounted ?? []
   const day = (iso: string) =>
     new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -329,6 +342,7 @@ export function PortalClient({
                 <thead>
                   <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
                     <th className="px-5 py-2 text-left">Date</th>
+                    <th className="px-4 py-2 text-left">Order</th>
                     <th className="px-4 py-2 text-left">Shop</th>
                     <th className="px-4 py-2 text-left">Products</th>
                     <th className="px-4 py-2 text-right">Sale</th>
@@ -339,7 +353,7 @@ export function PortalClient({
                 <tbody>
                   {data.recent.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-5 py-12 text-center text-[13px] text-muted">
+                      <td colSpan={6} className="px-5 py-12 text-center text-[13px] text-muted">
                         {data.lifetimeOrders > 0 ? (
                           // They HAVE sold - just not in this window. Saying
                           // "share your code" here would be plainly wrong.
@@ -374,6 +388,7 @@ export function PortalClient({
                             year: 'numeric',
                           })}
                         </td>
+                        <td className="num px-4 py-2.5 text-muted">#{o.number}</td>
                         <td className="px-4 py-2.5 text-ink">{o.shop}</td>
                         <td className="px-4 py-2.5 text-ink">
                           {o.products.length === 0 ? (
@@ -422,6 +437,45 @@ export function PortalClient({
                 </div>
               )}
             </section>
+
+            {notCounted.length > 0 && (
+              <section
+                data-testid="not-counted"
+                className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface"
+              >
+                <div className="px-5 py-3.5">
+                  <h2 className="text-[13px] font-semibold text-ink">
+                    Orders with your code that do not count ({notCounted.length})
+                  </h2>
+                  <p data-testid="used-vs-counted" className="mt-1 text-[12px] text-muted">
+                    {/* One string: split across JSX lines, the space before "count" was compiled away. */}
+                    {`${data.used} orders used your code in this period. ${data.orders} count. ` +
+                      "The shop's own coupon count includes the orders below, which were never paid or were " +
+                      'cancelled, so they earn no commission.'}
+                  </p>
+                </div>
+                <table className="w-full border-collapse text-[13px]">
+                  <thead>
+                    <tr className="border-y border-line bg-panel text-[11px] font-semibold text-faint">
+                      <th className="px-5 py-2 text-left">Date</th>
+                      <th className="px-4 py-2 text-left">Order</th>
+                      <th className="px-4 py-2 text-left">Shop</th>
+                      <th className="px-5 py-2 text-left">Why it does not count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {notCounted.map((o) => (
+                      <tr key={o.id} className="border-b border-line last:border-b-0">
+                        <td className="num px-5 py-2.5 text-muted">{day(o.date)}</td>
+                        <td className="num px-4 py-2.5 text-muted">#{o.number}</td>
+                        <td className="px-4 py-2.5 text-ink">{o.shop}</td>
+                        <td className="px-5 py-2.5 text-ink">{o.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            )}
 
             <p data-testid="earn-note" className="text-[12px] text-muted">
               You earn {(data.commissionRate * 100).toFixed(0)}% of the net sale value of every order

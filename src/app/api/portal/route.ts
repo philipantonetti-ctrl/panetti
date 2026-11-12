@@ -10,6 +10,7 @@ import { pct } from '@/lib/money'
 import { buildRateTable, crossConvert } from '@/lib/metrics/fx'
 import { loadRates, ensureRates } from '@/lib/fx/rates'
 import { EXCLUDED_STATUSES } from '@/lib/metrics/types'
+import { loadCodeOrders } from '@/lib/ambassadors/code-check'
 
 /**
  * An ambassador's own figures - and ONLY their own.
@@ -75,6 +76,7 @@ export async function GET(req: Request) {
       take: 500,
       select: {
         id: true,
+        number: true,
         placedAt: true,
         netSales: true,
         currency: true,
@@ -88,6 +90,19 @@ export async function GET(req: Request) {
         },
       },
     })
+
+    // Orders with their code that do NOT count, each with the reason. The shop
+    // counts a code's use the moment an order is placed, so its number can be
+    // higher than ours; without these rows nobody could say which orders made
+    // the difference. Number, day, shop and why only: an order that earned
+    // nothing carries no money here, and no customer detail ever does.
+    const notCounted = (
+      await loadCodeOrders(
+        { ambassadorId: me.id, status: { in: [...EXCLUDED_STATUSES] } },
+        { from, to },
+        timezone,
+      )
+    ).map((o) => ({ id: o.id, number: o.number, date: o.date, shop: o.shop, statusLabel: o.statusLabel, reason: o.reason }))
 
     // What they have EVER sold, ignoring the period. Without this an empty month
     // reads as "you have never sold anything" to someone with years of sales.
@@ -127,6 +142,7 @@ export async function GET(req: Request) {
     let commission = 0
     const recent = recentRows.map((o) => ({
       id: o.id,
+      number: o.number,
       date: o.placedAt.toISOString(),
       shop: o.shop.name,
       sales: crossConvert(o.netSales, o.currency, DISPLAY, o.placedAt, rates),
@@ -205,6 +221,10 @@ export async function GET(req: Request) {
       sales,
       commission,
       orders: orders.length,
+      // Every order that used their code in the period, counted or not: the
+      // figure the shop's own coupon screens show.
+      used: orders.length + notCounted.length,
+      notCounted,
       rank: orders.length > 0 ? better + 1 : null,
       totalAmbassadors,
       recent,
