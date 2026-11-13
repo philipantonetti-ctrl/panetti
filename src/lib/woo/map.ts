@@ -43,8 +43,18 @@ export type WooOrder = {
    * and - on older versions, ONLY here - its transaction id in these.
    */
   meta_data?: { key: string; value: unknown }[]
-  billing?: { first_name?: string; last_name?: string; email?: string; country?: string; phone?: string }
-  shipping?: { country?: string }
+  billing?: WooAddress & { email?: string; phone?: string }
+  shipping?: WooAddress
+}
+
+export type WooAddress = {
+  first_name?: string
+  last_name?: string
+  address_1?: string
+  address_2?: string
+  city?: string
+  postcode?: string
+  country?: string
 }
 
 export type MappedOrder = {

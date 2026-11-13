@@ -72,6 +72,7 @@ export const DELIVERY_TABS: Tab[] = [
   { href: '/delivery', label: 'Delivery' },
   { href: '/delivery/unmatched', label: 'Unmatched parcels' },
   { href: '/delivery/imports', label: 'Recent imports' },
+  { href: '/delivery/warehouse-file', label: 'Warehouse file' },
 ]
 
 /**

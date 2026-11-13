@@ -18,6 +18,8 @@ export default defineConfig({
     command: `npm run dev -- -p ${port}`,
     url: `http://localhost:${port}/login`,
     reuseExistingServer: true,
+    // warehouse-file.spec stands up a stand-in store on 127.0.0.1 for panetti.com.
+    env: { WAREHOUSE_SHOP_HOST: '127.0.0.1' },
     timeout: 120_000,
   },
 })
