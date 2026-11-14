@@ -240,3 +240,32 @@ describe('forecast', () => {
     expect(f.note).toBe('no risk within a year')
   })
 })
+
+/**
+ * Philip's own forecast, 2026-11-14: "it cant just say average 9 a day ... last
+ * year we sold 25 a day for that month". A month he has planned uses his plan.
+ */
+describe('forecast with a sales plan', () => {
+  it('uses the planned units on a planned day instead of the rate', () => {
+    // 100 units; the plan says 25 a day, the rate says 10. Day 4 is the 4th day.
+    const f = forecast(input({ planned: () => 25 }), TODAY)
+    expect(day(f.runsOutOn!)).toBe(day(inDays(3)))
+  })
+
+  it('falls back to the rate on a day the plan does not cover', () => {
+    // Planned 50 a day for the first two days only, then 10 a day: 100 - 100 = 0 on day 2.
+    const planned = (d: Date) => (d.getTime() < inDays(2).getTime() ? 50 : null)
+    const f = forecast(input({ planned }), TODAY)
+    expect(day(f.runsOutOn!)).toBe(day(inDays(1)))
+  })
+
+  it('forecasts a product nothing has sold of yet when it has a plan', () => {
+    const f = forecast(input({ level: 0, planned: () => 20 }), TODAY)
+    expect(f.note).not.toBe('not selling')
+    expect(day(f.runsOutOn!)).toBe(day(inDays(4)))
+  })
+
+  it('still says "not selling" when there is neither sales nor a plan', () => {
+    expect(forecast(input({ level: 0, planned: () => null }), TODAY).note).toBe('not selling')
+  })
+})

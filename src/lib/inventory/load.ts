@@ -9,6 +9,7 @@ import {
   type Sale,
 } from './burn'
 import { forecast, type Forecast } from './forecast'
+import { loadPlanned, plannedPerDay } from './plan'
 import { isUsableSku, normaliseSku } from './sku'
 import { catalogueOf } from './sources'
 import { resolveStock, type ResolvedStock, type ShopStock } from './stock'
@@ -34,6 +35,12 @@ export type InventoryRow = {
   trend: number | null
   /** False = no last year to compare against, so the rate is flat and says so. */
   seasonal: boolean
+  /**
+   * What the forecast expects to sell per day THIS month, and from where:
+   * Philip's uploaded plan, last year's same weeks, or the last 60 days.
+   * `burn` stays the plain 60-day figure; this is the one the forecast uses.
+   */
+  thisMonth: { perDay: number; source: 'plan' | 'last year' | 'recent' }
   forecast: Forecast
   byCountry: { country: string; units: number }[]
   /**
@@ -135,7 +142,9 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
   ])
   const scoped = sources.length > 0
 
-  const [items, products, visma, lines] = await Promise.all([
+  // This year and next: the forecast walks 365 days ahead.
+  const planYear = today.getUTCFullYear()
+  const [items, products, visma, lines, plans] = await Promise.all([
     db.supplyItem.findMany({
       where: { active: true },
       select: {
@@ -179,6 +188,7 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
         order: { select: { placedAt: true, shippingCountry: true, status: true } },
       },
     }),
+    loadPlanned([planYear, planYear + 1]),
   ])
 
   // Sales, stock and countries, bucketed by SKU in one pass each.
@@ -271,6 +281,16 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
     // rate we can see, then to put the right season back on each future day.
     // Those two have to be the same function or the two halves disagree.
     const index = (d: Date) => seasonalIndex(mine, d, today)
+    const level = seasonalLevel(mine, today, index)
+    const plan = plans.get(sku)
+    const planned = plan ? plannedPerDay(plan) : undefined
+    const plannedToday = planned?.(today) ?? null
+    const thisMonth: InventoryRow['thisMonth'] =
+      plannedToday !== null
+        ? { perDay: plannedToday, source: 'plan' }
+        : seasonal
+          ? { perDay: level * index(today), source: 'last year' }
+          : { perDay: burn, source: 'recent' }
 
     return {
       sku,
@@ -281,14 +301,16 @@ export async function loadInventory(today: Date = new Date()): Promise<Inventory
       burn,
       trend: yearOverYear(mine, today),
       seasonal,
+      thisMonth,
       forecast: forecast(
         {
           stock: stock.quantity,
           // NOT `burn`. That is what is selling in whatever season we are
           // standing in; multiplying it by the next season's index would count
           // the season twice and order for two Christmases.
-          level: seasonalLevel(mine, today, index),
+          level,
           index,
+          planned,
           arrivals,
           productionDays: item.productionDays,
           deliveryDays: item.deliveryDays,

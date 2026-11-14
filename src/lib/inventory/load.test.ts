@@ -14,6 +14,8 @@ afterEach(async () => {
   await db.product.deleteMany({ where: { sku: { startsWith: TAG } } })
   await db.shop.deleteMany({ where: { name: { startsWith: TAG } } })
   await db.vismaStock.deleteMany({ where: { sku: { startsWith: TAG } } })
+  await db.salesPlanLine.deleteMany({ where: { name: { startsWith: TAG } } })
+  await db.salesPlanName.deleteMany({ where: { name: { startsWith: TAG } } })
 })
 
 async function sell(shopName: string, sku: string, stock: number | null, units: number, daysAgo: number, country: string) {
@@ -79,6 +81,32 @@ async function twoYears(shopName: string, sku: string, stock: number, units: (da
 }
 
 describe('loadInventory', () => {
+  /**
+   * Philip, 2026-11-14: "it cant just say Average 9 a day" in a campaign month.
+   * His forecast file plans 310 for August; sales history says 1 a day.
+   */
+  it("uses Philip's plan for a planned month, and says so", async () => {
+    await sell(`${TAG}-no`, SKU, 100, 60, 5, 'NO') // 1 a day over the last 60 days
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
+    await db.salesPlanLine.create({ data: { year: 2026, month: 8, name: `${TAG} Pasta-maker`, units: 310 } })
+    await db.salesPlanName.create({ data: { name: `${TAG} Pasta-maker`, sku: SKU } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.thisMonth).toEqual({ perDay: 10, source: 'plan' })
+    expect(row.burn).toBeCloseTo(1) // the 60-day figure is still shown as it is
+    // 100 in stock at the planned 10 a day: empty in August, not in November.
+    expect(row.forecast.runsOutOn!.toISOString().slice(0, 7)).toBe('2026-08')
+  })
+
+  it('says the month figure is the recent rate when there is no plan and no last year', async () => {
+    await sell(`${TAG}-no`, SKU, 100, 60, 5, 'NO')
+    await db.supplyItem.create({ data: { sku: SKU, name: 'Pasta Maker' } })
+
+    const row = (await loadInventory(TODAY)).rows.find((r) => r.sku === SKU)!
+    expect(row.thisMonth.source).toBe('recent')
+    expect(row.thisMonth.perDay).toBeCloseTo(1)
+  })
+
   it('sums demand across shops, because they share one warehouse', async () => {
     await sell(`${TAG}-no`, SKU, 100, 60, 5, 'NO')
     await sell(`${TAG}-se`, SKU, 100, 60, 5, 'SE')

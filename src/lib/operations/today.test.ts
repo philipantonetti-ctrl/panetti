@@ -87,6 +87,7 @@ function product(sku: string, f: Partial<Forecast> = {}): InventoryRow {
     burn: 1,
     trend: null,
     seasonal: false,
+    thisMonth: { perDay: 0, source: 'recent' },
     forecast: forecastOf(f),
     byCountry: [],
     supply: {

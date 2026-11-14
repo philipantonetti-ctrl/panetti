@@ -22,6 +22,12 @@ export type ForecastInput = {
    */
   level: number
   index: (day: Date) => number
+  /**
+   * Units Philip's own sales forecast plans for this day, or null when his
+   * plan does not cover it. A planned day uses the plan, not the rate: he
+   * knows a campaign month is coming, the history does not.
+   */
+  planned?: (day: Date) => number | null
   arrivals: Arrival[]
   productionDays: number | null
   deliveryDays: number | null
@@ -111,7 +117,17 @@ export function forecast(input: ForecastInput, today: Date): Forecast {
   })
 
   if (input.stock === null) return blank('no stock data')
-  if (input.level <= 0) return blank('not selling')
+
+  const demandOn = (d: Date) => input.planned?.(d) ?? input.level * input.index(d)
+
+  // Nothing selling AND nothing planned. A product with a plan but no sales
+  // yet (a launch) is exactly the one that needs a forecast.
+  const anyPlanned =
+    !!input.planned &&
+    Array.from({ length: HORIZON_DAYS }, (_, i) => input.planned!(new Date(from.getTime() + i * DAY))).some(
+      (u) => u !== null && u > 0,
+    )
+  if (input.level <= 0 && !anyPlanned) return blank('not selling')
 
   const landing = new Map<number, number>()
   for (const a of input.arrivals) {
@@ -120,8 +136,6 @@ export function forecast(input: ForecastInput, today: Date): Forecast {
     if (k < from.getTime()) continue // overdue: reported above, never counted
     landing.set(k, (landing.get(k) ?? 0) + a.quantity)
   }
-
-  const demandOn = (d: Date) => input.level * input.index(d)
 
   // The whole horizon, not to the first empty day: a booked arrival RESCUES a
   // stockout, and stopping early is what read an empty shelf with three
