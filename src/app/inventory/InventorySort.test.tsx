@@ -6,7 +6,7 @@ import { InventoryClient, type Row } from './InventoryClient'
 const row = (over: Partial<Row> & { sku: string }): Row => ({
   name: over.sku, imageUrl: null, supplierName: null,
   stock: { quantity: 0, disagrees: false, byShop: [] },
-  burn: 0, trend: null, seasonal: true,
+  burn: 0, trend: null, seasonal: true, thisMonth: { perDay: 0, source: 'recent' },
   forecast: {
     gap: null, overdueArrivals: null,
     runsOutOn: null, orderBy: null, daysLate: null,

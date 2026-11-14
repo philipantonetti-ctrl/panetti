@@ -9,6 +9,7 @@ const row = (over: Partial<Row> = {}): Row => ({
   sku: 'PANPIZPRO', name: 'Pizzetta Pro', imageUrl: null, supplierName: null,
   stock: { quantity: 247, disagrees: false, byShop: [] },
   burn: 4, trend: null, seasonal: true,
+  thisMonth: { perDay: 4, source: 'recent' },
   forecast: {
     runsOutOn: '2026-11-17T00:00:00.000Z', orderBy: '2026-08-25T00:00:00.000Z',
     gap: null, overdueArrivals: null,
@@ -134,6 +135,28 @@ describe('InventoryClient', () => {
     )
     expect(container.textContent).toMatch(/Pizzetta Primo/)
     expect(container.textContent).toMatch(/needs a SKU/i)
+  })
+
+  /**
+   * Philip, 2026-11-14: "it cant just say Average 9 a day" in November. The
+   * month's expected rate is shown beside the 60-day one, with where it is from.
+   */
+  it('shows what this month is expected to sell, and where that figure comes from', () => {
+    const { container } = render(
+      <InventoryClient
+        rows={[
+          row({ sku: 'A', burn: 23.1, thisMonth: { perDay: 97, source: 'plan' } }),
+          row({ sku: 'B', burn: 8.8, thisMonth: { perDay: 25.4, source: 'last year' } }),
+          row({ sku: 'C', burn: 2, thisMonth: { perDay: 2, source: 'recent' } }),
+        ]}
+        unusable={[]}
+      />,
+    )
+    expect(screen.getByRole('columnheader', { name: /this month/i })).toBeInTheDocument()
+    const text = container.textContent ?? ''
+    expect(text).toMatch(/97\.0\s*a day\s*your forecast/)
+    expect(text).toMatch(/25\.4\s*a day\s*last year/)
+    expect(text).toMatch(/2\.0\s*a day\s*last 60 days/)
   })
 
   it('flags a rate with no last year to compare against', () => {

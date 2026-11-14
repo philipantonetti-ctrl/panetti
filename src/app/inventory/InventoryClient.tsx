@@ -15,6 +15,8 @@ export type Row = {
   /** This period against the same period last year. Null = nothing to compare. */
   trend: number | null
   seasonal: boolean
+  /** What the forecast expects per day this month, and where that figure is from. */
+  thisMonth: { perDay: number; source: 'plan' | 'last year' | 'recent' }
   forecast: {
     runsOutOn: string | null
     /** Out of stock from `from`, covered again by an arrival on `until`. */
@@ -59,12 +61,19 @@ const COLUMNS = {
   Product: (r: Row) => r.name.toLowerCase(),
   'In stock': (r: Row) => r.stock.quantity,
   'Per day': (r: Row) => r.burn,
+  'This month': (r: Row) => r.thisMonth.perDay,
   'Runs out': (r: Row) => (r.forecast.runsOutOn ? Date.parse(r.forecast.runsOutOn) : null),
   'Order by': (r: Row) => (r.forecast.orderBy ? Date.parse(r.forecast.orderBy) : null),
   'How many': (r: Row) => r.forecast.quantity,
 } satisfies Record<string, (r: Row) => string | number | null>
 
 type Column = keyof typeof COLUMNS
+
+const SOURCE_LABEL: Record<Row['thisMonth']['source'], string> = {
+  plan: 'your forecast',
+  'last year': 'last year',
+  recent: 'last 60 days',
+}
 
 /**
  * One header earns a hint. "How many" is the figure the client asked about
@@ -73,6 +82,9 @@ type Column = keyof typeof COLUMNS
  * instead of sending him to find it on the Suppliers tab.
  */
 const HINTS: Partial<Record<Column, string>> = {
+  'Per day': 'Average of the last 60 days.',
+  'This month':
+    'What the forecast expects to sell per day this month: your uploaded sales forecast, else the same weeks last year, else the last 60 days.',
   'How many':
     'Enough to last the product’s cover days, after what is already on order. Rounded up to the supplier minimum and to whole containers.',
 }
@@ -90,6 +102,7 @@ const OPENS_ASCENDING: Record<Column, boolean> = {
   Product: true,
   'In stock': false,
   'Per day': false,
+  'This month': false,
   'Runs out': true,
   'Order by': true,
   'How many': false,
@@ -360,6 +373,10 @@ export function InventoryClient({
                         {Math.abs(r.trend * 100).toFixed(0)}% vs last year
                       </div>
                     )}
+                  </td>
+                  <td className="px-4 py-2.5 tabular-nums">
+                    <div>{r.thisMonth.perDay.toFixed(1)} a day</div>
+                    <div className="text-[11px] text-muted">{SOURCE_LABEL[r.thisMonth.source]}</div>
                   </td>
                   <td className="px-4 py-2.5">
                     {r.forecast.runsOutOn ? (

@@ -46,7 +46,7 @@ describe('GET /api/inventory', () => {
               updatedAt: new Date('2026-08-13T09:55:02.000Z'),
             }],
           },
-          burn: 4, seasonal: true,
+          burn: 4, seasonal: true, thisMonth: { perDay: 4, source: 'recent' },
           forecast: {
             runsOutOn: new Date('2026-11-17T00:00:00.000Z'),
             orderBy: new Date('2026-08-25T00:00:00.000Z'),

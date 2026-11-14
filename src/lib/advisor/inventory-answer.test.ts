@@ -19,6 +19,7 @@ const row = (over: Partial<InventoryRow> = {}): InventoryRow => ({
   burn: 4.2,
   trend: 0.35,
   seasonal: true,
+  thisMonth: { perDay: 0, source: 'recent' },
   forecast: {
     runsOutOn: day('2026-10-01'),
     gap: null,

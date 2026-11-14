@@ -1017,6 +1017,30 @@ model SupplyItem {
   @@index([supplierId])
 }
 
+/// Philip's sales forecast, read from his Excel file: units per product per
+/// month, by the NAME his sheet uses. Uploading a year replaces that year.
+/// Which SKU a name is lives in SalesPlanName, so fixing a mapping never needs
+/// the file again.
+model SalesPlanLine {
+  id        String   @id @default(cuid())
+  year      Int
+  month     Int // 1-12
+  name      String
+  units     Int
+  createdAt DateTime @default(now())
+
+  @@unique([year, month, name])
+  @@index([year])
+}
+
+/// Which SKU a product name in the sales forecast is. Null = nobody has said
+/// yet, and that name's plan is not used until someone does.
+model SalesPlanName {
+  name      String   @id
+  sku       String?
+  updatedAt DateTime @updatedAt
+}
+
 /// What Visma counted, per SKU, in the warehouses we sell from.
 ///
 /// Keyed by SKU and not by product, for the same reason SupplyItem is: a

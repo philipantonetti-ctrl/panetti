@@ -15,6 +15,7 @@ import { usePathname } from 'next/navigation'
  */
 const VIEWS = [
   { href: '/inventory', label: 'Forecast' },
+  { href: '/inventory/sales-forecast', label: 'Sales forecast' },
   { href: '/inventory/stock', label: 'Stock' },
   { href: '/inventory/purchase-orders', label: 'Purchase orders' },
   { href: '/inventory/suppliers', label: 'Suppliers & lead times' },
