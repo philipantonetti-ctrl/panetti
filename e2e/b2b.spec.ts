@@ -121,6 +121,7 @@ test('a B2B order reaches the Dashboard', async ({ page }) => {
     .locator('#b2b-customer option', { hasText: name })
     .getAttribute('value')
   await page.getByLabel('Customer').selectOption(customerOptionValue!)
+  await page.getByLabel('PO reference').fill('PO-E2E-4471')
 
   await page.getByRole('button', { name: '+ Add a line' }).click()
   const productSelect = page.getByLabel('Product 1')
@@ -149,6 +150,9 @@ test('a B2B order reaches the Dashboard', async ({ page }) => {
   await expect(b2bOrderRow).toBeVisible({ timeout: 10_000 })
   const orderNumber = (await b2bOrderRow.locator('td').first().innerText()).trim()
   expect(orderNumber).toMatch(/^B-\d{4,}$/)
+  // The PO reference typed on the form is in its own column on the row.
+  await expect(ordersTable.getByRole('columnheader', { name: 'PO reference' })).toBeVisible()
+  await expect(b2bOrderRow).toContainText('PO-E2E-4471')
 
   await page.goto('/orders?source=b2b')
   await expect(page.getByRole('heading', { name: 'Orders' })).toBeVisible()

@@ -224,6 +224,9 @@ model Order {
   // Set = this order was entered by hand for a business customer. It is the
   // B2B marker, and the reason the order pays no gateway fee.
   b2bCustomerId   String?
+  /// The business customer's purchase order reference, typed on the B2B order
+  /// form. Null on every webshop order and when nobody typed one.
+  poReference     String?
   // What shipping this order actually cost us, in the SHOP's currency (the
   // same frame as FulfillmentRate.perOrder).
   //

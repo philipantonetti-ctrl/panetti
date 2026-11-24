@@ -5,6 +5,8 @@ import { shopIdsFromQuery } from '@/lib/api/range'
 import { loadMetricsInput } from '@/lib/data/load'
 import { db } from '@/lib/db'
 import {
+  lastYearBuckets,
+  mergeLastYear,
   periodBuckets,
   PERIODS,
   salesByPeriod,
@@ -15,6 +17,9 @@ import {
 } from '@/lib/metrics/periods'
 import { getSetting } from '@/lib/settings'
 import { todayInZone } from '@/lib/tz'
+import { deltaPct } from '@/lib/metrics/trend'
+
+const ymd = (d: Date) => d.toISOString().slice(0, 10)
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
@@ -32,16 +37,21 @@ export async function GET(req: Request) {
     const params = new URL(req.url).searchParams
     const grain: Grain = params.get('grain') === 'month' ? 'month' : 'week'
     const excludeZero = params.get('excludeZero') === '1'
+    // "November 2026 vs November 2025": only when asked, because it loads a
+    // second year of orders.
+    const compare = params.get('compare') === '1'
     const shopIds = shopIdsFromQuery(params)
 
     const { timezone } = await getSetting()
     const today = todayInZone(timezone, new Date())
     const buckets = periodBuckets(grain, today, PERIODS)
-    const oldest = buckets[buckets.length - 1]
+    const lyBuckets = compare ? lastYearBuckets(buckets, grain) : null
+    const oldest = (lyBuckets ?? buckets)[buckets.length - 1]
 
     // One load for the whole span; every bucket is computed from it in memory.
     const input = await loadMetricsInput({ shopIds, from: oldest.from, to: today, timezone })
     const rows = salesByPeriod(input, buckets, { excludeZero })
+    const lyRows = lyBuckets ? salesByPeriod(input, lyBuckets, { excludeZero }) : null
 
     // The names the units table prints. The engine's loader reads no product
     // row (the Dashboard needs none), so the handful this span touched are
@@ -56,14 +66,18 @@ export async function GET(req: Request) {
       ).map((p) => [p.id, { productId: p.id, shopId: p.shopId, sku: p.sku, externalId: p.externalId, name: p.name }]),
     )
     const units = unitsByPeriod(input, buckets, { excludeZero, products })
-    const unitsRow = (r: UnitsRow) => ({ id: r.id, name: r.name, units: r.units })
+    const lyUnits = lyBuckets ? unitsByPeriod(input, lyBuckets, { excludeZero, products }) : null
+    const unitsRows = (now: UnitsRow[], ly: UnitsRow[] | undefined) =>
+      ly
+        ? mergeLastYear(now, ly).map((r) => ({ id: r.id, name: r.name, units: r.units, lastYear: r.lastYear }))
+        : now.map((r) => ({ id: r.id, name: r.name, units: r.units }))
 
     return NextResponse.json(
       {
         grain,
         currency: input.displayCurrency,
         excludeZero,
-        rows: rows.map((r) => ({
+        rows: rows.map((r, i) => ({
           from: r.from,
           to: r.to,
           soFar: r.soFar,
@@ -72,9 +86,23 @@ export async function GET(req: Request) {
           avgOrder: r.avgOrder,
           units: r.units,
           vsPrevious: r.vsPrevious,
+          ...(lyRows
+            ? {
+                lastYear: {
+                  from: lyRows[i].from,
+                  to: lyRows[i].to,
+                  countedTo: ymd(lyBuckets![i].countedTo),
+                  orders: lyRows[i].orders,
+                  units: lyRows[i].units,
+                  sales: lyRows[i].sales,
+                },
+                vsLastYear: deltaPct(r.sales, lyRows[i].sales),
+              }
+            : {}),
         })),
-        byShop: units.byShop.map(unitsRow),
-        byProduct: units.byProduct.map(unitsRow),
+        compare,
+        byShop: unitsRows(units.byShop, lyUnits?.byShop),
+        byProduct: unitsRows(units.byProduct, lyUnits?.byProduct),
       },
       { headers: NO_STORE },
     )

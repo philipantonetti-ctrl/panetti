@@ -166,6 +166,54 @@ describe('SalesByPeriod', () => {
     await waitFor(() => expect(screen.getByText('0-amount orders are left out.')).toBeTruthy())
   })
 
+  it('puts last year beside each period when Compare with last year is ticked', async () => {
+    // Intl puts a no-break space after the currency code.
+    const sp = (t: string) => t.replace(/\s/g, ' ')
+    const monthAnswer = {
+      grain: 'month',
+      currency: 'NOK',
+      excludeZero: false,
+      compare: true,
+      rows: [
+        {
+          from: '2026-11-01', to: '2026-11-30', soFar: true, orders: 900, sales: 9000000, avgOrder: 10000, units: 1435, vsPrevious: 1.4,
+          lastYear: { from: '2025-11-01', to: '2025-11-30', countedTo: '2025-11-24', orders: 500, sales: 6000000, units: 980 },
+          vsLastYear: 0.5,
+        },
+        {
+          from: '2026-10-01', to: '2026-10-31', soFar: false, orders: 400, sales: 3750000, avgOrder: 9375, units: 589, vsPrevious: null,
+          lastYear: { from: '2025-10-01', to: '2025-10-31', countedTo: '2025-10-31', orders: 0, sales: 0, units: 0 },
+          vsLastYear: null,
+        },
+      ],
+      byShop: [{ id: 's1', name: 'Panetti Norway', units: [1435, 589], lastYear: [980, 0] }],
+      byProduct: [{ id: 'sku:PANPIZPRO', name: 'Pizzetta Pro', units: [1435, 589], lastYear: [980, 0] }],
+    }
+    const calls = stub()
+    render(<SalesByPeriod shops={shops} />)
+    await waitFor(() => expect(calls.length).toBe(1))
+    expect(calls[0]).not.toContain('compare')
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(String(url))
+      return new Response(JSON.stringify(monthAnswer), { status: 200 })
+    }))
+    fireEvent.click(screen.getByLabelText('Compare with last year'))
+    await waitFor(() => expect(calls.some((u) => u.includes('compare=1'))).toBe(true))
+    await waitFor(() => expect(within(salesTable()).getByText('November 2025 (same days)')).toBeTruthy())
+
+    expect(rowOf(salesTable(), 'November 2026 (so far)').map(sp)).toEqual([
+      'November 2026 (so far)', '900', '1435', 'NOK 90,000', 'NOK 100', '+140%',
+      'November 2025 (same days)', '980', 'NOK 60,000', '+50%',
+    ])
+    expect(rowOf(salesTable(), 'October 2026').slice(6).map(sp)).toEqual(['October 2025', '0', 'NOK 0', 'no prior data'])
+
+    const headers = [...unitsTable().querySelectorAll('th')].map((h) => h.textContent)
+    expect(headers).toEqual(['Webshop', 'November 2026 (so far)', 'November 2025 (same days)', 'October 2026', 'October 2025'])
+    expect(rowOf(unitsTable(), 'Panetti Norway')).toEqual(['Panetti Norway', '1435', '980', '589', '0'])
+    expect(rowOf(unitsTable(), 'Total')).toEqual(['Total', '1435', '980', '589', '0'])
+  })
+
   it('never shows a cost column', async () => {
     stub()
     render(<SalesByPeriod shops={shops} />)

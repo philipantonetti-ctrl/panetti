@@ -59,6 +59,7 @@ export function OrderModal({
   const [rows, setRows] = useState<Row[]>([])
   const [shippingCharged, setShippingCharged] = useState('')
   const [fulfillmentCost, setFulfillmentCost] = useState('')
+  const [poReference, setPoReference] = useState('')
   const [products, setProducts] = useState<Product[]>([])
   const [agreed, setAgreed] = useState<AgreedPrice[]>([])
   const [shopCurrency, setShopCurrency] = useState('')
@@ -157,6 +158,7 @@ export function OrderModal({
         pickCustomer(o.customerId)
         setPlacedAt(o.placedAt)
         setShippingCharged(String(toMajor(o.shippingCharged)))
+        setPoReference(o.poReference ?? '')
         // Null means nobody costed this order, which is an EMPTY box - not a
         // zero. Showing 0 here would store one on the next save and quietly
         // move the order from "not costed" to "shipping was free". Through the
@@ -218,6 +220,7 @@ export function OrderModal({
             // 'completed' - which is exactly what omitting it already means.
             ...(editing ? { status } : {}),
             shippingCharged: parseFloat(shippingCharged) || 0,
+            poReference: poReference.trim() || null,
             // Blank travels as null, so the order is costed by the per-SKU
             // shipping rates rather than by a zero nobody typed.
             fulfillmentCost: fulfillmentCost.trim() === '' ? null : parseFloat(fulfillmentCost) || 0,
@@ -323,6 +326,16 @@ export function OrderModal({
             card fee
           </p>
         )}
+
+        <div className="mt-4">
+          <label htmlFor="b2b-po" className="block text-xs font-medium text-ink">PO reference</label>
+          <input
+            id="b2b-po" type="text" maxLength={100} value={poReference}
+            onChange={(e) => setPoReference(e.target.value)}
+            placeholder="The customer's purchase order number"
+            className="mt-1 w-full rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-faint"
+          />
+        </div>
 
         {customer && (
           <>
