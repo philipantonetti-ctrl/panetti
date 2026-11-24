@@ -345,6 +345,40 @@ describe('OrderModal in edit mode', () => {
     })
   })
 
+  it('sends the PO reference that was typed, and prefills it when editing', async () => {
+    const calls: { url: string; method?: string; body?: string }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method, body: init?.body as string | undefined })
+      if (url.includes('/api/products')) return new Response(JSON.stringify(catalogue), { status: 200 })
+      if (url.includes('/api/b2b/orders'))
+        return new Response(JSON.stringify({ order: { number: 'B-0099' } }), { status: 200 })
+      return new Response(JSON.stringify(detail), { status: 200 })
+    }))
+
+    renderWithToast(<OrderModal customers={customers} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.change(await screen.findByLabelText('Customer'), { target: { value: 'c1' } })
+    fireEvent.change(screen.getByLabelText('PO reference'), { target: { value: ' PO-4471 ' } })
+    fireEvent.click(await screen.findByRole('button', { name: /add a line/i }))
+    fireEvent.change(await screen.findByLabelText('Product 1'), { target: { value: 'p1' } })
+    await screen.findByLabelText('Unit price 1')
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
+    expect(JSON.parse(calls.find((c) => c.method === 'POST')!.body!).poReference).toBe('PO-4471')
+  })
+
+  it('prefills the PO reference of the order being edited', async () => {
+    mockFetch({ order: {
+      id: 'o1', number: 'B-0007', status: 'completed', placedAt: '2026-07-05',
+      customerId: 'c1', customerName: 'Nordic Retail AS', currency: 'EUR',
+      shippingCharged: 0, fulfillmentCost: null, poReference: 'PO-77',
+      lines: [{ productId: 'p1', quantity: 1, unitPrice: 8900, discountValue: 0, discountKind: 'PERCENT' }],
+    } })
+    renderWithToast(<OrderModal customers={customers} order={{ id: 'o1' }} onClose={() => {}} onSaved={() => {}} />)
+    await screen.findByRole('heading', { name: /B-0007/ })
+    expect(screen.getByLabelText('PO reference')).toHaveValue('PO-77')
+  })
+
   it('sends no status when creating, and shows no Status control to change', async () => {
     const calls: { url: string; method?: string; body?: string }[] = []
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {

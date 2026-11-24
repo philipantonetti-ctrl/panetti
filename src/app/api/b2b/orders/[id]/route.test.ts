@@ -121,6 +121,33 @@ describe('PATCH /api/b2b/orders/[id]', () => {
     expect((await db.order.findUniqueOrThrow({ where: { id } })).fulfillmentCost).toBeNull()
   })
 
+  it('saves the PO reference, keeps it when an edit does not name it, and clears it when emptied', async () => {
+    await asAdmin()
+    const res = await POST(new Request('http://localhost/api/b2b/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerId, placedAt: '2026-07-01', poReference: '  PO-4471 ',
+        lines: [{ productId, quantity: 1, unitPrice: 89 }],
+      }),
+    }))
+    const id = (await res.json()).order.id
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).poReference).toBe('PO-4471')
+
+    const body = await (await GET(new Request(`http://localhost/api/b2b/orders/${id}`), params(id))).json()
+    expect(body.order.poReference).toBe('PO-4471')
+
+    // Marking it refunded sends no reference: it must survive.
+    await patch(id, { customerId, placedAt: '2026-07-01', status: 'refunded', lines: [{ productId, quantity: 1, unitPrice: 89 }] })
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).poReference).toBe('PO-4471')
+
+    await patch(id, { customerId, placedAt: '2026-07-01', poReference: 'PO-9', lines: [{ productId, quantity: 1, unitPrice: 89 }] })
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).poReference).toBe('PO-9')
+
+    await patch(id, { customerId, placedAt: '2026-07-01', poReference: null, lines: [{ productId, quantity: 1, unitPrice: 89 }] })
+    expect((await db.order.findUniqueOrThrow({ where: { id } })).poReference).toBeNull()
+  })
+
   it('can void an order', async () => {
     await asAdmin()
     const id = await createOrder()

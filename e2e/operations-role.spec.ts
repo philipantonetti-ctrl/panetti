@@ -294,6 +294,19 @@ test('his dashboard gathers a card from each part of his job', async ({ page }) 
   }
 })
 
+test('his sales by month can be put beside the same months last year', async ({ page }) => {
+  await signIn(page, 'operations@ecom.test')
+  await page.getByRole('tab', { name: 'Month' }).click()
+  await page.getByLabel('Compare with last year').check()
+
+  const sales = page.getByRole('table', { name: 'Sales by period' })
+  await expect(sales.getByRole('columnheader', { name: 'vs last year' })).toBeVisible({ timeout: 20_000 })
+  // The first row is this month so far, beside the same days of it last year.
+  await expect(sales.locator('tbody tr').first()).toContainText(/\(same days\)/)
+  const units = page.getByRole('table', { name: 'Units sold' })
+  if (await units.count()) await expect(units.locator('thead th').nth(2)).toContainText(/\(same days\)/)
+})
+
 test('an overdue invoice reaches his first page and leads to Receivables', async ({ page }) => {
   await signIn(page, 'operations@ecom.test')
 

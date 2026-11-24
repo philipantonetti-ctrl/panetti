@@ -35,6 +35,8 @@ type B2bOrder = {
   currency: string
   netSales: number
   customer: string | null
+  /** The customer's PO reference, or null when none was typed. */
+  poReference: string | null
   figures: { profit: number } | null
   /**
    * Imported from Visma, which makes it READ-ONLY here. Visma is its source and
@@ -398,6 +400,7 @@ export function B2bClient({
                 <tr className="bg-panel text-left text-muted">
                   <th className="px-3 py-2.5 font-medium">Order</th>
                   <th className="px-3 py-2.5 font-medium">Customer</th>
+                  <th className="px-3 py-2.5 font-medium">PO reference</th>
                   <th className="px-3 py-2.5 font-medium">Date</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   <th className="px-3 py-2.5 text-right font-medium">Net sales</th>
@@ -407,10 +410,10 @@ export function B2bClient({
               </thead>
               <tbody className="text-ink">
                 {loading ? (
-                  <tr><td colSpan={showProfit ? 7 : 6} className="px-3 py-10 text-center text-faint">Loading…</td></tr>
+                  <tr><td colSpan={showProfit ? 8 : 7} className="px-3 py-10 text-center text-faint">Loading…</td></tr>
                 ) : orders.length === 0 ? (
                   <tr>
-                    <td colSpan={showProfit ? 7 : 6} className="px-3 py-10 text-center text-faint">
+                    <td colSpan={showProfit ? 8 : 7} className="px-3 py-10 text-center text-faint">
                       No B2B orders in the last 12 months.
                     </td>
                   </tr>
@@ -419,6 +422,7 @@ export function B2bClient({
                     <tr key={o.id} className="border-t border-line">
                       <td className="px-3 py-3 font-semibold text-ink">{o.number}</td>
                       <td className="px-3 py-3 text-muted">{o.customer ?? '-'}</td>
+                      <td className="px-3 py-3 text-muted">{o.poReference ?? '-'}</td>
                       <td className="px-3 py-3 text-muted">{o.placedAt.slice(0, 10)}</td>
                       <td className="px-3 py-3 text-muted">{o.status}</td>
                       <td className="num px-3 py-3 text-right text-ink">

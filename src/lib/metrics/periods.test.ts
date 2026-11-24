@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { periodBuckets, periodLabel, salesByPeriod, unitsByPeriod, PERIODS, type ProductName } from './periods'
+import { lastYearBuckets, mergeLastYear, periodBuckets, periodLabel, salesByPeriod, unitsByPeriod, PERIODS, type ProductName } from './periods'
 import { computeMetrics } from './engine'
 import { buildRateTable } from './fx'
 import type { CostBook, EngineOrder, EngineShop } from './types'
@@ -359,5 +359,41 @@ describe('unitsByPeriod', () => {
     expect(rows.map((r) => r.units)).toEqual([4, 8])
     expect(rows.map((_, i) => column(byShop, i))).toEqual([4, 8])
     expect(rows.map((_, i) => column(byProduct, i))).toEqual([4, 8])
+  })
+})
+
+describe('lastYearBuckets', () => {
+  it('gives the same calendar months a year earlier, the current one counted to the same day', () => {
+    const ly = lastYearBuckets(periodBuckets('month', d('2026-11-24'), 2), 'month')
+    expect(ly.map((x) => [ymd(x.from), ymd(x.to), ymd(x.countedTo), x.soFar])).toEqual([
+      ['2025-11-01', '2025-11-30', '2025-11-24', true],
+      ['2025-10-01', '2025-10-31', '2025-10-31', false],
+      ['2025-09-01', '2025-09-30', '2025-09-30', false],
+    ])
+  })
+
+  it('stops a 29 February so far at the 28th of the year before', () => {
+    const [now] = lastYearBuckets(periodBuckets('month', d('2028-02-29'), 1), 'month')
+    expect([ymd(now.from), ymd(now.to), ymd(now.countedTo)]).toEqual(['2027-02-01', '2027-02-28', '2027-02-28'])
+  })
+
+  it('gives the week 52 weeks earlier, Monday to Sunday, the current one counted to the same weekday', () => {
+    const [now, before] = lastYearBuckets(periodBuckets('week', d('2026-11-25'), 1), 'week')
+    expect([ymd(now.from), ymd(now.to), ymd(now.countedTo), now.soFar]).toEqual(['2025-11-24', '2025-11-30', '2025-11-26', true])
+    expect([ymd(before.from), ymd(before.to)]).toEqual(['2025-11-17', '2025-11-23'])
+  })
+})
+
+describe('mergeLastYear', () => {
+  it('puts last year’s units beside this year’s, keeps this year’s order, and adds a product sold only last year at the end', () => {
+    const merged = mergeLastYear(
+      [{ id: 'a', name: 'Oven', units: [5, 3] }, { id: 'b', name: 'Brush', units: [1, 0] }],
+      [{ id: 'c', name: 'Old mixer', units: [0, 7] }, { id: 'a', name: 'Oven', units: [2, 2] }],
+    )
+    expect(merged).toEqual([
+      { id: 'a', name: 'Oven', units: [5, 3], lastYear: [2, 2] },
+      { id: 'b', name: 'Brush', units: [1, 0], lastYear: [0, 0] },
+      { id: 'c', name: 'Old mixer', units: [0, 0], lastYear: [0, 7] },
+    ])
   })
 })

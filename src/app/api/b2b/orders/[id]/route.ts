@@ -10,6 +10,7 @@ import {
   buildOrderWrite,
   fulfillmentCostToStore,
   OrderBody,
+  poReferenceToStore,
   saveStandingPrices,
 } from '../route'
 
@@ -62,7 +63,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       where: { id, b2bCustomerId: { not: null } },
       select: {
         id: true, number: true, status: true, placedAt: true, currency: true,
-        shippingCharged: true, fulfillmentCost: true, b2bCustomerId: true,
+        shippingCharged: true, fulfillmentCost: true, b2bCustomerId: true, poReference: true,
         b2bCustomer: { select: { name: true } },
         items: {
           select: {
@@ -94,6 +95,7 @@ export async function GET(_req: Request, { params }: Ctx) {
           // saving would then store one - turning "nobody said" into "shipping
           // was free" by the act of looking at it.
           fulfillmentCost: order.fulfillmentCost,
+          poReference: order.poReference,
           lines: order.items.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
@@ -170,6 +172,8 @@ export async function PATCH(req: Request, { params }: Ctx) {
           customerEmail: w.customer.email ?? '',
           b2bCustomerId: w.customer.id,
           fulfillmentCost: fulfillmentCostToStore(parsed.data.fulfillmentCost),
+          // undefined leaves the stored reference alone (Prisma skips it).
+          poReference: poReferenceToStore(parsed.data.poReference),
           items: { create: w.items },
         },
       })

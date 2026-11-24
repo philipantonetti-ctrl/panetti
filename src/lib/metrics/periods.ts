@@ -87,6 +87,49 @@ export function periodBuckets(grain: Grain, today: Date, count: number): PeriodB
 }
 
 /**
+ * The same periods one year earlier, for "November 2026 vs November 2025".
+ *
+ * A month is the same calendar month; a week is the one 52 weeks back, so it
+ * runs Monday to Sunday too. The period we are in is counted only to the same
+ * day last year (the 24th, or the same weekday), so "so far" is compared with
+ * the same days and not with a whole month. A 29 February so far stops at the
+ * 28th, the end of that month.
+ */
+export function lastYearBuckets(buckets: PeriodBucket[], grain: Grain): PeriodBucket[] {
+  return buckets.map((b) => {
+    if (grain === 'week') {
+      const back = (x: Date) => new Date(x.getTime() - 364 * DAY_MS)
+      return { from: back(b.from), to: back(b.to), countedTo: back(b.countedTo), soFar: b.soFar }
+    }
+    const y = b.from.getUTCFullYear() - 1
+    const m = b.from.getUTCMonth()
+    const to = new Date(Date.UTC(y, m + 1, 0))
+    const countedTo = b.soFar
+      ? new Date(Date.UTC(y, m, Math.min(b.countedTo.getUTCDate(), to.getUTCDate())))
+      : to
+    return { from: new Date(Date.UTC(y, m, 1)), to, countedTo, soFar: b.soFar }
+  })
+}
+
+/**
+ * This year's units rows with last year's beside them (`lastYear[i]` belongs to
+ * `units[i]`). This year's order is kept; a shop or product that sold only last
+ * year is added at the end, so last year's columns still add up.
+ */
+export function mergeLastYear(current: UnitsRow[], lastYear: UnitsRow[]): (UnitsRow & { lastYear: number[] })[] {
+  const width = current[0]?.units.length ?? lastYear[0]?.units.length ?? 0
+  const ly = new Map(lastYear.map((r) => [r.id, r]))
+  const out = current.map((r) => ({ ...r, lastYear: ly.get(r.id)?.units ?? r.units.map(() => 0) }))
+  const seen = new Set(current.map((r) => r.id))
+  for (const r of lastYear) {
+    if (!seen.has(r.id) && r.units.some((u) => u > 0)) {
+      out.push({ id: r.id, name: r.name, units: Array(width).fill(0), lastYear: r.units })
+    }
+  }
+  return out
+}
+
+/**
  * One row per shown bucket, each compared with the WHOLE bucket before it.
  *
  * `excludeZero` drops orders whose customer paid nothing (`total === 0`) from

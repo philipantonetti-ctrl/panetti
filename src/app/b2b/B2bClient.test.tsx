@@ -113,6 +113,16 @@ describe('B2bClient', () => {
     expect(screen.getByText('Mazzetti.no')).toBeInTheDocument()
   })
 
+  it('shows each order’s PO reference in its own column, and "-" when there is none', async () => {
+    mockFetch([customer], [{ ...b2bOrder, poReference: 'PO-4471' }, { ...b2bOrder, id: 'o3', number: 'B-0003', poReference: null }])
+    renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
+
+    expect(await screen.findByRole('columnheader', { name: 'PO reference' })).toBeInTheDocument()
+    expect(await screen.findByText('PO-4471')).toBeInTheDocument()
+    const row = screen.getByText('B-0003').closest('tr')!
+    expect(row.querySelectorAll('td')[2].textContent).toBe('-')
+  })
+
   it('teaches the next action when there are no customers yet', async () => {
     mockFetch([])
     renderWithToast(<B2bClient email="a@b.test" shops={shops} showProfit />)
@@ -157,12 +167,12 @@ describe('B2bClient', () => {
     await screen.findByText('#1001')
 
     const voidedRow = screen.getByText('#1002').closest('tr') as HTMLElement
-    const voidedProfitCell = voidedRow.querySelectorAll('td')[5]
+    const voidedProfitCell = voidedRow.querySelectorAll('td')[6]
     // A voided order earns nothing and says so - never a confident "0".
     expect(voidedProfitCell.textContent).toBe('-')
 
     const liveRow = screen.getByText('#1001').closest('tr') as HTMLElement
-    const liveProfitCell = liveRow.querySelectorAll('td')[5]
+    const liveProfitCell = liveRow.querySelectorAll('td')[6]
     expect(liveProfitCell.textContent).toBe(formatMoney(12000, 'EUR'))
   })
 

@@ -41,6 +41,11 @@ export const OrderBody = z.object({
    * order are costed by different rules with nothing saying so.
    */
   fulfillmentCost: z.number().min(0).nullable().optional(),
+  /**
+   * The customer's PO reference. Left out = leave it as it is (an edit that
+   * only changes the status must not wipe it); '' or null = no reference.
+   */
+  poReference: z.string().max(100).nullable().optional(),
   lines: z.array(Line).min(1),
 })
 
@@ -113,6 +118,12 @@ export async function buildOrderWrite(d: OrderInput) {
  * Shared with PATCH so an edit cannot disagree with a create about which of the
  * two "blank" means.
  */
+export function poReferenceToStore(typed: string | null | undefined): string | null | undefined {
+  if (typed === undefined) return undefined
+  const t = typed?.trim() ?? ''
+  return t === '' ? null : t
+}
+
 export function fulfillmentCostToStore(typed: number | null | undefined): number | null {
   return typed === null || typed === undefined ? null : toMinor(typed)
 }
@@ -172,6 +183,7 @@ export async function POST(req: Request) {
               customerNameKey: nameKey(w.customer.name),
               customerEmail: w.customer.email ?? '',
               b2bCustomerId: w.customer.id,
+              poReference: poReferenceToStore(parsed.data.poReference) ?? null,
               fulfillmentCost: fulfillmentCostToStore(parsed.data.fulfillmentCost),
               items: { create: w.items },
             },

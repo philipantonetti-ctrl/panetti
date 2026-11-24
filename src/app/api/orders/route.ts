@@ -130,6 +130,7 @@ export async function GET(req: Request) {
               { customerName: { contains: q, mode: 'insensitive' as const } },
               { customerEmail: { contains: q, mode: 'insensitive' as const } },
               { couponCode: { contains: q, mode: 'insensitive' as const } },
+              { poReference: { contains: q, mode: 'insensitive' as const } },
               { items: { some: { name: { contains: q, mode: 'insensitive' as const } } } },
             ],
           }
@@ -163,6 +164,7 @@ export async function GET(req: Request) {
           customerEmail: true,
           ambassadorId: true,
           b2bCustomerId: true,
+          poReference: true,
           fulfillmentCost: true,
           shippingCountry: true,
           shipments: {
@@ -355,6 +357,7 @@ export async function GET(req: Request) {
          */
         imported: isVismaExternalId(o.externalId),
         customer: o.b2bCustomer?.name ?? null,
+        poReference: o.poReference,
         itemCount: o.items.reduce((n, i) => n + i.quantity, 0),
         products: o.items.map((i) => ({
           name: i.name,

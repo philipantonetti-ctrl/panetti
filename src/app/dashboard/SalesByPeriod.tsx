@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { ShopFilter } from '@/components/filters/ShopFilter'
 import { periodLabel, type Grain } from '@/lib/metrics/period-label'
 import { formatMoneyWhole } from '@/lib/money'
@@ -16,15 +16,19 @@ type Row = {
   avgOrder: number
   units: number
   vsPrevious: number | null
+  /** Only when compared: the same period a year earlier. */
+  lastYear?: { from: string; to: string; countedTo: string; orders: number; units: number; sales: number }
+  vsLastYear?: number | null
 }
 
-/** One webshop or one product; `units[i]` belongs to `rows[i]`. */
-type UnitsRow = { id: string; name: string; units: number[] }
+/** One webshop or one product; `units[i]` belongs to `rows[i]`, and so does `lastYear[i]`. */
+type UnitsRow = { id: string; name: string; units: number[]; lastYear?: number[] }
 
 type Answer = {
   grain: Grain
   currency: string
   excludeZero: boolean
+  compare: boolean
   rows: Row[]
   byShop: UnitsRow[]
   byProduct: UnitsRow[]
@@ -68,6 +72,7 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
   const [by, setBy] = useState<By>('shop')
   const [selected, setSelected] = useState<string[]>([])
   const [excludeZero, setExcludeZero] = useState(false)
+  const [compare, setCompare] = useState(false)
   const [data, setData] = useState<Answer | null>(null)
   const [error, setError] = useState('')
   // Starts true: the very first render has no data yet either way, and every
@@ -81,6 +86,7 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
     const p = new URLSearchParams({ grain })
     if (selected.length) p.set('shops', selected.join(','))
     if (excludeZero) p.set('excludeZero', '1')
+    if (compare) p.set('compare', '1')
     fetch(`/api/sales/periods?${p}`, { signal: ctrl.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error('Could not load sales')
@@ -94,7 +100,7 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
         if (!ctrl.signal.aborted) setLoading(false)
       })
     return () => ctrl.abort()
-  }, [grain, selected, excludeZero])
+  }, [grain, selected, excludeZero, compare])
 
   /** Marks a fetch as starting: dims the table (if any) and drops a stale error. */
   function startLoad() {
@@ -103,6 +109,14 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
   }
 
   const label = (r: Row) => `${periodLabel(r.from, r.to, data?.grain ?? grain)}${r.soFar ? ' (so far)' : ''}`
+  /** "November 2025", or "24-30 Nov 2025" for a week; the current one is the same days only. */
+  const lastYearLabel = (r: Row) => {
+    if (!r.lastYear) return ''
+    const g = data?.grain ?? grain
+    const name = periodLabel(r.lastYear.from, r.lastYear.to, g)
+    return `${g === 'week' ? `${name} ${r.lastYear.to.slice(0, 4)}` : name}${r.soFar ? ' (same days)' : ''}`
+  }
+  const compared = !!data?.compare
   const unitsRows = data ? (by === 'shop' ? data.byShop : data.byProduct) : []
   const dimmed = `transition-opacity duration-150 ${loading ? 'opacity-60' : ''}`
 
@@ -160,6 +174,17 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
             />
             Exclude 0-amount orders
           </label>
+          <label className="flex items-center gap-1.5 text-[12px] text-ink">
+            <input
+              type="checkbox"
+              checked={compare}
+              onChange={(e) => {
+                startLoad()
+                setCompare(e.target.checked)
+              }}
+            />
+            Compare with last year
+          </label>
         </div>
       </div>
 
@@ -179,6 +204,14 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
                   <th className="px-4 py-2 text-right font-semibold">Sales ({data.currency})</th>
                   <th className="px-4 py-2 text-right font-semibold">Avg order</th>
                   <th className="px-4 py-2 text-right font-semibold">vs previous</th>
+                  {compared && (
+                    <>
+                      <th className="px-4 py-2 font-semibold">Last year</th>
+                      <th className="px-4 py-2 text-right font-semibold">Units</th>
+                      <th className="px-4 py-2 text-right font-semibold">Sales ({data.currency})</th>
+                      <th className="px-4 py-2 text-right font-semibold">vs last year</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -190,6 +223,14 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
                     <td className="num px-4 py-2 text-right">{formatMoneyWhole(r.sales, data.currency)}</td>
                     <td className="num px-4 py-2 text-right">{formatMoneyWhole(r.avgOrder, data.currency)}</td>
                     <td className="num px-4 py-2 text-right text-muted">{change(r.vsPrevious)}</td>
+                    {compared && r.lastYear && (
+                      <>
+                        <td className="whitespace-nowrap border-l border-line px-4 py-2 text-muted">{lastYearLabel(r)}</td>
+                        <td className="num px-4 py-2 text-right">{r.lastYear.units}</td>
+                        <td className="num px-4 py-2 text-right">{formatMoneyWhole(r.lastYear.sales, data.currency)}</td>
+                        <td className="num px-4 py-2 text-right text-muted">{change(r.vsLastYear ?? null)}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -202,6 +243,7 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
                 <h3 className="text-[13px] font-semibold text-ink">Units sold</h3>
                 <p className="text-[12px] text-muted">
                   The same periods, newest first. Each column adds up to the Units column above.
+                  {compared && ' The grey column next to each period is the same period last year.'}
                 </p>
               </div>
               <div
@@ -237,9 +279,14 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
                         {BYS.find((b) => b.id === by)?.column}
                       </th>
                       {data.rows.map((r) => (
-                        <th key={r.from} className="whitespace-nowrap px-4 py-2 text-right font-semibold">
-                          {label(r)}
-                        </th>
+                        <Fragment key={r.from}>
+                          <th className="whitespace-nowrap px-4 py-2 text-right font-semibold">{label(r)}</th>
+                          {compared && (
+                            <th className="whitespace-nowrap bg-panel px-4 py-2 text-right font-semibold">
+                              {lastYearLabel(r)}
+                            </th>
+                          )}
+                        </Fragment>
                       ))}
                     </tr>
                   </thead>
@@ -253,18 +300,24 @@ export function SalesByPeriod({ shops }: { shops: Shop[] }) {
                           {u.name}
                         </td>
                         {u.units.map((n, i) => (
-                          <td key={data.rows[i]?.from ?? i} className="num px-4 py-2 text-right">
-                            {n}
-                          </td>
+                          <Fragment key={data.rows[i]?.from ?? i}>
+                            <td className="num px-4 py-2 text-right">{n}</td>
+                            {compared && (
+                              <td className="num bg-panel px-4 py-2 text-right text-muted">{u.lastYear?.[i] ?? 0}</td>
+                            )}
+                          </Fragment>
                         ))}
                       </tr>
                     ))}
                     <tr className="border-t border-line font-semibold">
                       <td className="sticky left-0 bg-surface px-4 py-2 text-ink">Total</td>
                       {data.rows.map((r) => (
-                        <td key={r.from} className="num px-4 py-2 text-right">
-                          {r.units}
-                        </td>
+                        <Fragment key={r.from}>
+                          <td className="num px-4 py-2 text-right">{r.units}</td>
+                          {compared && (
+                            <td className="num bg-panel px-4 py-2 text-right text-muted">{r.lastYear?.units ?? 0}</td>
+                          )}
+                        </Fragment>
                       ))}
                     </tr>
                   </tbody>

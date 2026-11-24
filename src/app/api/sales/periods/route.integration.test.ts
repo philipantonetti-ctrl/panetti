@@ -88,7 +88,7 @@ describe('GET /api/sales/periods', () => {
 
   it('sends each row with exactly the allowed fields', async () => {
     const body = await (await get(`grain=week&shops=${shopId}`)).json()
-    expect(Object.keys(body).sort()).toEqual(['byProduct', 'byShop', 'currency', 'excludeZero', 'grain', 'rows'])
+    expect(Object.keys(body).sort()).toEqual(['byProduct', 'byShop', 'compare', 'currency', 'excludeZero', 'grain', 'rows'])
     expect(Object.keys(body.rows[0]).sort()).toEqual(
       ['avgOrder', 'from', 'orders', 'sales', 'soFar', 'to', 'units', 'vsPrevious'],
     )
@@ -128,6 +128,27 @@ describe('GET /api/sales/periods', () => {
     expect(body.rows.every((r: { orders: number; units: number }) => r.orders === 0 && r.units === 0)).toBe(true)
     expect(body.byShop).toEqual([])
     expect(body.byProduct).toEqual([])
+  })
+
+  it('puts the same week last year beside each row and each units row, only when asked', async () => {
+    // 52 weeks before yesterday's order: the same weekday, the same row.
+    await order('ly-1', daysAgo(1 + 364), 500000, 4)
+
+    const body = await (await get(`grain=week&shops=${shopId}&compare=1`)).json()
+    expect(body.compare).toBe(true)
+    const i = body.rows.findIndex((r: { orders: number }) => r.orders > 0)
+    expect(body.rows[i].units).toBe(3)
+    expect(body.rows[i].lastYear.units).toBe(4)
+    expect(body.rows[i].lastYear.orders).toBe(1)
+    expect(body.rows[i].lastYear.sales).toBeGreaterThan(0)
+    expect(Object.keys(body.rows[i].lastYear).sort()).toEqual(['countedTo', 'from', 'orders', 'sales', 'to', 'units'])
+    expect(body.byProduct[0].lastYear[i]).toBe(4)
+    expect(body.byShop[0].lastYear[i]).toBe(4)
+
+    const plain = await (await get(`grain=week&shops=${shopId}`)).json()
+    expect(plain.compare).toBe(false)
+    expect(plain.rows[i]).not.toHaveProperty('lastYear')
+    expect(plain.byProduct[0]).not.toHaveProperty('lastYear')
   })
 
   it('refuses marketing and ambassadors', async () => {
