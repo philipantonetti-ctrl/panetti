@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react'
-import { OrdersClient, paymentBadge, fulfillmentBadge, placedFormats } from './OrdersClient'
+import { OrdersClient, type OrdersInitial, paymentBadge, fulfillmentBadge, placedFormats } from './OrdersClient'
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/orders',
@@ -85,26 +85,18 @@ const refundedOrder = {
 
 const payload = { total: 2, orders: [paidOrder, refundedOrder] }
 
-function renderPage(body: unknown = payload) {
+function renderPage(body: unknown = payload, initial?: OrdersInitial) {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 })))
-  render(<OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} showProfit />)
+  render(<OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} showProfit initial={initial} />)
 }
 
 describe('arriving from a delivery alert', () => {
-  const withUrl = (search: string) => {
-    vi.stubGlobal('window', Object.assign(window, {}))
-    window.history.replaceState({}, '', `/orders${search}`)
-  }
-
-  afterEach(() => window.history.replaceState({}, '', '/orders'))
-
   it('seeds the search from ?q and widens the range so an old order is reachable', async () => {
     // A Slack alert and the Delivery page both link here with ?q=<number>, and
     // each order alerts exactly once - so this link is the only handle anyone
     // gets on it. Opening on the default month would hide it, because a late
     // order is old by definition.
-    withUrl('?q=10356')
-    renderPage()
+    renderPage(payload, { source: '', q: '10356' })
 
     await waitFor(() => expect(screen.getByText('10356')).toBeTruthy())
     expect((screen.getByPlaceholderText(/search/i) as HTMLInputElement).value).toBe('10356')
@@ -115,13 +107,35 @@ describe('arriving from a delivery alert', () => {
   })
 
   it('is unchanged when no search arrives in the URL', async () => {
-    withUrl('')
     renderPage()
 
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled())
     const url = String(vi.mocked(fetch).mock.calls[0][0])
     expect(url).toContain('preset=this_month')
     expect(url).not.toContain('q=')
+  })
+})
+
+describe('arriving from the B2B page', () => {
+  it('"See all" opens on B2B orders over twelve months, with the filter showing B2B', async () => {
+    renderPage(payload, { source: 'b2b', q: '' })
+
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled())
+    const url = String(vi.mocked(fetch).mock.calls[0][0])
+    expect(url).toContain('source=b2b')
+    expect(url).toContain('preset=last_12_months')
+    expect((screen.getByLabelText('Source') as HTMLSelectElement).value).toBe('b2b')
+  })
+
+  it('"Their orders" searches the customer among B2B orders, and shows the search', async () => {
+    renderPage(payload, { source: 'b2b', q: 'JPK Trading Kft' })
+
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled())
+    const url = String(vi.mocked(fetch).mock.calls[0][0])
+    expect(url).toContain('source=b2b')
+    expect(url).toContain('q=JPK+Trading+Kft')
+    expect(url).toContain('preset=last_12_months')
+    expect((screen.getByPlaceholderText(/search/i) as HTMLInputElement).value).toBe('JPK Trading Kft')
   })
 })
 
@@ -256,50 +270,6 @@ describe('OrdersClient', () => {
     await waitFor(() => expect(calls.some((u) => u.includes('source=b2b'))).toBe(true))
   })
 
-  it('seeds the source filter from the URL, so /orders?source=b2b arrives already narrowed', async () => {
-    window.history.pushState({}, '', '/orders?source=b2b')
-    try {
-      const calls: string[] = []
-      const fetchMock = vi.fn((url: string) => {
-        calls.push(String(url))
-        return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))
-      })
-      vi.stubGlobal('fetch', fetchMock)
-      render(
-        <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} showProfit />,
-      )
-
-      await waitFor(() => expect(calls.length).toBeGreaterThan(0))
-      // The very first request - not a later one after some user action - carries it.
-      expect(calls[0]).toContain('source=b2b')
-    } finally {
-      window.history.pushState({}, '', '/orders')
-    }
-  })
-
-  it('falls back to showing both sources when the URL carries a junk value', async () => {
-    window.history.pushState({}, '', '/orders?source=banana')
-    try {
-      const calls: string[] = []
-      const fetchMock = vi.fn((url: string) => {
-        calls.push(String(url))
-        return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))
-      })
-      vi.stubGlobal('fetch', fetchMock)
-      render(
-        <OrdersClient email="admin@test.local" shops={[{ id: 's1', name: 'Mazzetti Denmark', currency: 'DKK' }]} showProfit />,
-      )
-
-      await waitFor(() => expect(calls.length).toBeGreaterThan(0))
-      // A junk value is sent through as-is - the API is what decides both-vs-none
-      // (Task 6: anything other than 'webshop'/'b2b' means both). What this test
-      // guards is that the client doesn't add its own validation that would
-      // silently drop the parameter or crash instead of forwarding it.
-      expect(calls[0]).toContain('source=banana')
-    } finally {
-      window.history.pushState({}, '', '/orders')
-    }
-  })
 })
 
 describe('live refresh', () => {

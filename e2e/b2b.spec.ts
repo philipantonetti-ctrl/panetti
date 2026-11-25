@@ -154,8 +154,12 @@ test('a B2B order reaches the Dashboard', async ({ page }) => {
   await expect(ordersTable.getByRole('columnheader', { name: 'PO reference' })).toBeVisible()
   await expect(b2bOrderRow).toContainText('PO-E2E-4471')
 
-  await page.goto('/orders?source=b2b')
-  await expect(page.getByRole('heading', { name: 'Orders' })).toBeVisible()
+  // "See all" opens the B2B orders, not an empty month of every order.
+  await page.getByRole('link', { name: 'See all' }).click()
+  await expect(page).toHaveURL(/\/orders\?source=b2b/)
+  await expect(page.getByLabel('Source')).toHaveValue('b2b')
+  await expect(page.getByRole('button', { name: 'Date range' })).toContainText('Last 12 months')
+  await expect(page.locator('tbody tr', { hasText: orderNumber })).toBeVisible({ timeout: 10_000 })
   await page.getByLabel('Search orders').fill(orderNumber)
   const orderRow = page.locator('tbody tr').first()
   await expect(orderRow).toBeVisible({ timeout: 10_000 })
