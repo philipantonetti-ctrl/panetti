@@ -218,19 +218,24 @@ function DeliveryCell({ d, placedAt, timezone, now }: { d: Delivery; placedAt: s
  * bought - and what the order truly earned after every cost. Each order shows
  * in its own currency; an order only ever has one.
  */
-/** The URL params this page accepts, read once on mount. */
-function initialParams() {
-  if (typeof window === 'undefined') return { source: '', q: '' }
-  const p = new URLSearchParams(window.location.search)
-  return { source: p.get('source') ?? '', q: p.get('q')?.trim() ?? '' }
-}
+/**
+ * The URL params this page accepts. Read by the SERVER page and passed in, so
+ * the server's HTML and the browser's first render agree: reading
+ * window.location here made the server draw "All orders" / "This month" and
+ * the browser keep it, so /b2b's "See all" and "Their orders" opened on an
+ * empty month of every order.
+ */
+export type OrdersInitial = { source: '' | 'webshop' | 'b2b'; q: string }
 
 export function OrdersClient({
   email,
   shops,
   showProfit,
   role = 'ADMIN',
+  initial = { source: '', q: '' },
 }: {
+  /** ?source= and ?q= from the address, as the server page read them. */
+  initial?: OrdersInitial
   email: string
   shops: Shop[]
   /** Which sidebar to draw: the owner's full menu, or the five operations tabs. */
@@ -242,7 +247,6 @@ export function OrdersClient({
    */
   showProfit: boolean
 }) {
-  const initial = initialParams()
   // A search arriving in the URL comes from somewhere specific - a Slack
   // delivery alert, or the Delivery page's late list - and those orders are old
   // by definition, because that is what being late means. Opening on the
@@ -250,7 +254,9 @@ export function OrdersClient({
   // search widens the range to match. An order number is specific enough that a
   // wide range costs nothing.
   const [preset, setPreset] = useState<Preset | 'custom'>(
-    initial.q ? 'last_12_months' : 'this_month',
+    // B2B orders come a few a month: "this month" is usually empty, and the
+    // B2B page itself lists twelve months.
+    initial.q || initial.source === 'b2b' ? 'last_12_months' : 'this_month',
   )
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -258,7 +264,7 @@ export function OrdersClient({
   const [status, setStatus] = useState('')
   // /b2b links here with ?source=b2b. Read it once, from window rather than
   // useSearchParams, so this client component needs no Suspense boundary.
-  const [source, setSource] = useState(initial.source)
+  const [source, setSource] = useState<string>(initial.source)
   // Replacements, giveaways and test orders go out at 0. Shown by default,
   // because each is a real parcel; hidden on request.
   const [excludeZero, setExcludeZero] = useState(false)

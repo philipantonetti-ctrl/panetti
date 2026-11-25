@@ -4,7 +4,15 @@ import { canRunOperations, canSeeProfit } from '@/lib/auth/guard'
 import { db } from '@/lib/db'
 import { OrdersClient } from './OrdersClient'
 
-export default async function OrdersPage() {
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ source?: string; q?: string }>
+}) {
+  const sp = await searchParams
+  const source = sp.source === 'b2b' || sp.source === 'webshop' ? sp.source : ''
+  const q = typeof sp.q === 'string' ? sp.q.trim() : ''
+
   const user = await currentUser()
   if (!user) redirect('/login')
   if (!canRunOperations(user)) redirect('/portal')
@@ -15,5 +23,5 @@ export default async function OrdersPage() {
     orderBy: { name: 'asc' },
   })
 
-  return <OrdersClient email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'} shops={shops} showProfit={canSeeProfit(user)} />
+  return <OrdersClient email={user.email} role={user.role === 'OPERATIONS' ? 'OPERATIONS' : 'ADMIN'} shops={shops} showProfit={canSeeProfit(user)} initial={{ source, q }} />
 }
